@@ -1,5 +1,6 @@
 import json
 import logging
+import socket
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -39,15 +40,49 @@ def test_api_bind_address_and_port(
         monkeypatch.setenv("PORT", port)
     with (
         patch("pulso_api.__main__.get_settings", return_value=settings),
-        patch("pulso_api.__main__.uvicorn.run") as run,
+        patch("pulso_api.__main__.uvicorn.Config") as config,
+        patch("pulso_api.__main__.uvicorn.Server") as server,
+        patch("pulso_api.__main__.socket.create_server") as create,
     ):
         main()
-    run.assert_called_once_with(
+    config.assert_called_once_with(
         "pulso_api.main:app",
         host="::",
         port=int(port) if port is not None else settings.api_port,
         access_log=False,
     )
+    create.assert_called_once_with(
+        ("::", int(port) if port is not None else settings.api_port),
+        family=socket.AF_INET6,
+        dualstack_ipv6=True,
+    )
+    server.assert_called_once_with(config.return_value)
+    server.return_value.run.assert_called_once_with(
+        sockets=[create.return_value.__enter__.return_value]
+    )
+
+
+@pytest.mark.skipif(not socket.has_dualstack_ipv6(), reason="OS has no dual-stack IPv6")
+def test_api_listener_accepts_ipv4_and_ipv6(
+    monkeypatch: pytest.MonkeyPatch, settings: Settings
+) -> None:
+    monkeypatch.setenv("PORT", "0")
+
+    def connect_both(*, sockets: list[socket.socket]) -> None:
+        listener = sockets[0]
+        listener.settimeout(1)
+        port = listener.getsockname()[1]
+        for host in ("127.0.0.1", "::1"):
+            with socket.create_connection((host, port), timeout=1):
+                connection, _ = listener.accept()
+                connection.close()
+
+    with (
+        patch("pulso_api.__main__.get_settings", return_value=settings),
+        patch("pulso_api.__main__.uvicorn.Server.run", side_effect=connect_both) as run,
+    ):
+        main()
+    run.assert_called_once()
 
 
 def test_api_engines_have_statement_timeout() -> None:
