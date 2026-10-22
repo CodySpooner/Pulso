@@ -6,8 +6,9 @@
 
 **Phase 0 in progress (continuous build since 2026-10-22, DEC-049).** The hourly lead automation merges lanes and keeps Claude and Codex workers busy (vault `Agents/Lead Playbook`, `Agents/Lead State`).
 
-- Merged on `main`: the serial spine (pnpm + uv workspace, dev compose, `.env.example`, `pulso_core.settings`, S3 init, worktree env script).
-- In flight: backend (DB-1..5, API-1..5), web shell (WEB-1..6, WEB-8), workers/images/CI (WRK-1, IMG-1/2, CI-1/2/3/5).
+- Merged on `main`: the serial spine; backend (DB-1..5, API-1..5: models, migration 0001, Clerk auth + allowlist, `/v1/me`, `/v1/settings`, OpenAPI export); workers, images and CI (WRK-1, IMG-1/2, CI-1/2/3/5); web shell (WEB-1..6, WEB-8: tokens, Motion, Clerk gate, Ctrl+K, empty Daily Pulse, PWA); the Shopify spike script and disabled seed draft (SPK-1); the DATA_SOURCES audit (DOC-3) and the Phase 0 docs pass (DOC-2, DEC-056).
+- In flight: the join (WEB-7 typed client, CI-4 e2e, root scripts, AGENTS.md §9), the cross-review fixes for backend/infra (P0-14) and the Codex review of the web lane.
+- CI on GitHub is refused before it starts (account billing), so merges run on local checks until the owner fixes billing.
 - Docker is not installed on the PC yet, so compose, migration and image checks are unverified locally.
 - Data collection has not started. Every week before collection starts pushes the first forecast date back by a week (DEC-044).
 
@@ -15,7 +16,7 @@
 
 | Phase | Name | Status | Notes |
 |---|---|---|---|
-| 0 | Foundation | in progress | Spine merged; backend, web and infra lanes in flight. Owner: WSL2 + Docker Desktop, a Clerk dev app |
+| 0 | Foundation | in progress | Spine, backend, infra, web shell, spike script and docs merged; join, review fixes and phase-end checks in flight. Owner: WSL2 + Docker Desktop, a Clerk dev app, GitHub billing, the spike run |
 | 1 | Data engine | not started | Collection runs on the home-PC collector host (DEC-001). Needs: the CJ answer (DEC-009), approved seed lists (DEC-011), a SerpApi account |
 | 2 | Core product experience | not started | |
 | 3 | Signals expansion | not started | The AliExpress app review has a lead time; start the application now |
@@ -51,9 +52,9 @@
 
 ## Next
 
-1. **Owner approves the Phase 0 plan** in the vault note `Phases/Phase 0 - Foundation`. In the same pass, the owner can veto any proposed decision (DEC-012 to DEC-048) and any "[Added — pending approval]" enhancement in the feature notes.
+1. **Owner reviews asynchronously** (DEC-049): the build continues; the owner can veto any proposed decision (DEC-012 onward) and any "[Added — pending approval]" enhancement at any time.
 2. **Owner clears the Phase 0 blockers:** WSL2 + Docker Desktop, the Clerk dev app, and the commit identity (see the to-dos below).
-3. **Phase 0 build**, after approval:
+3. **Phase 0 build** (most of it merged; see Current status):
    - repo hygiene (`.gitattributes`, pinned pnpm, uv workspace on Python 3.14);
    - dev compose (pgvector 0.8.7-pg18, Redis, RustFS);
    - FastAPI skeleton with a health check, the Clerk JWT dependency and the admin allowlist;
@@ -78,7 +79,7 @@ The canonical, maintained list is the vault note `Phases/Owner To-Dos`.
 | # | To-do | When | Cost | Status |
 |---|---|---|---|---|
 | 1 | Install WSL2 and Docker Desktop: in an admin PowerShell run `wsl --install --no-distribution`, reboot, then `winget install Docker.DockerDesktop` | now (the only hard blocker) | free | open |
-| 2 | Approve the Phase 0 plan, the proposed decisions and the pending-approval enhancements (veto what you don't want) | now | free | open |
+| 2 | Review the Phase 0 plan, the proposed decisions and the pending-approval enhancements asynchronously (veto what you don't want; the build continues, DEC-049) | any time | free | open |
 | 3 | Answer DEC-009: does your CJ account place an order at least every 30 days? | before Phase 1 | free | open |
 | 4 | Confirm the vendor-data default (official sources + CSV, revisit at Phase 1 exit) (DEC-010) | before Phase 1 | free | open |
 | 5 | Approve the drafted seed lists, adding your own store domains (DEC-011) | before Phase 1 | free | open |
@@ -112,4 +113,4 @@ The canonical, maintained list is the vault note `Phases/Owner To-Dos`.
 - [ ] End-of-phase UI checklist passes (AGENTS.md).
 - [ ] §6 items done and pending are listed here (DEC-048).
 - [ ] DECISIONS, BACKLOG and DATA_SOURCES are current. Vault feature notes have their status and Log updated.
-- [ ] Summary to the owner, then stop for approval.
+- [ ] Summary to the owner (async review, DEC-049); the build moves on to the next phase.
