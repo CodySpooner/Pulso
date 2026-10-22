@@ -1,0 +1,8 @@
+packages:
+  - apps/web
+
+# pnpm blocks dependency build scripts by default; only these may run them (DEC-018).
+# pnpm 11 replaced onlyBuiltDependencies with allowBuilds.
+allowBuilds:
+  esbuild: true
+  sharp: true

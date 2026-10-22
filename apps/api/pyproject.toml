@@ -1,0 +1,10 @@
+[project]
+name = "pulso-api"
+version = "0.0.0"
+description = "Pulso FastAPI app (filled in by the API lane)."
+requires-python = ">=3.14,<3.15"
+dependencies = ["pulso-core"]
+
+[build-system]
+requires = ["uv_build>=0.11,<0.14"]
+build-backend = "uv_build"

@@ -1,0 +1,10 @@
+[project]
+name = "pulso-workers"
+version = "0.0.0"
+description = "Pulso Celery workers and scheduled jobs (filled in by the workers lane)."
+requires-python = ">=3.14,<3.15"
+dependencies = ["pulso-core", "pulso-ml", "pulso-sources"]
+
+[build-system]
+requires = ["uv_build>=0.11,<0.14"]
+build-backend = "uv_build"
