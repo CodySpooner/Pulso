@@ -214,24 +214,25 @@ The full protocol is the vault note `Agents/Agent Collaboration Protocol`. The e
 
 ---
 
-## 9. Commands (filled in during Phase 0)
+## 9. Commands
 
-> The real commands land with the Phase 0 scaffold. Until then nothing below exists; don't invent scripts. All commands must be PowerShell-friendly.
+Run from the worktree root. Every command works in PowerShell 5.1 and Git Bash. Settings come from `.env` (copy `.env.example`), then the worktree's `.env.local`, then real env vars; the web app's Clerk keys live in `apps/web/.env.local`. Rows marked *(Docker)* need Docker Desktop; they are unverified locally (no Docker) until the owner installs it.
 
 | Task | Command |
 |---|---|
-| Start dev infrastructure (Postgres, Redis, S3 emulator) | *filled in during Phase 0* |
-| Run API (dev) | *filled in during Phase 0* |
-| Run web (dev) | *filled in during Phase 0* |
-| Run worker (dev, `--pool=solo`) | *filled in during Phase 0* |
-| Run one collector once (fixtures / one-shot) | *filled in during Phase 0* |
-| Create / apply a migration | *filled in during Phase 0* |
-| Lint (Python + web) | *filled in during Phase 0* |
-| Typecheck (mypy + tsc) | *filled in during Phase 0* |
-| Tests (pytest + vitest), Playwright smoke | *filled in during Phase 0* |
-| Export OpenAPI schema and regenerate TS client | *filled in during Phase 0* |
-| Collector host: start / update / status (owner only) | *filled in during Phase 0/1* |
-| Backup now / restore drill (collector host) | *filled in during Phase 1* |
+| First run in a worktree | `uv sync --locked --all-packages; pnpm install; uv run python infra/scripts/worktree_env.py` |
+| Start / stop dev infrastructure (Postgres, Redis, S3 emulator) *(Docker)* | `pnpm infra:up` / `pnpm infra:down`; then once: `uv run python -m pulso_core.s3 init` |
+| Run API (dev) | `pnpm dev:api` (uvicorn with reload on `127.0.0.1:API_PORT`, default 8000; needs `DATABASE_URL` and the S3 keys set) |
+| Run web (dev) | `pnpm dev:web` (`WEB_PORT`, default 3000; `/api/*` goes to `API_URL`) |
+| Run worker (dev, `--pool=solo`) *(Docker: Redis)* | `uv run celery -A pulso_workers.celery_app:app worker --pool=solo -Q collect,default --loglevel=INFO` |
+| Run one collector once (fixtures / one-shot) | Phase 1 (no collectors yet) |
+| Create / apply a migration *(Docker)* | `uv run alembic -c alembic.ini revision --autogenerate -m "<what>"` / `pnpm db:migrate`. Never against the collector database |
+| Lint (Python + web) | `pnpm lint` |
+| Typecheck (mypy + tsc) | `pnpm typecheck` |
+| Tests (pytest + vitest), Playwright smoke | `pnpm test`; `pnpm --filter web e2e` (E2E auth bypass, no keys; first time `pnpm --filter web exec playwright install chromium`); `pnpm --filter web e2e:clerk` (needs Clerk dev keys) |
+| Export OpenAPI schema and regenerate TS client | `pnpm gen:api` (commit `apps/api/openapi.json` and `apps/web/src/lib/api/schema.d.ts`; a clean tree stays clean) |
+| Collector host: start / update / status (owner only) | Owner only, Phase 1 |
+| Backup now / restore drill (collector host) | Owner only, Phase 1 |
 
 ---
 

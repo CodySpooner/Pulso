@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { SignOutButton } from "@clerk/nextjs";
 import { auth } from "@clerk/nextjs/server";
 
@@ -26,16 +25,13 @@ export default async function NotAuthorizedPage() {
           <CopyButton value={userId} label="Copy" />
         </div>
       )}
-      <div className="flex flex-wrap items-center justify-center gap-2">
-        {!authBypass && (
-          <SignOutButton redirectUrl="/sign-in">
-            <Button variant="primary">Sign out</Button>
-          </SignOutButton>
-        )}
-        <Button asChild variant="ghost">
-          <Link href="/sign-in">Use another account</Link>
-        </Button>
-      </div>
+      {/* One action: a plain link to /sign-in would keep the denied session, and Clerk sends a signed-in
+          visitor straight back here. */}
+      {!authBypass && (
+        <SignOutButton redirectUrl="/sign-in">
+          <Button variant="primary">Sign out and use another account</Button>
+        </SignOutButton>
+      )}
     </AuthFrame>
   );
 }
