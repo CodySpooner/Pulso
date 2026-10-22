@@ -54,6 +54,7 @@ class Source(Base):
     status: Mapped[str] = mapped_column(String(20), server_default="disabled")
     disabled_reason: Mapped[str | None] = mapped_column(Text)
     disabled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    retry_not_before: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     consecutive_block_count: Mapped[int] = mapped_column(server_default="0")
     last_status_code: Mapped[int | None]
     config: Mapped[dict[str, Any]] = mapped_column(JSONB, server_default=text("'{}'::jsonb"))
@@ -78,9 +79,10 @@ class CollectorRun(BigId, Base):
     params: Mapped[dict[str, Any]] = mapped_column(JSONB, server_default=text("'{}'::jsonb"))
     host: Mapped[str | None] = mapped_column(String(255))
     git_sha: Mapped[str | None] = mapped_column(String(40))
-    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    queued_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    status: Mapped[str] = mapped_column(String(20), server_default="running")
+    status: Mapped[str] = mapped_column(String(20), server_default="queued")
     complete: Mapped[bool] = mapped_column(server_default=text("false"))
     rows_fetched: Mapped[int] = mapped_column(BigInteger, server_default="0")
     rows_inserted: Mapped[int] = mapped_column(BigInteger, server_default="0")
@@ -94,7 +96,17 @@ class CollectorRun(BigId, Base):
 
 class RawPayload(BigId, Base):
     __tablename__ = "raw_payloads"
-    __table_args__ = (Index(None, "source_id", "captured_at"),)
+    __table_args__ = (
+        Index(None, "source_id", "captured_at"),
+        Index(
+            "uq_raw_payloads_import",
+            "source_id",
+            "sha256",
+            "template_version",
+            unique=True,
+            postgresql_where=text("template_version IS NOT NULL"),
+        ),
+    )
     source_id: Mapped[int] = mapped_column(ForeignKey("sources.id"))
     run_id: Mapped[int] = mapped_column(ForeignKey("collector_runs.id"), index=True)
     captured_at: Mapped[datetime] = mapped_column(
@@ -106,6 +118,7 @@ class RawPayload(BigId, Base):
     etag: Mapped[str | None] = mapped_column(Text)
     bytes: Mapped[int] = mapped_column(BigInteger)
     sha256: Mapped[str] = mapped_column(String(64), index=True)
+    template_version: Mapped[str | None] = mapped_column(String(80))
     storage_key: Mapped[str | None] = mapped_column(Text)
     expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 

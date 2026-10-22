@@ -1,4 +1,4 @@
-"""Import all Phase 0 models so Alembic sees the complete metadata."""
+"""Import all models so Alembic sees the complete metadata."""
 
 from pulso_core.models.catalog import (
     Category,
@@ -8,6 +8,13 @@ from pulso_core.models.catalog import (
     ListingVariant,
     Product,
     VariantSnapshot,
+)
+from pulso_core.models.collection import (
+    CollectionGap,
+    CollectorRunTarget,
+    HostHeartbeat,
+    SearchTrend,
+    SourceEvent,
 )
 from pulso_core.models.core import (
     CollectorRun,
@@ -26,16 +33,21 @@ from pulso_core.models.vendors import ShippingOption, Store, Supplier, SupplierO
 __all__ = [
     "Category",
     "CollectorRun",
+    "CollectorRunTarget",
+    "CollectionGap",
     "Currency",
     "FxRate",
     "Image",
+    "HostHeartbeat",
     "Listing",
     "ListingSnapshot",
     "ListingVariant",
     "Product",
     "RawPayload",
     "ShippingOption",
+    "SearchTrend",
     "Source",
+    "SourceEvent",
     "Store",
     "Supplier",
     "SupplierOffer",
