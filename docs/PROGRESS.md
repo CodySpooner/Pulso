@@ -6,8 +6,8 @@
 
 **Phase 0 in progress (continuous build since 2026-10-22, DEC-049).** The hourly lead automation merges lanes and keeps Claude and Codex workers busy (vault `Agents/Lead Playbook`, `Agents/Lead State`).
 
-- Merged on `main`: the serial spine; backend (DB-1..5, API-1..5: models, migration 0001, Clerk auth + allowlist, `/v1/me`, `/v1/settings`, OpenAPI export); workers, images and CI (WRK-1, IMG-1/2, CI-1/2/3/5); web shell (WEB-1..6, WEB-8: tokens, Motion, Clerk gate, Ctrl+K, empty Daily Pulse, PWA); the Shopify spike script and disabled seed draft (SPK-1); the DATA_SOURCES audit (DOC-3) and the Phase 0 docs pass (DOC-2, DEC-056).
-- In flight: the join (WEB-7 typed client, CI-4 e2e, root scripts, AGENTS.md §9), the cross-review fixes for backend/infra (P0-14) and the Codex review of the web lane.
+- Merged on `main`: the serial spine; backend (DB-1..5, API-1..5: models, migration 0001, Clerk auth + allowlist, `/v1/me`, `/v1/settings`, OpenAPI export); workers, images and CI (WRK-1, IMG-1/2, CI-1/2/3/5); web shell (WEB-1..6, WEB-8: tokens, Motion, Clerk gate, Ctrl+K, empty Daily Pulse, PWA); the Shopify spike script and disabled seed draft (SPK-1); the DATA_SOURCES audit (DOC-3) and the Phase 0 docs pass (DOC-2, DEC-056); the backend/infra cross-review fixes (P0-14, DEC-057); the join (WEB-7 typed client and `/v1/me` workspace chip, CI-4 e2e job that skips cleanly without Clerk secrets, root `dev:api`/`db:migrate`/`gen:api`, AGENTS.md §9 commands, DEC-058) with the web-review fixes.
+- In flight: the Phase 0 UI gate (§8 checklist, styleseed review, WEB-9 `/admin/ui` gallery, refreshed screenshots), the Codex review of the join, and the Phase 1 brainstorm synthesis.
 - CI on GitHub is refused before it starts (account billing), so merges run on local checks until the owner fixes billing.
 - Docker is not installed on the PC yet, so compose, migration and image checks are unverified locally.
 - Data collection has not started. Every week before collection starts pushes the first forecast date back by a week (DEC-044).
@@ -16,7 +16,7 @@
 
 | Phase | Name | Status | Notes |
 |---|---|---|---|
-| 0 | Foundation | in progress | Spine, backend, infra, web shell, spike script and docs merged; join, review fixes and phase-end checks in flight. Owner: WSL2 + Docker Desktop, a Clerk dev app, GitHub billing, the spike run |
+| 0 | Foundation | in progress | Spine, backend, infra, web shell, typed client, e2e job, spike script, docs and review fixes merged; phase-end UI gate in flight. Owner: WSL2 + Docker Desktop, a Clerk dev app, GitHub billing, the spike run |
 | 1 | Data engine | not started | Collection runs on the home-PC collector host (DEC-001). Needs: the CJ answer (DEC-009), approved seed lists (DEC-011), a SerpApi account |
 | 2 | Core product experience | not started | |
 | 3 | Signals expansion | not started | The AliExpress app review has a lead time; start the application now |

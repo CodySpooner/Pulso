@@ -69,3 +69,14 @@ This file holds deferred ideas and research extras that are **not** in the §11 
 | Resolve Pinterest storage/research/ML permission before adopting the daily-snapshot proposal | DATA_SOURCES; [Developer guidelines](https://policy.pinterest.com/en/developer-guidelines), Basics / What not to do (checked 2026-10-22); vault Candidate Sources | Before adoption | Owner review / written permission; candidate and enablement unchanged. Lead records owner to-do; source note left unchanged |
 | Resolve Store Leads competitive-use, republication and deletion obligations before adoption | DATA_SOURCES; [Terms](https://storeleads.app/terms) §2.1.5–9 / §2.12 (checked 2026-10-22); Store Intelligence §5 | Before adoption | Owner review / written permission; paid approval still required; vault low-risk label needs reconciliation by its owner |
 | Confirm unresolved source evidence at the existing adapter/approval gates | DATA_SOURCES; Source - Keepa; Candidate Sources; Trend & Ad Intelligence Sources §2.5/8/9/11; Supplier & Fulfillment Data Sources §12 | Before the relevant adapter or vendor purchase | Keepa official entry price/redistribution; 17TRACK first paid tier/service-specific terms; Meta vendor permission clause (public terms check reached login/block); Pinterest/Meta/vendor numeric quotas; YouTube derived-history retention permission. Unverified fields are not clearance to collect |
+
+## Phase 1 brainstorm deferrals (P1-00, 2026-10-22)
+
+| Deferred work | Evidence | When | Notes |
+|---|---|---|---|
+| Redis token-bucket limiter and one Celery queue per source | Phase 1 brainstorm D1 | Only if a second collector process becomes necessary | v1: one `collect` consumer at concurrency 1 with an in-process limiter |
+| Enqueue outbox for collector runs | Phase 1 brainstorm D3 | Only if P1-04's recovery tests show lost publishes | v1: run row written `queued` before publish; publish failure marks it failed |
+| Coverage-memo API endpoint and Data Health card; product-level coverage | Phase 1 brainstorm (P1-10) | After Phase 2 matching exists | Phase 1 memo is a dated CLI report |
+| External heartbeat monitor | Phase 1 brainstorm | With the Phase 7 alerts | Needs an account, so ask the owner first |
+| Count immutable facts (FX, Keepa-style series) as of their own date in features | Phase 1 brainstorm D4; DEC-031 | Phase 6, only via an owner SPEC amendment | Until then features use only `captured_at < d+1 00:00Z` |
+| Automatic five-year Trends backfill | Phase 1 note; Phase 1 brainstorm | After the Trends alpha or an approved paid tier | Paid tier needs owner approval |
