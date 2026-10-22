@@ -19,6 +19,7 @@ Only owner-approved decisions are applied to this file. Proposed defaults live i
 | A-8 | 2026-10-22 | §5 settings, §6.18 | Settings default to US and USD. | DEC-004 |
 | A-9 | 2026-10-22 | §6 intro | The §11 phases stay the scope. Research-backed enhancements are tracked in vault feature notes as "[Added — pending approval]" and are out of scope until approved. | DEC-008 |
 | A-10 | 2026-10-22 | §11 Phase 1, Phase 8 | Phase 1 collection runs on the home PC until go-live, and gaps are accepted, detected and flagged. Railway is prepared so go-live can happen at any time. | DEC-001 |
+| A-11 | 2026-10-22 | §0 Working rules, §6 intro, §11 | Continuous build: phases run in order, but phase gates no longer stop the build. At each phase end the summary goes to PROGRESS.md and the vault, and work moves on to the next phase; I review asynchronously and can stop it any time. "[Added — pending approval]" items are in scope when their phase is built unless I veto them. Hard stops remain for paid services, keys and accounts, ToS/compliance, deploys, destructive data operations and the collector host. | DEC-049 |
 
 ---
 
@@ -32,7 +33,7 @@ You are the lead engineer building **Pulso**, a web app for dropshipping product
 3. Reply with (a) any gaps, risks, or contradictions you see, and (b) your plan for Phase 0. Then wait for my go-ahead.
 
 **Working rules**
-- Build one phase at a time (Section 11). Do not start the next phase until I approve.
+- Build one phase at a time (Section 11). Do not start the next phase until I approve. *(A-11: superseded — continuous build; phase gates no longer stop the build, I review asynchronously.)*
 - At the end of every phase, run lint, typecheck and tests; all must pass. Then update `docs/PROGRESS.md` and summarize what was built, what's left, and anything I need to do (API keys, accounts, approvals).
 - Record every non-obvious technical choice in `docs/DECISIONS.md` (date, decision, alternatives considered, why).
 - Keep `docs/BACKLOG.md` for ideas and deferred work.
@@ -380,7 +381,7 @@ All scores run 0–100, are versioned, and store an `explanation` JSON with each
 
 ## 11. Build phases
 
-Every phase ends with passing lint/typecheck/tests, an updated PROGRESS.md, a summary to me, and a **stop for my approval**.
+Every phase ends with passing lint/typecheck/tests, an updated PROGRESS.md, a summary to me, and a **stop for my approval**. *(A-11: no stop — after the summary, the build continues into the next phase.)*
 
 **Phase 0: Foundation**
 Monorepo; docker-compose (Postgres + pgvector, Redis, MinIO); FastAPI skeleton with a health check; Next.js skeleton with Clerk auth and the app shell (sidebar, dark theme, Ctrl+K stub); SQLAlchemy models and the first Alembic migration; settings management; CI; CLAUDE.md; docs folder.

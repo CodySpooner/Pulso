@@ -64,6 +64,7 @@ New entries go at the bottom with the next number. Never renumber or delete; mar
 | DEC-046 | Alerts fire once per crossing | proposed — pending Phase 0 approval |
 | DEC-047 | AI budgets and AI-derived facts | proposed — pending Phase 0 approval |
 | DEC-048 | Unplaced §6 items and phase-end listing | proposed — pending Phase 0 approval |
+| DEC-049 | Continuous build: phase gates don't stop the build; hourly lead automation in Orca | approved by owner 2026-10-22 |
 
 Superseded review defaults, not given entries: default #0 (move the repo) is done, see DEC-005. Default #2 (no local collection at all) is replaced by DEC-002. Default #15 (CSS-only motion) is replaced by DEC-007, and its remaining rules are in DEC-025. Review question D1 (Railway Pro from Phase 1) is answered by DEC-001, D2 by DEC-003, D3 by DEC-004, D5 by DEC-008 and D8 by DEC-006.
 
@@ -668,3 +669,14 @@ Superseded review defaults, not given entries: default #0 (move the repo) is don
   - PROGRESS.md lists §6 items done and pending at every phase end, including any approved "[Added — pending approval]" items.
 - **Alternatives:** a detailed placement table now.
 - **Why:** Stops tagged features from silently never being built, without guessing a full plan.
+
+### DEC-049 · Continuous build with an hourly lead automation
+**2026-10-22 · approved by owner 2026-10-22** · supersedes part of DEC-008; amends SPEC §0 and §11 (A-11)
+- **Decision:**
+  - The build runs continuously. Phases still go in order, but a phase gate no longer stops work: when exit checks pass, the lead writes the phase summary (PROGRESS.md, the phase note, Owner To-Dos) and starts the next phase. The owner reviews asynchronously and can stop the build by disabling the Orca automation "Pulso lead".
+  - Exit criteria only the owner can satisfy (Docker install, Clerk keys and sign-in, accounts) are logged as pending owner and do not block the next phase.
+  - "[Added — pending approval]" items are built with their target phase unless the owner vetoes them. Proposed defaults are binding working defaults until vetoed.
+  - An Orca automation runs a Claude "lead" every hour in the main checkout. It follows the vault note Agents/Lead Playbook: process the orchestration inbox, merge finished lanes into main after checks pass, push, keep Claude and Codex workers busy on the next tasks, run cross-reviews and brainstorms, and record state in Agents/Lead State.
+  - Hard stops stay with the owner: paid services and plan changes, accounts and secrets, ToS/compliance changes, Railway deploys, destructive data operations, collector-host operations, force-pushes.
+- **Alternatives:** stop at every phase gate (SPEC §0 as written) — the owner asked for the build to keep going; one long-lived coordinator session — it stops when that session hits a usage limit.
+- **Why:** The owner wants Pulso built and improved continuously. A scheduled lead survives usage limits and session restarts: a failed run is simply retried the next hour.

@@ -24,12 +24,13 @@ If a vault note disagrees with SPEC or DECISIONS, SPEC/DECISIONS win. Fix the no
 
 ## 2. Working rules (SPEC §0)
 
-- **One phase at a time** (SPEC §11). Never start work from the next phase until the owner approves the current one. Tasks *within* a phase may run in parallel.
+- **Continuous build (DEC-049).** Phases still run in order (SPEC §11), but phase gates do **not** block: when a phase's exit checks pass, the lead writes the phase summary and the build moves straight on to the next phase. The owner reviews asynchronously and can stop or redirect at any time. Tasks *within* a phase may run in parallel. The hourly lead automation follows the vault note `Agents/Lead Playbook`.
 - **End of every phase:**
   - lint, typecheck and tests all pass, and the UI checklist (§8) passes;
   - update `docs/PROGRESS.md`, including the §6 items done and pending;
-  - summarize what was built, what's left, and what the owner must do (keys, accounts, approvals);
-  - then **stop** for approval.
+  - write the phase summary (what was built, what's left, what the owner must do: keys, accounts, approvals) to the phase's vault note and `Phases/Owner To-Dos`;
+  - exit criteria only the owner can satisfy (installs, keys, sign-in) are logged as pending owner and do not block the next phase; then continue.
+- **Hard stops — never do these without the owner, even in continuous mode:** paid services or plan changes, creating accounts or handling keys/secrets, ToS or compliance changes, Railway deploys, destructive data operations, collector-host operations (§4), force-pushes or rewriting `main` history. Log them in `Phases/Owner To-Dos` and keep building around them.
 - **Record decisions:** every non-obvious technical choice goes in `docs/DECISIONS.md` (date, decision, alternatives, why, status), appended with the next `DEC-nnn` number. Never renumber or delete entries.
 - **Backlog:** ideas and deferred work go in `docs/BACKLOG.md`.
 - **Secrets:** never in code, logs, fixtures, vault notes or PR text. Use `.env` (gitignored) and keep `.env.example` current with every variable and a comment.
@@ -37,7 +38,7 @@ If a vault note disagrees with SPEC or DECISIONS, SPEC/DECISIONS win. Fix the no
 - **No fake data in production code paths.** Dev seed data lives only in clearly named seed scripts and fixtures.
 - **Stack and style:** prefer boring, well-documented tools, small focused modules, and types everywhere.
 - **Windows:** the owner develops on Windows with Docker Desktop (WSL2). Give PowerShell-friendly commands (PowerShell 5.1: no `&&`; use `;` or `if ($?) { }`).
-- **Scope:** items marked **"[Added — pending approval]"** in vault notes are not built until the owner approves them (DEC-008).
+- **Scope:** items marked **"[Added — pending approval]"** in vault notes are in scope when their target phase is built (DEC-049 supersedes that part of DEC-008); the owner can veto any of them. Proposed defaults in DECISIONS.md are binding working defaults until the owner vetoes them.
 
 ---
 
