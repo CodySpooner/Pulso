@@ -795,3 +795,14 @@ Superseded review defaults, not given entries: default #0 (move the repo) is don
   - **Deferred:** signed-in flows (sign in → Daily Pulse → Ctrl+K) need a Clerk test user and its id on the CI allowlist. Add them when the owner creates that user.
 - **Alternatives:** cookie-only auth through the rewrite; a fixed uvicorn CLI port; one Playwright run with a production build for the Clerk test; a job-level `if:` (GitHub shows it as skipped, not succeeded).
 - **Why:** The smallest pieces that prove the pipeline end to end, with every command working from PowerShell 5.1 and Git Bash.
+
+### DEC-059 · `/admin/ui` gallery, specimen values, DeltaBadge and skeleton timing tokens
+**2026-10-22 · proposed (P0-09)** · WEB-9 (Added — pending approval, in scope per DEC-049); AGENTS.md §8.
+- **Decision:**
+  - **Route:** `/admin/ui` is a real page in the `(app)` group, so it sits behind the same allowlist gate (proxy + layout, DEC-054) and ships in production builds. It is in the nav config under Admin with `phase: 0` (built), so the sidebar, the palette and the breadcrumbs pick it up.
+  - **Specimen values:** the table sample uses rows from `src/app/(app)/admin/ui/specimens.ts`, named "Specimen 01…08". The page says they are specimens, not data, and they are never fetched or stored (AGENTS.md §2, no fake data).
+  - **Delta rule in code:** `formatDelta` in `src/lib/format.ts` (glyph, signed text with U+2212, tone from `goodDirection`, `±0.0` when it rounds to zero) and a `DeltaBadge` text component that renders it. `formatDelta` is Vitest-covered. Phase 2 tables reuse them instead of rebuilding the rule.
+  - **Skeleton timing tokens:** `--skeleton-delay` (150ms) and `--duration-shimmer` (1.6s) in `tokens.css` replace the raw values in `skeleton.tsx` (the phase-end checklist found them).
+  - **Motion samples:** nothing animates on first paint. "Replay motion" remounts the samples. Reduced motion is verified by the existing recorder journey, which now replays them.
+- **Alternatives:** a dev-only route excluded from production (then the owner can't review it on Railway); a static HTML preview in the vault only (it drifts from the real tokens); invented product names in the table (they read as data).
+- **Why:** One reference page built from the real tokens and components, reviewed by the owner and copied by agents, with no number on it that could be mistaken for data.

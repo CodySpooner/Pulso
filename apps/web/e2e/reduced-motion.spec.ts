@@ -53,7 +53,8 @@ async function installRecorder(page: Page) {
   }, TRANSFORM_PROPS);
 }
 
-/** Palette open → highlight move → close → two route changes (route enter, nav pill, card stagger). */
+/** Palette open → highlight move → close → three route changes (route enter, nav pill, card stagger) →
+ *  the /admin/ui motion samples replayed and its range pill moved. */
 async function journey(page: Page) {
   await page.goto("/");
   await expect(page.getByRole("heading", { level: 1, name: "Daily Pulse" })).toBeVisible();
@@ -71,6 +72,11 @@ async function journey(page: Page) {
   await page.waitForTimeout(400);
   await sidebar.getByRole("link", { name: /^Daily Pulse/ }).click();
   await expect(page.getByRole("heading", { level: 1, name: "Daily Pulse" })).toBeVisible();
+  await page.waitForTimeout(600);
+  await sidebar.getByRole("link", { name: /^UI gallery/ }).click();
+  await expect(page.getByRole("heading", { level: 1, name: "UI gallery" })).toBeVisible();
+  await page.getByRole("button", { name: "Replay motion" }).click();
+  await page.getByRole("button", { name: "Month" }).click();
   await page.waitForTimeout(600);
   return page.evaluate(() => window.__transformMotion);
 }

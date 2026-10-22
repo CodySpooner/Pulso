@@ -13,6 +13,7 @@ import {
   LayoutGrid,
   Megaphone,
   MessageSquareText,
+  Palette,
   PenLine,
   Settings,
   SlidersHorizontal,
@@ -113,6 +114,7 @@ export const navGroups: NavGroup[] = [
     items: [
       { label: "Data Health", href: "/admin/data-health", icon: DatabaseZap, phase: 1, summary: "Every source's last run, status, rows, errors and freshness, with gaps flagged." },
       { label: "Matching", href: "/admin/matching", icon: GitMerge, phase: 2, summary: "Confirm, merge or split possible product matches across sources." },
+      { label: "UI gallery", href: "/admin/ui", icon: Palette, phase: 0, summary: "Every design token, type style, control, state and motion sample in one place." },
     ],
   },
 ];

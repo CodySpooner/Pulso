@@ -24,9 +24,10 @@ describe("nav config", () => {
     for (const path of ["/nope", "/products", "/products/1/extra", "/admin"]) expect(resolveRoute(path)).toBeUndefined();
   });
 
-  test("hrefs are unique and only Daily Pulse is built in Phase 0", () => {
+  test("hrefs are unique and only Daily Pulse and the UI gallery are built in Phase 0", () => {
     const hrefs = allNavItems.map((i) => i.href);
     expect(new Set(hrefs).size).toBe(hrefs.length);
-    expect(allNavItems.filter(isBuilt).map((i) => i.href)).toEqual(["/"]);
+    expect(allNavItems.filter(isBuilt).map((i) => i.href)).toEqual(["/", "/admin/ui"]);
+    expect(resolveRoute("/admin/ui")).toMatchObject({ group: "Admin", item: { label: "UI gallery" } });
   });
 });
