@@ -49,6 +49,12 @@ def test_migration_roundtrip_and_metadata(db_engine: Engine) -> None:
         assert session.scalar(select(func.count()).select_from(Source).where(Source.enabled)) == 0
 
 
+def test_connected_database_is_a_test_database(db_engine: Engine) -> None:
+    with db_engine.connect() as connection:
+        database = connection.scalar(text("SELECT current_database()"))
+        assert database == "pulso_ci" or database.startswith("pulso_test")
+
+
 def test_reparse_payload_does_not_duplicate_observations(db_engine: Engine) -> None:
     with Session(db_engine) as session, session.begin():
         run = CollectorRun(source_id=1, trigger="csv")
