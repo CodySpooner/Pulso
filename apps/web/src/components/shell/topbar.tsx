@@ -14,6 +14,7 @@ import { resolveRoute } from "@/lib/nav";
 import { useShell } from "./app-shell";
 import { ThemeToggle } from "./theme-toggle";
 import { UserMenu } from "./user-menu";
+import { WorkspaceChip } from "./workspace-chip";
 
 
 function Breadcrumbs() {
@@ -37,7 +38,7 @@ function Breadcrumbs() {
 }
 
 // Top bar (vault Design/App Shell & Navigation): breadcrumbs, search trigger, market and freshness chips,
-// theme toggle and the Clerk user menu. Below 1024px: menu button and the logo (the page h1 names the page).
+// workspace chip (/v1/me), theme toggle and the Clerk user menu. Below 1024px: menu button and the logo (the page h1 names the page).
 export function Topbar() {
   const { openPalette, openNav } = useShell();
 
@@ -81,6 +82,7 @@ export function Topbar() {
           </TooltipTrigger>
           <TooltipContent className="max-w-60">Collectors start in Phase 1. Then every number shows its source and an “as of” time.</TooltipContent>
         </Tooltip>
+        <WorkspaceChip />
 
         <ThemeToggle />
         <UserMenu />
