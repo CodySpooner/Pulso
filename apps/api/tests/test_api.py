@@ -12,9 +12,13 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from pulso_api.auth import Principal, current_principal
+from pulso_api.dependencies import get_db
 from pulso_api.main import create_app
 from pulso_api.openapi import export
+from pulso_api.routers.health import check_postgres
+from pulso_core import db
 from pulso_core.logging import JsonFormatter, request_id
+from pulso_core.settings import Settings
 
 
 def test_health_without_settings_or_services() -> None:
@@ -23,6 +27,33 @@ def test_health_without_settings_or_services() -> None:
     assert response.status_code == 200
     assert response.json() == {"status": "ok"}
     assert response.headers["X-Request-ID"] == "fixture-request"
+
+
+def test_api_engines_have_statement_timeout() -> None:
+    db._process_engine.cache_clear()
+    settings = Settings(
+        database_url="postgresql+psycopg://localhost/pulso_test",
+        s3_access_key_id="fixture",
+        s3_secret_access_key="fixture",
+        _env_file=None,
+    )
+    try:
+        with (
+            patch.object(db, "get_settings", return_value=settings),
+            patch.object(db, "create_engine") as create,
+        ):
+            dependency = get_db()
+            session = next(dependency)
+            assert session.get_bind() is create.return_value
+            with pytest.raises(StopIteration):
+                next(dependency)
+            check_postgres(settings)
+            create.assert_called_once()
+            assert create.call_args.kwargs["connect_args"]["options"] == (
+                "-c timezone=UTC -c statement_timeout=10000"
+            )
+    finally:
+        db._process_engine.cache_clear()
 
 
 def test_readiness_names_redis_and_redacts_details(client: TestClient) -> None:

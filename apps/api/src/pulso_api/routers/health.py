@@ -20,7 +20,7 @@ class Health(BaseModel):
 
 
 def check_postgres(settings: Settings) -> None:
-    with get_engine().connect() as connection:
+    with get_engine(statement_timeout=10_000).connect() as connection:
         connection.execute(text("SELECT 1"))
 
 

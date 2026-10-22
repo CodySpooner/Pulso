@@ -67,26 +67,31 @@ class Observation:
         )
 
 
-def make_engine(url: str) -> Engine:
+def make_engine(url: str, *, statement_timeout: int | None = None) -> Engine:
+    options = "-c timezone=UTC"
+    if statement_timeout is not None:
+        options += f" -c statement_timeout={statement_timeout}"
     return create_engine(
         url,
         pool_pre_ping=True,
         hide_parameters=True,
         connect_args={
             "connect_timeout": 3,
-            "options": "-c timezone=UTC -c statement_timeout=10000",
+            "options": options,
         },
     )
 
 
 @lru_cache
-def _process_engine(pid: int) -> Engine:
-    return make_engine(get_settings().database_url.get_secret_value())
+def _process_engine(pid: int, statement_timeout: int | None) -> Engine:
+    return make_engine(
+        get_settings().database_url.get_secret_value(), statement_timeout=statement_timeout
+    )
 
 
-def get_engine() -> Engine:
-    return _process_engine(os.getpid())
+def get_engine(*, statement_timeout: int | None = None) -> Engine:
+    return _process_engine(os.getpid(), statement_timeout)
 
 
-def get_session() -> Session:
-    return Session(get_engine())
+def get_session(*, statement_timeout: int | None = None) -> Session:
+    return Session(get_engine(statement_timeout=statement_timeout))
