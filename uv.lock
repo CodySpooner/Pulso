@@ -713,6 +713,7 @@ source = { editable = "apps/api" }
 dependencies = [
     { name = "fastapi" },
     { name = "pulso-core" },
+    { name = "pulso-sources" },
     { name = "pyjwt", extra = ["crypto"] },
     { name = "redis" },
     { name = "uvicorn" },
@@ -722,6 +723,7 @@ dependencies = [
 requires-dist = [
     { name = "fastapi", specifier = ">=0.135,<1" },
     { name = "pulso-core", editable = "packages/core" },
+    { name = "pulso-sources", editable = "packages/sources" },
     { name = "pyjwt", extras = ["crypto"], specifier = ">=2.15,<3" },
     { name = "redis", specifier = ">=6.4,<6.5" },
     { name = "uvicorn", specifier = ">=0.41,<1" },
