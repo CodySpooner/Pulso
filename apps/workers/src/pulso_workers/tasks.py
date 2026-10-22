@@ -11,6 +11,7 @@ from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from pulso_core.db import get_session
+from pulso_core.logging import job_id
 from pulso_core.models import CollectorRun, Source
 from pulso_core.settings import get_settings
 from pulso_sources.framework import Adapter, RequestHook, Target, enqueue_run, execute_run, slot_key
@@ -62,7 +63,7 @@ def enqueue_scheduled(source_key: str, job: str, cadence: Literal["daily", "week
 
 
 def collect_run(run_id: int) -> None:
-    with get_session() as session:
+    with job_id.set(str(run_id)), get_session() as session:
         run = session.get_one(CollectorRun, run_id)
         if run.status != "queued":
             return

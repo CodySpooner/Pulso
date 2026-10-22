@@ -5,6 +5,7 @@ from celery.signals import beat_init, worker_process_init  # type: ignore[import
 from sqlalchemy import Engine
 
 from pulso_core.db import get_engine
+from pulso_core.logging import configure_logging
 from pulso_core.settings import get_settings
 from pulso_workers.beat import init_scheduler
 from pulso_workers.schedules import BEAT_SCHEDULE
@@ -46,6 +47,7 @@ app.add_defaults(configuration)
 
 def init_process(**kwargs: object) -> None:
     global engine
+    configure_logging(get_settings().log_level)
     if engine is not None:
         engine.dispose(close=False)  # Never close sockets inherited from another process.
     engine = get_engine()

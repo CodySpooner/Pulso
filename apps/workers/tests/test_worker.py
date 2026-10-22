@@ -30,6 +30,7 @@ def test_ping_in_eager_mode(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_beat_refuses_disabled_scheduler(
     monkeypatch: pytest.MonkeyPatch,
     caplog: pytest.LogCaptureFixture,
+    capsys: pytest.CaptureFixture[str],
     flag: str | None,
     entrypoint: str,
 ) -> None:
@@ -42,7 +43,7 @@ def test_beat_refuses_disabled_scheduler(
             beat.main()
         else:
             beat_init.send(sender=app)
-    assert "Beat requires PULSO_SCHEDULER=on" in caplog.text
+    assert "Beat requires PULSO_SCHEDULER=on" in caplog.text + capsys.readouterr().err
 
 
 @pytest.mark.parametrize("origin", ["cwd", "package"])

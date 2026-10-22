@@ -5,6 +5,7 @@ from typing import Any
 
 from celery.beat import PersistentScheduler  # type: ignore[import-untyped]
 
+from pulso_core.logging import configure_logging
 from pulso_core.settings import get_settings
 from pulso_core.worktree import is_linked_worktree
 from pulso_workers.locks import AdvisoryLock
@@ -56,6 +57,7 @@ class LockedScheduler(PersistentScheduler):  # type: ignore[misc]
 
 
 def init_scheduler(sender: Any, **kwargs: object) -> None:
+    configure_logging(get_settings().log_level)
     guard_scheduler()
     if not isinstance(sender.scheduler, LockedScheduler):
         raise SystemExit("Beat requires LockedScheduler.")
