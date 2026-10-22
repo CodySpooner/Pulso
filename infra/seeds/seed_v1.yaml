@@ -1,6 +1,7 @@
 # DRAFT pending owner approval (DEC-011). No live collection may use this until approved.
 # JSON-compatible YAML; CJ category names are provisional until IDs are resolved in Phase 1.
 {
+  "approval": {"version": "seed_v1", "status": "draft", "approved_on": null, "decision": "DEC-011"},
   "stores": [
     {"domain": "sageandsill.com", "name": "Sage & Sill", "enabled": false},
     {"domain": "warmlydecor.com", "name": "Warmly", "enabled": false},

@@ -226,6 +226,7 @@ Run from the worktree root. Every command works in PowerShell 5.1 and Git Bash. 
 | Run web (dev) | `pnpm dev:web` (`WEB_PORT`, default 3000; `/api/*` goes to `API_URL`) |
 | Run worker (dev, `--pool=solo`) *(Docker: Redis)* | `uv run celery -A pulso_workers.celery_app:app worker --pool=solo -Q collect,default --loglevel=INFO` |
 | Run one collector once (fixtures / one-shot) | Phase 1 (no collectors yet) |
+| Preview / apply seeds (configured worktree database only) | `uv run python -m infra.scripts.seeds` / `uv run python -m infra.scripts.seeds --apply`; optional `--seed-file <path>`. Never enables sources; owner approval required for enabled targets (DEC-065) |
 | Create / apply a migration *(Docker)* | `uv run alembic -c alembic.ini revision --autogenerate -m "<what>"` / `pnpm db:migrate`. Never against the collector database |
 | Lint (Python + web) | `pnpm lint` |
 | Typecheck (mypy + tsc) | `pnpm typecheck` |
