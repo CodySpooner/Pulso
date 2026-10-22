@@ -1,0 +1,145 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "../styles/tokens.css";
+
+@custom-variant dark (&:where(.dark, .dark *));
+@custom-variant light (&:where(.light, .light *));
+
+/* Remove Tailwind's palette: only Pulso tokens exist, so `bg-red-500` cannot be used. */
+@theme {
+  --color-*: initial;
+}
+
+@theme inline {
+  --color-background: var(--background);   --color-foreground: var(--foreground);
+  --color-card: var(--card);               --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);         --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);         --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);     --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);             --color-muted-foreground: var(--muted-foreground);
+  --color-subtle-foreground: var(--subtle-foreground);
+  --color-accent: var(--accent);           --color-accent-foreground: var(--accent-foreground);
+  --color-selected: var(--selected);
+  --color-destructive: var(--destructive); --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border); --color-border-subtle: var(--border-subtle); --color-border-strong: var(--border-strong);
+  --color-input: var(--input);   --color-ring: var(--ring);
+  --color-brand: var(--brand);   --color-brand-foreground: var(--brand-foreground);
+  --color-positive: var(--positive); --color-negative: var(--negative); --color-warning: var(--warning);
+  --color-info: var(--info);         --color-model: var(--model);
+  --color-brand-muted: var(--brand-muted);       --color-positive-muted: var(--positive-muted);
+  --color-negative-muted: var(--negative-muted); --color-warning-muted: var(--warning-muted);
+  --color-model-muted: var(--model-muted);
+  --color-overlay: var(--overlay);
+  --color-skeleton: var(--skeleton); --color-skeleton-highlight: var(--skeleton-highlight);
+  --color-sidebar: var(--sidebar);   --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary); --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);   --color-sidebar-ring: var(--sidebar-ring);
+  --color-chart-1: var(--chart-1); --color-chart-2: var(--chart-2); --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4); --color-chart-5: var(--chart-5);
+  --color-button-brand: var(--button-brand-bg); --color-button-brand-foreground: var(--button-brand-fg);
+  --color-transparent: transparent; --color-current: currentColor;
+
+  --radius-sm: calc(var(--radius) - 4px);  /* 4px  badges, kbd        */
+  --radius-md: calc(var(--radius) - 2px);  /* 6px  buttons, inputs    */
+  --radius-lg: var(--radius);              /* 8px  popovers, menus    */
+  --radius-xl: calc(var(--radius) + 4px);  /* 12px cards, dialogs     */
+  --radius-2xl: calc(var(--radius) + 8px); /* 16px sheets, hero panel */
+
+  --shadow-popover: var(--shadow-popover);
+  --shadow-dialog: var(--shadow-dialog);
+  --shadow-card: var(--card-shadow);
+
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, "Segoe UI", sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, "Cascadia Mono", Consolas, monospace;
+
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in: cubic-bezier(0.7, 0, 0.84, 0);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+}
+
+/* Type scale (vault Design/Typography). Plain @theme so the values exist as CSS variables. */
+@theme {
+  --text-display: 2rem;      --text-display--line-height: 2.5rem;   --text-display--letter-spacing: -0.025em;
+  --text-title-1: 1.5rem;    --text-title-1--line-height: 2rem;     --text-title-1--letter-spacing: -0.02em;
+  --text-title-2: 1.125rem;  --text-title-2--line-height: 1.625rem; --text-title-2--letter-spacing: -0.015em;
+  --text-title-3: 0.9375rem; --text-title-3--line-height: 1.375rem; --text-title-3--letter-spacing: -0.01em;
+  --text-body: 0.875rem;     --text-body--line-height: 1.25rem;     --text-body--letter-spacing: -0.006em;
+  --text-data: 0.8125rem;    --text-data--line-height: 1.125rem;
+  --text-label: 0.75rem;     --text-label--line-height: 1rem;
+  --text-micro: 0.6875rem;   --text-micro--line-height: 0.875rem;   --text-micro--letter-spacing: 0.02em;
+  --text-stat-xl: 1.75rem;   --text-stat-xl--line-height: 2rem;     --text-stat-xl--letter-spacing: -0.02em;
+  --text-stat-lg: 1.25rem;   --text-stat-lg--line-height: 1.75rem;  --text-stat-lg--letter-spacing: -0.015em;
+  --text-wordmark: 1.0625rem; --text-wordmark--line-height: 1;    --text-wordmark--letter-spacing: -0.03em; /* Logo & Brand, 17px */
+  --breakpoint-3xl: 120rem;
+}
+
+/* Density zones (vault Design/Design System, Tables & Data Density). */
+@utility zone-chrome {
+  font-size: var(--text-body);
+  line-height: var(--text-body--line-height);
+}
+@utility zone-data {
+  font-size: var(--text-data);
+  line-height: var(--text-data--line-height);
+  font-variant-numeric: tabular-nums;
+}
+@utility row-h {
+  height: var(--table-row-h);
+}
+@utility row-h-compact {
+  height: var(--table-row-h-compact);
+}
+@utility row-h-comfortable {
+  height: var(--table-row-h-comfortable);
+}
+@utility num {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+@keyframes shimmer {
+  to { transform: translateX(100%); }
+}
+@keyframes appear {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@layer base {
+  *, ::before, ::after { border-color: var(--border); }
+  html {
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+  body {
+    background: var(--sidebar);
+    color: var(--foreground);
+    font-size: var(--text-body);
+    line-height: var(--text-body--line-height);
+    letter-spacing: var(--text-body--letter-spacing);
+  }
+  b, strong { font-weight: 600; }   /* browsers default to 700, which this scale never uses */
+  [data-numeric], .stat-value { font-variant-numeric: tabular-nums; }
+  code, kbd, samp, [data-mono] { font-family: var(--font-mono); font-variant-numeric: slashed-zero tabular-nums; }
+  /* One focus style everywhere: outline survives forced-colors mode (vault Design/Accessibility). */
+  :focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+  ::selection { background: color-mix(in oklab, var(--brand) 28%, transparent); }
+  button:not(:disabled), [role="button"]:not(:disabled) { cursor: pointer; }
+  @media (max-width: 639px) {
+    :root { --text-body: 0.9375rem; --text-body--line-height: 1.375rem; --text-display: 1.75rem; --text-display--line-height: 2.25rem; }
+  }
+}
+
+/* Reduced motion, layer 2 of 3 (vault Design/Motion System): clamps Radix, keyframes and transitions. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
