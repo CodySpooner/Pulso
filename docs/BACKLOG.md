@@ -61,3 +61,11 @@ This file holds deferred ideas and research extras that are **not** in the §11 
 | RedBeat or a Redis lock for Beat | DEC-016 | Only if duplicate runs actually appear | The advisory lock plus idempotency cover v1 |
 | Expand/contract migrations for zero-downtime deploys | Spec Review (agents-md finding) | SaaS stage | Not needed for single-user v1 |
 | Light-mode polish | DEC-024 | Phase 8 | Light mode works but is unpolished until then |
+
+## DOC-3 source follow-ups (2026-10-22)
+
+| Deferred work | Evidence | When | Notes |
+|---|---|---|---|
+| Resolve Pinterest storage/research/ML permission before adopting the daily-snapshot proposal | DATA_SOURCES; [Developer guidelines](https://policy.pinterest.com/en/developer-guidelines), Basics / What not to do (checked 2026-10-22); vault Candidate Sources | Before adoption | Owner review / written permission; candidate and enablement unchanged. Lead records owner to-do; source note left unchanged |
+| Resolve Store Leads competitive-use, republication and deletion obligations before adoption | DATA_SOURCES; [Terms](https://storeleads.app/terms) §2.1.5–9 / §2.12 (checked 2026-10-22); Store Intelligence §5 | Before adoption | Owner review / written permission; paid approval still required; vault low-risk label needs reconciliation by its owner |
+| Confirm unresolved source evidence at the existing adapter/approval gates | DATA_SOURCES; Source - Keepa; Candidate Sources; Trend & Ad Intelligence Sources §2.5/8/9/11; Supplier & Fulfillment Data Sources §12 | Before the relevant adapter or vendor purchase | Keepa official entry price/redistribution; 17TRACK first paid tier/service-specific terms; Meta vendor permission clause (public terms check reached login/block); Pinterest/Meta/vendor numeric quotas; YouTube derived-history retention permission. Unverified fields are not clearance to collect |

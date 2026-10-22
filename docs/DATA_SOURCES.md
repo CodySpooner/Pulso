@@ -6,6 +6,7 @@ Canonical compliance record required by SPEC §4.2: for every data source, its a
 - Market scope: **US only, USD** (owner decision, 2026-10-22).
 - Collector host: the owner's Windows home PC runs all live collectors and schedules until Railway go-live (owner decision, 2026-10-22). Only that checkout sets `PULSO_SCHEDULER=on` / `COLLECTORS_LIVE=on`.
 - Detailed design per source lives in the Obsidian vault: `C:\Users\Xody2\OneDrive\Desktop\Vaults\Pulso Vault\Data\Sources\`.
+- DOC-3 evidence: source notes above and `Data/Candidate Sources.md`, then vault research **SI** = `Research/Store Intelligence.md`, **SF** = `Research/Supplier & Fulfillment Data Sources.md`, **TA** = `Research/Trend & Ad Intelligence Sources.md`. Public docs were read only for gaps, marked **checked 2026-10-22**; no data endpoints were called. *Unverified* means evidence is missing, not permission or an unlimited quota.
 - Not legal advice.
 
 **Status legend:** `enabled` = adapter live on the collector host · `planned` = approved for its phase, not built yet · `candidate` = allowed by our rules, waiting on an owner action or approval · `disabled` = blocked by a pending owner decision or by the source.
@@ -46,7 +47,7 @@ Canonical compliance record required by SPEC §4.2: for every data source, its a
 
 ## Competitor Shopify stores (`shopify_stores`)
 
-- **Access:** `GET /meta.json`, `/products.json?limit=250&page=N` with `If-None-Match`, `/products/<handle>.js` for tracked products, `/robots.txt`. No auth. Headless and password-protected stores return 403/404 and are marked untrackable. Web Bot Auth signing deferred.
+- **Access:** `GET /meta.json`, `/products.json?limit=250&page=N` with `If-None-Match`, `/products/<handle>.js` for tracked products, `/robots.txt`. No auth. Headless and password-protected stores return 403/404 and are marked untrackable. Web Bot Auth signing deferred. Manual CSV / URL-paste fallback (same request limits).
 - **Never:** `/cart*`, `/search`, `sort_by` collection pages, `/recommendations/products`, Storefront GraphQL, Global Catalog MCP.
 - **Terms (checked 2026-10-22):**
   - Default robots.txt does not disallow the JSON catalog endpoints.
@@ -59,37 +60,42 @@ Canonical compliance record required by SPEC §4.2: for every data source, its a
 - **Block rule:** 1 × 430 → disable; 5 consecutive 429 → disable. 403/404 on one store → that store only.
 - **Availability pre-check (2026-10-22, not the DEC-003 spike):** one `/meta.json` per candidate store from the home PC, 2 s apart: 37/46 returned 200 JSON, 1 returned 403 (inspireuplift.com), rest dead/headless. No 429s. The `/products.json` spike that gates enabling (DEC-003, Phase 0 SPK-2) has not run yet.
 - **Count semantics:** Grade A = `.js` `inventory_quantity` deltas where `inventory_management=shopify` and `inventory_policy=deny` (undocumented field, may disappear); Grade B = `updated_at` bump counts (lower bound on order events); availability flips. Store count is a Saturation input, not demand. Features prefixed `shp_`.
-- **Cost:** free. **Status:** planned. **Phase:** 1.
+- **Risk:** merchant-account ToS exposure (DEC-003), cloud-IP blocking and undocumented inventory fields disappearing; no key expiry. Evidence: `Source - Shopify Stores`, SI §2–3.
+- **Cost:** free public endpoints / CSV; no paid access tier. **Status:** planned. **Phase:** 1.
 
 ## CJ Dropshipping (`cj`)
 
-- **Access:** API 2.0, base `https://developers.cjdropshipping.com/api2.0/v1`. Key from CJ App Store → My CJ → API → Add API (no review). `POST /authentication/getAccessToken {apiKey}` (1 call/s), header `CJ-Access-Token`; token expiry read from the response (docs: 180 days; older docs: 15).
+- **Access:** API 2.0, base `https://developers.cjdropshipping.com/api2.0/v1`. Key from CJ App Store → My CJ → API → Add API (no review). `POST /authentication/getAccessToken {apiKey}` (1 call/s), header `CJ-Access-Token`; token expiry read from the response (docs: 180 days; older docs: 15). Manual supplier/stock/freight CSV fallback, including while DEC-009 is pending.
 - **Endpoints used:** `/product/getCategory`, `/product/listV2` (max 6,000 results/query; size ≤ 100), `/product/query`, variant/stock queries, `/logistic/freightCalculate` (US only), product reviews (Phase 5).
-- **Terms (checked 2026-10-22):** official API for dropshippers; low risk — https://developers.cjdropshipping.com/en/api/api2/api/auth.html · https://developers.cjdropshipping.com/en/api/start/limit.html · https://developers.cjdropshipping.com/en/api/api2/standard/points.html
+- **Terms (checked 2026-10-22):** official API for dropshippers; the points policy's inactivity clause revokes access after 30 days without transactions, requiring manual reactivation — https://developers.cjdropshipping.com/en/api/api2/standard/points.html · auth / token validity — https://developers.cjdropshipping.com/en/api/api2/api/auth.html · IP/user restrictions — https://developers.cjdropshipping.com/en/api/start/limit.html
 - **Limits:** 10 req/s per IP; per user 1/2/4/6 req/s by account level; max 3 CJ users per IP. 50,000 base points/day (reset 00:00 UTC, refilled per minute), +100 points per $1 of highest monthly transaction (last 3 months). Costs: listV2 50; query/variant/stock/freight 10; image search 1,000 (Level 3+); unlisted endpoints 0.
 - **Inactivity:** 30 consecutive days with zero transaction amount → API disabled (error `1600014`); reactivation is manual in My CJ. **Owner question pending:** does the account place a real order every 30 days?
 - **Block rule / error mapping:** `1600014` → disable; `one ip limit 3 users` → disable; 429 "Insufficient API points" → quota (run partial, not a block); 429 rate limit → back off, counts toward block rule.
 - **Count semantics:** `listedNum` = number of CJ users who listed the product (adoption, not orders) → `listing_snapshots.listed_count`; stock is an inventory level per warehouse (summed). Features prefixed `cj_`. Unproven as demand.
 - **Planned spend:** ≈ 11,000 points/day (guess) of 50,000.
-- **Cost:** free. **Status:** planned. **Phase:** 1.
+- **Risk:** inactivity suspension, expiring tokens and the three-users-per-IP rule; refresh once on expiry, then fail the run. Evidence: `Source - CJ Dropshipping`, SF §2; DEC-009/035.
+- **Cost:** free API and CSV; no separately priced API tier documented in SF §2 (higher quotas depend on account level / transactions). **Status:** planned. **Phase:** 1.
 
 ## Google Trends (`google_trends`)
 
-- **Access:** SerpApi `engine=google_trends`, `geo=US`, `tz=0`, one keyword per search, `date=today 3-m` weekly and `today 5-y` once per keyword. Official Trends API alpha by application (owner to apply). DataForSEO only with owner approval.
+- **Access:** SerpApi vendor API `engine=google_trends`, `geo=US`, `tz=0`, one keyword per search, `date=today 3-m` weekly and `today 5-y` once per keyword. Official Trends API alpha by application (owner to apply). DataForSEO only with owner approval. Manual Trends CSV fallback.
 - **Excluded:** pytrends (archived 2025-04-17; returns 429/404) and any direct scraping (Google terms prohibit automated access).
 - **Terms (checked 2026-10-22):** official alpha "can't open the API for everyone yet" — https://developers.google.com/search/apis/trends · SerpApi Trends engine — https://serpapi.com/google-trends-api · pricing — https://serpapi.com/pricing. SerpApi performs the scraping; Google's litigation against SerpApi is ongoing (impact unknown).
+- **Vendor terms (checked 2026-10-22):** SerpApi §1/§12 prohibit unauthorized use and infringement; §16 permits termination without notice; §13 excludes Free, Starter and Developer plans from its Legal Shield — https://serpapi.com/legal . Buying API access does not grant source-data rights.
 - **Limits:** SerpApi free tier 250 searches/month (paid from $25/1k). Plan: 50 keywords weekly ≈ 217 searches/month.
 - **Block rule:** 401 → disable; monthly cap reached → quota (pause until next month).
 - **Count semantics:** relative index 0–100 rescaled **per request**; last point partial. Every capture is appended in full to `search_trends`; slopes only within one capture. Features prefixed `gt_`.
-- **Cost:** free at planned volume. **Status:** planned. **Phase:** 1.
+- **Risk:** API-key rejection, quota exhaustion or vendor withdrawal/litigation can stop Trends; official alpha admission is not guaranteed. Evidence: `Source - Google Trends`, TA §2.7.
+- **Cost:** free at ≤250 searches/month; first paid SerpApi tier $25/month for 1,000 (owner approval). Official alpha quotas and free/paid pricing are unpublished in TA §2.7. **Status:** planned. **Phase:** 1.
 
 ## Frankfurter FX (`fx_frankfurter`)
 
-- **Access:** `GET https://api.frankfurter.dev/v2/rates?base=USD&from=<last+1>&to=<today>` once a day (self-fills gaps). No key.
+- **Access:** `GET https://api.frankfurter.dev/v2/rates?base=USD&from=<last+1>&to=<today>` once a day (self-fills gaps). No key. Manual FX CSV fallback.
 - **Terms (checked 2026-10-22):** blended rates free for commercial use; provider-specific endpoints follow provider terms (not used) — https://frankfurter.dev/
 - **Limits:** no quotas; abuse rate limits only.
 - **Use:** `fx_rates(date, base, quote, rate, source)`; convert at the rate for the observation's UTC date (latest earlier date on weekends/holidays).
-- **Cost:** free. **Status:** planned. **Phase:** 1.
+- **Risk:** low for blended rates; provider-specific terms differ, outages can delay rates, and abuse blocking still follows the default block rule. No key expiry. Evidence: `Source - Frankfurter FX`, SF §13.
+- **Cost:** free; no paid tier documented for this keyless service. **Status:** planned. **Phase:** 1.
 
 ## AliExpress (`aliexpress`)
 
@@ -99,57 +105,71 @@ Canonical compliance record required by SPEC §4.2: for every data source, its a
   - §7.3.2: no resale/redistribution. §7.5.4: user data only in the collecting app. §7.10: no AliExpress/Alibaba marks in our name/URL.
   - §6.5 unilateral suspension; §11.1 termination without notice. §6.1 "temporarily free of charge".
 - **Design consequence:** live lookup only, Redis 24 h TTL, on demand from the UI; nothing written to `raw_payloads`, snapshots or features until AliExpress approves storage in writing (owner to ask during application).
+- **CSV fallback:** parse transiently into the same ≤24 h Redis cache; no raw file/object or durable market rows, including owner-entered quotes (`Source - AliExpress` R-17; DEC-037).
 - **Limits:** unpublished (third-party: 5,000/day; 500/day for new apps — unverified). Our cap: 500 calls/day.
 - **Count semantics:** `lastest_volume` (window unverified, reportedly 30 days), `sales_count` — not storable today, so no AliExpress demand history.
-- **Cost:** free. **Status:** planned (live-only). **Phase:** 3.
+- **Risk:** app review / OAuth revocation, frequency bans and unilateral suspension; storage permission remains unresolved. Evidence: `Source - AliExpress`, SF §1.
+- **Cost:** temporarily free (§6.1); first paid tier not published, charges may be introduced on notice. **Status:** planned (live-only). **Phase:** 3.
 
 ## Amazon (`amazon`)
 
 - **Access:** manual CSV import (`asin, title, url, category, rank, rank_kind, price, currency, rating, review_count, observed_on`).
 - **Terms / official routes (checked 2026-10-22):**
   - PA-API 5.0: retired, returns HTTP 403 `AccessDeniedException` — https://affiliate-program.amazon.com/creatorsapi/docs/en-us/paapiv5-deprecation
-  - Creators API: requires Associates enrollment and ≥ 10 qualifying sales in the past 30 days; 1 TPS / 8,640 TPD to start; affiliate-data use for research is against program intent → **disabled** — https://affiliate-program.amazon.com/creatorsapi/docs/en-us/introduction
-  - Conditions of Use exclude data mining/robots; direct scraping excluded (a direct request returned a CAPTCHA on 2026-10-22).
-  - Vendor scraper (Apify `junglee/amazon-bestsellers`, from $3.20/1k): disabled pending vendor-data decision.
+  - Creators API: requires Associates enrollment and ≥ 10 qualifying sales in the past 30 days; 1 TPS / 8,640 TPD to start; affiliate-data use for research is against program intent → **disabled** — https://affiliate-program.amazon.com/creatorsapi/docs/en-us/introduction . Free Associates enrollment; no paid API tier documented — https://affiliate-program.amazon.com/creatorsapi/docs/en-us/onboarding (checked 2026-10-22). Access can lapse after 30 days without qualifying sales (`Source - Amazon`); CSV remains the fallback.
+  - Conditions of Use exclude data mining/robots; direct scraping excluded (the earlier research request returned a CAPTCHA on 2026-10-22) — https://relay.amazon.com/terms (TA §2.11).
+  - Vendor scraper: [Apify `junglee/amazon-bestsellers`](https://apify.com/junglee/amazon-bestsellers), API/feed or CSV export, from $3.20/1k; shared Apify free/paid tiers below. Source throughput unverified (listing checked 2026-10-22); Amazon's extraction restriction still matters. Risk: CAPTCHA/blocking and vendor failure; **disabled** pending DEC-010, manual CSV fallback.
+- **Limits:** manual CSV has no source API quota; disabled Creators API limits above are not a CSV limit.
 - **Count semantics:** ranks (BSR per category, Movers & Shakers 24 h gain), not counts; review count cumulative. Features prefixed `amz_`.
-- **Cost:** free (CSV). **Status:** planned (CSV). **Phase:** 3.
+- **Risk:** no key for CSV; obtain data lawfully, since CSV is not an exemption from source terms. Official affiliate eligibility and direct-scrape blocking prevent an automated route today. Evidence: `Source - Amazon`, TA §2.11 / SF §8.
+- **Cost:** free CSV, no paid CSV tier; optional paid Keepa is separate below. **Status:** planned (CSV). **Phase:** 3.
 
 ## Meta Ad Library (`meta_ad_library`)
 
 - **Access:** Graph API v26.0 `/ads_archive`; identity confirmation at facebook.com/ID + developer app; token ~60 days.
 - **Terms (checked 2026-10-22):** ads that did not reach the EU return only if political/issue — so **US commercial ads are not available via the API** — https://developers.facebook.com/docs/graph-api/reference/ads_archive/ . Commercial ads never include spend or impressions. Never scrape logged in.
-- **US route:** manual CSV (`library_id, page_name, page_id, start_date, active, platforms, landing_url, creative_url, text, observed_on`); vendor scraper (Apify `apify/facebook-ads-scraper`, $3.40–5.80/1k) disabled pending vendor-data decision.
+- **US route:** manual CSV (`library_id, page_name, page_id, start_date, active, platforms, landing_url, creative_url, text, observed_on`); [Apify `apify/facebook-ads-scraper`](https://apify.com/apify/facebook-ads-scraper) vendor API/feed or CSV export, $3.40–5.80/1k (TA §2.5), shared Apify tiers below, **disabled** pending DEC-010. Source throughput unverified (listing checked 2026-10-22). Vendor risk: blocking and changing UI; current [automated-collection terms](https://www.facebook.com/legal/automated_data_collection_terms) redirected to login/block on public check 2026-10-22, so the applicable permission clause remains unverified, not cleared by vendor availability.
 - **Limits:** unpublished (error 613); ~200 calls/hour per secondary sources (unconfirmed).
 - **Count semantics:** distinct active ads/advertisers; ad age from delivery start (rebuildable); ad-count growth not rebuildable. Features prefixed `meta_`. Until ad data exists, score components get weight 0 and the UI says "no source yet".
-- **Cost:** free. **Status:** planned. **Phase:** 8 (CSV optional earlier).
+- **Risk:** US commercial coverage absent; token expiry (~60 days) / code 190 disables API access until refreshed, and code 613 signals throttling. Evidence: `Source - Meta Ad Library`, TA §2.5.
+- **Cost:** free official API and CSV; no paid official API tier documented (vendor prices above). **Status:** planned. **Phase:** 8 (CSV optional earlier).
 
 ## TikTok Creative Center (`tiktok_cc`)
 
 - **Access:** manual CSV of Top Ads and hashtag Trends. Top Products is **likely retired** (help article and page redirected, old path 404 on 2026-10-22). Internal API rejects unsigned calls (`40101 no permission`); forging signatures is prohibited.
 - **Terms (checked 2026-10-22):** TikTok US Terms of Service §3.4 (updated 2026-07-15) ban automated extraction without written approval — https://www.tiktok.com/legal/page/us/terms-of-service/en . TikTok Research API excludes commercial users. Official EU-only Commercial Content API exists (`POST https://open.tiktokapis.com/v2/research/adlib/ad/query/`, 10 results/call) — low value for a US-only product.
-- **Vendor route:** Apify `datapeak/tiktok-creative-center` ($1.50/1k ads, $1/1k trends) disabled pending vendor-data decision.
+- **Vendor route:** [Apify `datapeak/tiktok-creative-center`](https://apify.com/datapeak/tiktok-creative-center), vendor API/feed or CSV export ($1.50/1k ads, $1/1k trends; shared Apify tiers below), **disabled** pending DEC-010. Source throughput unverified (listing checked 2026-10-22). TikTok §3.4 still applies; signing workarounds and page changes carry blocking/ToS risk. Manual CSV remains the fallback.
+- **Limits:** no API quota for manual CSV. The official Commercial Content alternative is application-gated, EU-only, 10 results/call; request-rate quota unpublished (TA §2.3), free with no paid tier documented. [Product page](https://developers.tiktok.com/products/commercial-content-api) frames access for the public/researchers; commercial-use permission remains unverified, so application rejection / terms are risks, not a US-data workaround.
 - **Count semantics:** CTR score 0–1 and spend tier 0–5 are relative; hashtag rank ordinal within 7/30-day windows. Features prefixed `ttcc_`.
-- **Cost:** free (CSV). **Status:** planned (CSV); automation disabled. **Phase:** 8.
+- **Risk:** automation violates the cited extraction clause without written approval; internal signing, retired Top Products and moving pages make it fragile. No key expiry for CSV. Evidence: `Source - TikTok Creative Center`, TA §2.1–4.
+- **Cost:** free CSV, no paid CSV tier (vendor prices above). **Status:** planned (CSV); automation disabled. **Phase:** 8.
 
 ## Keepa (`keepa`)
 
-- **Access:** paid official API, key; `domain=1` (amazon.com).
-- **Terms (checked 2026-10-22):** token costs official — product 1/ASIN (+6 per offers page), search 10/page, deals 5/150, best-seller list 50; unused tokens expire after 60 min — https://keepa.com/api-docs/plans-tokens.html . Prices not on Keepa's docs; ~€49/mo for 20 tokens/min (third-party, unverified). Redistribution terms unverified → internal use only.
+- **Access:** paid official API, key; `domain=1` (amazon.com). Manual CSV fallback.
+- **Terms (checked 2026-10-22):** the How Plans Work clause bills monthly in advance and renews until cancelled — https://keepa.com/api-docs/plans-tokens.html . Redistribution permission remains unverified; existing internal-use-only restriction is not clearance to enable.
+- **Limits:** token bucket by plan; product 1/ASIN (+6 per offers page), search 10/page, deals 5/150, best-seller list 50; unused tokens expire after 60 min (same official token docs).
+- **Cost:** no free API tier; reported entry ~€49/month for 20 tokens/min is third-party and unverified, not an official quote (`Source - Keepa`, TA §2.11).
+- **Risk:** exhausted tokens pause requests; invalid/revoked key or ended subscription stops access. Official entry price and redistribution terms must be confirmed before adoption; owner cost approval still required.
 - **Count semantics:** BSR, price and review-count history (not rescaled; backfilled points carry past `observed_for`). Features prefixed `kp_`.
 - **Status:** candidate — SPEC §4.3 #8 requires owner approval before enabling. **Phase:** later.
 
 ## Candidates (no adapter yet)
 
-| Source | Access / terms (checked 2026-10-22) | Limits / cost | Status |
+All candidates retain a manual CSV fallback, subject to the same rights/storage restrictions as the API. CSV does not authorize a vendor purchase or bypass DEC-010/038 approval. Evidence: vault `Candidate Sources`, TA §2.4/7–9/13–15, SF §12, SI §5. *No paid tier documented* is not a promise of unlimited free service.
+
+For the disabled Apify routes above and below: [platform pricing](https://apify.com/pricing), checked 2026-10-22, gives $5/month free usage credit and first paid Starter at $19/month plus usage ($19 credit included); actor fees consume that credit. These are vendor-platform allowances, not permission or source request quotas. Actor-specific source throughput remains unverified; no adapter is authorized.
+
+| Source | Access / terms (checked 2026-10-22) | Limits / cost | Risk / status |
 |---|---|---|---|
-| Google Merchant API Best Sellers | `accounts.reports.search` on Merchant API v1; Merchant Center must meet undefined eligibility; Content API sunset 2026-08-18 — https://developers.google.com/merchant/api/guides/reports/understand-the-market | weekly, today-only; free | candidate (if eligible) |
-| Pinterest Trends API | `GET /v5/trends/keywords/{region}/top/{trend_type}`, top 50, today only; Standard tier needs a video demo — https://developers.pinterest.com/docs/analytics-and-reports/trends/ | numeric limits unverified; free | candidate (if app created) |
-| YouTube Data API v3 | 10,000 units/day; `search.list` 100 calls/day; stored data refreshed or deleted within 30 days — https://developers.google.com/youtube/v3/determine_quota_cost | free | candidate (backlog) |
-| 17TRACK | API v2.4, 40 numbers/request, 3 req/s, webhooks; free 100/mo ended 2026-01-07 — https://api.17track.net/en/doc?version=v2.4 | ~$119 per 5k numbers (unverified) | candidate (backlog) |
-| TikTok Shop vendor data | Apify / Bright Data / ScrapeCreators / EchoTik scrape logged-out product pages; TikTok US ToS §3.4 risk | $0.75–7 per 1k records | **disabled** (vendor-data decision) |
-| DataForSEO | Trends $0.0027/task Standard (5 keywords), $0.011 Live; Merchant/Shopping $0.001–0.002/item — https://dataforseo.com/pricing/keywords-data/google-trends | pay as you go | candidate (cost approval) |
-| SerpApi paid plans | $25/1k … $725/100k; Shopping, Ads Transparency engines — https://serpapi.com/pricing | per search | candidate (cost approval) |
-| Store Leads | 3.16M Shopify stores, weekly; API from Pro — https://storeleads.app/ | Premium $75/mo (no API), Pro $250/mo | candidate (cost approval) |
+| Google Merchant API Best Sellers | Official Merchant API v1 `accounts.reports.search`, OAuth; CSV fallback. [Guide](https://developers.google.com/merchant/api/guides/reports/understand-the-market) requires minimum Merchant Center eligibility (criteria unverified); Content API sunset 2026-08-18 | Weekly reports; account/method-specific daily and per-minute quotas, no universal number ([quota docs](https://developers.google.com/merchant/api/guides/quotas-limits/quotas), checked 2026-10-22). Free; no paid tier documented | Eligibility denial / authorization loss / 429; history availability unverified (vault says today-only). candidate (if eligible), DEC-038 approval still required |
+| Pinterest Trends API | Official v5 OAuth, top-keyword endpoint; CSV fallback subject to rights. [Developer guidelines](https://policy.pinterest.com/en/developer-guidelines) Basics prohibit storage except authorized campaign analytics; What not to do requires written authorization for competitor research and express permission for ML use. Checked 2026-10-22 | Top 50, today only; Trial per-day/app and Standard per-minute/user/app, numeric quotas unverified ([access tiers](https://developers.pinterest.com/docs/key-concepts/access-tiers/), TA §2.8). Free; no paid tier documented; Standard needs video demo | Storage/research restrictions conflict with vault daily-snapshot plan; app removal / OAuth loss. candidate (if app created), **not adoptable without owner review / written permission** |
+| YouTube Data API v3 | Official API key; CSV fallback. [Developer Policies](https://developers.google.com/youtube/terms/developer-policies) storage rule requires non-authorized data refreshed/deleted within 30 days (TA §2.9; exemptions unverified) | [Quota](https://developers.google.com/youtube/v3/determine_quota_cost): 10,000 units/day; separate `search.list` 100 calls/day; `videos.list` 1 unit. Free; no paid tier documented, increases require audit | Retention conflicts with append-only history; derived-series permission unresolved, quota/key rejection can stop access. candidate (backlog) |
+| 17TRACK | Official API v2.4, key, webhooks; CSV fallback. [License](https://www.17track.net/en/about/licensing) §1.2 includes API paid services; §5.1.3 forbids unauthorized integrations, §5.2.1 permits suspension for violations; service-specific terms still need review. Checked 2026-10-22 | [Docs](https://api.17track.net/en/doc?version=v2.4): 40 numbers/request, 3 req/s; recurring 100/month free ended 2026-01-07, new accounts get 200 once. First paid tier unverified; research quotes ~$119/5k numbers, 12-month validity (SF §12), not a confirmed entry tier | 401 for bad key/IP whitelist/account disabled; 429 throttling; quota expiry and shipment privacy. candidate (backlog) |
+| TikTok Shop vendor data | Vendor API/feed via Apify / Bright Data / ScrapeCreators / EchoTik; manual CSV fallback. [TikTok US ToS §3.4](https://www.tiktok.com/legal/page/us/terms-of-service/en) bans automated extraction without written approval | Vendor/source quotas unverified; Apify tiers above. [Bright Data](https://brightdata.com/solutions/data-extraction/tiktok/shop) advertises free tier (amount unverified), from $0.75/1k and datasets $250/100k; Apify actors $1.99–7/1k, ScrapeCreators $47/25k credits (unverified), EchoTik quote-only (TA §2.4). Entry tier depends on vendor | Buying does not remove TikTok contract risk; blocks / vendor breakage / estimated counts. **disabled** (DEC-010) |
+| DataForSEO | Vendor API with credentials; CSV fallback. [Terms §7.1–7.2](https://dataforseo.com/terms-of-service): no SERP use competing with/harming source search engines; customer indemnifies misuse. §6.1 permits suspension. Checked 2026-10-22 | [Trends](https://docs.dataforseo.com/v3/keywords_data-google_trends-overview/): 2,000 calls/min (checked 2026-10-22), ≤5 keywords/task; other endpoint quotas must be checked separately. [FAQ](https://dataforseo.com/faq): $1 trial credit + sandbox, first deposit $50 (checked 2026-10-22); PAYG [Trends](https://dataforseo.com/pricing/keywords-data/google-trends) $0.0027 Standard / $0.011 Live; Shopping $0.001–0.002/item (TA §2.13) | Balance exhaustion, credential/suspension errors; source rights not transferred by purchase. candidate (cost approval) |
+| SerpApi paid plans | Vendor API key for Shopping / Ads Transparency etc.; CSV fallback. [Terms §1/§12/§16](https://serpapi.com/legal): no unauthorized/infringing use; termination without notice. Checked 2026-10-22 | [Pricing](https://serpapi.com/pricing): 250 searches/month free; first paid $25/month for 1,000, larger tiers to $725/100k; plan-dependent throughput (numeric rate unverified here) | Key rejection, exhausted cap or vendor withdrawal; Google litigation impact unknown (vault `Source - Google Trends`). candidate (cost approval) |
+| Store Leads | Official paid API key or Pro CSV export; manual CSV fallback. [Terms §2.1.5–9](https://storeleads.app/terms): no competitive use, resale/republishing without permission, or undocumented API access; §2.12 requires deletion on termination. Checked 2026-10-22 | [API](https://storeleads.app/api): Pro list-domains 2 req/s, single-resource reads 5 req/s, bulk export 1/min, respect Retry-After (checked 2026-10-22). [Pricing](https://storeleads.app/): free limited preview, first paid Premium $75/month (no API/export), first API tier Pro $250/month; weekly data | Competitive-use / redistribution / deletion obligations conflict with assumed low-risk research history; key revocation / 429. candidate (cost approval), **not adoptable without owner review / written permission** |
 
 ## Excluded
 
@@ -171,3 +191,4 @@ Canonical compliance record required by SPEC §4.2: for every data source, its a
 ## Change log
 
 - 2026-10-22 — file created from the verified research pass and spec review; owner decisions recorded (US only; home-PC collector host; Shopify ToS risk accepted). Seed lists drafted for approval (vault: `Data/Seed Lists.md`).
+- 2026-10-22 — P0-12 / DOC-3 (Codex): completed access/CSV, terms, limits, free/first-paid cost and risk fields from vault evidence plus public-doc gap checks; recorded Pinterest/Store Leads permission risks and remaining unverified details. No collection, source enablement or decision changes.
