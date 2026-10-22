@@ -53,6 +53,8 @@ def enqueue_run(
     slot_key: str | None = None,
 ) -> CollectorRun:
     """Commit queued evidence before publish; broker failure is recorded, never hidden."""
+    if trigger in {"schedule", "catchup"} and not slot_key:
+        raise ValueError("Scheduled runs require a slot_key")
     run = CollectorRun(
         source_id=source_id,
         trigger=trigger,
@@ -208,6 +210,7 @@ def execute_run[R](
     settings: Settings,
     wall_time_seconds: int | None = None,
     request_hook: RequestHook | None = None,
+    stop_exceptions: tuple[type[BaseException], ...] = (),
 ) -> CollectorRun:
     """Consume a queued run once, committing raw captures and each parsed payload.
 
@@ -265,6 +268,7 @@ def execute_run[R](
     deadline = time.monotonic() + budget
     stopped = False
     guard_error = None
+    caught_exceptions: tuple[type[BaseException], ...] = (Exception, *stop_exceptions)
     for target, result in zip(targets, evidence, strict=True):
         complete = True
         try:
@@ -296,7 +300,7 @@ def execute_run[R](
             result.status = (
                 "success" if complete and result.raw_payload_id is not None else "partial"
             )
-        except Exception as exc:
+        except caught_exceptions as exc:
             session.rollback()
             result.status = "partial" if result.raw_payload_id is not None else "failed"
             if not stopped:
@@ -306,7 +310,7 @@ def execute_run[R](
                     if isinstance(exc, (RunDeferred, ResponseFailed))
                     else type(exc).__name__
                 )
-            if isinstance(exc, (RunDeferred, CollectorsLiveDisabled)):
+            if isinstance(exc, (RunDeferred, CollectorsLiveDisabled, *stop_exceptions)):
                 stopped = True
                 result.status = "partial"
             if isinstance(exc, CollectorsLiveDisabled):

@@ -108,6 +108,19 @@ def test_collector_defaults_and_honest_user_agent(monkeypatch: pytest.MonkeyPatc
         ("COLLECTOR_BLOCK_THRESHOLD", "0"),
         ("COLLECTOR_RETRY_WAIT_CAP_SECONDS", "601"),
         ("PULSO_BOT_CONTACT", "file:///bot"),
+        *(
+            (name, "3600")
+            for name in (
+                "COLLECTOR_WALL_TIME_SECONDS",
+                "SHOPIFY_WALL_TIME_SECONDS",
+                "CJ_WALL_TIME_SECONDS",
+                "TRENDS_WALL_TIME_SECONDS",
+                "FX_WALL_TIME_SECONDS",
+            )
+        ),
+        ("COLLECT_SOFT_TIME_LIMIT_SECONDS", "4500"),
+        ("COLLECT_HARD_TIME_LIMIT_SECONDS", "3600"),
+        ("COLLECTOR_BACKOFF_BASE_SECONDS", "31"),
     ],
 )
 def test_collector_limits_fail_closed(
