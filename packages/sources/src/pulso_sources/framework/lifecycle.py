@@ -2,22 +2,38 @@
 
 import time
 from collections.abc import Callable, Sequence
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
+from email.utils import parsedate_to_datetime
 
 from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
-from pulso_core.models import CollectorRun, CollectorRunTarget, RawPayload, Source
+from pulso_core.models import CollectorRun, CollectorRunTarget, RawPayload, Source, SourceEvent
 from pulso_core.settings import Settings
 from pulso_sources import storage
 from pulso_sources.framework import (
     Adapter,
     CollectorsLiveDisabled,
     Request,
+    RequestHook,
     Response,
     Target,
     fetch,
 )
+
+BLOCK_STATUSES = {403, 429, 430}
+RETRY_STATUSES = {500, 502, 503, 504}
+
+
+def _retry_after(response: Response, now: datetime) -> datetime | None:
+    value = next((v.strip() for k, v in response.headers.items() if k.lower() == "retry-after"), "")
+    try:
+        if value.isascii() and value.isdecimal():
+            return now + timedelta(seconds=int(value))
+        parsed = parsedate_to_datetime(value)
+        return parsed.replace(tzinfo=UTC) if parsed.tzinfo is None else parsed.astimezone(UTC)
+    except ValueError, TypeError, OverflowError:
+        return None
 
 
 class RunDeferred(RuntimeError):
@@ -72,6 +88,7 @@ def _capture[R](
     request: Request,
     settings: Settings,
     deadline: float,
+    request_hook: RequestHook | None,
 ) -> tuple[Response, RawPayload]:
     if request.raw_payload_id is not None:
         if request.mode not in {"csv", "json", "fixture"}:
@@ -83,50 +100,102 @@ def _capture[R](
             raise ValueError("Existing raw capture must belong to the source and have a body")
         return Response(None, payload.status_code, payload.content_type, payload.etag), payload
     for attempt in range(settings.collector_max_retries + 1):
-        if time.monotonic() >= deadline:
-            raise RunDeferred("wall_time_budget")
-        session.refresh(source)
-        if request.mode == "live":
+        while True:
+            if time.monotonic() >= deadline:
+                raise RunDeferred("wall_time_budget")
+            session.refresh(source)
+            if request.mode != "live":
+                break
             if not source.enabled:
                 raise RunDeferred("source_disabled")
-            if source.retry_not_before and source.retry_not_before > datetime.now(UTC):
+            wait = (
+                (source.retry_not_before - datetime.now(UTC)).total_seconds()
+                if source.retry_not_before
+                else 0
+            )
+            if wait <= 0:
+                break
+            session.commit()
+            if wait > settings.collector_retry_wait_cap_seconds:
                 raise RunDeferred("retry_not_before")
+            if time.monotonic() + wait >= deadline:
+                raise RunDeferred("wall_time_budget")
+            time.sleep(wait)
+        source_id, source_key, run_id = source.id, source.key, run.id
+        if request.mode == "live" and request_hook is not None:
+            request_hook(session, source, run, request, None)
+        run.http_requests += int(request.mode == "live")
+        session.commit()
+        retry_at = None
         try:
-            run.http_requests += int(request.mode == "live")
             response = fetch(adapter, request, settings=settings)
         except TimeoutError, ConnectionError:
             session.commit()
             if attempt == settings.collector_max_retries:
                 raise
         else:
+            captured_at = datetime.now(UTC)
             payload = storage.store_capture(
                 session,
-                source_id=source.id,
-                source_key=source.key,
-                run_id=run.id,
+                source_id=source_id,
+                source_key=source_key,
+                run_id=run_id,
                 body=response.body,
                 content_type=response.content_type,
                 status_code=response.status_code,
                 etag=response.etag,
                 request=request.params,
-                captured_at=datetime.now(UTC),
+                captured_at=captured_at,
             )
             run.last_status_code = response.status_code
             if request.mode == "live":
                 source.last_status_code = response.status_code
+                source.consecutive_block_count = (
+                    source.consecutive_block_count + 1
+                    if response.status_code in BLOCK_STATUSES
+                    else 0
+                )
+                if (
+                    source.enabled
+                    and source.consecutive_block_count >= settings.collector_block_threshold
+                ):
+                    source.enabled, source.status = False, "blocked"
+                    source.disabled_at = captured_at
+                    source.disabled_reason = f"consecutive_blocks:http_{response.status_code}"
+                    session.add(
+                        SourceEvent(
+                            source_id=source_id,
+                            actor="system",
+                            action="disable",
+                            reason=source.disabled_reason,
+                            at=captured_at,
+                        )
+                    )
+                if response.status_code in BLOCK_STATUSES | RETRY_STATUSES:
+                    retry_at = _retry_after(response, captured_at)
+                    if retry_at is not None:
+                        source.retry_not_before = max(source.retry_not_before or retry_at, retry_at)
             session.commit()
+            if request.mode == "live" and request_hook is not None:
+                request_hook(session, source, run, request, response)
+                session.commit()
             if (
-                response.status_code not in {500, 502, 503, 504}
+                response.status_code not in RETRY_STATUSES
                 or attempt == settings.collector_max_retries
             ):
                 return response, payload
-        delay = min(
-            settings.collector_backoff_base_seconds * 4**attempt,
-            settings.collector_backoff_cap_seconds,
+        delay = (
+            0
+            if retry_at is not None
+            else min(
+                settings.collector_backoff_base_seconds * 4**attempt,
+                settings.collector_backoff_cap_seconds,
+            )
         )
         if time.monotonic() + delay >= deadline:
             raise RunDeferred("wall_time_budget")
-        time.sleep(delay)
+        if delay:
+            time.sleep(delay)
     raise AssertionError("Retry loop exhausted")
 
 
@@ -138,6 +207,7 @@ def execute_run[R](
     *,
     settings: Settings,
     wall_time_seconds: int | None = None,
+    request_hook: RequestHook | None = None,
 ) -> CollectorRun:
     """Consume a queued run once, committing raw captures and each parsed payload.
 
@@ -152,6 +222,8 @@ def execute_run[R](
     identities = [(target.scope, target.target_id) for target in targets]
     if len(set(identities)) != len(identities):
         raise ValueError("Duplicate target identities")
+    # This dedicated session must not lazy-load expired payloads before the S3 GET.
+    session.expire_on_commit = False
     run = session.scalar(
         update(CollectorRun)
         .where(CollectorRun.id == run_id, CollectorRun.status == "queued")
@@ -200,10 +272,12 @@ def execute_run[R](
                 raise RunDeferred("run_stopped")
             for request in target.requests:
                 response, payload = _capture(
-                    session, run, source, adapter, request, settings, deadline
+                    session, run, source, adapter, request, settings, deadline, request_hook
                 )
                 result.raw_payload_id = payload.id
                 session.commit()
+                if response.status_code in BLOCK_STATUSES:
+                    raise RunDeferred(f"http_{response.status_code}")
                 if response.status_code is not None and not (
                     200 <= response.status_code < 300 or response.status_code == 304
                 ):

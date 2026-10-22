@@ -1,14 +1,14 @@
 """Public collection contract. Lifecycle helpers own commits on a dedicated Session."""
 
 import re
-from collections.abc import Iterable, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Literal, Protocol
 
 from sqlalchemy.orm import Session
 
-from pulso_core.models import RawPayload
+from pulso_core.models import CollectorRun, RawPayload, Source
 from pulso_core.settings import Settings
 from pulso_core.worktree import is_linked_worktree
 from pulso_sources.storage import JsonValue
@@ -34,6 +34,10 @@ class Response:
     content_type: str | None = "application/json"
     etag: str | None = None
     complete: bool = True
+    headers: Mapping[str, str] = field(default_factory=dict)
+
+
+type RequestHook = Callable[[Session, Source, CollectorRun, Request, Response | None], None]
 
 
 @dataclass(frozen=True)
@@ -85,7 +89,7 @@ def slot_key(job: str, at: datetime, *, cadence: Literal["daily", "weekly"] = "d
 
 
 # Imported last because lifecycle uses the public protocol/value types above.
-from pulso_sources.framework.lifecycle import enqueue_run, execute_run  # noqa: E402
+from pulso_sources.framework.lifecycle import RunDeferred, enqueue_run, execute_run  # noqa: E402
 from pulso_sources.framework.observations import (  # noqa: E402
     append_observation,
     effective_observation,
@@ -95,7 +99,9 @@ __all__ = [
     "Adapter",
     "CollectorsLiveDisabled",
     "Request",
+    "RequestHook",
     "Response",
+    "RunDeferred",
     "Target",
     "UpsertStats",
     "append_observation",
