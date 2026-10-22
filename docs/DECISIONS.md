@@ -65,6 +65,9 @@ New entries go at the bottom with the next number. Never renumber or delete; mar
 | DEC-047 | AI budgets and AI-derived facts | proposed — pending Phase 0 approval |
 | DEC-048 | Unplaced §6 items and phase-end listing | proposed — pending Phase 0 approval |
 | DEC-049 | Continuous build: phase gates don't stop the build; hourly lead automation in Orca | approved by owner 2026-10-22 |
+| DEC-050 | Web foundation: pinned stack, Cache Components off, worktree-aware dev script | proposed (P0-WEB) |
+| DEC-051 | Web auth gate: proxy + layout check, shared allowlist, dev-only E2E bypass | proposed (P0-WEB) |
+| DEC-052 | App shell defaults: visible unbuilt routes, cookie-remembered rail, palette and motion details | proposed (P0-WEB) |
 
 Superseded review defaults, not given entries: default #0 (move the repo) is done, see DEC-005. Default #2 (no local collection at all) is replaced by DEC-002. Default #15 (CSS-only motion) is replaced by DEC-007, and its remaining rules are in DEC-025. Review question D1 (Railway Pro from Phase 1) is answered by DEC-001, D2 by DEC-003, D3 by DEC-004, D5 by DEC-008 and D8 by DEC-006.
 
@@ -680,3 +683,40 @@ Superseded review defaults, not given entries: default #0 (move the repo) is don
   - Hard stops stay with the owner: paid services and plan changes, accounts and secrets, ToS/compliance changes, Railway deploys, destructive data operations, collector-host operations, force-pushes.
 - **Alternatives:** stop at every phase gate (SPEC §0 as written) — the owner asked for the build to keep going; one long-lived coordinator session — it stops when that session hits a usage limit.
 - **Why:** The owner wants Pulso built and improved continuously. A scheduled lead survives usage limits and session restarts: a failed run is simply retried the next hour.
+
+### DEC-050 · Web foundation: pinned stack, Cache Components off, worktree-aware dev script
+**2026-10-22 · proposed (P0-WEB)** · WEB-1, WEB-3; details DEC-018, DEC-024, DEC-025
+- **Decision:**
+  - **Versions (exact pins):** Next 16.4.2 with React 19.3.1, Tailwind 4.3.3 through the `@tailwindcss/turbopack` loader (create-next-app's default, no PostCSS), `@clerk/nextjs` 7.9.18, `motion` 14.4.0, `cmdk` 1.1.1, `radix-ui` 1.8.1, `next-themes` 0.4.6, `lucide-react` 1.61.0, TypeScript 5.9.3, ESLint 10.13.0, Vitest 5.0.5, Playwright 1.64.1.
+  - **Release age:** pnpm 11 refuses packages younger than its minimum release age. Where the newest release was too new (Clerk 7.9.19, motion 14.6.0), the previous release is pinned instead of adding `minimumReleaseAgeExclude` entries. `unrs-resolver` is set to `false` in `allowBuilds` (its optional postinstall isn't needed).
+  - **Cache Components and Partial Prefetching off** (create-next-app 16.4 turns both on). Every route reads the Clerk session, so a static shell gains little; Clerk 7 documents no Cache Components support; and the hidden `<Activity>` routes it keeps around would break the route-enter animation, focus-to-h1 and one h1 per page. Revisit in Phase 2 when there is cacheable data.
+  - **Build:** `output: "standalone"`, `outputFileTracingRoot` and `turbopack.root` at the repo root, `devIndicators` off. `/api/*` rewrites to `API_URL`, which Next evaluates when the config loads (at `next dev` start and at `next build`), so the production image must be built with `API_URL` set.
+  - **Class merging:** `clsx` + `tailwind-merge`, extended so the type-scale names (`text-label`, `text-title-1`, …) count as font sizes. shadcn's new `cn` package was removed: it doesn't know the custom scale and would drop one class of `text-label text-muted-foreground`.
+  - **shadcn:** `components.json` (radix-nova) stays for `shadcn add`. Generated primitives are rewritten onto the tokens (no `transition-all`, ring focus or `bg-black/10`); only button, tooltip, sheet, kbd and skeleton are kept.
+  - **`pnpm dev:web`** runs `apps/web/scripts/dev.mjs`, which starts `next dev` on `WEB_PORT` and passes `API_URL` and `PLATFORM_ADMIN_USER_IDS` from the repo-root `.env` / `.env.local` that `worktree_env.py` writes (real env vars win). Next only reads env files from `apps/web`, and reads the port before any of them.
+  - **`typecheck`** is `next typegen && tsc --noEmit`, so the generated route types (`PageProps`, `LayoutProps`) exist in a clean clone.
+- **Alternatives:** keep Cache Components and wrap every session read in `<Suspense>`; a runtime route-handler proxy instead of rewrites; a per-worktree `apps/web/.env.local` written by the worktree script (infra lane's file).
+- **Why:** Boring, documented defaults; exact pins against front-end churn (Phase 0 risk table); one env source per worktree.
+
+### DEC-051 · Web auth gate: proxy + layout check, shared allowlist, dev-only E2E bypass
+**2026-10-22 · proposed (P0-WEB)** · WEB-2; details DEC-020
+- **Decision:**
+  - **Gate:** `src/proxy.ts` (Next 16 renamed `middleware` to `proxy`) runs `clerkMiddleware` on every page request: signed out → `/sign-in`; signed in but not on `PLATFORM_ADMIN_USER_IDS` → `/not-authorized`. The `(app)` layout runs the same check, because Clerk 7 recommends resource-based checks and deprecates `createRouteMatcher`. The proxy copy also covers client-side navigations, which don't re-run the layout. Public: `/sign-in/*`, `/not-authorized`, static files, the manifest and icons.
+  - **`/api/*` is not matched by the proxy:** it is rewritten to FastAPI, which verifies the Clerk JWT itself (DEC-020).
+  - **Allowlist:** the same `PLATFORM_ADMIN_USER_IDS` variable as the API. `/not-authorized` shows the signed-in Clerk user id with a copy button, so the owner can copy it into the allowlist on first sign-in.
+  - **Fails closed:** without Clerk keys, `clerkMiddleware` throws, so every page errors instead of opening; an empty allowlist admits nobody. `next build` succeeds without keys.
+  - **E2E bypass:** `NEXT_PUBLIC_PULSO_E2E_AUTH_BYPASS=1` runs `next dev` without Clerk, so Playwright can drive the shell before keys exist. It is honoured only when `NODE_ENV !== "production"`. Both values are inlined at build time, so a production build compiles the check to `false`; a unit test pins this. Agents never use Clerk keyless mode (it provisions temporary Clerk keys); the owner can turn it off with `NEXT_PUBLIC_CLERK_KEYLESS_DISABLED=1`.
+- **Alternatives:** a middleware-only gate with `createRouteMatcher` (deprecated); a layout-only gate (misses client navigations); Clerk testing tokens now (they need real keys: CI-4); keyless mode for tests (creates a Clerk app).
+- **Why:** Defense in depth, with no switch that can disable auth in production.
+
+### DEC-052 · App shell defaults: visible unbuilt routes, cookie-remembered rail, palette and motion details
+**2026-10-22 · proposed (P0-WEB)** · WEB-4, WEB-5, WEB-6; vault Design/App Shell & Navigation, Motion System
+- **Decision:**
+  - **Unbuilt routes are visible:** every SPEC §10 route (plus `/methodology`) is in the sidebar with a muted phase chip (`P2`) and opens a "{Page} arrives in Phase N" state. This follows the P0-WEB brief and the Phase 0 note, and supersedes the App Shell note's "hidden behind feature flags". One nav config (`src/lib/nav.ts`), with `CURRENT_PHASE` as the flag, feeds the sidebar, sheet, tab bar, breadcrumbs, palette and placeholder pages. A phase that builds a route adds its own folder, which wins over the catch-all.
+  - **Sidebar collapse** is remembered in a `pulso_sidebar` cookie (not `localStorage`), so the server renders the right width and nothing shifts or animates on load. Collapsing reflows once with no width or FLIP animation: Motion System pattern 11 wins over the Phase 0 note's "FLIP collapse", because scaling the content panel distorts text. `[` toggles it.
+  - **Breakpoints:** bottom tab bar below 768px, sheet below 1024px, 56px rail at 1024–1279px, 240px sidebar from 1280px.
+  - **Palette:** cmdk + Radix Dialog with Motion, used directly (the generated shadcn Command/Dialog pulled in input-group and ring styles). Radix restores focus only to a `Dialog.Trigger`, so the shell records the focused element on open and restores it on close, except after a navigation, where the new page's h1 takes focus. Esc clears the query, then closes. Full-screen below 768px.
+  - **Copy:** the top-bar trigger reads "Search or run a command…" until Phase 2 search exists; the palette shows a disabled "Search products, stores, suppliers · Phase 2" row.
+  - **Enter animations run only on client navigations** (route enter, Daily Pulse stagger), never on the server-rendered first paint, so content is never hidden behind an animation and hydration stays stable.
+- **Alternatives:** hidden unbuilt routes; `localStorage` for the collapsed state; shadcn's Sidebar block (it animates width).
+- **Why:** The owner can review the whole product map from Phase 0, with no layout shift and the motion rules intact.
