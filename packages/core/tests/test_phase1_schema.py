@@ -175,13 +175,17 @@ def test_queue_and_job_qualified_success_slots(
         session.execute(statement.values(trigger="manual"))
 
 
-def test_source_events_reject_update_and_delete(
+def test_source_events_reject_update_delete_and_truncate(
     evidence: tuple[Session, CollectorRun, RawPayload, Listing],
 ) -> None:
     session, _, _, _ = evidence
     session.add(SourceEvent(source_id=1, action="auto_disable", reason="fixture block"))
     session.flush()
-    for sql in ("UPDATE source_events SET action = 'enable'", "DELETE FROM source_events"):
+    for sql in (
+        "UPDATE source_events SET action = 'enable'",
+        "DELETE FROM source_events",
+        "TRUNCATE source_events",
+    ):
         with pytest.raises(DBAPIError, match="append-only"), session.begin_nested():
             session.execute(text(sql))
     assert session.scalar(select(SourceEvent.action)) == "auto_disable"
@@ -231,6 +235,7 @@ def test_coverage_utc_days_gaps_and_no_source_wide_success(
 ) -> None:
     session, run, payload, _ = evidence
     run.status = "success"
+    run.queued_at = datetime(2026, 10, 23, 1, tzinfo=UTC)
     session.add(
         CollectionGap(
             source_id=1,
@@ -242,11 +247,13 @@ def test_coverage_utc_days_gaps_and_no_source_wide_success(
     )
     session.flush()
     session.execute(text("SET LOCAL TIME ZONE 'America/Los_Angeles'"))
-    rows = session.execute(text("SELECT day, status FROM source_daily_coverage ORDER BY day")).all()
+    rows = session.execute(
+        text("SELECT day, status, runs FROM source_daily_coverage ORDER BY day")
+    ).all()
     assert [tuple(row) for row in rows] == [
-        (date(2026, 10, 20), "gap"),
-        (date(2026, 10, 21), "gap"),
-        (DAY, "unknown"),
+        (date(2026, 10, 20), "gap", 0),
+        (date(2026, 10, 21), "gap", 0),
+        (date(2026, 10, 23), "unknown", 1),
     ]
     session.add(
         CollectorRunTarget(
@@ -262,4 +269,70 @@ def test_coverage_utc_days_gaps_and_no_source_wide_success(
     row = session.execute(
         text("SELECT * FROM source_daily_coverage ORDER BY day DESC LIMIT 1")
     ).one()
-    assert (row.day, row.status, row.runs, row.rows) == (date(2026, 10, 23), "success", 0, 0)
+    assert (row.day, row.status, row.runs, row.rows) == (date(2026, 10, 23), "success", 1, 0)
+    session.execute(text("UPDATE collection_gaps SET filled_by_run_id = :run"), {"run": run.id})
+    rows = session.execute(
+        text("SELECT day, status, runs FROM source_daily_coverage ORDER BY day")
+    ).all()
+    assert [tuple(row) for row in rows] == [
+        (date(2026, 10, 20), "filled", 0),
+        (date(2026, 10, 21), "filled", 0),
+        (date(2026, 10, 23), "success", 1),
+    ]
+
+
+@pytest.mark.parametrize(
+    "run_status,target_statuses,gap,expected",
+    [
+        ("success", ("success",), None, "success"),
+        ("partial", ("success", "failed"), None, "partial"),
+        ("failed", (), "unfilled", "gap"),
+        ("running", (), None, "running"),
+        ("queued", (), None, "queued"),
+        ("failed", (), None, "failed"),
+        ("blocked", (), None, "failed"),
+        ("partial", (), None, "failed"),
+        ("success", ("failed",), None, "failed"),
+        ("success", (), "filled", "filled"),
+        ("success", (), None, "unknown"),
+        ("partial", ("success", "failed"), "unfilled", "partial"),
+        ("success", ("success",), "unfilled", "partial"),
+        ("running", (), "unfilled", "gap"),
+    ],
+)
+def test_coverage_status_branches(
+    evidence: tuple[Session, CollectorRun, RawPayload, Listing],
+    run_status: str,
+    target_statuses: tuple[str, ...],
+    gap: str | None,
+    expected: str,
+) -> None:
+    session, run, payload, _ = evidence
+    run.status = run_status
+    for target, status in enumerate(target_statuses):
+        session.add(
+            CollectorRunTarget(
+                run_id=run.id,
+                scope="catalog",
+                target_id=str(target),
+                status=status,
+                raw_payload_id=payload.id if status == "success" else None,
+                captured_at=AT,
+            )
+        )
+    if gap:
+        session.add(
+            CollectionGap(
+                source_id=1,
+                slot_key="catalog:2026-10-22",
+                slot_start=datetime(2026, 10, 22, tzinfo=UTC),
+                slot_end=datetime(2026, 10, 23, tzinfo=UTC),
+                reason="host_offline",
+                filled_by_run_id=run.id if gap == "filled" else None,
+            )
+        )
+    session.flush()
+    assert session.execute(text("SELECT day, status FROM source_daily_coverage")).one() == (
+        DAY,
+        expected,
+    )

@@ -1,4 +1,5 @@
 from collections.abc import Callable
+from contextlib import closing
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, Request
@@ -34,7 +35,7 @@ def check_redis(settings: Settings) -> None:
 
 
 def check_s3(settings: Settings) -> None:
-    with make_client(settings) as client:
+    with closing(make_client(settings)) as client:
         client.head_bucket(Bucket=settings.s3_bucket_raw)
 
 

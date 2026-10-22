@@ -9,6 +9,7 @@ from uuid import uuid4
 
 import jwt
 import pytest
+from botocore.stub import Stubber
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -20,6 +21,7 @@ from pulso_api.openapi import export
 from pulso_api.routers.health import check_postgres
 from pulso_core import db
 from pulso_core.logging import JsonFormatter, request_id
+from pulso_core.s3 import make_client
 from pulso_core.settings import Settings
 
 
@@ -124,6 +126,31 @@ def test_readiness_names_redis_and_redacts_details(client: TestClient) -> None:
     assert "secret-url" not in response.text
     assert response.headers["content-type"] == "application/problem+json"
     assert response.json()["request_id"] == response.headers["X-Request-ID"]
+
+
+@pytest.mark.parametrize("available", [True, False])
+def test_readiness_checks_s3_and_closes_client(
+    client: TestClient, settings: Settings, available: bool
+) -> None:
+    s3 = make_client(settings)
+    with (
+        Stubber(s3) as stub,
+        patch("pulso_api.routers.health.make_client", return_value=s3),
+        patch("pulso_api.routers.health.check_postgres"),
+        patch("pulso_api.routers.health.check_redis"),
+        patch.object(s3, "close", wraps=s3.close) as close,
+    ):
+        params = {"Bucket": settings.s3_bucket_raw}
+        if available:
+            stub.add_response("head_bucket", {}, params)
+        else:
+            stub.add_client_error("head_bucket", "NoSuchBucket", expected_params=params)
+        response = client.get("/readyz")
+        assert response.status_code == (200 if available else 503)
+        if not available:
+            assert response.json()["detail"] == "Unavailable dependencies: s3"
+        stub.assert_no_pending_responses()
+        close.assert_called_once_with()
 
 
 @pytest.mark.parametrize(

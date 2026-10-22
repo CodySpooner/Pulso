@@ -80,3 +80,9 @@ This file holds deferred ideas and research extras that are **not** in the §11 
 | External heartbeat monitor | Phase 1 brainstorm | With the Phase 7 alerts | Needs an account, so ask the owner first |
 | Count immutable facts (FX, Keepa-style series) as of their own date in features | Phase 1 brainstorm D4; DEC-031 | Phase 6, only via an owner SPEC amendment | Until then features use only `captured_at < d+1 00:00Z` |
 | Automatic five-year Trends backfill | Phase 1 note; Phase 1 brainstorm | After the Trends alpha or an approved paid tier | Paid tier needs owner approval |
+
+## Phase 1 schema review deferral (P1-17, 2026-10-22)
+
+| Deferred work | Evidence | When | Notes |
+|---|---|---|---|
+| Coverage view: mark `coverage`/`runs`/`gaps` `AS NOT MATERIALIZED` (or replace it with a `from_day` SQL function that filters `captured_at` ranges) | P1-16 schema review finding 5; DEC-060 | Once `collector_run_targets` passes ~1M rows | Verify with EXPLAIN; DH-1 always passes a day bound. Current materialized CTEs aggregate all history before the outer day filter |

@@ -237,6 +237,10 @@ def upgrade() -> None:
         FOR EACH ROW EXECUTE FUNCTION reject_source_event_mutation()
     """)
     op.execute("""
+        CREATE TRIGGER source_events_no_truncate BEFORE TRUNCATE ON source_events
+        FOR EACH STATEMENT EXECUTE FUNCTION reject_source_event_mutation()
+    """)
+    op.execute("""
         CREATE VIEW source_daily_coverage AS
         WITH target_days AS (
             SELECT r.source_id, (t.captured_at AT TIME ZONE 'UTC')::date AS day,
@@ -277,6 +281,7 @@ def upgrade() -> None:
                    WHEN r.running THEN 'running'
                    WHEN r.queued THEN 'queued'
                    WHEN r.failed OR c.targets > 0 THEN 'failed'
+                   WHEN NOT g.unfilled THEN 'filled'
                    ELSE 'unknown'
                END AS status,
                coalesce(r.runs, 0) AS runs, coalesce(r.rows, 0) AS rows,
@@ -309,6 +314,25 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    op.execute("""
+        DO $$ BEGIN
+            IF EXISTS (SELECT 1 FROM search_trends)
+               OR EXISTS (SELECT 1 FROM collector_run_targets)
+               OR EXISTS (SELECT 1 FROM collection_gaps)
+               OR EXISTS (SELECT 1 FROM source_events)
+               OR EXISTS (SELECT 1 FROM shipping_options WHERE quantity <> 1)
+               OR EXISTS (SELECT 1 FROM raw_payloads WHERE template_version IS NOT NULL)
+               OR EXISTS (SELECT 1 FROM sources WHERE retry_not_before IS NOT NULL)
+               OR EXISTS (SELECT 1 FROM listing_snapshots WHERE parser_version <> '1')
+               OR EXISTS (SELECT 1 FROM variant_snapshots WHERE parser_version <> '1')
+               OR EXISTS (SELECT 1 FROM shipping_options WHERE parser_version <> '1')
+               OR EXISTS (SELECT 1 FROM fx_rates WHERE parser_version <> '1')
+            THEN
+                RAISE EXCEPTION
+                    '0002 downgrade would discard Phase 1 evidence; restore a backup instead';
+            END IF;
+        END $$
+    """)
     # Restore restrictive constraints first: incompatible history aborts instead of being deleted.
     op.alter_column("collector_runs", "started_at", nullable=False, server_default=sa.func.now())
     for table, keys in OBSERVATION_KEYS.items():

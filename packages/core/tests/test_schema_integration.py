@@ -10,14 +10,17 @@ from alembic.migration import MigrationContext
 from sqlalchemy import func, select, text
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.engine import Engine
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import Session
 
 from pulso_core.db import Base
 from pulso_core.models import (
     CollectorRun,
     Currency,
+    HostHeartbeat,
     Listing,
     ListingSnapshot,
+    ListingVariant,
     RawPayload,
     ShippingOption,
     Source,
@@ -48,6 +51,7 @@ def test_migration_roundtrip_and_metadata(
             )
             == []
         )
+        connection.execute(insert(HostHeartbeat).values(host="fixture"))
         command.downgrade(config, "0001")
         command.upgrade(config, "head")
         assert (
@@ -74,6 +78,109 @@ def test_connected_database_is_a_test_database(db_engine: Engine) -> None:
     with db_engine.connect() as connection:
         database = connection.scalar(text("SELECT current_database()"))
         assert database == "pulso_ci" or database.startswith("pulso_test")
+
+
+@pytest.mark.parametrize(
+    "evidence_sql",
+    [
+        pytest.param("UPDATE collector_runs SET started_at = NULL, status = 'queued'", id="queued"),
+        pytest.param(
+            "INSERT INTO listing_snapshots "
+            "(listing_id, raw_payload_id, observed_for, values_hash, currency, parser_version) "
+            "SELECT :listing, :payload, '2026-10-22', 'fixture', 'USD', version "
+            "FROM (VALUES ('1'), ('2')) AS versions(version)",
+            id="parser-pair",
+        ),
+        pytest.param(
+            "INSERT INTO search_trends (source_id, raw_payload_id, observed_for, keyword, geo, "
+            '"window", granularity, metric, value) '
+            "VALUES (1, :payload, '2026-10-22', 'lamp', 'US', 'today 3-m', 'day', 'interest', 40)",
+            id="search-trends",
+        ),
+        pytest.param(
+            "INSERT INTO collector_run_targets (run_id, scope, target_id) "
+            "VALUES (:run, 'catalog', 'fixture')",
+            id="targets",
+        ),
+        pytest.param(
+            "INSERT INTO collection_gaps (source_id, slot_key, slot_start, slot_end, reason) "
+            "VALUES (1, 'catalog:2026-10-22', '2026-10-22 00:00Z', '2026-10-23 00:00Z', "
+            "'host_offline')",
+            id="gaps",
+        ),
+        pytest.param(
+            "INSERT INTO source_events (source_id, action) VALUES (1, 'disable')", id="events"
+        ),
+        pytest.param(
+            "INSERT INTO shipping_options (listing_id, raw_payload_id, observed_for, "
+            "destination_country, method, cost_minor, currency, quantity) "
+            "VALUES (:listing, :payload, '2026-10-22', 'US', 'standard', 300, 'USD', 3)",
+            id="freight-quantity",
+        ),
+        pytest.param("UPDATE raw_payloads SET template_version = 'csv-v1'", id="import-template"),
+        pytest.param("UPDATE sources SET retry_not_before = now() WHERE id = 1", id="retry"),
+        pytest.param(
+            "INSERT INTO listing_snapshots "
+            "(listing_id, raw_payload_id, observed_for, values_hash, currency, parser_version) "
+            "VALUES (:listing, :payload, '2026-10-22', 'fixture', 'USD', '2')",
+            id="listing-parser",
+        ),
+        pytest.param(
+            "INSERT INTO variant_snapshots "
+            "(variant_id, raw_payload_id, observed_for, values_hash, currency, parser_version) "
+            "VALUES (:variant, :payload, '2026-10-22', 'fixture', 'USD', '2')",
+            id="variant-parser",
+        ),
+        pytest.param(
+            "INSERT INTO shipping_options (listing_id, raw_payload_id, observed_for, "
+            "destination_country, method, cost_minor, currency, parser_version) "
+            "VALUES (:listing, :payload, '2026-10-22', 'US', 'standard', 100, 'USD', '2')",
+            id="freight-parser",
+        ),
+        pytest.param(
+            "INSERT INTO fx_rates "
+            "(date, base, quote, rate, source, raw_payload_id, observed_for, parser_version) "
+            "VALUES ('2026-10-22', 'USD', 'EUR', 0.9, 'fx_frankfurter', "
+            ":payload, '2026-10-22', '2')",
+            id="fx-parser",
+        ),
+    ],
+)
+def test_phase1_downgrade_refuses_evidence(db_engine: Engine, evidence_sql: str) -> None:
+    config = Config(str(Path(__file__).resolve().parents[3] / "alembic.ini"))
+    with db_engine.begin() as connection:
+        config.attributes["connection"] = connection
+        run_id = connection.scalar(
+            insert(CollectorRun)
+            .values(source_id=1, trigger="csv", started_at=func.now(), status="success")
+            .returning(CollectorRun.id)
+        )
+        listing_id = connection.scalar(
+            insert(Listing)
+            .values(source_id=1, external_id="fixture", title="X", url="https://example.test")
+            .returning(Listing.id)
+        )
+        variant_id = connection.scalar(
+            insert(ListingVariant)
+            .values(listing_id=listing_id, external_id="v1")
+            .returning(ListingVariant.id)
+        )
+        payload_id = connection.scalar(
+            insert(RawPayload)
+            .values(source_id=1, run_id=run_id, request={}, bytes=0, sha256="0" * 64)
+            .returning(RawPayload.id)
+        )
+        connection.execute(
+            text(evidence_sql),
+            {"run": run_id, "listing": listing_id, "variant": variant_id, "payload": payload_id},
+        )
+        with (
+            pytest.raises(DBAPIError, match="Phase 1 evidence|started_at.*contains null values"),
+            connection.begin_nested(),
+        ):
+            command.downgrade(config, "0001")
+        assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "0002"
+        assert connection.scalar(text("SELECT to_regclass('source_daily_coverage')")) is not None
 
 
 def test_phase1_upgrade_preserves_legacy_observations(db_engine: Engine) -> None:
