@@ -91,8 +91,10 @@ def _capture[R](
                 raise RunDeferred("source_disabled")
             if source.retry_not_before and source.retry_not_before > datetime.now(UTC):
                 raise RunDeferred("retry_not_before")
+        source_id, source_key, run_id = source.id, source.key, run.id
+        run.http_requests += int(request.mode == "live")
+        session.commit()
         try:
-            run.http_requests += int(request.mode == "live")
             response = fetch(adapter, request, settings=settings)
         except TimeoutError, ConnectionError:
             session.commit()
@@ -101,9 +103,9 @@ def _capture[R](
         else:
             payload = storage.store_capture(
                 session,
-                source_id=source.id,
-                source_key=source.key,
-                run_id=run.id,
+                source_id=source_id,
+                source_key=source_key,
+                run_id=run_id,
                 body=response.body,
                 content_type=response.content_type,
                 status_code=response.status_code,
@@ -152,6 +154,8 @@ def execute_run[R](
     identities = [(target.scope, target.target_id) for target in targets]
     if len(set(identities)) != len(identities):
         raise ValueError("Duplicate target identities")
+    # This dedicated session must not lazy-load expired payloads before the S3 GET.
+    session.expire_on_commit = False
     run = session.scalar(
         update(CollectorRun)
         .where(CollectorRun.id == run_id, CollectorRun.status == "queued")
