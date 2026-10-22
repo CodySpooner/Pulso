@@ -4,10 +4,11 @@
 
 ## Current status
 
-**Phase 0 in progress (continuous build since 2026-10-22, DEC-049).** The hourly lead automation merges lanes and keeps Claude and Codex workers busy (vault `Agents/Lead Playbook`, `Agents/Lead State`).
+**Phase 0 built; owner-gated items pending. Phase 1 in progress (continuous build since 2026-10-22, DEC-049).** The hourly lead automation merges lanes and keeps Claude and Codex workers busy (vault `Agents/Lead Playbook`, `Agents/Lead State`).
 
-- Merged on `main`: the serial spine; backend (DB-1..5, API-1..5: models, migration 0001, Clerk auth + allowlist, `/v1/me`, `/v1/settings`, OpenAPI export); workers, images and CI (WRK-1, IMG-1/2, CI-1/2/3/5); web shell (WEB-1..6, WEB-8: tokens, Motion, Clerk gate, Ctrl+K, empty Daily Pulse, PWA); the Shopify spike script and disabled seed draft (SPK-1); the DATA_SOURCES audit (DOC-3) and the Phase 0 docs pass (DOC-2, DEC-056); the backend/infra cross-review fixes (P0-14, DEC-057); the join (WEB-7 typed client and `/v1/me` workspace chip, CI-4 e2e job that skips cleanly without Clerk secrets, root `dev:api`/`db:migrate`/`gen:api`, AGENTS.md §9 commands, DEC-058) with the web-review fixes.
-- In flight: the Phase 0 UI gate (§8 checklist, styleseed review, WEB-9 `/admin/ui` gallery, refreshed screenshots), the Codex review of the join, and the first Phase 1 task (P1-01 schema migration). The Phase 1 brainstorm is settled: 15 lane-sized tasks in the vault Phase 1 note (critical path P1-01 → P1-03 → P1-05 → P1-11 → P1-12).
+- Phase 0: every build task is merged and the UI gate passed (P0-09, DEC-059). What's left needs the owner (see "Phase 0 summary" below; full summary in the vault `Phases/Phase 0 - Foundation`).
+- Phase 1: P1-01 schema migration 0002 merged (`4283e80`, DEC-060). Running: P1-02 raw storage (Codex), P0-16 Codex review of P0-09, P1-16 Claude review of P1-01 plus the P0-14 fix check. Critical path P1-01 → P1-03 → P1-05 → P1-11 → P1-12 (15 tasks in the vault Phase 1 note).
+- Local checks on `4283e80`: ruff + format, mypy (45 files), pytest 127 passed / 17 DB skips, eslint, tsc, Vitest 255, web build, one Alembic head (0002), `gen:api` clean.
 - CI on GitHub is refused before it starts (account billing), so merges run on local checks until the owner fixes billing.
 - Docker is not installed on the PC yet, so compose, migration and image checks are unverified locally.
 - Data collection has not started. Every week before collection starts pushes the first forecast date back by a week (DEC-044).
@@ -16,8 +17,8 @@
 
 | Phase | Name | Status | Notes |
 |---|---|---|---|
-| 0 | Foundation | in progress | Spine, backend, infra, web shell, typed client, e2e job, spike script, docs and review fixes merged; phase-end UI gate in flight. Owner: WSL2 + Docker Desktop, a Clerk dev app, GitHub billing, the spike run |
-| 1 | Data engine | started (parallel with the Phase 0 UI gate) | Collection runs on the home-PC collector host (DEC-001). Needs: the CJ answer (DEC-009), approved seed lists (DEC-011), a SerpApi account |
+| 0 | Foundation | built; owner items pending | All build tasks merged; UI gate passed. Pending owner: WSL2 + Docker Desktop, Clerk dev keys, GitHub billing + Clerk CI secrets, the spike run, the WEB-6 screenshot review, DOC-1 amendment approvals |
+| 1 | Data engine | in progress | P1-01 schema merged (DEC-060); P1-02 and reviews running. Collection runs on the home-PC collector host (DEC-001). Needs: the CJ answer (DEC-009), approved seed lists (DEC-011), a SerpApi account |
 | 2 | Core product experience | not started | |
 | 3 | Signals expansion | not started | The AliExpress app review has a lead time; start the application now |
 | 4 | Scores and workflow | not started | |
@@ -25,6 +26,14 @@
 | 6 | Forecasting v1 | not started | Build work may start after 6–8 weeks of collection. First 14-day forecasts need about 12 weeks of continuous collection, 30-day about 17 (DEC-044) |
 | 7 | Store operations | not started | Review the Shopify API Terms before building the app (DEC-003) |
 | 8 | Expansion and launch prep | not started | Railway go-live can happen earlier, at the owner's call (DEC-001) |
+
+## Phase 0 summary (2026-10-22, lead run 4)
+
+- **Done:** spine (S-1, S-2; DEC-056); data model and API (DB-1..5, API-1..5, `4e16884`, DEC-051) with review fixes (P0-14, `93539d5`, DEC-057); workers, images and CI (WRK-1, IMG-1/2, CI-1/2/3/5, `1ea56fb`, DEC-050); web shell (WEB-1, 3, 4, 5, 8, `f03e4e0`, DEC-053..055); typed client, root scripts, e2e job (WEB-7, CI-4 built, `dcaaf27`, DEC-058); UI gate and `/admin/ui` (WEB-9, `f012f7f`, DEC-059); docs (DOC-2, DOC-3, DOC-4 paths); spike script and seed draft (SPK-1, `5a9dd45`, DEC-052); three cross-reviews (P0-08a, P0-08b, P0-15) with every finding fixed except the spike size (owner).
+- **Built, check pending owner:** S-4, S-5, DOC-4 setup and the 17 DB tests (Docker); WEB-2 sign-in (Clerk keys); CI-4 and CI green (billing + Clerk secrets); WEB-6 (screenshot review).
+- **Not started, owner-gated:** SPK-2/SPK-3 spike run (`PULSO_BOT_CONTACT`, spike size); DOC-1 SPEC amendments (approvals, R-05 first).
+- **Lead, in flight:** P0-16 review of P0-09; P0-14 fix check (P1-16). S-3 done (Codex quoted the scheduler rule in P0-15).
+- **§6 items (DEC-048):** none complete yet. Phase 0 ships foundations only: the empty Daily Pulse (§6.1, Phase 4), the Ctrl+K stub (§6.18, search in Phase 2), the PWA manifest (§6.18, Phase 4) and the added `/admin/ui` gallery (WEB-9). Every other §6 item is pending in its phase (vault `00 Home`).
 
 ## Done (pre-Phase 0)
 
@@ -53,24 +62,8 @@
 ## Next
 
 1. **Owner reviews asynchronously** (DEC-049): the build continues; the owner can veto any proposed decision (DEC-012 onward) and any "[Added — pending approval]" enhancement at any time.
-2. **Owner clears the Phase 0 blockers:** WSL2 + Docker Desktop, the Clerk dev app, and the commit identity (see the to-dos below).
-3. **Phase 0 build** (most of it merged; see Current status):
-   - repo hygiene (`.gitattributes`, pinned pnpm, uv workspace on Python 3.14);
-   - dev compose (pgvector 0.8.7-pg18, Redis, RustFS);
-   - FastAPI skeleton with a health check, the Clerk JWT dependency and the admin allowlist;
-   - Next.js shell with the design tokens, Motion setup, the two density zones, a Ctrl+K stub and the PWA manifest;
-   - the OpenAPI client pipeline;
-   - models plus the first migration (limited scope);
-   - CI: ruff, mypy, pytest, eslint, tsc, vitest, the single-Alembic-head check and the OpenAPI drift check;
-   - Dockerfiles for web, api and worker;
-   - the Shopify spike from the home PC, logged in `DATA_SOURCES.md`;
-   - the draft seed list for approval;
-   - the commands section filled in AGENTS.md.
-4. **Phase 0 done when:**
-   - `docker compose up` plus the dev servers start;
-   - the owner can log in and see an empty dashboard;
-   - CI is green;
-   - the spike results are recorded.
+2. **Owner clears the Phase 0 leftovers:** WSL2 + Docker Desktop, the Clerk dev app and CI secrets, GitHub billing, the spike run, the commit identity (see the to-dos below).
+3. **Phase 1 build** (vault `Phases/Phase 1 - Data Engine`): P1-02 raw storage now, then P1-03 framework once P1-01 + P1-02 are in, then the adapters. Live collection waits for the seed approval (DEC-011) and the owner's go-ahead for the collector host.
 
 ## Owner to-dos (summary)
 
