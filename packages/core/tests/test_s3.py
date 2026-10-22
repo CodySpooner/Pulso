@@ -4,6 +4,7 @@ from urllib.parse import parse_qs, urlsplit
 
 import boto3
 import pytest
+from botocore.config import Config
 from botocore.stub import Stubber
 from pydantic import SecretStr
 
@@ -36,7 +37,10 @@ def test_leaves_existing_bucket() -> None:
 
 
 @pytest.mark.parametrize("region", ["auto", "us-east-1"])
-def test_presign_uses_sigv4_and_configured_endpoint_without_network(region: str) -> None:
+@pytest.mark.parametrize("override", [False, True])
+def test_presign_uses_sigv4_and_configured_endpoint_without_network(
+    region: str, override: bool
+) -> None:
     settings = Settings(
         _env_file=None,
         database_url=SecretStr("postgresql://unused"),
@@ -45,7 +49,13 @@ def test_presign_uses_sigv4_and_configured_endpoint_without_network(region: str)
         s3_access_key_id="fixture-key",
         s3_secret_access_key=SecretStr("fixture-secret"),
     )
-    with closing(make_client(settings)) as client:
+    config = Config(connect_timeout=2, read_timeout=2, retries={"max_attempts": 1})
+    with closing(
+        make_client(settings, config=config) if override else make_client(settings)
+    ) as client:
+        if override:
+            assert client.meta.config.connect_timeout == client.meta.config.read_timeout == 2
+            assert client.meta.config.retries["total_max_attempts"] == 2
         url = urlsplit(
             client.generate_presigned_url(
                 "get_object",

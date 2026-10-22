@@ -12,14 +12,16 @@ from botocore.exceptions import ClientError
 from pulso_core.settings import Settings, get_settings
 
 
-def make_client(settings: Settings) -> Any:
+def make_client(settings: Settings, *, config: Config | None = None) -> Any:
     return boto3.client(
         "s3",
         endpoint_url=settings.s3_endpoint_url,
         region_name=settings.s3_region,
         aws_access_key_id=settings.s3_access_key_id,
         aws_secret_access_key=settings.s3_secret_access_key.get_secret_value(),
-        config=Config(signature_version="s3v4", s3={"addressing_style": "path"}),
+        config=Config(signature_version="s3v4", s3={"addressing_style": "path"}).merge(
+            config or Config()
+        ),
     )
 
 

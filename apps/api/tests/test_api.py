@@ -135,7 +135,7 @@ def test_readiness_checks_s3_and_closes_client(
     s3 = make_client(settings)
     with (
         Stubber(s3) as stub,
-        patch("pulso_api.routers.health.make_client", return_value=s3),
+        patch("pulso_api.routers.health.make_client", return_value=s3) as make_s3,
         patch("pulso_api.routers.health.check_postgres"),
         patch("pulso_api.routers.health.check_redis"),
         patch.object(s3, "close", wraps=s3.close) as close,
@@ -146,6 +146,9 @@ def test_readiness_checks_s3_and_closes_client(
         else:
             stub.add_client_error("head_bucket", "NoSuchBucket", expected_params=params)
         response = client.get("/readyz")
+        config = make_s3.call_args.kwargs["config"]
+        assert config.connect_timeout == config.read_timeout == 2
+        assert config.retries == {"max_attempts": 1}
         assert response.status_code == (200 if available else 503)
         if not available:
             assert response.json()["detail"] == "Unavailable dependencies: s3"
