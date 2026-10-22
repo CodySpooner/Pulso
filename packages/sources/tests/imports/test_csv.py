@@ -7,7 +7,7 @@ import pytest
 
 from pulso_sources.framework import UpsertStats
 from pulso_sources.imports import csv as imports_csv
-from pulso_sources.imports.csv import parse_csv, preview_csv
+from pulso_sources.imports.csv import DuplicateEntityRows, parse_csv, preview_csv
 from pulso_sources.imports.templates import TEMPLATES, template_csv
 
 
@@ -103,6 +103,35 @@ def test_cj_alternative_identifier_and_delivery_bounds() -> None:
     )
     assert len(parsed.rows) == 1
     assert {error.column for error in parsed.errors} == {"cj_product_id or sku", "max_days"}
+
+
+@pytest.mark.parametrize(
+    "identifiers,column",
+    [("P,A\nP,B", "cj_product_id"), ("P,A\n,A", "sku"), (",A\n,A", "sku")],
+)
+def test_duplicate_cj_identifiers_reject_even_without_dates(identifiers: str, column: str) -> None:
+    body = "cj_product_id,sku,name,unit_cost\n" + "".join(
+        f"{ids},Example,1\n" for ids in identifiers.splitlines()
+    )
+    with pytest.raises(DuplicateEntityRows) as caught:
+        parse_csv("cj", body.encode())
+    assert {(e.row, e.column, e.message) for e in caught.value.errors} == {
+        (2, column, "Duplicate entity with row 3"),
+        (3, column, "Duplicate entity with row 2"),
+    }
+
+
+def test_distinct_entities_and_trends_dates_remain_importable() -> None:
+    for source, body in [
+        ("cj", b"cj_product_id,sku,name,unit_cost\nP,,One,1\n,P,Two,2\n"),
+        (
+            "shopify_stores",
+            b"store_domain,product_url,title,price\na.test,/p,One,1\nb.test,/p,Two,2\n",
+        ),
+        ("google_trends", b"keyword,date,interest\na,2026-10-01,1\na,2026-10-02,2\n"),
+    ]:
+        parsed = parse_csv(source, body)
+        assert len(parsed.rows) == 2 and not parsed.errors
 
 
 @pytest.mark.parametrize(

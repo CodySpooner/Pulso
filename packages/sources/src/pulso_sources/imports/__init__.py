@@ -14,7 +14,14 @@ from pulso_core.models import CollectorRun, RawPayload, Source
 from pulso_core.settings import Settings
 from pulso_sources import storage
 from pulso_sources.framework import Adapter, Request, Target, enqueue_run, execute_run
-from pulso_sources.imports.csv import ParsedCSV, Preview, Row, parse_csv, preview_csv
+from pulso_sources.imports.csv import (
+    DuplicateEntityRows,
+    ParsedCSV,
+    Preview,
+    Row,
+    parse_csv,
+    preview_csv,
+)
 from pulso_sources.imports.csv import decode_upload as _decode_upload
 from pulso_sources.imports.templates import TEMPLATES, template_csv
 
@@ -82,6 +89,8 @@ def _execute(
 
 def _failed(session: Session, run: CollectorRun, exc: Exception) -> CollectorRun:
     session.rollback()
+    if isinstance(exc, DuplicateEntityRows):
+        run.params = {"errors": [asdict(error) for error in exc.errors]}
     run.status, run.finished_at = "failed", datetime.now(UTC)
     run.error_code = run.error_message = type(exc).__name__
     session.commit()

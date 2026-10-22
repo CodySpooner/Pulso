@@ -26,6 +26,12 @@ class RowError:
     message: str
 
 
+class DuplicateEntityRows(ValueError):
+    def __init__(self, errors: list[RowError]) -> None:
+        super().__init__("Only one row per entity is supported in this template")
+        self.errors = errors
+
+
 @dataclass(frozen=True)
 class ParsedCSV:
     rows: list[Row]
@@ -97,6 +103,8 @@ def parse_csv(
         if len(set(headers)) != len(headers) or any(h not in template.columns for h in headers):
             raise ValueError("Unknown or duplicate mapped columns")
         rows, errors, skipped = [], [], 0
+        seen: dict[tuple[Cell, ...], int] = {}
+        duplicates: dict[int, RowError] = {}
         for count, values in enumerate(reader, 1):
             if count > MAX_ROWS:
                 raise ValueError("File exceeds 100,000 rows")
@@ -128,7 +136,24 @@ def parse_csv(
             if isinstance(minimum, int) and isinstance(maximum, int) and minimum > maximum:
                 errors.append(RowError(line, "max_days", "Must be at least min_days"))
             if len(errors) == start:
+                identities: list[tuple[Cell, ...]] = []
+                if source_key == "shopify_stores":
+                    identities = [("product_url", row["store_domain"], row["product_url"])]
+                elif source_key == "cj":
+                    identities = [(name, row[name]) for name in template.one_of if name in row]
+                for identity in identities:
+                    prior = seen.setdefault(identity, line)
+                    if prior != line:
+                        for number, other in ((prior, line), (line, prior)):
+                            duplicates.setdefault(
+                                number,
+                                RowError(
+                                    number, str(identity[0]), f"Duplicate entity with row {other}"
+                                ),
+                            )
                 rows.append(row)
+        if duplicates:
+            raise DuplicateEntityRows(errors + list(duplicates.values()))
         return ParsedCSV(rows, errors, skipped)
     except (csv.Error, StopIteration, IndexError) as exc:
         raise ValueError("Malformed CSV or missing header") from exc
@@ -142,7 +167,14 @@ def preview_csv(
     mapping: Mapping[str, str] | None = None,
 ) -> Preview:
     """classify must be read-only and account for every valid row; never calls upsert."""
-    parsed = parse_csv(source_key, body, mapping=mapping)
+    try:
+        parsed = parse_csv(source_key, body, mapping=mapping)
+    except DuplicateEntityRows as exc:
+        return Preview(
+            [],
+            {"insert": 0, "update": 0, "skip": 0, "invalid": len({e.row for e in exc.errors})},
+            exc.errors,
+        )
     stats = classify(parsed.rows)
     counts = {"insert": stats.inserted, "update": stats.updated, "skip": stats.unchanged}
     if min(counts.values()) < 0 or sum(counts.values()) != len(parsed.rows):

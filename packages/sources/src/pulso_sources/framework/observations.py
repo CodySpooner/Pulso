@@ -1,8 +1,9 @@
 """Append observations; FX's first-rate rule remains adapter-owned (DEC-060)."""
 
+from datetime import datetime
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import select, tuple_
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
@@ -12,17 +13,27 @@ type ObservationRow = ListingSnapshot | VariantSnapshot | ShippingOption | Searc
 
 
 def effective_observation[T: ObservationRow](
-    session: Session, model: type[T], *, key: dict[str, Any], raw_payload_id: int | None = None
+    session: Session,
+    model: type[T],
+    *,
+    key: dict[str, Any],
+    raw_payload_id: int | None = None,
+    before: tuple[datetime, int] | None = None,
 ) -> T | None:
-    """Latest capture, then greatest row id; parser labels are never ordered."""
+    """Latest observed day/capture, or greatest id in one capture; before is exclusive."""
     if set(key) != set(model.observation_keys):
         raise ValueError("Supply every natural observation key")
     query = select(model).filter_by(**key)
+    if before is not None:
+        query = query.where(tuple_(model.captured_at, model.raw_payload_id) < before)
     if raw_payload_id is not None:
         query = query.where(model.raw_payload_id == raw_payload_id).order_by(model.id.desc())
     else:
         query = query.order_by(
-            model.captured_at.desc(), model.raw_payload_id.desc(), model.id.desc()
+            model.observed_for.desc(),
+            model.captured_at.desc(),
+            model.raw_payload_id.desc(),
+            model.id.desc(),
         )
     return session.scalar(query.limit(1))
 
@@ -46,7 +57,9 @@ def append_observation(session: Session, row: ObservationRow) -> bool:
     key = {name: getattr(row, name) for name in model.observation_keys}
     previous = effective_observation(session, model, key=key, raw_payload_id=row.raw_payload_id)
     if isinstance(row, (ListingSnapshot, VariantSnapshot)) and previous is None:
-        latest = effective_observation(session, model, key=key)
+        latest = effective_observation(
+            session, model, key=key, before=(row.captured_at, row.raw_payload_id)
+        )
         if (
             isinstance(latest, (ListingSnapshot, VariantSnapshot))
             and latest.values_hash == row.values_hash

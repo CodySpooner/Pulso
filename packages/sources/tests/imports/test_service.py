@@ -1,3 +1,5 @@
+import csv
+import io
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from datetime import UTC, date, datetime
@@ -12,7 +14,14 @@ from sqlalchemy.orm import Session
 
 from pulso_core.models import CollectorRun, CollectorRunTarget, RawPayload, SearchTrend, Source
 from pulso_core.settings import Settings
-from pulso_sources.imports import ADAPTERS, TEMPLATES, commit_import, replay_import, template_csv
+from pulso_sources.imports import (
+    ADAPTERS,
+    TEMPLATES,
+    commit_import,
+    preview_csv,
+    replay_import,
+    template_csv,
+)
 
 from .conftest import FakeAdapter
 
@@ -65,6 +74,32 @@ def test_identity_includes_template_version(
     assert commit_import(session, "cj", body, settings=settings).status == "success"
     assert session.scalar(select(func.count()).select_from(RawPayload)) == 2
     assert session.scalar(select(func.count()).select_from(SearchTrend)) == 2
+
+
+@pytest.mark.parametrize("key", ["shopify_stores", "cj"])
+def test_multidate_entity_file_reports_duplicate_rows_before_storage(
+    session: Session, settings: Settings, s3: MagicMock, key: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    example = next(csv.DictReader(io.StringIO(template_csv(key).decode())))
+    output = io.StringIO()
+    writer = csv.DictWriter(output, example.keys())
+    writer.writeheader()
+    for day in (1, 2, 3):
+        writer.writerow({**example, "observed_for": f"2026-10-0{day}"})
+    body = output.getvalue().encode()
+    classify = MagicMock(side_effect=AssertionError("Rejected file must not be classified"))
+    preview = preview_csv(key, body, classify=classify)
+    assert preview.rows == [] and preview.counts["invalid"] == 3
+    assert {error.row for error in preview.errors} == {2, 3, 4}
+    assert all("row " in error.message for error in preview.errors)
+    monkeypatch.delitem(ADAPTERS, key)
+    run = commit_import(session, key, body, settings=settings)
+    assert run.status == "failed" and run.error_code == "DuplicateEntityRows"
+    session.expire_all()
+    assert {error["row"] for error in run.params["errors"]} == {2, 3, 4}
+    assert session.scalar(select(func.count()).select_from(RawPayload)) == 0
+    assert session.scalar(select(func.count()).select_from(SearchTrend)) == 0
+    s3.put_object.assert_not_called()
 
 
 def test_replay_uses_original_mapping_after_source_config_changes(

@@ -109,3 +109,9 @@ This file holds deferred ideas and research extras that are **not** in the §11 
 | Import preview insert/update/skip counts through `preview_csv` | DEC-064, DEC-068 | When P1-07–09 register read-only classifiers | P1-11b preview is validation-only (valid/invalid/skipped) |
 | Per-upload and saved column mappings in the import API | DEC-064, DEC-068 | With the CSV wizard | FastAPI cannot take a JSON query param; use multipart (`python-multipart`) or a JSON field then |
 | Bound the source freshness aggregate | DEC-068 | Alongside the coverage-view EXPLAIN row above | `GET /v1/admin/sources` takes the max over all successful targets |
+
+## P1-03c history-import deferral (2026-10-22)
+
+| Deferred work | Evidence | When | Notes |
+|---|---|---|---|
+| Import multiple dates for the same listing, variant or freight entity in one file | P1-19 finding 3; lead decision 3c; DEC-071 | A separately scoped history-import task | `observed_for` stays outside these observation identities and `0002` is unchanged. Current templates reject repeated entities with row-level errors; single-date historical imports remain supported with observed-date current ordering. Search Trends multi-date imports remain supported. |
