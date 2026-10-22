@@ -2,7 +2,8 @@
 
 import hashlib
 import json
-from collections.abc import Callable, Mapping
+from collections import Counter
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import asdict, dataclass
 from datetime import UTC, date, datetime
 from typing import Any, Literal
@@ -14,7 +15,15 @@ from pulso_core.models import CollectorRun, RawPayload, Source
 from pulso_core.settings import Settings
 from pulso_sources import storage
 from pulso_sources.framework import Adapter, Request, Target, enqueue_run, execute_run
-from pulso_sources.imports.csv import ParsedCSV, Preview, Row, parse_csv, preview_csv
+from pulso_sources.imports.csv import (
+    DuplicateEntityRows,
+    ParsedCSV,
+    Preview,
+    Row,
+    RowError,
+    parse_csv,
+    preview_csv,
+)
 from pulso_sources.imports.csv import decode_upload as _decode_upload
 from pulso_sources.imports.templates import TEMPLATES, template_csv
 
@@ -26,6 +35,7 @@ class ImportData:
     Adapters own row-to-observation mapping: use date/observed_for from each CSV row,
     falling back to payload.captured_at.date(); JSON uses this context's observed_for.
     Always copy payload.id/captured_at and the runner's parser_version into observations.
+    Group CSV variants by listing and aggregate their prices before writing its snapshot.
     """
 
     mode: Literal["csv", "json"]
@@ -43,17 +53,29 @@ def _prepare(
     mode: Literal["csv", "json"],
     mapping: Mapping[str, str] | None,
     observed_for: date | None,
+    as_of: date,
 ) -> ImportData:
     if mode == "csv":
-        return ImportData(mode, parse_csv(source_key, body, mapping=mapping), None)
+        return ImportData(mode, parse_csv(source_key, body, mapping=mapping, as_of=as_of), None)
     if mode != "json" or source_key != "shopify_stores" or type(observed_for) is not date:
         raise ValueError("Shopify JSON requires the owner's observed_for date")
+    if observed_for > as_of:
+        raise ValueError("observed_for is later than the UTC capture date")
 
     def invalid_constant(value: str) -> None:
         raise ValueError("JSON must not contain non-finite numbers")
 
     json.loads(_decode_upload(body), parse_constant=invalid_constant)
     return ImportData(mode, None, observed_for)
+
+
+def _error_params(errors: Sequence[RowError]) -> dict[str, Any]:
+    return {
+        "errors": [asdict(error) for error in errors[:100]],
+        "error_count": len(errors),
+        "invalid_rows": len({error.row for error in errors}),
+        "errors_by_column": dict(Counter(error.column for error in errors)),
+    }
 
 
 def _execute(
@@ -67,9 +89,14 @@ def _execute(
     run.params = {
         "raw_payload_id": payload.id,
         "parser_version": adapter.parser_version,
-        "errors": [asdict(error) for error in data.csv.errors] if data.csv else [],
+        **_error_params(data.csv.errors if data.csv else []),
         "skipped": data.csv.skipped if data.csv else 0,
     }
+    if data.csv is not None and not data.csv.rows:
+        run.status, run.finished_at = "failed", datetime.now(UTC)
+        run.error_code = run.error_message = "no_valid_rows"
+        session.commit()
+        return run
     session.commit()
     return execute_run(
         session,
@@ -82,6 +109,8 @@ def _execute(
 
 def _failed(session: Session, run: CollectorRun, exc: Exception) -> CollectorRun:
     session.rollback()
+    if isinstance(exc, DuplicateEntityRows):
+        run.params = _error_params(exc.errors)
     run.status, run.finished_at = "failed", datetime.now(UTC)
     run.error_code = run.error_message = type(exc).__name__
     session.commit()
@@ -124,7 +153,8 @@ def commit_import(
             session.commit()
             return run
         mapping = mapping if mapping is not None else source.config.get("csv_mapping", {})
-        data = _prepare(source_key, body, mode, mapping, observed_for)
+        captured_at = datetime.now(UTC)
+        data = _prepare(source_key, body, mode, mapping, observed_for, captured_at.date())
         adapter = ADAPTERS[source_key](data)
         payload = storage.store_capture(
             session,
@@ -135,7 +165,7 @@ def commit_import(
             content_type="text/csv" if mode == "csv" else "application/json",
             status_code=None,
             etag=None,
-            captured_at=datetime.now(UTC),
+            captured_at=captured_at,
             request={
                 "mode": mode,
                 "mapping": dict(mapping or {}),
@@ -171,6 +201,7 @@ def replay_import(session: Session, raw_payload_id: int, *, settings: Settings) 
             metadata["mode"],
             metadata.get("mapping"),
             observed_for,
+            payload.captured_at.date(),
         )
         adapter = ADAPTERS[source.key](data)
         if adapter.parser_version == metadata["parser_version"]:
