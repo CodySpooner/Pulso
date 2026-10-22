@@ -2,6 +2,7 @@ import csv
 import io
 from datetime import date
 from decimal import Decimal
+from typing import Literal
 
 import pytest
 
@@ -107,7 +108,7 @@ def test_cj_alternative_identifier_and_delivery_bounds() -> None:
 
 @pytest.mark.parametrize(
     "identifiers,column",
-    [("P,A\nP,B", "cj_product_id"), ("P,A\n,A", "sku"), (",A\n,A", "sku")],
+    [("P,A\nP,A", "sku"), ("P,A\n,A", "sku"), (",A\n,A", "sku")],
 )
 def test_duplicate_cj_identifiers_reject_even_without_dates(identifiers: str, column: str) -> None:
     body = "cj_product_id,sku,name,unit_cost\n" + "".join(
@@ -119,6 +120,119 @@ def test_duplicate_cj_identifiers_reject_even_without_dates(identifiers: str, co
         (2, column, "Duplicate entity with row 3"),
         (3, column, "Duplicate entity with row 2"),
     }
+
+
+@pytest.mark.parametrize("delimiter", [",", ";"])
+@pytest.mark.parametrize("quoting", [csv.QUOTE_MINIMAL, csv.QUOTE_ALL])
+def test_excel_quoted_fields_round_trip(delimiter: str, quoting: Literal[0, 1]) -> None:
+    output = io.StringIO(newline="")
+    writer = csv.writer(output, delimiter=delimiter, quoting=quoting)
+    writer.writerow(["keyword", "date", "interest"])
+    titles = ['Lamp 12" Brass', 'Double "" quotes', 'Lamp 12", brass; gold\nNew line']
+    writer.writerows((title, "2026-01-01", 50) for title in titles)
+    parsed = parse_csv("google_trends", output.getvalue().encode())
+    assert not parsed.errors
+    assert [row["keyword"] for row in parsed.rows] == titles
+
+
+@pytest.mark.parametrize(
+    "source,body",
+    [
+        (
+            "shopify_stores",
+            b"store_domain,product_url,title,price,sku,variant_title\n"
+            b"a.test,/tee,Tee,10,TEE-S,S\na.test,/tee,Tee,12,TEE-M,M\n",
+        ),
+        (
+            "shopify_stores",
+            b"store_domain,product_url,title,price,variant_title\n"
+            b"a.test,/tee,Tee,10,S\na.test,/tee,Tee,12,M\n",
+        ),
+        (
+            "cj",
+            b"cj_product_id,sku,name,unit_cost,warehouse_country,ship_cost_us\n"
+            b"P1,S1,Tee,5,CN,3\nP1,S1,Tee,5,US,1\n",
+        ),
+        ("cj", b"cj_product_id,sku,name,unit_cost\nP1,S1,Tee,5\nP1,S2,Tee,6\n"),
+        (
+            "cj",
+            b"cj_product_id,sku,name,unit_cost,warehouse_country\nP1,S1,Tee,5,CN\n,S1,Tee,5,US\n",
+        ),
+    ],
+)
+def test_distinct_variants_and_warehouses_are_valid(source: str, body: bytes) -> None:
+    parsed = parse_csv(source, body)
+    assert len(parsed.rows) == 2 and not parsed.errors
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {"unit_cost": "6"},
+        {"name": "Other"},
+        {"observed_for": "2026-01-02"},
+        {"cj_product_id": "OTHER"},
+    ],
+)
+def test_cj_warehouse_rows_cannot_conflict_on_shared_entities(changes: dict[str, str]) -> None:
+    example = next(csv.DictReader(io.StringIO(template_csv("cj").decode())))
+    output = io.StringIO()
+    writer = csv.DictWriter(output, example.keys())
+    writer.writeheader()
+    writer.writerows([example, {**example, "warehouse_country": "CN", **changes}])
+    with pytest.raises(DuplicateEntityRows) as caught:
+        parse_csv("cj", output.getvalue().encode())
+    assert {e.row for e in caught.value.errors} == {2, 3}
+
+
+def test_implicit_and_explicit_capture_day_match_across_variants() -> None:
+    body = (
+        b"store_domain,product_url,title,price,sku,observed_for\n"
+        b"a.test,/tee,Tee,10,S,2026-01-01\na.test,/tee,Tee,12,M,\n"
+    )
+    assert len(parse_csv("shopify_stores", body, as_of=date(2026, 1, 1)).rows) == 2
+
+
+@pytest.mark.parametrize(
+    "column,value", [("title", "Other"), ("currency", "EUR"), ("observed_for", "2026-01-02")]
+)
+def test_shopify_variants_require_consistent_listing_fields(column: str, value: str) -> None:
+    example = next(csv.DictReader(io.StringIO(template_csv("shopify_stores").decode())))
+    output = io.StringIO()
+    writer = csv.DictWriter(output, example.keys())
+    writer.writeheader()
+    writer.writerows([example, {**example, "sku": "OTHER", column: value}])
+    with pytest.raises(DuplicateEntityRows) as caught:
+        parse_csv("shopify_stores", output.getvalue().encode())
+    assert {e.row for e in caught.value.errors} == {2, 3}
+
+
+@pytest.mark.parametrize(
+    "source,body,missing",
+    [
+        ("google_trends", b"keyword,date\na,2026-01-01\n", "interest"),
+        ("cj", b"name,unit_cost\nTee,5\n", "cj_product_id or sku"),
+        ("shopify_stores", b"store_domain,product_url,title\na.test,/tee,Tee\n", "price"),
+    ],
+)
+def test_missing_headers_fail_before_reading_rows(
+    source: str, body: bytes, missing: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(imports_csv, "MAX_ROWS", 0)
+    with pytest.raises(ValueError, match=missing):
+        parse_csv(source, body)
+
+
+@pytest.mark.parametrize(
+    "source,column",
+    [("google_trends", "date"), ("shopify_stores", "observed_for"), ("cj", "observed_for")],
+)
+def test_future_dates_are_row_errors(source: str, column: str) -> None:
+    body = template_csv(source)
+    parsed = parse_csv(source, body, as_of=date(2025, 12, 31))
+    assert not parsed.rows and [(e.row, e.column) for e in parsed.errors] == [(2, column)]
+    assert "capture" in parsed.errors[0].message
+    assert len(parse_csv(source, body, as_of=date(2026, 1, 1)).rows) == 1
 
 
 def test_distinct_entities_and_trends_dates_remain_importable() -> None:

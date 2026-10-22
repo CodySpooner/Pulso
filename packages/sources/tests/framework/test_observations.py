@@ -3,12 +3,19 @@ from datetime import UTC, date, datetime, timedelta
 from unittest.mock import Mock
 
 import pytest
-from sqlalchemy import Integer, MetaData, create_engine, select
+from sqlalchemy import Integer, MetaData, create_engine, func, select
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session
 
 from pulso_core.db import Base
-from pulso_core.models import CollectorRun, Listing, ListingSnapshot, RawPayload, ShippingOption
+from pulso_core.models import (
+    CollectorRun,
+    Listing,
+    ListingSnapshot,
+    RawPayload,
+    ShippingOption,
+    VariantSnapshot,
+)
 from pulso_sources.framework import append_observation, effective_observation
 
 AT = datetime(2026, 10, 22, tzinfo=UTC)
@@ -84,15 +91,55 @@ def offline_session() -> Iterator[Session]:
     metadata = MetaData()
     for table in Base.metadata.tables.values():
         table.to_metadata(metadata)
-    snapshots = metadata.tables["listing_snapshots"]
-    snapshots.c.id.type = Integer()
     engine = create_engine("sqlite://")
     try:
-        snapshots.create(engine)
+        for name in ("listing_snapshots", "variant_snapshots", "shipping_options"):
+            table = metadata.tables[name]
+            table.c.id.type = Integer()
+            table.create(engine)
         with Session(engine) as session:
             yield session
     finally:
         engine.dispose()
+
+
+def test_one_capture_keeps_distinct_variants_and_warehouses_once(offline_session: Session) -> None:
+    session = offline_session
+    listing = observation()
+    assert append_observation(session, listing)
+    assert not append_observation(session, listing)
+    for variant in (1, 2):
+        row = VariantSnapshot(
+            variant_id=variant,
+            raw_payload_id=1,
+            parser_version="1",
+            captured_at=AT,
+            observed_for=AT.date(),
+            currency="USD",
+            values_hash=str(variant) * 64,
+            price_minor=100 * variant,
+        )
+        assert append_observation(session, row)
+        assert not append_observation(session, row)
+    for origin in ("US", "CN"):
+        quote = ShippingOption(
+            listing_id=1,
+            variant_id=1,
+            origin_country=origin,
+            destination_country="US",
+            quantity=1,
+            method="standard",
+            raw_payload_id=1,
+            parser_version="1",
+            captured_at=AT,
+            observed_for=AT.date(),
+            cost_minor=100,
+            currency="USD",
+        )
+        assert append_observation(session, quote)
+        assert not append_observation(session, quote)
+    for model, expected in ((ListingSnapshot, 1), (VariantSnapshot, 2), (ShippingOption, 2)):
+        assert session.scalar(select(func.count()).select_from(model)) == expected
 
 
 def test_replay_and_parser_order_execute_offline(offline_session: Session) -> None:
