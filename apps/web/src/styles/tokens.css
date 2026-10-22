@@ -1,0 +1,116 @@
+/*
+ * Pulso design tokens: primitive → semantic → component (vault Design/Color & Tokens).
+ * Components use semantic and component tokens only. Dark is the default theme (:root, .dark);
+ * next-themes puts `.light` on <html> for the light theme. src/styles/contrast.test.ts checks every
+ * text and UI pair below against WCAG AA in both themes.
+ */
+
+/* ── Layer 1: primitives (never used in components) ─────────────────── */
+:root {
+  --gray-0: #ffffff; --gray-25: #f6f7f9; --gray-50: #f1f3f5; --gray-100: #e9ecef;
+  --gray-150: #e1e4e8; --gray-200: #d3d8de; --gray-300: #b6bcc5; --gray-350: #a2a9b3;
+  --gray-400: #878f9b; --gray-500: #626974; --gray-600: #4d545e; --gray-700: #363c45;
+  --gray-750: #2a2f36; --gray-800: #1f2328; --gray-850: #181b1f; --gray-900: #121417;
+  --gray-925: #0e1116; --gray-950: #0a0b0d; --gray-1000: #060708;
+  --green-200: #b4f8d2; --green-300: #7af0b0; --green-400: #2ee68a; --green-500: #16c96f;
+  --green-600: #09934f; --green-700: #077541; --green-800: #075f36; --green-950: #03170d;
+  --red-300: #ff9c9c; --red-400: #ff6b6e; --red-500: #f04449; --red-600: #d1293a;
+  --red-700: #b21f2e; --red-950: #2a0a0e;
+  --amber-300: #ffd27a; --amber-400: #f7b841; --amber-500: #e09a12; --amber-700: #935600; --amber-950: #261803;
+  --blue-400: #6fa8ff; --blue-700: #2156c9; --violet-400: #ae9bff; --violet-700: #6446d8;
+  --viz-blue-d: #3987e5; --viz-orange-d: #d95926; --viz-aqua-d: #199e70; --viz-yellow-d: #c98500; --viz-magenta-d: #d55181;
+  --viz-blue-l: #2a78d6; --viz-orange-l: #eb6834; --viz-aqua-l: #1baf7a; --viz-yellow-l: #eda100; --viz-magenta-l: #e87ba4;
+  --radius: 0.5rem;
+}
+
+/* ── Layer 2: semantic — DARK (default) ──────────────────────────────── */
+:root, .dark {
+  color-scheme: dark;
+  --background: var(--gray-950);   --foreground: var(--gray-100);
+  --sidebar: var(--gray-1000);     --sidebar-foreground: var(--gray-350);
+  --card: var(--gray-900);         --card-foreground: var(--gray-100);
+  --popover: var(--gray-850);      --popover-foreground: var(--gray-100);
+  --primary: var(--gray-100);      --primary-foreground: var(--gray-950);
+  --secondary: var(--gray-850);    --secondary-foreground: var(--gray-100);
+  --muted: var(--gray-900);        --muted-foreground: var(--gray-350);
+  --subtle-foreground: var(--gray-400);
+  --accent: rgb(233 236 239 / 0.06); --accent-foreground: var(--gray-100);
+  --selected: rgb(46 230 138 / 0.10);
+  --border: var(--gray-750); --border-subtle: var(--gray-800); --border-strong: var(--gray-700);
+  --input: var(--gray-500);  --ring: var(--green-400);
+  --brand: var(--green-400); --brand-foreground: var(--green-950);
+  --positive: var(--green-400); --negative: var(--red-400); --warning: var(--amber-400);
+  --info: var(--blue-400);      --model: var(--violet-400);
+  --destructive: var(--red-600); --destructive-foreground: var(--gray-0);
+  --overlay: rgb(0 0 0 / 0.60);
+  --skeleton: var(--gray-850); --skeleton-highlight: var(--gray-800);
+  --chart-grid: var(--gray-800); --chart-axis: var(--gray-400); --chart-crosshair: var(--gray-500);
+  --gap-hatch: rgb(233 236 239 / 0.06);
+  --series-1: var(--viz-blue-d); --series-2: var(--viz-orange-d); --series-3: var(--viz-aqua-d);
+  --series-4: var(--viz-yellow-d); --series-5: var(--viz-magenta-d);
+  --shadow-popover: 0 8px 24px -4px rgb(0 0 0 / 0.55), 0 2px 6px rgb(0 0 0 / 0.35);
+  --shadow-dialog: 0 24px 64px -12px rgb(0 0 0 / 0.65);
+  --highlight-top: inset 0 1px 0 rgb(255 255 255 / 0.04);
+  --card-shadow: var(--highlight-top);
+}
+
+/* ── Layer 2: semantic — LIGHT ───────────────────────────────────────── */
+.light {
+  color-scheme: light;
+  --background: var(--gray-0);     --foreground: var(--gray-925);
+  --sidebar: var(--gray-25);       --sidebar-foreground: var(--gray-600);
+  --card: var(--gray-0);           --card-foreground: var(--gray-925);
+  --popover: var(--gray-0);        --popover-foreground: var(--gray-925);
+  --primary: var(--gray-925);      --primary-foreground: var(--gray-0);
+  --secondary: var(--gray-50);     --secondary-foreground: var(--gray-925);
+  --muted: var(--gray-50);         --muted-foreground: var(--gray-600);
+  --subtle-foreground: var(--gray-500);
+  --accent: rgb(14 17 22 / 0.05);  --accent-foreground: var(--gray-925);
+  --selected: rgb(9 147 79 / 0.08);
+  --border: var(--gray-150); --border-subtle: var(--gray-100); --border-strong: var(--gray-200);
+  --input: var(--gray-400);  --ring: var(--green-600);
+  --brand: var(--green-600); --brand-foreground: var(--green-950);
+  --positive: var(--green-700); --negative: var(--red-700); --warning: var(--amber-700);
+  --info: var(--blue-700);      --model: var(--violet-700);
+  --destructive: var(--red-700); --destructive-foreground: var(--gray-0);
+  --overlay: rgb(14 17 22 / 0.35);
+  --skeleton: var(--gray-100); --skeleton-highlight: var(--gray-50);
+  --chart-grid: var(--gray-100); --chart-axis: var(--gray-500); --chart-crosshair: var(--gray-400);
+  --gap-hatch: rgb(14 17 22 / 0.06);
+  --series-1: var(--viz-blue-l); --series-2: var(--viz-orange-l); --series-3: var(--viz-aqua-l);
+  --series-4: var(--viz-yellow-l); --series-5: var(--viz-magenta-l);
+  --shadow-popover: 0 12px 32px -8px rgb(16 24 40 / 0.18), 0 2px 6px rgb(16 24 40 / 0.06);
+  --shadow-dialog: 0 24px 64px -12px rgb(16 24 40 / 0.25);
+  --highlight-top: none;
+  --card-shadow: 0 1px 2px rgb(16 24 40 / 0.05), 0 1px 3px rgb(16 24 40 / 0.06);
+}
+
+/* Derived tints and shadcn names, shared by both themes */
+:root, .dark, .light {
+  --brand-muted:    color-mix(in oklab, var(--brand) 12%, transparent);
+  --positive-muted: color-mix(in oklab, var(--positive) 12%, transparent);
+  --negative-muted: color-mix(in oklab, var(--negative) 12%, transparent);
+  --warning-muted:  color-mix(in oklab, var(--warning) 12%, transparent);
+  --model-muted:    color-mix(in oklab, var(--model) 12%, transparent);
+  --table-row-hover:    color-mix(in oklab, var(--foreground) 4%, var(--card));   /* opaque for sticky cells */
+  --table-row-selected: color-mix(in oklab, var(--brand) 10%, var(--card));
+  --chart-1: var(--series-1); --chart-2: var(--series-2); --chart-3: var(--series-3);
+  --chart-4: var(--series-4); --chart-5: var(--series-5);
+  --sidebar-primary: var(--brand); --sidebar-primary-foreground: var(--brand-foreground);
+  --sidebar-accent: var(--accent); --sidebar-accent-foreground: var(--foreground);
+  --sidebar-border: var(--border-subtle); --sidebar-ring: var(--ring);
+}
+
+/* ── Layer 3: component tokens ───────────────────────────────────────── */
+:root {
+  --button-h-sm: 1.75rem; --button-h-md: 2rem; --button-h-lg: 2.5rem;
+  --input-h: 2rem; --nav-item-h: 2rem;
+  --table-row-h: 2rem; --table-row-h-compact: 1.75rem; --table-row-h-comfortable: 2.5rem;
+  --card-padding: 1.5rem; --panel-padding: 1rem;
+  --stat-value-size: 1.75rem; --sparkline-stroke: 1.5px;
+  /* Motion duration mirror of src/lib/motion.ts (vault Design/Motion System) */
+  --duration-fast: 120ms; --duration-base: 200ms; --duration-slow: 280ms; --duration-slower: 400ms;
+}
+.dark, :root { --button-brand-bg: var(--green-400); --button-brand-fg: var(--green-950); }
+.light       { --button-brand-bg: var(--green-500); --button-brand-fg: var(--green-950); }
+@media (pointer: coarse) { :root { --input-h: 2.5rem; --nav-item-h: 2.75rem; --table-row-h: 2.75rem; } }

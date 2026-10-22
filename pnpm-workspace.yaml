@@ -6,3 +6,5 @@ packages:
 allowBuilds:
   esbuild: true
   sharp: true
+  # Optional native-binary postinstall of eslint-config-next's resolver; the prebuilt optional dep covers Windows and Linux.
+  unrs-resolver: false
