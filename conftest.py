@@ -19,8 +19,9 @@ def db_engine() -> Iterator[Engine]:
     url = os.getenv("TEST_DATABASE_URL")
     if not url:
         pytest.skip("TEST_DATABASE_URL unset; Postgres integration unverified locally (no Docker)")
-    if not (make_url(url).database or "").startswith("pulso_test"):
-        pytest.fail("TEST_DATABASE_URL must name a dedicated pulso_test* database")
+    database = make_url(url).database or ""
+    if database != "pulso_ci" and not database.startswith("pulso_test"):
+        pytest.fail("TEST_DATABASE_URL must name pulso_ci or a dedicated pulso_test* database")
     schema = "test_" + uuid4().hex
     engine = create_engine(url, connect_args={"connect_timeout": 2}, hide_parameters=True)
     try:
