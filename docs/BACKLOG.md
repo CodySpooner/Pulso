@@ -104,7 +104,7 @@ This file holds deferred ideas and research extras that are **not** in the §11 
 
 | Deferred work | Evidence | When | Notes |
 |---|---|---|---|
-| P1-11b: admin import template, preview and commit endpoints | DEC-068; DH-1; DEC-064 | Next, before the P1-12 CSV upload | Ready on local branch `CodySpooner/p1-11b-admin-imports` (one commit on P1-11); review, rebase and regenerate the API client |
+| P1-11b: admin import template, preview and commit endpoints | DEC-068; DH-1; DEC-064 | Next, before the P1-12 CSV upload | Ready on local branch `CodySpooner/p1-11b-admin-imports` (one commit on P1-11); review, rebase and regenerate the API client. Still open from P1-22's API notes: reject oversized uploads before buffering (the body is read in full before `decode_upload` checks 20 MiB), and the invalid-row download with the Phase 4 export neutraliser |
 | Persist quota usage so `quota_used`/`quota_limit` can be filled (CJ points, SerpApi searches, Shopify rate) | DEC-068; Data Health extras row | With P1-08/P1-09 quota reservation | Needs a migration owner; the API returns null until then and the UI shows "no source yet" |
 | Import preview insert/update/skip counts through `preview_csv` | DEC-064, DEC-068 | When P1-07–09 register read-only classifiers | P1-11b preview is validation-only (valid/invalid/skipped) |
 | Per-upload and saved column mappings in the import API | DEC-064, DEC-068 | With the CSV wizard | FastAPI cannot take a JSON query param; use multipart (`python-multipart`) or a JSON field then |
