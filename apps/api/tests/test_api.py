@@ -11,6 +11,7 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from pulso_api.__main__ import main
 from pulso_api.auth import Principal, current_principal
 from pulso_api.dependencies import get_db
 from pulso_api.main import create_app
@@ -27,6 +28,26 @@ def test_health_without_settings_or_services() -> None:
     assert response.status_code == 200
     assert response.json() == {"status": "ok"}
     assert response.headers["X-Request-ID"] == "fixture-request"
+
+
+@pytest.mark.parametrize("port", [None, "9080"])
+def test_api_bind_address_and_port(
+    monkeypatch: pytest.MonkeyPatch, settings: Settings, port: str | None
+) -> None:
+    monkeypatch.delenv("PORT", raising=False)
+    if port is not None:
+        monkeypatch.setenv("PORT", port)
+    with (
+        patch("pulso_api.__main__.get_settings", return_value=settings),
+        patch("pulso_api.__main__.uvicorn.run") as run,
+    ):
+        main()
+    run.assert_called_once_with(
+        "pulso_api.main:app",
+        host="::",
+        port=int(port) if port is not None else settings.api_port,
+        access_log=False,
+    )
 
 
 def test_api_engines_have_statement_timeout() -> None:

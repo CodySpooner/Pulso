@@ -8,7 +8,7 @@ from pulso_core.settings import get_settings
 def main() -> None:
     uvicorn.run(
         "pulso_api.main:app",
-        host="0.0.0.0",
+        host="::",
         port=int(os.getenv("PORT", str(get_settings().api_port))),
         access_log=False,
     )
