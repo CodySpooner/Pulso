@@ -92,3 +92,10 @@ This file holds deferred ideas and research extras that are **not** in the §11 
 | Deferred work | Evidence | When | Notes |
 |---|---|---|---|
 | P1-03b: FW-4 consecutive 403/429/430 block rule, exactly one disable source_event, full Retry-After deadline persistence and at most 600 seconds in-process waiting | P1-03 task's explicit ~400-line split; DEC-063 | Before any live adapter enablement | Core lifecycle/replay/guards/settings delivered; add response Retry-After metadata, five-block and cross-run deadline tests. Current runner respects an already-persisted future deadline by immediately ending partial; it does not yet persist server deadlines or auto-disable. Keep FW-4/R-08 unchecked. |
+
+## P1-05 import integration handoff (2026-10-22)
+
+| Deferred work | Evidence | When | Notes |
+|---|---|---|---|
+| Register real source import adapters and read-only preview classifiers | DEC-064; CSV-1/CSV-2 | P1-07/P1-08/P1-09 | Factories consume `ImportData` and implement the existing framework Adapter; no source mapping or invented insert/update predictions in the service. CSV and JSON service paths both complete; no P1-05b split. |
+| Admin import/template routes, Celery transport, saved column mappings and invalid-row download | DEC-064; CSV wizard | P1-11/P1-12 | Call `template_csv`, `parse_csv`/`preview_csv`, `commit_import`, `replay_import`; endpoint auth and frontend stay with those lanes. Source enable flags stay off; offline imports work while live collection is disabled. |

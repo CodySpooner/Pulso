@@ -1,0 +1,195 @@
+"""Offline imports. Functions that commit/replay own a dedicated Session's transactions."""
+
+import hashlib
+import json
+from collections.abc import Callable, Mapping
+from dataclasses import asdict, dataclass
+from datetime import UTC, date, datetime
+from typing import Any, Literal
+
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from pulso_core.models import CollectorRun, RawPayload, Source
+from pulso_core.settings import Settings
+from pulso_sources import storage
+from pulso_sources.framework import Adapter, Request, Target, enqueue_run, execute_run
+from pulso_sources.imports.csv import ParsedCSV, Preview, Row, parse_csv, preview_csv
+from pulso_sources.imports.csv import decode_upload as _decode_upload
+from pulso_sources.imports.templates import TEMPLATES, template_csv
+
+
+@dataclass(frozen=True)
+class ImportData:
+    """Factories consume validated CSV rows in parse(); JSON parse() receives original bytes.
+
+    Adapters own row-to-observation mapping: use date/observed_for from each CSV row,
+    falling back to payload.captured_at.date(); JSON uses this context's observed_for.
+    Always copy payload.id/captured_at and the runner's parser_version into observations.
+    """
+
+    mode: Literal["csv", "json"]
+    csv: ParsedCSV | None
+    observed_for: date | None
+
+
+# Source modules register factories at startup, e.g. ADAPTERS["cj"] = make_import_adapter.
+ADAPTERS: dict[str, Callable[[ImportData], Adapter[Any]]] = {}
+
+
+def _prepare(
+    source_key: str,
+    body: bytes,
+    mode: Literal["csv", "json"],
+    mapping: Mapping[str, str] | None,
+    observed_for: date | None,
+) -> ImportData:
+    if mode == "csv":
+        return ImportData(mode, parse_csv(source_key, body, mapping=mapping), None)
+    if mode != "json" or source_key != "shopify_stores" or type(observed_for) is not date:
+        raise ValueError("Shopify JSON requires the owner's observed_for date")
+
+    def invalid_constant(value: str) -> None:
+        raise ValueError("JSON must not contain non-finite numbers")
+
+    json.loads(_decode_upload(body), parse_constant=invalid_constant)
+    return ImportData(mode, None, observed_for)
+
+
+def _execute(
+    session: Session,
+    run: CollectorRun,
+    payload: RawPayload,
+    data: ImportData,
+    adapter: Adapter[Any],
+    settings: Settings,
+) -> CollectorRun:
+    run.params = {
+        "raw_payload_id": payload.id,
+        "parser_version": adapter.parser_version,
+        "errors": [asdict(error) for error in data.csv.errors] if data.csv else [],
+        "skipped": data.csv.skipped if data.csv else 0,
+    }
+    session.commit()
+    return execute_run(
+        session,
+        run.id,
+        adapter,
+        [Target("import", str(payload.id), [Request(mode=data.mode, raw_payload_id=payload.id)])],
+        settings=settings,
+    )
+
+
+def _failed(session: Session, run: CollectorRun, exc: Exception) -> CollectorRun:
+    session.rollback()
+    run.status, run.finished_at = "failed", datetime.now(UTC)
+    run.error_code = run.error_message = type(exc).__name__
+    session.commit()
+    return run
+
+
+def commit_import(
+    session: Session,
+    source_key: str,
+    body: bytes,
+    *,
+    settings: Settings,
+    mode: Literal["csv", "json"] = "csv",
+    mapping: Mapping[str, str] | None = None,
+    observed_for: date | None = None,
+) -> CollectorRun:
+    """Synchronous worker entry point; repeats skip before parsing, adapter lookup or S3.
+
+    Pass mapping from the preview; otherwise use sources.config.csv_mapping. Returns
+    terminal run evidence (including sanitized failures), with row errors in params.
+    """
+    source = session.scalars(select(Source).where(Source.key == source_key)).one()
+    run = enqueue_run(session, source_id=source.id, trigger="csv", publish=lambda _: None)
+    try:
+        version = TEMPLATES[source_key].template_version if mode == "csv" else "shopify-json-v1"
+        if mode not in {"csv", "json"} or (mode == "json" and source_key != "shopify_stores"):
+            raise ValueError("Unsupported import mode/source")
+        # Serialize identity checks through capture commit, including concurrent uploads.
+        session.execute(select(Source.id).where(Source.id == source.id).with_for_update())
+        payload = session.scalar(
+            select(RawPayload).where(
+                RawPayload.source_id == source.id,
+                RawPayload.sha256 == hashlib.sha256(body).hexdigest(),
+                RawPayload.template_version == version,
+            )
+        )
+        if payload is not None:
+            run.status, run.finished_at = "skipped", datetime.now(UTC)
+            run.params = {"raw_payload_id": payload.id, "original_run_id": payload.run_id}
+            session.commit()
+            return run
+        mapping = mapping if mapping is not None else source.config.get("csv_mapping", {})
+        data = _prepare(source_key, body, mode, mapping, observed_for)
+        adapter = ADAPTERS[source_key](data)
+        payload = storage.store_capture(
+            session,
+            source_id=source.id,
+            source_key=source_key,
+            run_id=run.id,
+            body=body,
+            content_type="text/csv" if mode == "csv" else "application/json",
+            status_code=None,
+            etag=None,
+            captured_at=datetime.now(UTC),
+            request={
+                "mode": mode,
+                "mapping": dict(mapping or {}),
+                "observed_for": observed_for.isoformat() if observed_for else None,
+                "parser_version": adapter.parser_version,
+            },
+        )
+        payload.template_version = version
+        session.commit()
+        return _execute(session, run, payload, data, adapter, settings)
+    except Exception as exc:
+        return _failed(session, run, exc)
+
+
+def replay_import(session: Session, raw_payload_id: int, *, settings: Settings) -> CollectorRun:
+    """Explicit parser correction; preserve the original bytes, capture time and mapping."""
+    payload = session.get_one(RawPayload, raw_payload_id)
+    source = session.get_one(Source, payload.source_id)
+    run = enqueue_run(session, source_id=source.id, trigger="csv", publish=lambda _: None)
+    try:
+        if payload.template_version not in {
+            TEMPLATES[source.key].template_version,
+            "shopify-json-v1",
+        }:
+            raise ValueError("Capture is not a supported import")
+        metadata = payload.request
+        observed_for = (
+            date.fromisoformat(metadata["observed_for"]) if metadata.get("observed_for") else None
+        )
+        data = _prepare(
+            source.key,
+            storage.read_capture(payload),
+            metadata["mode"],
+            metadata.get("mapping"),
+            observed_for,
+        )
+        adapter = ADAPTERS[source.key](data)
+        if adapter.parser_version == metadata["parser_version"]:
+            raise ValueError("Parser correction requires a new parser_version")
+        return _execute(session, run, payload, data, adapter, settings)
+    except Exception as exc:
+        return _failed(session, run, exc)
+
+
+__all__ = [
+    "ADAPTERS",
+    "ImportData",
+    "ParsedCSV",
+    "Preview",
+    "Row",
+    "TEMPLATES",
+    "commit_import",
+    "parse_csv",
+    "preview_csv",
+    "replay_import",
+    "template_csv",
+]
