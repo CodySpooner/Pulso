@@ -65,9 +65,9 @@ New entries go at the bottom with the next number. Never renumber or delete; mar
 | DEC-047 | AI budgets and AI-derived facts | proposed — pending Phase 0 approval |
 | DEC-048 | Unplaced §6 items and phase-end listing | proposed — pending Phase 0 approval |
 | DEC-049 | Continuous build: phase gates don't stop the build; hourly lead automation in Orca | approved by owner 2026-10-22 |
-| DEC-050 | Web foundation: pinned stack, Cache Components off, worktree-aware dev script | proposed (P0-WEB) |
-| DEC-051 | Web auth gate: proxy + layout check, shared allowlist, dev-only E2E bypass | proposed (P0-WEB) |
-| DEC-052 | App shell defaults: visible unbuilt routes, cookie-remembered rail, palette and motion details | proposed (P0-WEB) |
+| DEC-053 | Web foundation: pinned stack, Cache Components off, worktree-aware dev script | proposed (P0-WEB) |
+| DEC-054 | Web auth gate: proxy + layout check, shared allowlist, dev-only E2E bypass | proposed (P0-WEB) |
+| DEC-055 | App shell defaults: visible unbuilt routes, cookie-remembered rail, palette and motion details | proposed (P0-WEB) |
 
 Superseded review defaults, not given entries: default #0 (move the repo) is done, see DEC-005. Default #2 (no local collection at all) is replaced by DEC-002. Default #15 (CSS-only motion) is replaced by DEC-007, and its remaining rules are in DEC-025. Review question D1 (Railway Pro from Phase 1) is answered by DEC-001, D2 by DEC-003, D3 by DEC-004, D5 by DEC-008 and D8 by DEC-006.
 
@@ -684,7 +684,7 @@ Superseded review defaults, not given entries: default #0 (move the repo) is don
 - **Alternatives:** stop at every phase gate (SPEC §0 as written) — the owner asked for the build to keep going; one long-lived coordinator session — it stops when that session hits a usage limit.
 - **Why:** The owner wants Pulso built and improved continuously. A scheduled lead survives usage limits and session restarts: a failed run is simply retried the next hour.
 
-### DEC-050 · Web foundation: pinned stack, Cache Components off, worktree-aware dev script
+### DEC-053 · Web foundation: pinned stack, Cache Components off, worktree-aware dev script
 **2026-10-22 · proposed (P0-WEB)** · WEB-1, WEB-3; details DEC-018, DEC-024, DEC-025
 - **Decision:**
   - **Versions (exact pins):** Next 16.4.2 with React 19.3.1, Tailwind 4.3.3 through the `@tailwindcss/turbopack` loader (create-next-app's default, no PostCSS), `@clerk/nextjs` 7.9.18, `motion` 14.4.0, `cmdk` 1.1.1, `radix-ui` 1.8.1, `next-themes` 0.4.6, `lucide-react` 1.61.0, TypeScript 5.9.3, ESLint 10.13.0, Vitest 5.0.5, Playwright 1.64.1.
@@ -698,7 +698,7 @@ Superseded review defaults, not given entries: default #0 (move the repo) is don
 - **Alternatives:** keep Cache Components and wrap every session read in `<Suspense>`; a runtime route-handler proxy instead of rewrites; a per-worktree `apps/web/.env.local` written by the worktree script (infra lane's file).
 - **Why:** Boring, documented defaults; exact pins against front-end churn (Phase 0 risk table); one env source per worktree.
 
-### DEC-051 · Web auth gate: proxy + layout check, shared allowlist, dev-only E2E bypass
+### DEC-054 · Web auth gate: proxy + layout check, shared allowlist, dev-only E2E bypass
 **2026-10-22 · proposed (P0-WEB)** · WEB-2; details DEC-020
 - **Decision:**
   - **Gate:** `src/proxy.ts` (Next 16 renamed `middleware` to `proxy`) runs `clerkMiddleware` on every page request: signed out → `/sign-in`; signed in but not on `PLATFORM_ADMIN_USER_IDS` → `/not-authorized`. The `(app)` layout runs the same check, because Clerk 7 recommends resource-based checks and deprecates `createRouteMatcher`. The proxy copy also covers client-side navigations, which don't re-run the layout. Public: `/sign-in/*`, `/not-authorized`, static files, the manifest and icons.
@@ -709,7 +709,7 @@ Superseded review defaults, not given entries: default #0 (move the repo) is don
 - **Alternatives:** a middleware-only gate with `createRouteMatcher` (deprecated); a layout-only gate (misses client navigations); Clerk testing tokens now (they need real keys: CI-4); keyless mode for tests (creates a Clerk app).
 - **Why:** Defense in depth, with no switch that can disable auth in production.
 
-### DEC-052 · App shell defaults: visible unbuilt routes, cookie-remembered rail, palette and motion details
+### DEC-055 · App shell defaults: visible unbuilt routes, cookie-remembered rail, palette and motion details
 **2026-10-22 · proposed (P0-WEB)** · WEB-4, WEB-5, WEB-6; vault Design/App Shell & Navigation, Motion System
 - **Decision:**
   - **Unbuilt routes are visible:** every SPEC §10 route (plus `/methodology`) is in the sidebar with a muted phase chip (`P2`) and opens a "{Page} arrives in Phase N" state. This follows the P0-WEB brief and the Phase 0 note, and supersedes the App Shell note's "hidden behind feature flags". One nav config (`src/lib/nav.ts`), with `CURRENT_PHASE` as the flag, feeds the sidebar, sheet, tab bar, breadcrumbs, palette and placeholder pages. A phase that builds a route adds its own folder, which wins over the catch-all.
