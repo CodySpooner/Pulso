@@ -86,3 +86,9 @@ This file holds deferred ideas and research extras that are **not** in the §11 
 | Deferred work | Evidence | When | Notes |
 |---|---|---|---|
 | Coverage view: mark `coverage`/`runs`/`gaps` `AS NOT MATERIALIZED` (or replace it with a `from_day` SQL function that filters `captured_at` ranges) | P1-16 schema review finding 5; DEC-060 | Once `collector_run_targets` passes ~1M rows | Verify with EXPLAIN; DH-1 always passes a day bound. Current materialized CTEs aggregate all history before the outer day filter |
+
+## P1-03 framework follow-up (2026-10-22)
+
+| Deferred work | Evidence | When | Notes |
+|---|---|---|---|
+| P1-03b: FW-4 consecutive 403/429/430 block rule, exactly one disable source_event, full Retry-After deadline persistence and at most 600 seconds in-process waiting | P1-03 task's explicit ~400-line split; DEC-063 | Before any live adapter enablement | Core lifecycle/replay/guards/settings delivered; add response Retry-After metadata, five-block and cross-run deadline tests. Current runner respects an already-persisted future deadline by immediately ending partial; it does not yet persist server deadlines or auto-disable. Keep FW-4/R-08 unchecked. |
