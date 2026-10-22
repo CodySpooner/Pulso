@@ -9,9 +9,9 @@
     "infra:up": "docker compose --env-file .env -f infra/docker-compose.yml up -d",
     "infra:down": "docker compose --env-file .env -f infra/docker-compose.yml down",
     "dev:web": "pnpm --filter web dev",
-    "dev:api": "echo dev:api is filled in by the API lane && exit 1",
-    "db:migrate": "echo db:migrate is filled in by the data-model lane && exit 1",
-    "gen:api": "echo gen:api is filled in by the API and web lanes && exit 1",
+    "dev:api": "uv run python -c \"import uvicorn; from pulso_core.settings import get_settings; uvicorn.run('pulso_api.main:app', host='127.0.0.1', port=get_settings().api_port, reload=True, reload_dirs=['apps/api/src', 'packages/core/src'])\"",
+    "db:migrate": "uv run alembic -c alembic.ini upgrade head",
+    "gen:api": "uv run python -m pulso_api.openapi && pnpm --dir apps/web exec openapi-typescript ../api/openapi.json --output src/lib/api/schema.d.ts",
     "lint": "uv run ruff check . && uv run ruff format --check . && pnpm --filter web lint",
     "typecheck": "uv run mypy && pnpm --filter web typecheck",
     "test": "uv run pytest && pnpm --filter web test"
