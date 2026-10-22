@@ -36,6 +36,7 @@ export function AppShell({ children, defaultCollapsed }: { children: React.React
   const [navOpen, setNavOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(defaultCollapsed);
   const paletteReturnFocus = useRef<HTMLElement | null>(null);
+  const navReturnFocus = useRef<HTMLElement | null>(null);
 
   const togglePalette = useCallback((next?: boolean) => {
     setPaletteOpen((open) => {
@@ -71,7 +72,10 @@ export function AppShell({ children, defaultCollapsed }: { children: React.React
 
   const shell: Shell = {
     openPalette: () => togglePalette(true),
-    openNav: () => setNavOpen(true),
+    openNav: () => {
+      navReturnFocus.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+      setNavOpen(true);
+    },
     collapsed,
     toggleCollapsed,
   };
@@ -94,7 +98,7 @@ export function AppShell({ children, defaultCollapsed }: { children: React.React
         </div>
       </div>
       <BottomBar />
-      <MobileNav open={navOpen} onOpenChange={setNavOpen} />
+      <MobileNav open={navOpen} onOpenChange={setNavOpen} returnFocusRef={navReturnFocus} />
       <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} returnFocusRef={paletteReturnFocus} />
     </ShellContext>
   );
