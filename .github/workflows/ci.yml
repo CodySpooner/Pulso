@@ -1,0 +1,193 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DATABASE_URL: postgresql+psycopg://pulso:ci@localhost:5432/pulso_ci
+  TEST_DATABASE_URL: postgresql+psycopg://pulso:ci@localhost:5432/pulso_ci
+  REDIS_URL: redis://localhost:6379/0
+  S3_ACCESS_KEY_ID: ci-fixture
+  S3_SECRET_ACCESS_KEY: ci-fixture
+  PULSO_SCHEDULER: "off"
+  COLLECTORS_LIVE: "off"
+  NEXT_TELEMETRY_DISABLED: "1"
+
+jobs:
+  python:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:0.8.7-pg18-trixie
+        env:
+          POSTGRES_USER: pulso
+          POSTGRES_PASSWORD: ci
+          POSTGRES_DB: pulso_ci
+        ports: [5432:5432]
+        options: >-
+          --health-cmd "pg_isready -U pulso -d pulso_ci"
+          --health-interval 5s --health-timeout 5s --health-retries 12
+      redis:
+        image: redis:8.8.3-alpine
+        ports: [6379:6379]
+        options: --health-cmd "redis-cli ping" --health-interval 5s --health-retries 12
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6.8.0
+        with:
+          version: "0.11.23"
+          enable-cache: true
+      - run: uv sync --locked --all-packages
+      - run: uv run ruff check .
+      - run: uv run ruff format --check .
+      - run: uv run mypy
+      - name: Prepare database when the model lane exists
+        if: hashFiles('alembic.ini') != ''
+        run: uv run alembic -c alembic.ini upgrade head
+      - run: uv run pytest
+
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - name: Web lane not merged yet
+        if: hashFiles('apps/web/package.json') == ''
+        run: echo 'Skipping web checks until apps/web/package.json exists.'
+      - uses: pnpm/action-setup@9fd676a19091d4595eefd76e4bd31c97133911f1 # v4.2.0
+        if: hashFiles('apps/web/package.json') != ''
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        if: hashFiles('apps/web/package.json') != ''
+        with:
+          node-version: "24"
+          cache: pnpm
+      - if: hashFiles('apps/web/package.json') != ''
+        run: pnpm install --frozen-lockfile
+      - if: hashFiles('apps/web/package.json') != ''
+        run: pnpm --dir apps/web lint
+      - if: hashFiles('apps/web/package.json') != ''
+        run: pnpm --dir apps/web typecheck
+      - if: hashFiles('apps/web/package.json') != ''
+        run: pnpm --dir apps/web test
+      - if: hashFiles('apps/web/package.json') != ''
+        run: pnpm --dir apps/web build
+
+  contracts:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:0.8.7-pg18-trixie
+        env:
+          POSTGRES_USER: pulso
+          POSTGRES_PASSWORD: ci
+          POSTGRES_DB: pulso_ci
+        ports: [5432:5432]
+        options: >-
+          --health-cmd "pg_isready -U pulso -d pulso_ci"
+          --health-interval 5s --health-timeout 5s --health-retries 12
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6.8.0
+        with:
+          version: "0.11.23"
+          enable-cache: true
+      - run: uv sync --locked --all-packages
+      - name: Single Alembic head and migration round trip
+        if: hashFiles('alembic.ini') != ''
+        run: |
+          uv run python - <<'PY'
+          from alembic.config import Config
+          from alembic.script import ScriptDirectory
+          heads = ScriptDirectory.from_config(Config('alembic.ini')).get_heads()
+          assert len(heads) == 1, f'Expected one Alembic head, got {heads}'
+          PY
+          uv run alembic -c alembic.ini upgrade head
+          uv run alembic -c alembic.ini downgrade base
+          uv run alembic -c alembic.ini upgrade head
+          uv run alembic -c alembic.ini check
+      - name: Model lane not merged yet
+        if: hashFiles('alembic.ini') == ''
+        run: echo 'Skipping migration contracts until alembic.ini exists.'
+      - name: Export OpenAPI and detect schema drift
+        if: hashFiles('apps/api/src/pulso_api/openapi.py') != ''
+        run: |
+          uv run python -m pulso_api.openapi
+          git ls-files --error-unmatch apps/api/openapi.json
+          git diff --exit-code -- apps/api/openapi.json
+      - uses: pnpm/action-setup@9fd676a19091d4595eefd76e4bd31c97133911f1 # v4.2.0
+        if: hashFiles('apps/web/package.json') != '' && hashFiles('apps/api/src/pulso_api/openapi.py') != ''
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        if: hashFiles('apps/web/package.json') != '' && hashFiles('apps/api/src/pulso_api/openapi.py') != ''
+        with:
+          node-version: "24"
+          cache: pnpm
+      - name: Generate TypeScript client and detect drift
+        if: hashFiles('apps/web/package.json') != '' && hashFiles('apps/api/src/pulso_api/openapi.py') != ''
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm --dir apps/web exec openapi-typescript ../api/openapi.json --output src/lib/api/schema.d.ts
+          git ls-files --error-unmatch apps/web/src/lib/api/schema.d.ts
+          git diff --exit-code -- apps/web/src/lib/api/schema.d.ts
+      - name: API or web lane not merged yet
+        if: hashFiles('apps/web/package.json') == '' || hashFiles('apps/api/src/pulso_api/openapi.py') == ''
+        run: echo 'Skipping unavailable codegen targets until the API and web lanes land.'
+
+  images:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        image: [api, worker, web]
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - name: Build and inspect image when its lane exists
+        env:
+          IMAGE: ${{ matrix.image }}
+        run: |
+          case "$IMAGE" in
+            api) target=apps/api/src/pulso_api/__main__.py ;;
+            worker) target=apps/workers/src/pulso_workers/celery_app.py ;;
+            web) target=apps/web/package.json ;;
+          esac
+          if [ ! -f "$target" ]; then
+            echo "Skipping $IMAGE image until $target exists."
+            exit 0
+          fi
+          docker build -f "infra/docker/$IMAGE.Dockerfile" -t "pulso-$IMAGE:ci" .
+          test "$(docker inspect --format '{{.Config.User}}' "pulso-$IMAGE:ci")" != root
+          test -n "$(docker inspect --format '{{.Config.User}}' "pulso-$IMAGE:ci")"
+          case "$IMAGE" in
+            api)
+              docker run --rm pulso-api:ci python -c "import importlib.util as u; assert all(u.find_spec(m) is None for m in ('torch', 'lightgbm'))"
+              ;;
+            worker)
+              docker run --rm pulso-worker:ci python -c "from pulso_workers.celery_app import engine; assert engine is None"
+              ;;
+            web)
+              docker run --rm pulso-web:ci test -f apps/web/server.js
+              ;;
+          esac
+
+  tokens-only:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - name: Reject raw hex colours outside token files
+        run: |
+          status=0
+          git grep -nEi '#[0-9a-f]{3,8}\b' -- \
+            'apps/web/src/components/**' 'apps/web/components/**' \
+            ':!**/tokens.css' ':!**/globals.css' || status=$?
+          if [ "$status" -eq 0 ]; then
+            echo 'Use design tokens instead of raw hex colours in components.'
+            exit 1
+          fi
+          test "$status" -eq 1
