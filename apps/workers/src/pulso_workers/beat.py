@@ -1,17 +1,14 @@
 """Guarded Beat entry point; schedules and the DEC-002 lock arrive in Phase 1."""
 
-from pathlib import Path
-
 from pulso_core.settings import get_settings
+from pulso_core.worktree import is_linked_worktree
 
 
 def guard_scheduler(**kwargs: object) -> None:
     if not get_settings().pulso_scheduler:
         raise SystemExit("Beat requires PULSO_SCHEDULER=on on the collector host.")
-    for root in (Path.cwd().resolve(), Path(__file__).resolve().parent):
-        for path in (root, *root.parents):
-            if (path / ".git").is_file():
-                raise SystemExit("Beat is forbidden inside a linked git worktree.")
+    if is_linked_worktree(__file__):
+        raise SystemExit("Beat is forbidden inside a linked git worktree.")
 
 
 def main() -> None:

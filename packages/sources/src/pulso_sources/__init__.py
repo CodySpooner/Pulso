@@ -1,1 +1,1 @@
-"""Pulso source adapters, one per data source (Phase 1+)."""
+"""Pulso source adapters; shared APIs live in pulso_sources.framework and storage."""

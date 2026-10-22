@@ -74,3 +74,41 @@ def test_secrets_not_in_repr(monkeypatch: pytest.MonkeyPatch) -> None:
     text = repr(Settings())
     assert "s3-secret-value" not in text
     assert ":pw@" not in text
+
+
+def test_collector_defaults_and_honest_user_agent(monkeypatch: pytest.MonkeyPatch) -> None:
+    set_required(monkeypatch)
+    s = Settings()
+    assert (s.collector_block_threshold, s.collector_max_retries) == (5, 3)
+    assert (s.collect_soft_time_limit_seconds, s.collect_hard_time_limit_seconds) == (3600, 4500)
+    assert (s.shopify_requests_per_minute, s.shopify_js_panel_size) == (30, 10)
+    assert s.trends_monthly_search_limit == 250
+    with pytest.raises(ValueError, match="PULSO_BOT_CONTACT"):
+        _ = s.collector_user_agent
+    monkeypatch.setenv("PULSO_BOT_CONTACT", "https://example.test/bot")
+    monkeypatch.setenv("CJ_API_KEY", "fixture-cj-secret")
+    monkeypatch.setenv("SERPAPI_API_KEY", "fixture-serpapi-secret")
+    configured = Settings()
+    assert configured.collector_user_agent == "PulsoBot/1.0 (+https://example.test/bot)"
+    assert "fixture-cj-secret" not in repr(configured)
+    assert "fixture-serpapi-secret" not in repr(configured)
+
+
+@pytest.mark.parametrize(
+    "name,value",
+    [
+        ("SHOPIFY_REQUESTS_PER_MINUTE", "31"),
+        ("TRENDS_MONTHLY_SEARCH_LIMIT", "251"),
+        ("CJ_REQUESTS_PER_SECOND", "2"),
+        ("COLLECTOR_BLOCK_THRESHOLD", "0"),
+        ("COLLECTOR_RETRY_WAIT_CAP_SECONDS", "601"),
+        ("PULSO_BOT_CONTACT", "file:///bot"),
+    ],
+)
+def test_collector_limits_fail_closed(
+    monkeypatch: pytest.MonkeyPatch, name: str, value: str
+) -> None:
+    set_required(monkeypatch)
+    monkeypatch.setenv(name, value)
+    with pytest.raises(ValidationError):
+        Settings()
