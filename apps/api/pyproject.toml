@@ -3,7 +3,13 @@ name = "pulso-api"
 version = "0.0.0"
 description = "Pulso FastAPI app (filled in by the API lane)."
 requires-python = ">=3.14,<3.15"
-dependencies = ["pulso-core"]
+dependencies = [
+    "fastapi>=0.135,<1",
+    "pulso-core",
+    "pyjwt[crypto]>=2.15,<3",
+    "redis>=6.4,<6.5",
+    "uvicorn>=0.41,<1",
+]
 
 [build-system]
 requires = ["uv_build>=0.11,<0.14"]
