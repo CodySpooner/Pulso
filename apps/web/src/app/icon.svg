@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="Pulso">
+  <rect width="32" height="32" rx="8" fill="#0A0B0D"/>
+  <rect x="0.5" y="0.5" width="31" height="31" rx="7.5" fill="none" stroke="#FFFFFF" stroke-opacity="0.08"/>
+  <g fill="none" stroke="#2EE68A" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round" transform="translate(3.2 3.2) scale(0.8)">
+    <path d="M4 18H9L11.5 13.5L14 23L17 10L19.5 17.5L28 9"/>
+    <path d="M22.5 9H28V14.5"/>
+  </g>
+</svg>
