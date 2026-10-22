@@ -3,12 +3,9 @@ import createClient from "openapi-react-query";
 
 import type { paths } from "./schema";
 
-declare global {
-  interface Window {
-    // ponytail: only the one clerk-js call used below; @clerk/nextjs doesn't type `window.Clerk`.
-    Clerk?: { session?: { getToken(): Promise<string | null> } | null };
-  }
-}
+// clerk-js sets `window.Clerk` once it loads. @clerk/nextjs doesn't type it (and @clerk/testing declares it
+// globally for the e2e files), so this names only the one call used below.
+type ClerkWindow = { Clerk?: { session?: { getToken(): Promise<string | null> } | null } };
 
 // Browser client for the FastAPI service (DEC-019). Calls go through Next's same-origin /api/* rewrite
 // (no CORS) with the Clerk session token as a Bearer header, which the API verifies (DEC-020). Types come
@@ -17,7 +14,7 @@ export const fetchClient = createFetchClient<paths>({ baseUrl: "/api" });
 
 fetchClient.use({
   async onRequest({ request }) {
-    const token = await window.Clerk?.session?.getToken();
+    const token = await (window as unknown as ClerkWindow).Clerk?.session?.getToken();
     if (token) request.headers.set("Authorization", `Bearer ${token}`);
     return request;
   },
