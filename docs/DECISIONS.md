@@ -88,6 +88,7 @@ New entries go at the bottom with the next number. Never renumber or delete; mar
 | DEC-068 | Data Health admin API: shapes, live-run guard, target freshness and the import split | proposed (P1-11) |
 | DEC-070 | Raw request sanitization and portable capture reads | proposed (P1-20) |
 | DEC-075 | Reject import mappings changed by metadata sanitization | proposed (P1-24) |
+| DEC-076 | Seed revision ordering and stored-target validation | proposed (P1-25) |
 
 Superseded review defaults, not given entries: default #0 (move the repo) is done, see DEC-005. Default #2 (no local collection at all) is replaced by DEC-002. Default #15 (CSS-only motion) is replaced by DEC-007, and its remaining rules are in DEC-025. Review question D1 (Railway Pro from Phase 1) is answered by DEC-001, D2 by DEC-003, D3 by DEC-004, D5 by DEC-008 and D8 by DEC-006.
 
@@ -967,3 +968,11 @@ Superseded review defaults, not given entries: default #0 (move the repo) is don
 - **Boundary:** the existing import parser still validates used header-to-template-column destinations before calling storage. Safe mappings such as `Query -> keyword` survive exactly and replay from the original capture after source configuration changes. `Key`, `Token`, `Signature`, `Author` and `Search Key` mapped to `keyword` now fail during upload, for both explicit mappings and saved source mappings, instead of silently committing an unreplayable capture. Other request/response metadata retains DEC-070 redaction. Existing capture history is untouched.
 - **Alternatives:** a narrowly validated metadata interface could preserve credential-shaped header labels, but requires another trust boundary and coordinated import-service changes; a blanket `mapping` exemption would store arbitrary untrusted credentials. Early rejection satisfies the replay contract with three storage lines and no service patch or new dependency.
 - **Validation:** a new isolated import test module uses the existing real SQLAlchemy commit/replay path on offline SQLite and fake S3. It reproduces 11 failures before the guard, checks all six requested labels, both mapping inputs, unchanged successful replay, invalid destinations, no S3/capture/observation writes on rejection and arbitrary nested credential redaction. PostgreSQL variants remain unverified locally (no Docker).
+
+### DEC-076 · Seed revision ordering and stored-target validation
+**2026-10-22 · proposed (P1-25)** · P1-22 findings 6–9 and 15 (seeds); extends DEC-065 validation
+- **Decision:** compare the integer suffix of `seed_vN` before staging any changes; an older revision fails in preview and apply, equal-version mutations still fail, and identical repeats remain no-ops. Reject duplicate JSON object keys at every depth before opening a database session.
+- **Stored targets:** the loader and `approved_targets` share the existing per-section field, domain, duplicate and US/UTC validation. If any stored entry is invalid, the source returns no targets; normalized copies leave stored config unchanged. Approval dates must be strict `YYYY-MM-DD` and no later than the current UTC date.
+- **Evidence:** a test checks any approved shipped seed against the existing DEC-011 index/entry and DEC-073 status, date and version evidence. This task changes no approval metadata, seed files, source flags or unrelated config; runtime eligibility remains additional to all existing source/live/workspace guards.
+- **Alternatives:** silently accept older files, keep separate validators, or skip only malformed rows. Rejecting the whole section avoids silently collecting a partial list, and sharing the validator keeps file and stored-config checks consistent without a dependency or migration.
+- **Why:** stale revisions must not restore removed targets, ambiguous JSON must not override a visible flag, and config written outside the loader must pass the same validation before use.

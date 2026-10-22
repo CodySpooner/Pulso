@@ -1,5 +1,7 @@
 import json
 from collections.abc import Iterator
+from copy import deepcopy
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -123,6 +125,65 @@ def test_guard_only_returns_enabled_approved_targets(
             assert targets == ([seed_data[section][0]] if approved else [])
         assert approved_targets(session, "fx_frankfurter") == []
         assert approved_targets(session, "unknown") == []
+
+
+def test_shipped_approval_matches_existing_decision_evidence(seed_data: dict[str, Any]) -> None:
+    approval = seed_data["approval"]
+    if approval["status"] != "approved":
+        assert approval["status"] == "draft"
+        assert approval["approved_on"] is None
+        assert not any(row["enabled"] for section in SEED_SOURCES for row in seed_data[section])
+        return
+    decisions = (SEEDS.parents[2] / "docs/DECISIONS.md").read_text(encoding="utf-8")
+    rows = decisions.splitlines()
+    evidence = next(row for row in rows if row.startswith("| DEC-073 |"))
+    recorded_status = evidence.split("|")[3].strip()
+    assert recorded_status.startswith("approved ")
+    assert approval["approved_on"] == recorded_status.rsplit(" ", 1)[1]
+    index = next(row for row in rows if row.startswith("| DEC-011 |"))
+    entry = decisions.split("### DEC-011 ", 1)[1].split("\n### ", 1)[0]
+    assert recorded_status in index and recorded_status in entry.splitlines()[1]
+    evidence_entry = decisions.split("### DEC-073 ", 1)[1].split("\n### ", 1)[0]
+    assert f"`{approval['version']}`" in evidence_entry
+
+
+@pytest.mark.parametrize(
+    ("original", "duplicate"),
+    [
+        ('"enabled": false', '"enabled": false, "enabled": true'),
+        ('"enabled": false', '"enabled": true, "enabled": false'),
+        ('"approval": {', '"approval": {}, "approval": {'),
+        ('"status": "draft"', '"status": "approved", "status": "draft"'),
+    ],
+)
+def test_duplicate_json_keys_rejected(
+    seed_data: dict[str, Any], tmp_path: Path, original: str, duplicate: str
+) -> None:
+    path = write_seed(tmp_path, seed_data)
+    path.write_text(json.dumps(seed_data).replace(original, duplicate, 1), encoding="utf-8")
+    with pytest.raises(ValueError, match="Duplicate JSON key"):
+        read_seed(path)
+
+
+@pytest.mark.parametrize("days_ahead", [0, 1])
+def test_approval_date_is_bounded_by_today_utc(
+    engine: Engine, seed_data: dict[str, Any], tmp_path: Path, days_ahead: int
+) -> None:
+    approved_on = (datetime.now(UTC).date() + timedelta(days=days_ahead)).isoformat()
+    seed_data["approval"].update(status="approved", approved_on=approved_on)
+    seed_data["stores"][0]["enabled"] = True
+    path = write_seed(tmp_path, seed_data)
+    if days_ahead:
+        with pytest.raises(ValueError, match="approved_on"):
+            read_seed(path)
+    else:
+        assert read_seed(path)["shopify_stores"]["entries"][0]["enabled"] is True
+    with Session(engine) as session, session.begin():
+        source = session.get_one(Source, 1)
+        source.config = {"seed": {**seed_data["approval"], "entries": seed_data["stores"]}}
+        assert approved_targets(session, source.key) == (
+            [] if days_ahead else seed_data["stores"][:1]
+        )
 
 
 @pytest.mark.parametrize(
@@ -283,6 +344,34 @@ def test_changed_version_replaces_only_seed_and_same_version_conflict_is_atomic(
         assert source.config["expected_interval"] == 86400
 
 
+@pytest.mark.parametrize("apply", [False, True])
+@pytest.mark.parametrize(
+    ("installed", "incoming"), [("seed_v2", "seed_v1"), ("seed_v10", "seed_v9")]
+)
+def test_older_revision_is_rejected_before_any_source_changes(
+    engine: Engine,
+    seed_data: dict[str, Any],
+    tmp_path: Path,
+    apply: bool,
+    installed: str,
+    incoming: str,
+) -> None:
+    seed_data["approval"]["version"] = installed
+    seeds = read_seed(write_seed(tmp_path, seed_data))
+    with Session(engine) as session, session.begin():
+        # Put the newer revision last so earlier sources would otherwise be changed first.
+        source = session.get_one(Source, 3)
+        source.config = {**source.config, "seed": seeds[source.key]}
+    seed_data["approval"]["version"] = incoming
+    seeds = read_seed(write_seed(tmp_path, seed_data))
+    with Session(engine) as session, session.begin():
+        before = [(s.enabled, deepcopy(s.config)) for s in session.scalars(select(Source))]
+        with pytest.raises(ValueError, match="older seed version"):
+            load_seeds(session, seeds, apply=apply)
+        assert not session.dirty
+        assert [(s.enabled, s.config) for s in session.scalars(select(Source))] == before
+
+
 def test_missing_source_rolls_back_whole_load(engine: Engine) -> None:
     with Session(engine) as session, session.begin():
         session.delete(session.get_one(Source, 3))
@@ -307,6 +396,79 @@ def test_guard_rejects_malformed_targets(engine: Engine, entries: Any) -> None:
             }
         }
         assert approved_targets(session, source.key) == []
+
+
+@pytest.mark.parametrize(
+    ("section", "bad_entry"),
+    [
+        ("stores", {"enabled": True}),
+        ("stores", {"domain": "http://127.0.0.1:8080/admin", "name": "Bad", "enabled": True}),
+        ("stores", {"domain": "127.0.0.1", "name": "Bad", "enabled": True}),
+        ("stores", {"domain": "store.example", "name": "", "enabled": True}),
+        ("cj_categories", {"name": None, "enabled": True}),
+        ("cj_categories", {"name": "Pet Supplies", "enabled": "true"}),
+        ("keywords", {"keyword": "cat tree", "geo": "GB", "tz": 0, "enabled": True}),
+        ("keywords", {"keyword": "cat tree", "geo": "US", "tz": False, "enabled": True}),
+        ("keywords", {"keyword": "cat tree", "geo": "US", "tz": 60, "enabled": False}),
+    ],
+)
+def test_guard_validates_all_stored_entries(
+    engine: Engine, seed_data: dict[str, Any], section: str, bad_entry: dict[str, Any]
+) -> None:
+    with Session(engine) as session, session.begin():
+        source = session.scalar(select(Source).where(Source.key == SEED_SOURCES[section]))
+        assert source is not None
+        good = {**seed_data[section][0], "enabled": True}
+        source.config = {
+            "seed": {
+                **seed_data["approval"],
+                "status": "approved",
+                "approved_on": "2026-10-22",
+                "entries": [good, bad_entry],
+            }
+        }
+        before = deepcopy(source.config)
+        assert approved_targets(session, source.key) == []
+        assert source.config == before
+
+
+@pytest.mark.parametrize("section", SEED_SOURCES)
+def test_guard_rejects_duplicate_stored_entries(
+    engine: Engine, seed_data: dict[str, Any], section: str
+) -> None:
+    with Session(engine) as session, session.begin():
+        source = session.scalar(select(Source).where(Source.key == SEED_SOURCES[section]))
+        assert source is not None
+        row = {**seed_data[section][0], "enabled": True}
+        source.config = {
+            "seed": {
+                **seed_data["approval"],
+                "status": "approved",
+                "approved_on": "2026-10-22",
+                "entries": [row, dict(row)],
+            }
+        }
+        assert approved_targets(session, source.key) == []
+
+
+def test_guard_normalizes_copies_without_changing_stored_entries(engine: Engine) -> None:
+    with Session(engine) as session, session.begin():
+        source = session.get_one(Source, 1)
+        row = {"domain": " STORE.EXAMPLE ", "name": "Store", "enabled": True}
+        source.config = {
+            "seed": {
+                "version": "seed_v1",
+                "status": "approved",
+                "approved_on": "2026-10-22",
+                "decision": "DEC-011",
+                "entries": [row],
+            }
+        }
+        targets = approved_targets(session, source.key)
+        assert targets == [{**row, "domain": "store.example"}]
+        targets[0]["enabled"] = False
+        assert source.config["seed"]["entries"] == [row]
+        assert row == {"domain": " STORE.EXAMPLE ", "name": "Store", "enabled": True}
 
 
 @pytest.mark.parametrize(
