@@ -4,17 +4,18 @@
 
 ## Current status
 
-**Pre-Phase 0: planning complete 2026-10-22, awaiting owner approval of the Phase 0 plan.**
+**Phase 0 in progress (continuous build since 2026-10-22, DEC-049).** The hourly lead automation merges lanes and keeps Claude and Codex workers busy (vault `Agents/Lead Playbook`, `Agents/Lead State`).
 
-- No application code has been written.
-- The repo at `C:\dev\pulso` holds docs and agent guides only, and has no commits yet.
+- Merged on `main`: the serial spine (pnpm + uv workspace, dev compose, `.env.example`, `pulso_core.settings`, S3 init, worktree env script).
+- In flight: backend (DB-1..5, API-1..5), web shell (WEB-1..6, WEB-8), workers/images/CI (WRK-1, IMG-1/2, CI-1/2/3/5).
+- Docker is not installed on the PC yet, so compose, migration and image checks are unverified locally.
 - Data collection has not started. Every week before collection starts pushes the first forecast date back by a week (DEC-044).
 
 ## Phase status
 
 | Phase | Name | Status | Notes |
 |---|---|---|---|
-| 0 | Foundation | not started | Waiting on: the owner's plan approval, WSL2 + Docker Desktop installed, and a Clerk dev app |
+| 0 | Foundation | in progress | Spine merged; backend, web and infra lanes in flight. Owner: WSL2 + Docker Desktop, a Clerk dev app |
 | 1 | Data engine | not started | Collection runs on the home-PC collector host (DEC-001). Needs: the CJ answer (DEC-009), approved seed lists (DEC-011), a SerpApi account |
 | 2 | Core product experience | not started | |
 | 3 | Signals expansion | not started | The AliExpress app review has a lead time; start the application now |
