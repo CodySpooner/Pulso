@@ -1,0 +1,670 @@
+# Pulso — Decisions
+
+Every non-obvious technical or product choice, per SPEC §0: date, decision, alternatives considered, why, status.
+
+**Statuses**
+- **approved by owner 2026-10-22**: binding. Where it changes the spec, it is applied to `docs/SPEC.md` (see the Amendment log there).
+- **proposed — pending Phase 0 approval**: a working default from the verified spec review (vault `Research/Spec Review 2026-10-22.md`, review defaults #0–38). Agents follow it unless it contradicts an explicit SPEC requirement or an approved decision. The owner can veto any of these when approving the Phase 0 plan.
+- **pending owner**: an open question. The interim default is stated and used until the owner answers.
+- **superseded**: replaced by a later entry, kept for history.
+
+Source abbreviations: *Review* = Spec Review 2026-10-22 (B/H/M items, "default #n" = `review_synthesis.json` defaults). *SI* = Store Intelligence, *SF* = Supplier & Fulfillment Data Sources, *TA* = Trend & Ad Intelligence Sources, *VoC* = Voice of the Customer, *Syn* = 00 Research Synthesis (all in the vault's `Research/` folder).
+
+New entries go at the bottom with the next number. Never renumber or delete; mark an entry superseded and point to its replacement.
+
+## Index
+
+| ID | Decision | Status |
+|---|---|---|
+| DEC-001 | Railway hosts everything; collection runs on the home PC until go-live | approved by owner 2026-10-22 |
+| DEC-002 | One collector host, one scheduler (env flag + Postgres advisory lock) | approved by owner 2026-10-22 |
+| DEC-003 | Shopify crawler: ToS risk accepted, strict §4.2 | approved by owner 2026-10-22 |
+| DEC-004 | Markets: US only, USD | approved by owner 2026-10-22 |
+| DEC-005 | Repo at C:\dev\pulso; vault stays in OneDrive | approved by owner 2026-10-22 |
+| DEC-006 | Notes home: Obsidian vault, one note per feature and aspect | approved by owner 2026-10-22 |
+| DEC-007 | UI: dark SaaS look with green, Motion library with strict rules | approved by owner 2026-10-22 |
+| DEC-008 | Scope: spec phases, plus enhancements marked "pending approval" | approved by owner 2026-10-22 |
+| DEC-009 | CJ account must transact every 30 days | pending owner |
+| DEC-010 | Vendor-scraped demand data policy | pending owner |
+| DEC-011 | Starter seed lists | pending owner |
+| DEC-012 | Local dev runtime: infrastructure in compose, apps native | proposed — pending Phase 0 approval |
+| DEC-013 | Collector host runtime, gap detection and update procedure | proposed — pending Phase 0 approval |
+| DEC-014 | Railway service layout and configuration (for go-live) | proposed — pending Phase 0 approval |
+| DEC-015 | Backups and restore drill | proposed — pending Phase 0 approval |
+| DEC-016 | Celery and Beat settings | proposed — pending Phase 0 approval |
+| DEC-017 | Python 3.14 and image composition | proposed — pending Phase 0 approval |
+| DEC-018 | Repo hygiene before the first commit | proposed — pending Phase 0 approval |
+| DEC-019 | Typed API client pipeline | proposed — pending Phase 0 approval |
+| DEC-020 | Auth: Clerk JWT dependency and admin allowlist | proposed — pending Phase 0 approval |
+| DEC-021 | AGENTS.md is canonical; CLAUDE.md imports it | proposed — pending Phase 0 approval |
+| DEC-022 | Orca multi-agent working rules | proposed — pending Phase 0 approval |
+| DEC-023 | Commit identity | proposed — pending Phase 0 approval |
+| DEC-024 | Design system: two density zones and tokens | proposed — pending Phase 0 approval |
+| DEC-025 | Motion rules (details under DEC-007) | proposed — pending Phase 0 approval |
+| DEC-026 | Charts: Apache ECharts plus SVG sparklines | proposed — pending Phase 0 approval |
+| DEC-027 | PWA: manifest only, no service worker | proposed — pending Phase 0 approval |
+| DEC-028 | Scope of the first migration | proposed — pending Phase 0 approval |
+| DEC-029 | Schema refinements to §5 | proposed — pending Phase 0 approval |
+| DEC-030 | Money and AI-cost storage | proposed — pending Phase 0 approval |
+| DEC-031 | A day is the UTC calendar date | proposed — pending Phase 0 approval |
+| DEC-032 | Collector framework: block rule, CSV runs, schedules | proposed — pending Phase 0 approval |
+| DEC-033 | Shopify adapter specifics | proposed — pending Phase 0 approval |
+| DEC-034 | Google Trends access | proposed — pending Phase 0 approval |
+| DEC-035 | CJ adapter error handling | proposed — pending Phase 0 approval |
+| DEC-036 | FX: Frankfurter daily job | proposed — pending Phase 0 approval |
+| DEC-037 | AliExpress: live lookup only | proposed — pending Phase 0 approval |
+| DEC-038 | Vendor and candidate sources listed as disabled | proposed — pending Phase 0 approval |
+| DEC-039 | Demand signal families and the label-source choice | proposed — pending Phase 0 approval |
+| DEC-040 | Scores with missing inputs; append-only scores | proposed — pending Phase 0 approval |
+| DEC-041 | Margin and Opportunity computed per workspace at query time | proposed — pending Phase 0 approval |
+| DEC-042 | Matching persistence | proposed — pending Phase 0 approval |
+| DEC-043 | Categories: Google Product Taxonomy | proposed — pending Phase 0 approval |
+| DEC-044 | Forecasting rigor and cold-start gate | proposed — pending Phase 0 approval |
+| DEC-045 | Track Record: public aggregates only | proposed — pending Phase 0 approval |
+| DEC-046 | Alerts fire once per crossing | proposed — pending Phase 0 approval |
+| DEC-047 | AI budgets and AI-derived facts | proposed — pending Phase 0 approval |
+| DEC-048 | Unplaced §6 items and phase-end listing | proposed — pending Phase 0 approval |
+
+Superseded review defaults, not given entries: default #0 (move the repo) is done, see DEC-005. Default #2 (no local collection at all) is replaced by DEC-002. Default #15 (CSS-only motion) is replaced by DEC-007, and its remaining rules are in DEC-025. Review question D1 (Railway Pro from Phase 1) is answered by DEC-001, D2 by DEC-003, D3 by DEC-004, D5 by DEC-008 and D8 by DEC-006.
+
+---
+
+## Owner decisions (approved 2026-10-22)
+
+### DEC-001 · Railway hosts everything; collection runs on the home PC until go-live
+**2026-10-22 · approved by owner 2026-10-22** · Review H1, D1
+- **Decision:**
+  - Railway is the host for every service: web, api, Celery worker, Celery Beat, Redis, and Postgres with pgvector. Production object storage stays Cloudflare R2, as §2 already says.
+  - Go-live is deferred, and the owner can call it at any time. Until then, all collectors and schedules run on the owner's Windows PC (Docker Desktop + WSL2), the single **collector host** (DEC-002).
+  - Railway is prepared fully in the meantime: Dockerfiles, service layout, env inventory and deploy docs, so go-live is a deploy and not a port (DEC-014).
+  - Gap mitigations:
+    - power-plan guidance (never sleep while plugged in);
+    - missed-run detection with gap flags in Data Health and in features (DEC-013);
+    - a nightly `pg_dump` to a OneDrive folder as a free off-machine copy, optionally also to R2 (DEC-015).
+- **Alternatives:** Railway Pro from the end of Phase 1 at about $50–70/mo, the review's recommendation. Railway Hobby first. The original §2 mix (Vercel, Railway or Fly, Neon or Supabase).
+- **Why:**
+  - The owner prefers no hosting bill before the product proves itself, and accepts gaps in history when the PC is off.
+  - One vendor for all services keeps go-live simple.
+- **Consequences:**
+  - Gaps can't be backfilled. They reduce usable history for velocity (§7), labels and the §8 cold-start gate (DEC-044).
+  - The Phase 1 done-when ("collectors run on schedule") and the daily-series coverage metric are judged on the collector host.
+
+### DEC-002 · One collector host, one scheduler
+**2026-10-22 · approved by owner 2026-10-22** · Review M18, default #2 (replaced)
+- **Decision:**
+  - The owner's main checkout `C:\dev\pulso` is the only place where `PULSO_SCHEDULER=on` and `COLLECTORS_LIVE=on`.
+  - Orca and agent worktrees never run Celery Beat or live collectors. Both flags default to `off` everywhere else.
+  - Beat takes a Postgres advisory lock (`pg_try_advisory_lock` on a fixed key) when it starts, and exits if the lock is already held.
+- **Alternatives:** RedBeat or a Redis lock; convention only.
+- **Why:** A second scheduler double-spends CJ's 50k points/day and the Shopify request budget (Syn §5.3), and splits history across databases.
+- **Implementation notes (proposed details):**
+  - Advisory locks are scoped to one database, so the lock only stops a second scheduler against the same database. Worktrees use their own databases, so they are covered by two other checks:
+    - the env default (`off`);
+    - a startup check that refuses `PULSO_SCHEDULER=on` inside a linked git worktree (`git rev-parse --git-dir` differs from `--git-common-dir`).
+  - At Railway cutover, set `PULSO_SCHEDULER=off` on the PC **before** Railway Beat starts.
+
+### DEC-003 · Shopify competitor-store crawler: ToS risk accepted, strict §4.2
+**2026-10-22 · approved by owner 2026-10-22** · Review H2, D2
+- **Decision:**
+  - **Risk acceptance:** the owner accepts the risk under Shopify Terms of Service §1 item 9 to his own merchant accounts. This entry is the written risk acceptance the review asked for.
+  - **Compliance:** the crawler follows §4.2 strictly:
+    - an honest User-Agent with a contact URL, and robots.txt respected;
+    - rate-limited (DEC-033), honouring `retry-after`;
+    - never switches IP, never uses proxies, never evades bot detection;
+    - turns itself off when blocked, with a Data Health alert;
+    - CSV and URL-paste fallback.
+  - **Where it runs:** from the collector host (home PC, residential IP).
+  - **If blocked on Railway:** if the crawler moves to Railway after go-live and is blocked, it turns itself off. It is not re-routed to another network to get around the block. Whether it stays on the home PC after go-live is decided at go-live (open question in PROGRESS.md).
+  - **Gate:** the source's enabled flag turns on only after two things:
+    - the adapter's `parse()` passes fixture tests (§12);
+    - the spike results are logged in `docs/DATA_SOURCES.md`. The spike is `/products.json?limit=1` once against about 10 target stores, about 20 requests in total, from the home PC, plus optionally from a throwaway Railway service to measure the go-live risk.
+- **Alternatives:** keep the crawler off until a legal review, with Store Spy on CSV only. Accept the risk and add a home-PC fallback worker when Railway is blocked (review option 2, which bends §4.2).
+- **Why:**
+  - Store Spy, the Sellers tab, Saturation, launch alerts and the best free demand proxy all depend on this source.
+  - Since 2026-09-29, cloud IPs get a 429 on the first `/products.json` request (SI §0.1, §2). A residential IP should fare better, but one forum thread also reports residential 429s, so the spike measures it rather than assuming.
+  - Shopify API Terms §2.3.24 (no ML training on merchant-store data) must be reviewed before the Phase 7 Shopify app exists.
+
+### DEC-004 · Markets: US only, USD
+**2026-10-22 · approved by owner 2026-10-22** · Review M6, D3
+- **Decision:**
+  - The v1 destination market is the United States, and money displays in USD.
+  - Settings defaults are `default_country = US` and `currency = USD`.
+  - CJ freight quotes and the Google Trends geo use US only.
+  - The Meta Ad Library stays in Phase 8: its API returns commercial ads only for EU/UK reach.
+- **Alternatives:** US + EU + UK displayed in USD, which would move a Meta EU/UK collector to Phase 3. Another list of markets.
+- **Why:**
+  - The owner sells to the US.
+  - Snapshot history for unused markets costs points and storage and can't be repurposed.
+  - The US has had no de minimis since 2025-08-29 (made indefinite on 2026-06-24), so landed cost must show duty explicitly (SF §16).
+
+### DEC-005 · Repo location
+**2026-10-22 · approved by owner 2026-10-22** · Review H4, default #0
+- **Decision:**
+  - The repo lives at `C:\dev\pulso`, outside OneDrive.
+  - The Obsidian vault stays at `C:\Users\Xody2\OneDrive\Desktop\Vaults\Pulso Vault`.
+  - The Orca worktree root must also be outside OneDrive (DEC-022).
+- **Alternatives:** stay in OneDrive; a Windows Dev Drive.
+- **Why:** OneDrive ignores `.gitignore`. Syncing `node_modules`, `.venv`, `.next` and `.git` causes EPERM/EBUSY errors and risks corrupting `.git`. The repo had no commits yet, so moving it cost nothing.
+
+### DEC-006 · Notes home: the Obsidian vault
+**2026-10-22 · approved by owner 2026-10-22** · Review M19, D8
+- **Decision:**
+  - Every feature and every aspect of the site is tracked as its own note in the vault, under `Features/`, `Data/`, `Intelligence/`, `Platform/`, `Design/`, `Phases/`, `Agents/` and `Templates/`.
+  - Repo `docs/` keeps only the five files §3 requires: SPEC, PROGRESS, DECISIONS, BACKLOG and DATA_SOURCES.
+  - Agents in Orca worktrees read and update the vault by absolute path.
+- **Alternatives:** `docs/features/` inside the repo, opened as a vault (the review's default); the vault mirrored from the repo by the lead agent at each phase gate.
+- **Why:** The owner wants every aspect tracked in his existing vault.
+- **Cost and mitigation:** vault edits aren't versioned or reviewed through PRs, and OneDrive resolves simultaneous writes by creating conflict copies. The vault note `Agents/Agent Collaboration Protocol` therefore sets two rules:
+  - each agent edits only the notes of its claimed task;
+  - shared logs are append-only.
+
+### DEC-007 · UI direction and the Motion library
+**2026-10-22 · approved by owner 2026-10-22** · Review M21, default #15 (overridden)
+- **Decision:**
+  - **Look:** a SaaS look with a dark theme and green accent. Super clean and "designed by a big-tech UI designer", with polished animations, transitions and motion, combined with §1's data-dense trading-terminal views.
+  - **Library:** the Motion library (`motion`, imported from `motion/react`) for shell, page and layout transitions and for micro-interactions.
+  - **Strict rules:**
+    - animate `transform` and `opacity` only;
+    - no animation on virtualized table rows;
+    - honour `prefers-reduced-motion` both in Motion (`MotionConfig reducedMotion="user"`) and with a global CSS rule.
+  - **Bundle size (proposed detail):** load Motion features lazily (`LazyMotion` with the `m` component).
+- **Alternatives:** CSS-only motion with tw-animate-css (the review's default); Motion everywhere without rules.
+- **Why:** Meets the owner's polish bar, while the rules keep dense tables fast, honest and accessible. The remaining rules are in DEC-025.
+
+### DEC-008 · Scope: spec phases plus enhancements pending approval
+**2026-10-22 · approved by owner 2026-10-22** · Review M20, D5
+- **Decision:**
+  - The §11 phases stay the scope.
+  - Research-backed enhancements (the review's 13 enhancements plus research gaps) are folded into the relevant vault feature notes. Each is marked **"[Added — pending approval]"** with a target phase and its evidence, so the owner can veto it.
+  - Pending items are not built until approved, at the latest at the gate of their target phase.
+  - Ideas not folded into a note go to `docs/BACKLOG.md`.
+  - "Fully polished" means each phase's end-of-phase UI checklist passes (AGENTS.md).
+- **Alternatives:** spec scope only, with all research extras in BACKLOG (the review's default); building toward SaaS parity from v1.
+- **Why:** The owner asked for "fully polished features" and "the best dropshipping toolkit in the world". Markers make additions visible and vetoable instead of silently expanding scope.
+
+---
+
+## Pending owner decisions
+
+### DEC-009 · CJ account must transact every 30 days
+**2026-10-22 · pending owner** · Review M3, D4
+- **Question:** Does the CJ account whose API key Pulso uses place at least one real order every 30 days?
+- **Why it matters:**
+  - CJ disables API access after 30 consecutive days with zero transaction amount (error `1600014`), and reactivation is manual (SF §2).
+  - CJ is the Phase 1 supplier source and the Phase 2 margin source.
+- **Interim default:**
+  - Build the CJ adapter in Phase 1 against fixtures.
+  - Error `1600014` shows in Data Health as "CJ API disabled: 30 days without orders".
+  - If the key doesn't come from a transacting account, supplier offers come in through CSV import until this is resolved.
+- **Options:** (a) yes, my stores fulfil through CJ; (b) no, but I'll place a small order every month; (c) no, use CSV until CJ grants an exemption.
+
+### DEC-010 · Vendor-scraped demand data policy
+**2026-10-22 · pending owner** · Review H3, M5, D6
+- **Question:** May Pulso ever buy logged-out vendor-scraped data as the forecast's demand series, for example TikTok Shop sold counts via Apify at about $70–180/mo?
+- **Why it matters:**
+  - No Phase 1 source reports order counts.
+  - TikTok's US Terms of Service §3.4 bans automated extraction.
+  - §4.2 forbids our own evasion but says nothing about buying data (TA §2.4, §2.15; Syn §5.5).
+- **Interim default:** official sources plus manual CSV only. Revisit at Phase 1 exit with the measured coverage numbers (DEC-039) and a vendor quote.
+
+### DEC-011 · Starter seed lists
+**2026-10-22 · pending owner** · Review M6, D7
+- **Question:** Approve the drafted starter lists or supply your own.
+- **Interim default:**
+  - Agents draft about 30 competitor store domains, 10 CJ categories and 50 US keywords in the vault note `Data/Seed Lists`. The owner adds his own store domains and approves.
+  - Seeds live in `sources.config`, loaded from a versioned seed file.
+  - No live collection against unapproved seeds.
+- **Why:** CJ `listV2` costs 50 points per call and returns at most 6,000 results per query (Syn §5.3). History collected against the wrong seeds can't be backfilled.
+
+---
+
+## Proposed defaults (pending Phase 0 approval)
+
+### DEC-012 · Local dev runtime
+**2026-10-22 · proposed — pending Phase 0 approval** · default #1, Review B1
+- **Decision:**
+  - For development and agents, Docker Compose runs **infrastructure only**, on named volumes:
+    - `pgvector/pgvector:0.8.7-pg18-trixie`;
+    - Redis;
+    - a pinned RustFS 1.0.x as the S3 emulator.
+  - Web, api and workers run natively through `pnpm` and `uv run`.
+  - The local Celery worker uses `--pool=solo`.
+  - The collector host differs; see DEC-013.
+- **Alternatives:** fully native Windows services; the whole app in containers for development; Celery `--pool=threads`.
+- **Why:**
+  - pgvector has no Windows build, and Redis has no official one.
+  - MinIO is archived (last release 2025-10-15).
+  - Celery's prefork pool doesn't run on Windows. Prefork is exercised on Linux in CI and in the collector containers.
+
+### DEC-013 · Collector host runtime, gap detection and update procedure
+**2026-10-22 · proposed — pending Phase 0 approval** · implements DEC-001 and DEC-002
+- **Decision:**
+  - **Separate compose project.** The collector host runs its own compose project (for example `pulso-collector`) with its own volumes and ports. It runs Postgres, Redis, the object-store emulator, and the `worker` and `beat` containers built from the **same Dockerfiles as Railway**, with `restart: unless-stopped`.
+  - **Built images, not live code.** Collectors run from built images, so editing source in the main checkout changes nothing until the collector host is updated.
+  - **Update procedure.** Done by the owner, or by an agent at the owner's explicit request:
+    1. `git pull` on `main`;
+    2. take a backup;
+    3. `alembic upgrade head` against the collector database;
+    4. rebuild and restart the collector containers;
+    5. check Data Health.
+  - **Isolation from development.** The agent/dev stack (DEC-012) is a different compose project. Agents never run compose, migrations or `down -v` against `pulso-collector`.
+  - **Missed-run detection:**
+    - Each schedule declares its expected cadence.
+    - A check (`audit.schedule`) runs at Beat start and every 15 minutes. It compares expected slots with `collector_runs` and records each missed slot in `collection_gaps` (one row per source and slot; schema in the vault note `Data/Data Model`).
+    - Data Health shows a per-source gap calendar.
+    - `product_daily_features` carries per-source-family coverage and gap flags for each day.
+  - **Catch-up:** when Beat starts, each job whose last successful run is older than its period runs **once**. Older slots aren't replayed, because past storefront and supplier states can't be fetched. Google Trends history can be backfilled separately.
+  - **PC guidance** (detail in the vault note `Platform/Collector Host`):
+    - power plan sleep = Never while plugged in;
+    - Docker Desktop set to "start when you sign in";
+    - Windows Update active hours set.
+    - Docker Desktop only starts after sign-in, so a reboot to the lock screen means a gap. Auto sign-in is the owner's choice and a security trade-off.
+- **Alternatives:** native Celery on Windows with `--pool=solo` for collection; one shared compose project for dev and collection.
+- **Why:**
+  - Containers give Railway parity, prefork on Linux and automatic restart.
+  - A separate project stops an agent's `docker compose down -v` from destroying irreplaceable history.
+
+### DEC-014 · Railway service layout and configuration (for go-live)
+**2026-10-22 · proposed — pending Phase 0 approval** · defaults #3, #5; Review M17
+- **Decision:**
+  - **Services:** web, api, worker, beat (one replica), Redis, Postgres, and one cron service for the nightly `pg_dump`.
+  - **Postgres:**
+    - image `pgvector/pgvector:0.8.7-pg18-trixie` on a volume;
+    - start command `postgres -c dynamic_shared_memory_type=mmap`, which HNSW index builds need;
+    - no public TCP proxy;
+    - the same tag in compose, CI and Railway.
+  - **Configuration in the Railway dashboard, never in `railway.json` or `railway.toml`:**
+    - one Dockerfile per image;
+    - repo-root build context;
+    - `RAILWAY_DOCKERFILE_PATH`;
+    - watch paths;
+    - Alembic as the api pre-deploy command (never in a Dockerfile);
+    - "Wait for CI" on;
+    - no PR environments.
+  - **Optional snapshot:** a `railway.ts` snapshot through `railway config pull`, only if the owner wants the config versioned.
+  - **Plan:** chosen at go-live with a cost estimate for the owner's approval (§0). The review estimated about $50–70/mo on Pro with a $100 hard usage limit, a guess and not measured.
+  - **Re-check:** Railway's docs are re-checked at go-live.
+- **Alternatives:** Railway's stock Postgres (it lacks pgvector); `railway.ts` as the source of truth; Railway Buckets instead of R2.
+- **Why:**
+  - Railway's docs (verified 2026-10-22) mark Config as Code deprecated, and existing files stop being read on 2026-12-01.
+  - Infrastructure as Code (`.railway/railway.ts`) is GA but more than a single-user v1 needs.
+  - R2 has lifecycle rules and 10 GB free, while Railway Buckets have no lifecycle rules.
+
+### DEC-015 · Backups and restore drill
+**2026-10-22 · proposed — pending Phase 0 approval** · default #4 (adjusted for DEC-001)
+- **Decision:**
+  - **From the first live collection on the collector host:**
+    - A nightly `pg_dump -Fc` of the collector database, written to a temp file and then moved into a OneDrive folder, so OneDrive never syncs a half-written dump. The folder path is a guess pending owner confirmation, for example `C:\Users\Xody2\OneDrive\Pulso Backups\db\`.
+    - Keep the last 14 daily plus 8 Sunday dumps (a guess; watch the OneDrive quota, which is 5 GB on the free plan).
+    - Optionally also upload each dump to an R2 `backups/` prefix with a 35-day lifecycle rule.
+    - The job is a Windows Task Scheduler task (03:30 local, run as soon as possible after a missed start) running `infra/scripts/backup.py`. `pg_dump` runs inside the Postgres container and `docker compose cp` copies the file out, so PowerShell never touches the binary, and the backup still runs when Beat is down. It is logged in `collector_runs` (source `backup`) so Data Health shows backup health. *(Revised 2026-10-22 in the planning consistency pass to match the vault notes; it was a Beat task.)*
+  - **Restore drill:** one drill before Phase 1 exit. Restore the latest dump into a scratch database, compare row counts, and record the result here.
+  - **At go-live:** Railway daily and weekly volume backups, plus a nightly `pg_dump` to R2 with 35-day retention.
+- **Alternatives:** no backup until Phase 8; WAL-G point-in-time recovery; a Beat task with the OneDrive folder bind-mounted (stops whenever Beat stops).
+- **Why:**
+  - Snapshot history and the immutable `forecasts` log can't be re-fetched.
+  - Railway volume backups restore only into the same project, and wiping a volume deletes them.
+
+### DEC-016 · Celery and Beat settings
+**2026-10-22 · proposed — pending Phase 0 approval** · default #6
+- **Decision:**
+  - Beat runs as one replica with crontab-only schedules (no `timedelta` schedules, whose state is lost on redeploy), plus the advisory lock from DEC-002.
+  - The SQLAlchemy engine is created per worker process (`worker_process_init`).
+  - ML tasks run on a concurrency-1 queue with lazy `torch` imports.
+  - Celery's default (early) acks.
+- **Alternatives:** RedBeat; `task_acks_late`.
+- **Why:** Idempotent upserts (§4.1) make a rare duplicate harmless. Late acks would create Redis visibility-timeout redelivery problems.
+
+### DEC-017 · Python 3.14 and image composition
+**2026-10-22 · proposed — pending Phase 0 approval** · default #7
+- **Decision:**
+  - Pin Python 3.14: `.python-version` and `requires-python >=3.14,<3.15`.
+  - Install `torch` from uv's pytorch-cpu index on Linux.
+  - Three images: web, api and worker. The worker image is reused for Beat.
+  - The worker image installs `libgomp1` and bakes in the OpenCLIP weights.
+  - The api image excludes `torch` and `lightgbm`.
+- **Alternatives:** Python 3.12; downloading the weights at runtime.
+- **Why:** PyPI checks found 3.14 wheels for every ML dependency. These are standard fixes for image size and startup time.
+
+### DEC-018 · Repo hygiene before the first commit
+**2026-10-22 · proposed — pending Phase 0 approval** · default #8
+- **Decision:**
+  - `.gitattributes` with `* text=auto eol=lf`.
+  - pnpm pinned through `packageManager`, with the `sharp` and `esbuild` build scripts allow-listed.
+  - Next `outputFileTracingRoot` set to the repo root.
+  - Web env in `apps/web/.env.local`.
+  - One uv workspace with explicit members.
+- **Alternatives:** keep the tool defaults.
+- **Why:** System `core.autocrlf=true`, so CRLF would break container entrypoints. pnpm blocks build scripts by default.
+
+### DEC-019 · Typed API client pipeline
+**2026-10-22 · proposed — pending Phase 0 approval** · default #9
+- **Decision:**
+  - `openapi-typescript` + `openapi-fetch` + `openapi-react-query`.
+  - The OpenAPI schema is exported without running the server.
+  - Operation IDs are stable.
+  - Both generated files are committed, with a CI drift check.
+- **Alternatives:** `@hey-api/openapi-ts`; Orval.
+- **Why:** The smallest generated surface and the fewest merge conflicts between worktrees.
+
+### DEC-020 · Auth: Clerk JWT dependency and admin allowlist
+**2026-10-22 · proposed — pending Phase 0 approval** · default #10, Review M11
+- **Decision:**
+  - **JWT check:** one FastAPI dependency using PyJWT `PyJWKClient`, RS256, checking `iss`, `exp`, `nbf` and `azp`. It creates the user and workspace on first login.
+  - **Routing:** the browser calls the API through Next `/api/*` rewrites, so no CORS is needed.
+  - **Access gate:** a `PLATFORM_ADMIN_USER_IDS` allowlist gates the whole app in v1, and Clerk sign-ups are restricted.
+  - **Clerk instance:** a development instance until a domain exists.
+- **Alternatives:** `clerk-backend-api`; Clerk webhooks; a roles column now.
+- **Why:** Skipping `azp` opens CSRF. Once deployed, any Clerk sign-up would otherwise see everything. Team seats are v3.
+
+### DEC-021 · AGENTS.md is canonical; CLAUDE.md imports it
+**2026-10-22 · proposed — pending Phase 0 approval** · default #11 (files written during planning)
+- **Decision:**
+  - `AGENTS.md` holds every agent rule and command.
+  - `CLAUDE.md` is `@AGENTS.md` plus Claude-only notes.
+  - Keep AGENTS.md under 32 KiB, Codex's default read cap.
+- **Alternatives:** two files maintained by hand.
+- **Why:** Codex reads only AGENTS.md, and two hand-kept copies drift.
+
+### DEC-022 · Orca multi-agent working rules
+**2026-10-22 · proposed — pending Phase 0 approval** · default #12, Review M18
+- **Decision:**
+  - **Pace and gates:** phases stay serial, and tasks within a phase may run in parallel. One task is one branch, one worktree and one PR. The owner approves each phase boundary.
+  - **Worktrees:** the Orca worktree root is outside OneDrive, for example `C:\dev\pulso-worktrees\`.
+  - **Environment:** ports, `DATABASE_URL` (database `pulso_<slug>`) and `REDIS_URL` (`/N`) come from env vars. A worktree-create script that writes each worktree's `.env.local` arrives when parallel work starts (BACKLOG).
+  - **Migrations and generated files:** one Alembic migration per PR, with CI asserting a single head. Lockfiles and generated clients are regenerated, never hand-merged.
+  - **Claiming and protocol:** tasks are claimed in the phase's vault note before work starts. The full protocol is in the vault note `Agents/Agent Collaboration Protocol`.
+  - **No GitHub Pro:** Railway's "Wait for CI" guards production.
+- **Alternatives:** worktree slot allocation now; GitHub Pro ($4/mo) for branch protection on the private repo.
+- **Why:** Ports, a shared database at different migration revisions, multiple Alembic heads and lockfile conflicts are the predictable collisions between two agents.
+
+### DEC-023 · Commit identity
+**2026-10-22 · proposed — pending Phase 0 approval** · default #13
+- **Decision:** A repo-local git identity of `CodySpooner` with the GitHub noreply email. The repo stays private.
+- **Alternatives:** the owner's personal email.
+- **Why:** Keeps the personal email out of commit history. The owner confirms (owner to-do).
+
+### DEC-024 · Design system: two density zones and tokens
+**2026-10-22 · proposed — pending Phase 0 approval** · default #14 (within DEC-007)
+- **Decision:**
+  - **Themes:** dark by default. Light mode works but stays unpolished until Phase 8.
+  - **Tokens:** separate `--brand`, `--positive` and `--negative` tokens, so brand green and "up" green can differ.
+  - **Primary buttons:** neutral (open question for the owner: neutral or brand green).
+  - **Two density zones:**
+    - chrome areas get SaaS spacing;
+    - data views get terminal density: compact rows, tabular numerals, right-aligned numbers, sticky headers.
+  - **Deltas:** show a sign plus ▲/▼, never colour alone.
+  - **Contrast:** AA, checked in both themes.
+  - **Fonts:** Geist Sans and Geist Mono.
+  - **Usage:** only tokens in components, never raw colour values.
+- **Alternatives:** one style everywhere; green primary buttons.
+- **Why:** Reconciles the §1 terminal direction with the owner's SaaS polish wish, and stops two agents drifting into different styles.
+
+### DEC-025 · Motion rules
+**2026-10-22 · proposed — pending Phase 0 approval** · default #15 (remaining rules after DEC-007)
+- **Decision:**
+  - **Timing:** duration tokens of 120, 200 and 280 ms, plus one shared easing set.
+  - **Charts:** animate only on first render, never on refetch.
+  - **No fake liveness:**
+    - no perpetual tickers, pulses or count-ups pretending data is live;
+    - a value may transition once when the underlying data actually changes;
+    - show "as of" timestamps.
+  - **Budget:** under reduced motion, transitions become instant or crossfades. Any frame-rate regression on data views is a bug.
+- **Alternatives:** no rules beyond DEC-007.
+- **Why:** Data refreshes hourly or daily. Motion must signal change honestly, not imply a live feed.
+
+### DEC-026 · Charts: Apache ECharts plus SVG sparklines
+**2026-10-22 · proposed — pending Phase 0 approval** · default #16; §2 requires the choice
+- **Decision:**
+  - ECharts with modular imports, loaded client-side and themed from the design tokens.
+  - Sparklines in tables and watchlists are a small inline SVG polyline.
+- **Alternatives:** Recharts; TradingView Lightweight Charts.
+- **Why:** Synced multi-pane time series, zoom, heatmaps and calibration charts in one library. Lightweight Charts only does time axes.
+
+### DEC-027 · PWA: manifest only
+**2026-10-22 · proposed — pending Phase 0 approval** · default #17
+- **Decision:** Next's `app/manifest.ts` plus icons, with no service worker. The manifest lands by Phase 4 at the latest.
+- **Alternatives:** Serwist; next-pwa.
+- **Why:** No offline need, offline caching risks showing stale data, and next-pwa is unmaintained.
+
+### DEC-028 · Scope of the first migration
+**2026-10-22 · proposed — pending Phase 0 approval** · default #18
+- **Decision:**
+  - The first migration covers Core, Catalog, Vendors, the collector tables, `fx_rates` and `settings` only.
+  - Every observation row carries `captured_at`, `observed_for` and a `raw_payload_id` foreign key, unique on `(entity_id, raw_payload_id)`.
+  - The migration runs `CREATE EXTENSION IF NOT EXISTS vector`.
+- **Alternatives:** model all of §5 now.
+- **Why:** Avoids freezing v2/v3 tables before they're designed, makes re-runs idempotent, and makes every number traceable (§1).
+
+### DEC-029 · Schema refinements to §5
+**2026-10-22 · proposed — pending Phase 0 approval** · default #19, Review M7, M10
+- **Decision:**
+  - **Scope line:** tables outside the Workspace group are global market data. Every Workspace table, child rows included, carries `workspace_id NOT NULL`, indexed.
+  - **`search_trends`:** append-only per fetch, with `source`, `captured_at`, `raw_payload_id`, `window` and `is_partial`.
+  - **Variants:** add `listing_variants` and `variant_snapshots`.
+  - **Sales counts:** `listing_snapshots.orders_total` becomes `sold_count`, plus `orders_window` with `window_days`, plus the raw displayed value.
+  - **`listings`:**
+    - gains `first_seen_at`, `last_seen_at`, `delisted_at` and `source_created_at`;
+    - gains `store_id` and `supplier_id` foreign keys with a CHECK;
+    - a listing is marked delisted only by a complete crawl (`collector_runs.complete`).
+  - **Supplier offers and shipping:**
+    - `supplier_offers` becomes a 1:1 extension of a supplier listing (`listing_id` primary and foreign key, `moq`, `bulk_tiers`, `warehouse_country`);
+    - cost and stock come from snapshots;
+    - `shipping_options` references `listing_id` and is append-only with `captured_at`.
+  - **Workspace choices:** replace `stores.tracked` with `workspace_tracked_stores`, and `products.tags` with `product_tags`.
+  - **Deferred:** drop `stores.theme` and `stores.detected_apps` until v2.
+- **Alternatives:** keep §5 as written.
+- **Why:**
+  - Prevents history being overwritten and fake mass delistings.
+  - Removes a second source of truth for supplier cost.
+  - Keeps per-user choices off global tables.
+
+### DEC-030 · Money and AI-cost storage
+**2026-10-22 · proposed — pending Phase 0 approval** · default #20, Review M9
+- **Decision:**
+  - Money is stored as `<name>_minor BIGINT` plus `currency CHAR(3)`, and bulk tiers inherit the offer's currency.
+  - AI cost is stored as `cost_usd_micros`.
+  - CPA and ROAS are computed, not stored.
+  - A currency-exponent table has one test covering JPY, USD and KWD.
+- **Alternatives:** numeric columns.
+- **Why:** §12 requires integer minor units, and integer cents would round each AI call down to zero.
+
+### DEC-031 · A day is the UTC calendar date
+**2026-10-22 · proposed — pending Phase 0 approval** · default #21
+- **Decision:**
+  - Features for date *d* use only observations with `captured_at < d+1 00:00Z`.
+  - Trends requests use `tz=0`.
+  - Nightly scoring runs after the collectors.
+  - Gap flags (DEC-013) are per UTC day.
+- **Alternatives:** the owner's local timezone.
+- **Why:** Follows §12 (all UTC) and keeps features point-in-time correct.
+
+### DEC-032 · Collector framework: block rule, CSV runs, schedules
+**2026-10-22 · proposed — pending Phase 0 approval** · default #22
+- **Decision:**
+  - **Block rule:** each adapter defines one. N consecutive 429/430/403 responses, or a source-specific code, means auto-disable plus a Data Health alert.
+  - **Adapter behaviour:**
+    - honours `retry-after`;
+    - never switches IP;
+    - stores the last status code;
+    - refreshes its token from the expiry in the response.
+  - **CSV imports:** a CSV import is a collector run with `trigger=csv`, reusing `parse()` and the idempotent upsert.
+  - **Schedules:** live in Beat code and check `sources.enabled`.
+- **Alternatives:** an encrypted credentials table; a separate import pipeline.
+- **Why:** §4.2 says to disable a blocked adapter, but §4.1 never defines "blocked".
+
+### DEC-033 · Shopify adapter specifics
+**2026-10-22 · proposed — pending Phase 0 approval** · default #23 (adjusted for DEC-003)
+- **Decision:**
+  - **Requests:**
+    - honest User-Agent with a contact URL;
+    - `limit=250` and `If-None-Match`;
+    - at most 30 requests/min in total across all stores.
+  - **Daily `.js` fetch:** `/products/<handle>.js` once a day for tracked products, stored in `variant_snapshots`, including the variant barcode (GTIN) when present.
+  - **No collection-time velocity:** velocity is never computed at collection time.
+  - **Feature names:** prefixed by source (`shopify_*`), so Shopify-derived features can be dropped from training.
+  - **Enabled flag:** gated as described in DEC-003.
+  - **Deferred:** Web Bot Auth signing and bot registration, until a Railway move shows they're needed (BACKLOG).
+- **Alternatives:** Web Bot Auth signing in Phase 1.
+- **Why:**
+  - Shopify staff say a signature is "necessary but not sufficient" (SI §0.1).
+  - The `.js` inventory is the only free per-product unit signal (SI §1, §4.1).
+
+### DEC-034 · Google Trends access
+**2026-10-22 · proposed — pending Phase 0 approval** · default #24, Review M2
+- **Decision:**
+  - No unofficial client.
+  - SerpApi's free tier (250 searches/mo) covers a weekly US keyword set.
+  - DataForSEO only after the owner approves it (paid).
+  - Apply for Google's official Trends API alpha.
+- **Alternatives:** pytrends; DataForSEO from day 1.
+- **Why:**
+  - pytrends was archived on 2025-04-17, and Google's terms ban scraping.
+  - Trends history can be backfilled (5 years), so waiting costs nothing.
+
+### DEC-035 · CJ adapter error handling
+**2026-10-22 · proposed — pending Phase 0 approval** · default #25, Review M3
+- **Decision:**
+  - Each of these maps to its own Data Health error:
+    - `1600014` (no transactions for 30 days);
+    - "one ip limit";
+    - points exhausted;
+    - rate-limit 429s.
+  - Token expiry is read from the auth response.
+  - No webhooks and no dedicated-IP proxy.
+- **Alternatives:** webhooks; a VPS proxy now.
+- **Why:** The IP-limit risk is speculative for one user on a residential IP. Act if the error actually appears.
+
+### DEC-036 · FX: Frankfurter daily job
+**2026-10-22 · proposed — pending Phase 0 approval** · default #26
+- **Decision:**
+  - A daily Frankfurter v2 job fills `fx_rates(date, base, quote, rate, source)` from Phase 1.
+  - Amounts convert at the rate for the observation's UTC date.
+- **Alternatives:** a paid FX API.
+- **Why:**
+  - Free, no key, and based on official reference rates.
+  - Even US-only, competitor stores can price in other currencies (from `/meta.json`), so conversion is still needed.
+
+### DEC-037 · AliExpress: live lookup only
+**2026-10-22 · proposed — pending Phase 0 approval** · default #27, Review M1
+- **Decision:**
+  - The AliExpress adapter (Phase 3) is live lookup only, cached in Redis for 24h.
+  - Nothing goes to `raw_payloads`, snapshots or features until AliExpress approves storage in writing.
+- **Alternatives:** store derived metrics flagged as unapproved.
+- **Why:** The API agreement bans storage without approval (§7.6, §9.2) and allows termination without notice (SF §1).
+
+### DEC-038 · Vendor and candidate sources listed as disabled
+**2026-10-22 · proposed — pending Phase 0 approval** · default #28, Review M5
+- **Decision:**
+  - Vendor-scraped sources, Pinterest Trends and Merchant Best Sellers are listed in `docs/DATA_SOURCES.md` as disabled candidates, with cost and risk notes. No adapters until approved.
+  - §4.3 #7 is to be corrected: TikTok Top Products is likely retired (probed 2026-10-22). This is a proposed spec amendment, not yet applied.
+- **Alternatives:** build vendor adapters behind flags now.
+- **Why:** Pending DEC-010.
+
+### DEC-039 · Demand signal families and the label-source choice
+**2026-10-22 · proposed — pending Phase 0 approval** · default #29, Review H3
+- **Decision:**
+  - **Candidate families:**
+    - `.js` inventory deltas (Grade A, fragile);
+    - counts of `updated_at` bumps (Grade B, a lower bound);
+    - CJ stock and listing-count deltas (unproven);
+    - search-interest slope.
+  - **Handling:**
+    - each family is its own feature column with its own velocity, never summed;
+    - store-count is excluded, because it already feeds Saturation;
+    - a product with no qualifying family shows "insufficient signal".
+  - **Phase 1 exit metric:** the number of products with a daily count series on at least 12 of 14 days, measured on the collector host. The label source is chosen then.
+  - **Risk logged:** Phase 6 is at risk if no family carries signal.
+- **Alternatives:** fix a label priority order now.
+- **Why:** It's too early to choose before measuring coverage.
+
+### DEC-040 · Scores with missing inputs; append-only scores
+**2026-10-22 · proposed — pending Phase 0 approval** · default #30, Review M4, M15
+- **Decision:**
+  - **Missing inputs:** a missing component gets weight 0 and the rest are renormalized. The explanation records `missing:[…]` and coverage, and the UI says "no source yet", never 0. This applies to ads in v1.
+  - **Normalization:** robust per-category z-scores (median/MAD, capped at ±3), falling back to the parent category and then global when n < 30.
+  - **Growth:** `log((U7+5)/(U7_prev+5))`, computed over a stable panel of stores tracked since t−28.
+  - **Versioning:** `model_version` is a hash of the weights config.
+  - **History:** `scores` is append-only per (product, date, model_version), which gives Phase 6 a free live baseline.
+- **Alternatives:** a plain z-score; dropping ads from the formula.
+- **Why:** Prevents undefined or exploding scores, and fake growth from Pulso's own coverage growth.
+
+### DEC-041 · Margin and Opportunity computed per workspace at query time
+**2026-10-22 · proposed — pending Phase 0 approval** · default #31
+- **Decision:**
+  - Margin, best margin and Opportunity are computed at query time through a SQL view, from the workspace's `default_country` (US) and fee settings.
+  - Freight quotes are fetched only for `settings.default_country`.
+  - The view is materialized only if it proves slow.
+- **Alternatives:** a nightly table per workspace; a global margin.
+- **Why:** Thousands of products are trivial for Postgres, and this keeps per-tenant logic correct.
+
+### DEC-042 · Matching persistence
+**2026-10-22 · proposed — pending Phase 0 approval** · default #32, Review M8
+- **Decision:**
+  - Phase 2 adds `match_candidates` (score components and status) and an append-only `match_decisions` log, which the matcher treats as hard constraints.
+  - Merges set `products.merged_into_id` and redirect. Products are never deleted.
+  - Forecasts keep their original `product_id`.
+- **Alternatives:** a full as-of link table with valid_from/valid_to.
+- **Why:** Preserves link history cheaply. Phase 6 decides whether features read membership as of *t*.
+
+### DEC-043 · Categories: Google Product Taxonomy
+**2026-10-22 · proposed — pending Phase 0 approval** · default #33
+- **Decision:** `products.category_id` plus `category_source` (`rule`, `ai` or `manual`), with mapping tables per source.
+- **Alternatives:** our own taxonomy.
+- **Why:** Free and standard, and it matches Merchant data.
+
+### DEC-044 · Forecasting rigor and cold-start gate
+**2026-10-22 · proposed — pending Phase 0 approval** · default #34, Review M12–M16 (adjusted for DEC-001)
+- **Decision:**
+  - **Gate:** `D ≥ 14 + 7(a−1) + h + 7(f+n−1) + h`, where D counts days of continuous collection on the collector host. Days with gaps in label-relevant sources count according to the label checklist's gap tolerance, set in Phase 6.
+  - **Lean design:** about 12 weeks for the 14-day horizon and about 17 for the 30-day.
+    - The review estimated that collection starting 2026-11-09 would mean about 2027-02-01 and 2027-03-05.
+    - PC downtime pushes these dates out.
+  - **Build order:** Phase 6 build work may start at 6–8 weeks. Ship the 14-day horizon first, and logistic regression before LightGBM.
+  - **Validation:**
+    - training origins are purged so that t_train + h ≤ t_test;
+    - the holdout is enforced by the harness, with one promotion run per window logged with the git SHA.
+  - **Forecast log:**
+    - nightly batch forecasts for the whole eligible universe, with `label_version` and `baseline_value`, not logged on page view;
+    - outcomes are hit, miss or unresolvable;
+    - a database trigger enforces immutability.
+  - **First promotion:** needs the holdout base rate within about 15 points of training, or owner sign-off. The first windows straddle Black Friday (2026-11-27) and Chinese New Year (2027-02-06).
+- **Alternatives:** the spec's 6–8 weeks; logging forecasts on page view.
+- **Why:** Without these, backtests are inflated and Track Record is biased.
+
+### DEC-045 · Track Record: public aggregates only
+**2026-10-22 · proposed — pending Phase 0 approval** · default #35
+- **Decision:**
+  - `/track-record` shows aggregates only, with sample sizes and unresolvable counts.
+  - Per-forecast detail stays behind login.
+  - The page is truly public only after go-live (DEC-001).
+- **Alternatives:** fully public; fully private.
+- **Why:** Publishing individual picks would give away the product's value.
+
+### DEC-046 · Alerts fire once per crossing
+**2026-10-22 · proposed — pending Phase 0 approval** · default #36
+- **Decision:**
+  - A unique `dedupe_key` per threshold crossing.
+  - In-app read state is a `read_at` column.
+  - Discord webhook URLs are stored encrypted.
+  - The email provider is chosen in Phase 7.
+- **Alternatives:** fire on every run.
+- **Why:** Without dedupe, a threshold alert fires every night.
+
+### DEC-047 · AI budgets and AI-derived facts
+**2026-10-22 · proposed — pending Phase 0 approval** · default #37
+- **Decision:**
+  - **System jobs:** a null `workspace_id` means a system job, with its own `AI_SYSTEM_MONTHLY_BUDGET_USD`.
+  - **Over budget:** raises `BudgetExceeded`, which pauses bulk jobs.
+  - **Caps:** asked at Phase 5 entry. The defaults are $20 for the workspace and $20 for system jobs, with a hard stop.
+  - **AI-derived facts:** may feed deterministic scores only when flagged `ai_derived`, with the prompt version and a UI badge. Free text never does.
+- **Alternatives:** charge system jobs to the owner's workspace.
+- **Why:** Global review summaries have no workspace to charge, and §9 requires AI content to be labelled.
+
+### DEC-048 · Unplaced §6 items and phase-end listing
+**2026-10-22 · proposed — pending Phase 0 approval** · default #38 (with DEC-008)
+- **Decision:**
+  - A §6 item not named in a §11 phase is built in the last phase of its tag range unless reassigned at a phase review. Notes and tags land in Phase 2, and the PWA manifest in Phase 4.
+  - PROGRESS.md lists §6 items done and pending at every phase end, including any approved "[Added — pending approval]" items.
+- **Alternatives:** a detailed placement table now.
+- **Why:** Stops tagged features from silently never being built, without guessing a full plan.
