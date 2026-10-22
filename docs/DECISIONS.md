@@ -8,6 +8,8 @@ Every non-obvious technical or product choice, per SPEC §0: date, decision, alt
 - **pending owner**: an open question. The interim default is stated and used until the owner answers.
 - **superseded**: replaced by a later entry, kept for history.
 
+**Status clarification (DEC-049 / SPEC A-11):** the historical "pending Phase 0 approval" label above does not block the build. Proposed defaults are binding working defaults until vetoed; phase summaries receive asynchronous owner review. Explicit owner gates (including seeds, accounts/keys, paid services, ToS/compliance, deployments and collector-host operations) remain.
+
 Source abbreviations: *Review* = Spec Review 2026-10-22 (B/H/M items, "default #n" = `review_synthesis.json` defaults). *SI* = Store Intelligence, *SF* = Supplier & Fulfillment Data Sources, *TA* = Trend & Ad Intelligence Sources, *VoC* = Voice of the Customer, *Syn* = 00 Research Synthesis (all in the vault's `Research/` folder).
 
 New entries go at the bottom with the next number. Never renumber or delete; mark an entry superseded and point to its replacement.
@@ -373,7 +375,7 @@ Superseded review defaults, not given entries: default #0 (move the repo) is don
 ### DEC-022 · Orca multi-agent working rules
 **2026-10-22 · proposed — pending Phase 0 approval** · default #12, Review M18
 - **Decision:**
-  - **Pace and gates:** phases stay serial, and tasks within a phase may run in parallel. One task is one branch, one worktree and one PR. The owner approves each phase boundary.
+  - **Pace and gates:** phases stay serial, and tasks within a phase may run in parallel. One task is one branch, one worktree and one PR. The owner approves each phase boundary. (superseded in part by DEC-049)
   - **Worktrees:** the Orca worktree root is outside OneDrive, for example `C:\dev\pulso-worktrees\`.
   - **Environment:** ports, `DATABASE_URL` (database `pulso_<slug>`) and `REDIS_URL` (`/N`) come from env vars. A worktree-create script that writes each worktree's `.env.local` arrives when parallel work starts (BACKLOG).
   - **Migrations and generated files:** one Alembic migration per PR, with CI asserting a single head. Lockfiles and generated clients are regenerated, never hand-merged.
@@ -754,3 +756,13 @@ Superseded review defaults, not given entries: default #0 (move the repo) is don
   - **Enter animations run only on client navigations** (route enter, Daily Pulse stagger), never on the server-rendered first paint, so content is never hidden behind an animation and hydration stays stable.
 - **Alternatives:** hidden unbuilt routes; `localStorage` for the collapsed state; shadcn's Sidebar block (it animates width).
 - **Why:** The owner can review the whole product map from Phase 0, with no layout shift and the motion rules intact.
+
+### DEC-056 · Phase 0 spine pins, build-script allowlist and environment names
+**2026-10-22 · proposed (P0-13)** · task_3cd7ff937c62; implementation details of DEC-012 and DEC-018
+- **Decision:**
+  - Record the images already used by `infra/docker-compose.yml`: `pgvector/pgvector:0.8.7-pg18-trixie`, `redis:8.8.3-alpine` and `rustfs/rustfs:1.0.3`, with named volumes `pgdata`, `redisdata` and `s3data`. This records the checked-in pins, not a new image or registry verification.
+  - Keep `packageManager: pnpm@11.9.0` in root `package.json`. pnpm 11's `allowBuilds` mapping in `pnpm-workspace.yaml` explicitly permits `sharp` and `esbuild`; it replaces the older `onlyBuiltDependencies` spelling.
+  - The raw-payload bucket is `pulso-raw`, configured by `S3_BUCKET_RAW` in `.env.example` and `packages/core/src/pulso_core/settings.py`. Local creation is explicit: `uv run python -m pulso_core.s3 init`. The earlier vault name `pulso-data` / `S3_BUCKET_DATA` is superseded; no bucket or data is renamed by this documentation change.
+  - Compose host-port variables are `PG_PORT`, `REDIS_PORT`, `S3_PORT` and `S3_CONSOLE_PORT`, bound to loopback. They are distinct from native app ports `API_PORT` / `WEB_PORT` and the full connection settings `DATABASE_URL`, `REDIS_URL` and `S3_ENDPOINT_URL`; changing a host port requires matching connection settings. `infra/scripts/worktree_env.py` assigns app ports, database names and Redis DB numbers while keeping both scheduler/live flags off; it does not provision databases.
+- **Alternatives:** floating image tags; the old pnpm allowlist key; the planning-only bucket name and `PULSO_PG_PORT`-style aliases.
+- **Why:** Match the existing code and avoid a second set of names in the setup notes. DEC-049 governs continuous build, not these spine implementation details. Railway configuration remains in its dashboard under DEC-014; no runtime configuration or collector-host operation changes here.
