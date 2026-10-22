@@ -44,7 +44,7 @@ function MeChip() {
         <TooltipTrigger asChild>
           <button type="button" className={chip} onClick={() => me.refetch()}>
             <StatusDot state={problem ? "failed" : "warning"} />
-            {me.isFetching ? "Checking…" : problem ? "Workspace error" : "API not reachable"}
+            {me.isFetching ? "Checking…" : problem ? "Can’t load workspace" : "API not reachable"}
           </button>
         </TooltipTrigger>
         <TooltipContent className="max-w-64">
