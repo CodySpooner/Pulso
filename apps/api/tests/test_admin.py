@@ -1,7 +1,11 @@
+import io
+import logging
+import time
 from collections.abc import Callable, Iterator
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
 from typing import Any
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 from uuid import uuid4
 
 import pytest
@@ -29,8 +33,9 @@ from sqlalchemy.schema import DefaultClause
 
 from pulso_api.auth import Principal, current_principal
 from pulso_api.dependencies import get_db
-from pulso_api.routers.admin import get_publisher
+from pulso_api.routers.admin import get_publisher, get_source
 from pulso_core.db import Base
+from pulso_core.logging import JsonFormatter
 from pulso_core.models import (
     CollectionGap,
     CollectorRun,
@@ -41,6 +46,7 @@ from pulso_core.models import (
     SourceEvent,
 )
 from pulso_core.settings import Settings, get_settings
+from pulso_sources.framework import Request, Response, Target, enqueue_run, execute_run
 
 NOW = datetime.now(UTC).replace(microsecond=0)
 PRINCIPAL = Principal(uuid4(), uuid4())
@@ -252,6 +258,112 @@ def test_patch_toggles_and_appends_one_event(admin: TestClient, engine: Engine) 
         (str(PRINCIPAL.user_id), "enable", "unblocked"),
     ]
     assert admin.patch("/v1/admin/sources/nope", json={"enabled": True}).status_code == 404
+
+
+def test_disable_keeps_a_block_committed_after_the_lookup(
+    admin: TestClient, engine: Engine, settings: Settings
+) -> None:
+    """R1: a framework block landing between the route's lookup and its write survives."""
+    with Session(engine) as session:
+        session.execute(
+            update(Source)
+            .where(Source.key == "cj")
+            .values(enabled=True, status="active", consecutive_block_count=4)
+        )
+        run_id = enqueue_run(session, source_id=2, trigger="manual", publish=lambda _: None).id
+
+    def block_after_lookup(session: Session, key: str) -> Source:
+        source = get_source(session, key)
+        with (
+            Session(engine) as runner,
+            patch("pulso_sources.framework.lifecycle.fetch", return_value=Response(None, 429)),
+        ):
+            target = Target("catalog", "fixture", [Request()])
+            execute_run(runner, run_id, Mock(), [target], settings=settings)
+        return source
+
+    with patch("pulso_api.routers.admin.get_source", side_effect=block_after_lookup):
+        disabled = admin.patch("/v1/admin/sources/cj", json={"enabled": False})
+    assert (disabled.json()["status"], disabled.json()["disabled_reason"]) == (
+        "blocked",
+        "consecutive_blocks:http_429",
+    )
+    with Session(engine) as session:
+        assert session.get_one(Source, 2).consecutive_block_count == 5
+    enabled = admin.patch("/v1/admin/sources/cj", json={"enabled": True})
+    assert (enabled.status_code, enabled.json()["code"]) == (422, "reason_required")
+
+
+@pytest.mark.parametrize("engine", [pytest.param("postgres", marks=pytest.mark.db)], indirect=True)
+def test_toggle_waits_for_a_concurrent_block(admin: TestClient, engine: Engine) -> None:
+    """R1: the row lock makes a disable decide on a block committed while it waited."""
+
+    def lock_waits() -> bool:
+        with engine.connect() as connection:  # fresh snapshot of pg_stat_activity per poll
+            return bool(
+                connection.scalar(
+                    text(
+                        "SELECT count(*) FROM pg_stat_activity"
+                        " WHERE datname = current_database() AND wait_event_type = 'Lock'"
+                    )
+                )
+            )
+
+    with Session(engine) as session:  # a running source, so a stale write would change status
+        session.execute(
+            update(Source).where(Source.key == "cj").values(enabled=True, status="active")
+        )
+        session.commit()
+    # Closing the framework session first releases its lock before the pool joins.
+    with ThreadPoolExecutor(1) as pool, Session(engine) as framework:
+        framework.execute(
+            update(Source)
+            .where(Source.key == "cj")
+            .values(enabled=False, status="blocked", disabled_reason="consecutive_blocks:http_429")
+        )
+        pending = pool.submit(admin.patch, "/v1/admin/sources/cj", json={"enabled": False})
+        deadline = time.monotonic() + 10
+        while not lock_waits():
+            assert time.monotonic() < deadline, "the toggle never waited on the source row"
+            time.sleep(0.05)
+        framework.commit()
+        disabled = pending.result(timeout=10)
+    assert (disabled.json()["status"], disabled.json()["disabled_reason"]) == (
+        "blocked",
+        "consecutive_blocks:http_429",
+    )
+    enabled = admin.patch("/v1/admin/sources/cj", json={"enabled": True})
+    assert (enabled.status_code, enabled.json()["code"]) == (422, "reason_required")
+
+
+def test_publish_failure_logs_only_the_error_class(
+    admin: TestClient, engine: Engine, settings: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """I1: broker errors can carry credentials; the API log keeps only the class name."""
+    marker = "fixture-only-broker-credential-marker"
+
+    def failing_publish(run_id: int) -> None:
+        raise ConnectionError(marker)
+
+    assert isinstance(admin.app, FastAPI)
+    live_settings = settings.model_copy(update={"collectors_live": True})
+    admin.app.dependency_overrides[get_settings] = lambda: live_settings
+    admin.app.dependency_overrides[get_publisher] = lambda: failing_publish
+    with Session(engine) as session:
+        session.execute(update(Source).where(Source.key == "cj").values(enabled=True))
+        session.commit()
+    output = io.StringIO()
+    handler = logging.StreamHandler(output)
+    handler.setFormatter(JsonFormatter())
+    monkeypatch.setattr(logging.getLogger("pulso"), "handlers", [handler])
+    with patch("pulso_api.routers.admin.is_linked_worktree", return_value=False):
+        response = admin.post("/v1/admin/sources/cj/run")
+    assert (response.status_code, response.json()["code"]) == (500, "internal_error")
+    with Session(engine) as session:
+        run = session.scalars(select(CollectorRun)).one()
+    assert (run.status, run.error_code) == ("failed", "publish_failed")
+    assert "ConnectionError" in output.getvalue()
+    assert marker not in output.getvalue() + response.text
 
 
 def test_coverage_excludes_internal_sources(admin: TestClient, engine: Engine) -> None:

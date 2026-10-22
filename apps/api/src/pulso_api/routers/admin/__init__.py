@@ -1,5 +1,6 @@
 """Data Health admin API (DH-1). Never returns or logs source config beyond seed approval."""
 
+import logging
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from typing import Annotated
@@ -37,6 +38,7 @@ from pulso_core.worktree import is_linked_worktree
 from pulso_sources.framework import enqueue_run
 from pulso_sources.seed_approval import SEED_SOURCES, approved_targets, is_approved_seed
 
+logger = logging.getLogger("pulso.api")
 router = APIRouter(prefix="/v1/admin", dependencies=[Depends(current_principal)])
 DB = Annotated[Session, Depends(get_db)]
 COVERAGE = table(
@@ -140,6 +142,8 @@ def patch_source(
     principal: Annotated[Principal, Depends(current_principal)],
 ) -> SourceHealth:
     source = get_source(session, key)
+    # Lock until commit and re-read, so a framework block committed meanwhile decides (R1).
+    session.refresh(source, with_for_update=True)
     reason = (patch.reason or "").strip() or None
     now = datetime.now(UTC)
     if patch.enabled:
@@ -173,7 +177,17 @@ def run_source(
         )
     if not source.enabled:
         raise APIError(409, "source_disabled", "Enable the source before running it.")
-    run = enqueue_run(session, source_id=source.id, trigger="manual", publish=publish)
+
+    def publish_run(run_id: int) -> object:
+        try:
+            return publish(run_id)
+        except Exception as exc:
+            # Broker errors can embed connection strings: log the class only (I1).
+            # enqueue_run records publish_failed, then re-raises this fixed-text error.
+            logger.error("run_publish_failed", extra={"error_type": type(exc).__name__})
+            raise APIError(500, "internal_error", "An internal error occurred.") from None
+
+    run = enqueue_run(session, source_id=source.id, trigger="manual", publish=publish_run)
     return runs(session, CollectorRun.id == run.id)[0]
 
 
