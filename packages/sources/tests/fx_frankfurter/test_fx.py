@@ -36,11 +36,13 @@ def session() -> Iterator[Session]:
         engine.dispose()
 
 
-@pytest.mark.parametrize("name,count", [("latest.json", 3), ("history.json", 3)])
-def test_parse_fixture(name: str, count: int) -> None:
+@pytest.mark.parametrize(
+    "name,count,day", [("latest.json", 3, 19), ("history.json", 3, 19), ("outage.json", 6, 9)]
+)
+def test_parse_fixture(name: str, count: int, day: int) -> None:
     rows = FrankfurterAdapter().parse((FIXTURES / name).read_bytes())
     assert len(rows) == count
-    assert rows[0].date == date(2026, 10, 19) and rows[0].rate == Decimal(150)
+    assert rows[0].date == date(2026, 10, day) and rows[0].rate == Decimal(150)
 
 
 def test_hand_checked_fixture_conversion() -> None:
@@ -169,3 +171,17 @@ def test_csv_registration_validation_and_manual_provenance(session: Session) -> 
     for rate in ["NaN", "Infinity", "1e10", "0.000000001"]:
         invalid = body.splitlines()[0] + f"\n2026-10-19,USD,JPY,{rate}\n".encode()
         assert parse_csv("fx_frankfurter", invalid).errors
+
+
+def test_five_day_outage_backfill_preserves_historical_features(session: Session) -> None:
+    adapter = FrankfurterAdapter()
+    rows = adapter.parse((FIXTURES / "outage.json").read_bytes())
+    before = RawPayload(id=1, source_id=4, captured_at=datetime(2026, 10, 9, tzinfo=UTC))
+    after = RawPayload(id=2, source_id=4, captured_at=datetime(2026, 10, 17, tzinfo=UTC))
+    adapter.upsert(session, rows[:1], before, parser_version="1")
+    assert adapter.upsert(session, rows, after, parser_version="1").inserted == 5
+    assert adapter.upsert(session, rows, after, parser_version="1").inserted == 0
+    assert session.scalar(select(func.count()).select_from(FxRate)) == 6
+    for day, value in [(16, 150), (17, 155)]:
+        rate = rate_as_of(session, "JPY", date(2026, 10, day))
+        assert rate is not None and rate.rate == value
