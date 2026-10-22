@@ -78,6 +78,7 @@ New entries go at the bottom with the next number. Never renumber or delete; mar
 | DEC-061 | Raw capture objects, bodyless evidence and sanitized request metadata | proposed (P1-02) |
 | DEC-062 | 0002 amended in place before first apply | proposed (P1-17) |
 | DEC-063 | Collector execution, target evidence and effective observations | proposed (P1-03) |
+| DEC-066 | Releasing worker worktrees on Windows: stop processes standing in the folder first | proposed (P1-21) |
 
 Superseded review defaults, not given entries: default #0 (move the repo) is done, see DEC-005. Default #2 (no local collection at all) is replaced by DEC-002. Default #15 (CSS-only motion) is replaced by DEC-007, and its remaining rules are in DEC-025. Review question D1 (Railway Pro from Phase 1) is answered by DEC-001, D2 by DEC-003, D3 by DEC-004, D5 by DEC-008 and D8 by DEC-006.
 
