@@ -90,6 +90,7 @@ New entries go at the bottom with the next number. Never renumber or delete; mar
 | DEC-075 | Reject import mappings changed by metadata sanitization | proposed (P1-24) |
 | DEC-076 | Seed revision ordering and stored-target validation | proposed (P1-25) |
 | DEC-077 | Bounded Shopify probe: whole-run request budget, first-block run stop, public bot page | proposed (data-01) |
+| DEC-090 | SPK-3: Shopify crawler go/no-go after SPK-2 (conditional go; enables nothing) | proposed (data-04) |
 
 Superseded review defaults, not given entries: default #0 (move the repo) is done, see DEC-005. Default #2 (no local collection at all) is replaced by DEC-002. Default #15 (CSS-only motion) is replaced by DEC-007, and its remaining rules are in DEC-025. Review question D1 (Railway Pro from Phase 1) is answered by DEC-001, D2 by DEC-003, D3 by DEC-004, D5 by DEC-008 and D8 by DEC-006.
 
@@ -1006,3 +1007,23 @@ Superseded review defaults, not given entries: default #0 (move the repo) is don
   - **SPK-2 command:** documented once in the Shopify section of `docs/DATA_SOURCES.md` for the four DEC-073 stores with `--max-requests 20`, writing to `C:/Users/Xody2/orca/workspaces/pulso/spike-SPK-2.md`. This task does not run it; the lead runs it under Lead Playbook §6 step 2.
 - **Alternatives:** an unbounded `--max-requests`, which would relax DEC-052's fixed cap; stopping only the blocked store (DEC-052), which keeps sending requests after the first sign of rate limiting and breaks DEC-073; following redirects and counting each hop, which spends budget on other hosts.
 - **Why:** DEC-073 allows one test of at most 20 requests that stops entirely at the first block. The cap and the stop have to live in the script, not in the operator's care, and the report has to say why a partial run ended.
+
+### DEC-090 · SPK-3 — Shopify crawler go/no-go after SPK-2
+**2026-10-22 · proposed (data-04)** · task_48353588040b; SPK-3; evidence: the SPK-2 report `C:\Users\Xody2\orca\workspaces\pulso\spike-SPK-2.md`, summarized in `docs/DATA_SOURCES.md` (Shopify, "SPK-2 results (2026-10-22)"); builds on DEC-003, DEC-033, DEC-069, DEC-073 and DEC-077
+- **Decision:** a **conditional go**. Work on the `shopify_stores` adapter continues toward enabling, but enabling stays gated on all five conditions below. Each one is built into the adapter and covered by a fixture test before the flag can turn on.
+  - **(a) Per-store spacing.** Requests to the same store are spaced well above 3 s. A store's `Retry-After`, and any robots.txt crawl delay, set a minimum that is never shortened. The global cap of ≤ 30 requests/min (DEC-033) still applies on top. The adapter task sets and tests the exact interval.
+  - **(b) No repeated URL in a run.** A run never requests the same URL twice. Conditional requests use the ETag stored by an earlier run (`If-None-Match`, DEC-033), so 304s come from repeats across runs, never within one run.
+  - **(c) robots.txt redirects.** A robots.txt response that redirects to another host is not followed. That store is skipped for the run and logged to Data Health.
+  - **(d) Stop on the first block, unchanged.** DEC-069 applies as written: the first 429, 430 or 403 stops the whole run with no retry and no further stores. Consecutive blocks count across runs toward auto-disable, and a 430 disables the source at once.
+  - **(e) No inventory-based labels.** The Grade A demand-label family (`.js` `inventory_quantity` deltas) counts as unavailable for these stores. The adapter still stores the fields if a store exposes them. MSR-1's coverage memo decides the label source later.
+  - **This enables nothing.** `shopify_stores` stays off. To enable it, every Lead Playbook §6 step 4 condition must hold: P1-03b block tests, `parse()` fixture tests and the 30/min limiter test, `approved_targets()` entries, SPK-2 results in `docs/DATA_SOURCES.md` and this entry on `main`. Conditions (a)–(e) must be met as well, and the owner must give the go. SPK-2 stays a single run and is not repeated. This entry does not relax DEC-003, DEC-033, DEC-069, DEC-073 or AGENTS.md §3/§4.
+- **Alternatives:**
+  - **No-go:** keep the source off and rely on CSV/URL paste only. Rejected: three of the four stores served public `/products.json`, conditional requests returned 304 on both stores where the repeat got a normal answer, and `/meta.json` returned USD. The only 429 came on a repeat of the same URL sent at the probe's minimum 3 s spacing, a pattern conditions (a) and (b) remove. A no-go would give up the best free store signal on evidence that points at the request pattern, not at a blanket block. The CSV fallback stays either way.
+  - **Go without conditions:** enable once the fixture gates pass, keeping the probe's request pattern. Rejected: one of the three catalog repeats drew a 429 at the probe's 3 s minimum spacing, and in a scheduled run that would trip the DEC-069 stop and move the source toward auto-disable. The robots.txt 301 needs a defined handling. `inventory_quantity` was absent on every public-JSON row, so a design that assumes Grade A labels would be built on a field these stores don't expose.
+- **Why:** the evidence comes from one run of 14 requests to four stores, small but direct:
+  - public JSON and working ETags on the stores that were reached;
+  - one 429 with `Retry-After: 60` on bleame's same-URL repeat (probe spacing ≥ 3 s), at which the run stopped as DEC-069/DEC-077 require;
+  - one robots.txt 301 (meowingtons), not followed;
+  - no `inventory_quantity` anywhere.
+
+  The conditions are cheap, change none of the compliance rules and only make the adapter politer than the probe. The owner can veto them or make them stricter.
