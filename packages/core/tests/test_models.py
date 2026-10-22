@@ -10,6 +10,12 @@ from pulso_core.db import Base, Observation, WorkspaceOwned
 
 
 def test_observation_contract() -> None:
+    natural_keys = {
+        "listing_snapshots": ("listing_id",),
+        "variant_snapshots": ("variant_id",),
+        "shipping_options": ("listing_id", "variant_id", "destination_country", "method"),
+        "fx_rates": ("date", "base", "quote", "source"),
+    }
     observed = []
     for mapper in Base.registry.mappers:
         if issubclass(mapper.class_, Observation):
@@ -26,12 +32,20 @@ def test_observation_contract() -> None:
                 )
             )
             assert table.c.raw_payload_id.foreign_keys
-            keys = (*mapper.class_.observation_keys, "raw_payload_id")
+            keys = (*natural_keys[table.name], "raw_payload_id")
             assert any(
                 isinstance(c, UniqueConstraint) and tuple(c.columns.keys()) == keys
                 for c in table.constraints
             )
             assert any(tuple(i.columns.keys()) == (keys[0], "captured_at") for i in table.indexes)
+            if table.name == "shipping_options":
+                assert any(
+                    isinstance(c, UniqueConstraint)
+                    and c.dialect_options["postgresql"]["nulls_not_distinct"]
+                    for c in table.constraints
+                )
+            if table.name == "fx_rates":
+                assert tuple(table.primary_key.columns.keys()) == natural_keys[table.name]
     assert set(observed) == {
         "listing_snapshots",
         "variant_snapshots",

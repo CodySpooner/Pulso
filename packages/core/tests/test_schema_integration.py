@@ -12,7 +12,15 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session
 
 from pulso_core.db import Base
-from pulso_core.models import CollectorRun, Currency, Listing, ListingSnapshot, RawPayload, Source
+from pulso_core.models import (
+    CollectorRun,
+    Currency,
+    Listing,
+    ListingSnapshot,
+    RawPayload,
+    ShippingOption,
+    Source,
+)
 from pulso_core.money import CURRENCY_EXPONENTS
 
 pytestmark = pytest.mark.db
@@ -34,7 +42,7 @@ def test_migration_roundtrip_and_metadata(db_engine: Engine) -> None:
         assert session.scalar(select(func.count()).select_from(Source).where(Source.enabled)) == 0
 
 
-def test_reparse_payload_does_not_duplicate_snapshot(db_engine: Engine) -> None:
+def test_reparse_payload_does_not_duplicate_observations(db_engine: Engine) -> None:
     with Session(db_engine) as session, session.begin():
         run = CollectorRun(source_id=1, trigger="csv")
         listing = Listing(
@@ -62,3 +70,22 @@ def test_reparse_payload_does_not_duplicate_snapshot(db_engine: Engine) -> None:
         assert session.scalar(statement) is not None
         assert session.scalar(statement) is None
         assert session.scalar(select(func.count()).select_from(ListingSnapshot)) == 1
+        for method in ("standard", "express"):
+            quote = (
+                insert(ShippingOption)
+                .values(
+                    listing_id=listing.id,
+                    variant_id=None,
+                    destination_country="US",
+                    method=method,
+                    raw_payload_id=payload.id,
+                    observed_for=date(2026, 10, 22),
+                    cost_minor=100,
+                    currency="USD",
+                )
+                .on_conflict_do_nothing()
+                .returning(ShippingOption.id)
+            )
+            assert session.scalar(quote) is not None
+            assert session.scalar(quote) is None
+        assert session.scalar(select(func.count()).select_from(ShippingOption)) == 2
