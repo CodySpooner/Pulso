@@ -81,6 +81,42 @@ Canonical compliance record required by SPEC §4.2: for every data source, its a
 - **Risk:** merchant-account ToS exposure (DEC-003), cloud-IP blocking and undocumented inventory fields disappearing; no key expiry. Evidence: `Source - Shopify Stores`, SI §2–3.
 - **Cost:** free public endpoints / CSV; no paid access tier. **Status:** planned. **Phase:** 1.
 
+### SPK-2 results (2026-10-22)
+
+The lead ran the SPK-2 command above exactly once under DEC-073, from `C:\dev\pulso` at `a93540d`. This replaces the earlier "not run yet" notes in this section. Report (outside the repo, read-only): `C:\Users\Xody2\orca\workspaces\pulso\spike-SPK-2.md`. The go/no-go decision is DEC-090 (proposed). The source stays disabled.
+
+- **Run:** captured 2026-10-22T23:16:26Z. 14 of 20 requests used, 4 of 4 stores reached, none left unreached. Stop reason: HTTP 429 from `https://bleame.com/products.json?limit=1`, which stopped the whole run with no retry.
+- **Per store:**
+  - **sageandsill.com** (5 requests, all five probe steps done): robots.txt 200; `/products.json?limit=1` 200 public JSON; conditional repeat 304; `/meta.json` 200 USD; `/products/mantle-3w-replacement-bulb.js` 200 public JSON.
+  - **meowingtons.com** (1 request): robots.txt 301. The probe does not follow redirects, so robots.txt counted as unavailable and the probe stopped that store.
+  - **thecloudies.com** (5 requests, all five probe steps done): robots.txt 200; `/products.json?limit=1` 200 public JSON; conditional repeat 304; `/meta.json` 200 USD; `/products/cloudies-snug-boot.js` 200 public JSON.
+  - **bleame.com** (3 requests): robots.txt 200; `/products.json?limit=1` 200 public JSON. The conditional repeat of that URL got 429 with `Retry-After: 60`, and the run stopped. `/meta.json` and `.js` were not requested.
+- **Status codes:** 200 ×10, 304 ×2, 301 ×1, 429 ×1. No 403 or 430.
+- **ETag / 304:** the `If-None-Match` repeat returned 304 on sageandsill and thecloudies, the two stores where the repeat got a normal answer. On bleame the repeat returned 429 instead.
+- **Currency:** `/meta.json` reported USD on both stores where it was requested.
+- **robots.txt:** 200 on three stores and 301 on meowingtons.com. No request was skipped as robots-disallowed.
+- **`inventory_quantity`:** absent from all five public-JSON rows (three `/products.json?limit=1` rows and two `.js` rows). bleame's `.js` was never reached.
+- **Spacing:** the report has no per-request timestamps. The probe spaces requests at least 3 s apart, more if robots.txt sets a crawl delay (DEC-077 command notes above). So bleame's 429 came on its next request, at least 3 s after its first catalog response.
+
+| Store | Path | Status | Retry-After | ETag -> 304 | Currency | State | inventory_quantity | Latency ms | Note |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| https://sageandsill.com | /robots.txt | 200 | - | - | unknown | unknown | - | 347.7 |  |
+| https://sageandsill.com | /products.json?limit=1 | 200 | - | - | unknown | public JSON | no | 166.2 |  |
+| https://sageandsill.com | /products.json?limit=1 | 304 | - | yes | unknown | unknown | - | 194.9 |  |
+| https://sageandsill.com | /meta.json | 200 | - | - | USD | unknown | - | 404.8 |  |
+| https://sageandsill.com | /products/mantle-3w-replacement-bulb.js | 200 | - | - | unknown | public JSON | no | 152.1 |  |
+| https://meowingtons.com | /robots.txt | 301 | - | - | unknown | unknown | - | 339.2 | robots unavailable; store stopped |
+| https://thecloudies.com | /robots.txt | 200 | - | - | unknown | unknown | - | 379.9 |  |
+| https://thecloudies.com | /products.json?limit=1 | 200 | - | - | unknown | public JSON | no | 124.1 |  |
+| https://thecloudies.com | /products.json?limit=1 | 304 | - | yes | unknown | unknown | - | 101.5 |  |
+| https://thecloudies.com | /meta.json | 200 | - | - | USD | unknown | - | 124.0 |  |
+| https://thecloudies.com | /products/cloudies-snug-boot.js | 200 | - | - | unknown | public JSON | no | 127.8 |  |
+| https://bleame.com | /robots.txt | 200 | - | - | unknown | unknown | - | 358.3 |  |
+| https://bleame.com | /products.json?limit=1 | 200 | - | - | unknown | public JSON | no | 142.0 |  |
+| https://bleame.com | /products.json?limit=1 | 429 | 60 | no | unknown | unknown | - | 71.4 | run stopped; no retry |
+
+The report's own caveat: states are observations, and a 404 alone cannot establish a headless store. No row in this run was a 404.
+
 ## CJ Dropshipping (`cj`)
 
 - **Access:** API 2.0, base `https://developers.cjdropshipping.com/api2.0/v1`. Key from CJ App Store → My CJ → API → Add API (no review). `POST /authentication/getAccessToken {apiKey}` (1 call/s), header `CJ-Access-Token`; token expiry read from the response (docs: 180 days; older docs: 15). Manual supplier/stock/freight CSV fallback, including while DEC-009 is pending.
