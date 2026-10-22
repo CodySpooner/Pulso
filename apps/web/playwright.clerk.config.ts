@@ -1,6 +1,8 @@
 import { defineConfig, devices } from "@playwright/test";
 
-const PORT = 3198;
+import { smokePort } from "./e2e/smoke-port";
+
+const PORT = smokePort(200);
 
 // CI-4: `pnpm --filter web e2e:clerk` drives `next dev` with the real Clerk dev instance (no E2E bypass) and
 // Clerk testing tokens. It needs CLERK_SECRET_KEY and NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY, from the environment
@@ -18,7 +20,7 @@ export default defineConfig({
     command: "node scripts/dev.mjs",
     url: `http://localhost:${PORT}/sign-in`,
     timeout: 180_000,
-    reuseExistingServer: !process.env.CI,
+    reuseExistingServer: false, // see playwright.config.ts
     env: { WEB_PORT: String(PORT), NEXT_PUBLIC_CLERK_SIGN_IN_URL: "/sign-in", NEXT_PUBLIC_CLERK_KEYLESS_DISABLED: "1" },
   },
 });
