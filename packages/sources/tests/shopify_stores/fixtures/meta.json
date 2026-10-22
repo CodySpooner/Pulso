@@ -1,0 +1,10 @@
+{
+  "status": 200,
+  "body": {
+    "id": 1,
+    "myshopify_domain": "fixture.myshopify.com",
+    "currency": "USD",
+    "country": "US"
+  },
+  "records": 1
+}
