@@ -13,6 +13,7 @@ from sqlalchemy import (
     Identity,
     Index,
     MetaData,
+    String,
     UniqueConstraint,
     create_engine,
     func,
@@ -56,12 +57,16 @@ class Observation:
     )
     observed_for: Mapped[date]
     raw_payload_id: Mapped[int] = mapped_column(ForeignKey("raw_payloads.id"))
+    parser_version: Mapped[str] = mapped_column(String(80), server_default="1")
 
     @declared_attr.directive
     def __table_args__(cls) -> tuple[UniqueConstraint, Index]:
         return (
             UniqueConstraint(
-                *cls.observation_keys, "raw_payload_id", postgresql_nulls_not_distinct=True
+                *cls.observation_keys,
+                "raw_payload_id",
+                "parser_version",
+                postgresql_nulls_not_distinct=True,
             ),
             Index(None, cls.observation_keys[0], "captured_at"),
         )

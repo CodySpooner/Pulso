@@ -44,11 +44,19 @@ class SupplierOffer(Base):
 
 class ShippingOption(Observation, BigId, Base):
     __tablename__ = "shipping_options"
-    observation_keys = ("listing_id", "variant_id", "destination_country", "method")
+    observation_keys = (
+        "listing_id",
+        "variant_id",
+        "origin_country",
+        "destination_country",
+        "quantity",
+        "method",
+    )
     listing_id: Mapped[int] = mapped_column(ForeignKey("listings.id"))
     variant_id: Mapped[int | None] = mapped_column(ForeignKey("listing_variants.id"))
     origin_country: Mapped[str | None] = mapped_column(CHAR(2))
     destination_country: Mapped[str] = mapped_column(CHAR(2))
+    quantity: Mapped[int] = mapped_column(server_default="1")
     method: Mapped[str] = mapped_column(Text)
     cost_minor: Mapped[int] = mapped_column(BigInteger)
     currency: Mapped[str] = mapped_column(CHAR(3), ForeignKey("currencies.code"))

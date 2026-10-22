@@ -41,7 +41,22 @@ def test_migration_roundtrip_and_metadata(
             {"qualified": f"{schema}.alembic_version"},
         )
         config.attributes["connection"] = connection
-        assert compare_metadata(MigrationContext.configure(connection), Base.metadata) == []
+        assert (
+            compare_metadata(
+                MigrationContext.configure(connection, opts={"compare_server_default": True}),
+                Base.metadata,
+            )
+            == []
+        )
+        command.downgrade(config, "0001")
+        command.upgrade(config, "head")
+        assert (
+            compare_metadata(
+                MigrationContext.configure(connection, opts={"compare_server_default": True}),
+                Base.metadata,
+            )
+            == []
+        )
         command.downgrade(config, "base")
         command.upgrade(config, "head")
     with Session(db_engine) as session:
@@ -51,12 +66,64 @@ def test_migration_roundtrip_and_metadata(
         }
         assert currencies == CURRENCY_EXPONENTS
         assert session.scalar(select(func.count()).select_from(Source).where(Source.enabled)) == 0
+        backup = session.scalar(select(Source).where(Source.key == "backup"))
+        assert backup is not None and not backup.enabled
 
 
 def test_connected_database_is_a_test_database(db_engine: Engine) -> None:
     with db_engine.connect() as connection:
         database = connection.scalar(text("SELECT current_database()"))
         assert database == "pulso_ci" or database.startswith("pulso_test")
+
+
+def test_phase1_upgrade_preserves_legacy_observations(db_engine: Engine) -> None:
+    config = Config(str(Path(__file__).resolve().parents[3] / "alembic.ini"))
+    with db_engine.begin() as connection:
+        config.attributes["connection"] = connection
+        command.downgrade(config, "0001")
+        run = connection.execute(
+            insert(CollectorRun)
+            .values(source_id=1, trigger="csv")
+            .returning(CollectorRun.id, CollectorRun.started_at)
+        ).one()
+        listing_id = connection.scalar(
+            insert(Listing)
+            .values(
+                source_id=1, external_id="legacy", title="Legacy", url="https://example.test/legacy"
+            )
+            .returning(Listing.id)
+        )
+        payload_id = connection.scalar(
+            insert(RawPayload)
+            .values(source_id=1, run_id=run.id, request={}, bytes=0, sha256="0" * 64)
+            .returning(RawPayload.id)
+        )
+        snapshot_id = connection.scalar(
+            insert(ListingSnapshot)
+            .values(
+                listing_id=listing_id,
+                raw_payload_id=payload_id,
+                observed_for=date(2026, 10, 22),
+                captured_at=run.started_at,
+                values_hash="a" * 64,
+                price_min_minor=123,
+                currency="USD",
+            )
+            .returning(ListingSnapshot.id)
+        )
+        command.upgrade(config, "head")
+        snapshot = connection.execute(select(ListingSnapshot.__table__)).one()
+        assert (
+            snapshot.id,
+            snapshot.raw_payload_id,
+            snapshot.captured_at,
+            snapshot.price_min_minor,
+            snapshot.parser_version,
+        ) == (snapshot_id, payload_id, run.started_at, 123, "1")
+        assert connection.scalar(select(CollectorRun.queued_at)) == run.started_at
+        command.downgrade(config, "0001")
+        command.upgrade(config, "head")
+        assert connection.scalar(select(ListingSnapshot.id)) == snapshot_id
 
 
 def test_reparse_payload_does_not_duplicate_observations(db_engine: Engine) -> None:
