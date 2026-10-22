@@ -13,8 +13,17 @@ describe("formatDelta", () => {
     [8, "neutral", { glyph: "▲", text: "+8.0", tone: "neutral" }],
     [0.04, "up", { glyph: null, text: "±0.0", tone: "neutral" }],
     [-0.04, "down", { glyph: null, text: "±0.0", tone: "neutral" }],
+    [0, "up", { glyph: null, text: "±0.0", tone: "neutral" }],
+    [-0, "down", { glyph: null, text: "±0.0", tone: "neutral" }],
   ] as const)("%d with good direction %s", (value, goodDirection, expected) => {
     expect(formatDelta(value, goodDirection)).toEqual(expected);
+  });
+
+  // Missing or non-finite is an em dash with no direction, never coerced to zero (vault Design/Typography).
+  test.each([null, undefined, Number.NaN, Infinity, -Infinity])("%s is missing in every good direction", (value) => {
+    for (const goodDirection of ["up", "down", "neutral"] as const) {
+      expect(formatDelta(value, goodDirection)).toEqual({ glyph: null, text: "—", tone: "neutral", missing: true });
+    }
   });
 
   test("digits set the display precision", () => {
