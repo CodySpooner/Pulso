@@ -10,9 +10,18 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from pulso_core.models import Source
-from pulso_sources.seed_approval import SEED_SOURCES, is_approved_seed
+from pulso_sources.seed_approval import SEED_SOURCES, is_approved_seed, validate_seed_entries
 
 DEFAULT_SEED = Path(__file__).resolve().parents[2] / "seeds/seed_v1.yaml"
+
+
+def _unique_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError(f"Duplicate JSON key: {key}")
+        result[key] = value
+    return result
 
 
 def read_seed(path: Path) -> dict[str, dict[str, Any]]:
@@ -22,7 +31,8 @@ def read_seed(path: Path) -> dict[str, dict[str, Any]]:
             line
             for line in path.read_text(encoding="utf-8").splitlines()
             if not line.lstrip().startswith("#")
-        )
+        ),
+        object_pairs_hook=_unique_object,
     )
     required = {"approval", *SEED_SOURCES}
     if not isinstance(data, dict):
@@ -49,45 +59,15 @@ def read_seed(path: Path) -> dict[str, dict[str, Any]]:
     if (approval["status"] == "approved" and not approved) or (
         approval["status"] == "draft" and approval["approved_on"] is not None
     ):
-        raise ValueError("approval.approved_on must be YYYY-MM-DD for approved, null for draft")
+        raise ValueError(
+            "approval.approved_on must be YYYY-MM-DD on or before today (UTC) for approved, "
+            "null for draft"
+        )
 
     seeds = {}
     for section, source_key in SEED_SOURCES.items():
-        entries = data[section]
-        if not isinstance(entries, list):
-            raise ValueError(f"{section} must be a list")
-        seen: set[str] = set()
-        identity = {"stores": "domain", "cj_categories": "name", "keywords": "keyword"}[section]
-        fields = {
-            "stores": {"domain", "name", "enabled"},
-            "cj_categories": {"name", "enabled"},
-            "keywords": {"keyword", "geo", "tz", "enabled"},
-        }[section]
-        for i, row in enumerate(entries):
-            label = f"{section}[{i}]"
-            if not isinstance(row, dict) or set(row) != fields:
-                raise ValueError(f"{label} requires exactly: {', '.join(sorted(fields))}")
-            for field in fields - {"enabled", "tz"}:
-                if not isinstance(row[field], str) or not row[field].strip():
-                    raise ValueError(f"{label}.{field} must be nonempty text")
-            if not isinstance(row["enabled"], bool):
-                raise ValueError(f"{label}.enabled must be true or false")
-            key = " ".join(row[identity].split()).casefold()
-            if section == "stores":
-                key = row["domain"].strip().lower()
-                if len(key) > 253 or not re.fullmatch(
-                    r"(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}", key
-                ):
-                    raise ValueError(f"{label}.domain must be a bare domain (no scheme or path)")
-                row["domain"] = key
-            if key in seen:
-                raise ValueError(f"{label}: duplicate {identity}: {key}")
-            seen.add(key)
-            if section == "keywords":
-                if row["geo"] != "US":
-                    raise ValueError(f"{label}.geo must be US")
-                if type(row["tz"]) is not int or row["tz"] != 0:
-                    raise ValueError(f"{label}.tz must be 0 (UTC)")
+        entries = validate_seed_entries(section, data[section])
+        for row in entries:
             row["enabled"] = approved and row["enabled"]
         seeds[source_key] = {**approval, "entries": entries}
     return seeds
@@ -114,6 +94,13 @@ def load_seeds(
             continue
         if isinstance(before, dict) and before.get("version") == after["version"]:
             raise ValueError(f"{source.key}: changed seed content; bump approval.version")
+        version = before.get("version") if isinstance(before, dict) else None
+        if (
+            isinstance(version, str)
+            and re.fullmatch(r"seed_v[1-9][0-9]*", version)
+            and int(version.removeprefix("seed_v")) > int(after["version"].removeprefix("seed_v"))
+        ):
+            raise ValueError(f"{source.key}: cannot load an older seed version than {version}")
         changes.append((source, before, after))
 
     for key, seed in seeds.items():

@@ -86,6 +86,7 @@ New entries go at the bottom with the next number. Never renumber or delete; mar
 | DEC-073 | Data collection approvals: seed_v1, crawler ID, Shopify test, collector host via scripts | approved by owner 2026-10-22 |
 | DEC-069 | Collector block accounting, durable Retry-After deadlines and request hook | proposed (P1-03b) |
 | DEC-068 | Data Health admin API: shapes, live-run guard, target freshness and the import split | proposed (P1-11) |
+| DEC-076 | Seed revision ordering and stored-target validation | proposed (P1-25) |
 
 Superseded review defaults, not given entries: default #0 (move the repo) is done, see DEC-005. Default #2 (no local collection at all) is replaced by DEC-002. Default #15 (CSS-only motion) is replaced by DEC-007, and its remaining rules are in DEC-025. Review question D1 (Railway Pro from Phase 1) is answered by DEC-001, D2 by DEC-003, D3 by DEC-004, D5 by DEC-008 and D8 by DEC-006.
 
@@ -949,3 +950,11 @@ Superseded review defaults, not given entries: default #0 (move the repo) is don
 - **Alternatives:** the vault sketch's id-based paths and extra `data-health`/`gaps`/`backups` endpoints (the DH-1 task list supersedes it); a new admin dependency; returning sanitized config; run success or snapshot spacing as freshness; multipart through a new dependency; importing Celery in the router.
 - **Why:** the smallest surface that lets P1-12 render the cockpit from real evidence while keeping D2, R-06 and the config/secrets boundary in one place.
 - **Validation:** endpoint tests cover the 403 on every route, both D2 409s (live off; live on inside a worktree), the disabled 409, a queued manual run with its publish call, freshness surviving an unrelated target failure, pagination and run detail, toggle events and the blocked-reason rule, internal-source coverage exclusion, and host nulls/gaps. They run offline on SQLite (a plain table stands in for the view) and again under the `db` marker on Postgres, which is unverified locally (no Docker).
+
+### DEC-076 · Seed revision ordering and stored-target validation
+**2026-10-22 · proposed (P1-25)** · P1-22 findings 6–9 and 15 (seeds); extends DEC-065 validation
+- **Decision:** compare the integer suffix of `seed_vN` before staging any changes; an older revision fails in preview and apply, equal-version mutations still fail, and identical repeats remain no-ops. Reject duplicate JSON object keys at every depth before opening a database session.
+- **Stored targets:** the loader and `approved_targets` share the existing per-section field, domain, duplicate and US/UTC validation. If any stored entry is invalid, the source returns no targets; normalized copies leave stored config unchanged. Approval dates must be strict `YYYY-MM-DD` and no later than the current UTC date.
+- **Evidence:** a test checks any approved shipped seed against the existing DEC-011 index/entry and DEC-073 status, date and version evidence. This task changes no approval metadata, seed files, source flags or unrelated config; runtime eligibility remains additional to all existing source/live/workspace guards.
+- **Alternatives:** silently accept older files, keep separate validators, or skip only malformed rows. Rejecting the whole section avoids silently collecting a partial list, and sharing the validator keeps file and stored-config checks consistent without a dependency or migration.
+- **Why:** stale revisions must not restore removed targets, ambiguous JSON must not override a visible flag, and config written outside the loader must pass the same validation before use.
