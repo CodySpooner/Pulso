@@ -37,7 +37,7 @@ def db_engine() -> Iterator[Engine]:
         hide_parameters=True,
         connect_args={
             "connect_timeout": 2,
-            "options": f"-c search_path={schema},public -c timezone=UTC",
+            "options": f"-c search_path={schema} -c timezone=UTC",
         },
     )
     try:

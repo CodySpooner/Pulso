@@ -6,7 +6,7 @@ from alembic import command
 from alembic.autogenerate import compare_metadata
 from alembic.config import Config
 from alembic.migration import MigrationContext
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session
@@ -29,6 +29,13 @@ pytestmark = pytest.mark.db
 def test_migration_roundtrip_and_metadata(db_engine: Engine) -> None:
     config = Config("alembic.ini")
     with db_engine.begin() as connection:
+        schema = connection.scalar(text("SELECT current_schema()"))
+        assert schema.startswith("test_")
+        assert connection.scalar(text("SELECT current_schemas(false)")) == [schema]
+        assert connection.scalar(
+            text("SELECT to_regclass('alembic_version') = to_regclass(:qualified)"),
+            {"qualified": f"{schema}.alembic_version"},
+        )
         config.attributes["connection"] = connection
         assert compare_metadata(MigrationContext.configure(connection), Base.metadata) == []
         command.downgrade(config, "base")
