@@ -1,5 +1,7 @@
 from io import StringIO
+from pathlib import Path
 
+import pytest
 from alembic import command
 from alembic.config import Config
 from alembic.script import ScriptDirectory
@@ -73,9 +75,12 @@ def test_workspace_money_and_utc_contract() -> None:
     assert models.Listing.__table__.c.get("price") is None
 
 
-def test_single_frozen_migration_and_offline_sql() -> None:
+def test_single_frozen_migration_and_offline_sql(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.chdir(tmp_path)
     output = StringIO()
-    config = Config("alembic.ini", output_buffer=output)
+    config = Config(str(Path(__file__).resolve().parents[3] / "alembic.ini"), output_buffer=output)
     assert ScriptDirectory.from_config(config).get_heads() == ["0001"]
     command.upgrade(config, "head", sql=True)
     sql = output.getvalue()

@@ -1,5 +1,6 @@
 from datetime import date
 from decimal import Decimal
+from pathlib import Path
 
 import pytest
 from alembic import command
@@ -26,8 +27,11 @@ from pulso_core.money import CURRENCY_EXPONENTS
 pytestmark = pytest.mark.db
 
 
-def test_migration_roundtrip_and_metadata(db_engine: Engine) -> None:
-    config = Config("alembic.ini")
+def test_migration_roundtrip_and_metadata(
+    db_engine: Engine, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    config = Config(str(Path(__file__).resolve().parents[3] / "alembic.ini"))
     with db_engine.begin() as connection:
         schema = connection.scalar(text("SELECT current_schema()"))
         assert schema.startswith("test_")
