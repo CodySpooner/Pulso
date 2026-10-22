@@ -50,9 +50,6 @@ jobs:
       - run: uv run ruff check .
       - run: uv run ruff format --check .
       - run: uv run mypy
-      - name: Prepare database when the model lane exists
-        if: hashFiles('alembic.ini') != ''
-        run: uv run alembic -c alembic.ini upgrade head
       - run: uv run pytest
 
   web:
@@ -62,7 +59,7 @@ jobs:
       - name: Web lane not merged yet
         if: hashFiles('apps/web/package.json') == ''
         run: echo 'Skipping web checks until apps/web/package.json exists.'
-      - uses: pnpm/action-setup@9fd676a19091d4595eefd76e4bd31c97133911f1 # v4.2.0
+      - uses: pnpm/action-setup@41ff72655975bd51cab0327fa583b6e92b6d3061 # v4.2.0
         if: hashFiles('apps/web/package.json') != ''
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         if: hashFiles('apps/web/package.json') != ''
@@ -122,7 +119,7 @@ jobs:
           uv run python -m pulso_api.openapi
           git ls-files --error-unmatch apps/api/openapi.json
           git diff --exit-code -- apps/api/openapi.json
-      - uses: pnpm/action-setup@9fd676a19091d4595eefd76e4bd31c97133911f1 # v4.2.0
+      - uses: pnpm/action-setup@41ff72655975bd51cab0327fa583b6e92b6d3061 # v4.2.0
         if: hashFiles('apps/web/package.json') != '' && hashFiles('apps/api/src/pulso_api/openapi.py') != '' && hashFiles('apps/web/src/lib/api/**') != ''
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         if: hashFiles('apps/web/package.json') != '' && hashFiles('apps/api/src/pulso_api/openapi.py') != '' && hashFiles('apps/web/src/lib/api/**') != ''

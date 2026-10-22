@@ -1,12 +1,13 @@
 from datetime import date
 from decimal import Decimal
+from pathlib import Path
 
 import pytest
 from alembic import command
 from alembic.autogenerate import compare_metadata
 from alembic.config import Config
 from alembic.migration import MigrationContext
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session
@@ -26,9 +27,19 @@ from pulso_core.money import CURRENCY_EXPONENTS
 pytestmark = pytest.mark.db
 
 
-def test_migration_roundtrip_and_metadata(db_engine: Engine) -> None:
-    config = Config("alembic.ini")
+def test_migration_roundtrip_and_metadata(
+    db_engine: Engine, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    config = Config(str(Path(__file__).resolve().parents[3] / "alembic.ini"))
     with db_engine.begin() as connection:
+        schema = connection.scalar(text("SELECT current_schema()"))
+        assert schema.startswith("test_")
+        assert connection.scalar(text("SELECT current_schemas(false)")) == [schema]
+        assert connection.scalar(
+            text("SELECT to_regclass('alembic_version') = to_regclass(:qualified)"),
+            {"qualified": f"{schema}.alembic_version"},
+        )
         config.attributes["connection"] = connection
         assert compare_metadata(MigrationContext.configure(connection), Base.metadata) == []
         command.downgrade(config, "base")
@@ -40,6 +51,12 @@ def test_migration_roundtrip_and_metadata(db_engine: Engine) -> None:
         }
         assert currencies == CURRENCY_EXPONENTS
         assert session.scalar(select(func.count()).select_from(Source).where(Source.enabled)) == 0
+
+
+def test_connected_database_is_a_test_database(db_engine: Engine) -> None:
+    with db_engine.connect() as connection:
+        database = connection.scalar(text("SELECT current_database()"))
+        assert database == "pulso_ci" or database.startswith("pulso_test")
 
 
 def test_reparse_payload_does_not_duplicate_observations(db_engine: Engine) -> None:

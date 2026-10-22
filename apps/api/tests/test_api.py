@@ -1,5 +1,6 @@
 import json
 import logging
+import socket
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -11,10 +12,15 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from pulso_api.__main__ import main
 from pulso_api.auth import Principal, current_principal
+from pulso_api.dependencies import get_db
 from pulso_api.main import create_app
 from pulso_api.openapi import export
+from pulso_api.routers.health import check_postgres
+from pulso_core import db
 from pulso_core.logging import JsonFormatter, request_id
+from pulso_core.settings import Settings
 
 
 def test_health_without_settings_or_services() -> None:
@@ -23,6 +29,87 @@ def test_health_without_settings_or_services() -> None:
     assert response.status_code == 200
     assert response.json() == {"status": "ok"}
     assert response.headers["X-Request-ID"] == "fixture-request"
+
+
+@pytest.mark.parametrize("port", [None, "9080"])
+def test_api_bind_address_and_port(
+    monkeypatch: pytest.MonkeyPatch, settings: Settings, port: str | None
+) -> None:
+    monkeypatch.delenv("PORT", raising=False)
+    if port is not None:
+        monkeypatch.setenv("PORT", port)
+    with (
+        patch("pulso_api.__main__.get_settings", return_value=settings),
+        patch("pulso_api.__main__.uvicorn.Config") as config,
+        patch("pulso_api.__main__.uvicorn.Server") as server,
+        patch("pulso_api.__main__.socket.create_server") as create,
+    ):
+        main()
+    config.assert_called_once_with(
+        "pulso_api.main:app",
+        host="::",
+        port=int(port) if port is not None else settings.api_port,
+        access_log=False,
+    )
+    create.assert_called_once_with(
+        ("::", int(port) if port is not None else settings.api_port),
+        family=socket.AF_INET6,
+        dualstack_ipv6=True,
+    )
+    server.assert_called_once_with(config.return_value)
+    server.return_value.run.assert_called_once_with(
+        sockets=[create.return_value.__enter__.return_value]
+    )
+
+
+@pytest.mark.skipif(not socket.has_dualstack_ipv6(), reason="OS has no dual-stack IPv6")
+def test_api_listener_accepts_ipv4_and_ipv6(
+    monkeypatch: pytest.MonkeyPatch, settings: Settings
+) -> None:
+    monkeypatch.setenv("PORT", "0")
+
+    def connect_both(*, sockets: list[socket.socket]) -> None:
+        listener = sockets[0]
+        listener.settimeout(1)
+        port = listener.getsockname()[1]
+        for host in ("127.0.0.1", "::1"):
+            with socket.create_connection((host, port), timeout=1):
+                connection, _ = listener.accept()
+                connection.close()
+
+    with (
+        patch("pulso_api.__main__.get_settings", return_value=settings),
+        patch("pulso_api.__main__.uvicorn.Server.run", side_effect=connect_both) as run,
+    ):
+        main()
+    run.assert_called_once()
+
+
+def test_api_engines_have_statement_timeout() -> None:
+    db._process_engine.cache_clear()
+    settings = Settings(
+        database_url="postgresql+psycopg://localhost/pulso_test",
+        s3_access_key_id="fixture",
+        s3_secret_access_key="fixture",
+        _env_file=None,
+    )
+    try:
+        with (
+            patch.object(db, "get_settings", return_value=settings),
+            patch.object(db, "create_engine") as create,
+        ):
+            dependency = get_db()
+            session = next(dependency)
+            assert session.get_bind() is create.return_value
+            with pytest.raises(StopIteration):
+                next(dependency)
+            check_postgres(settings)
+            create.assert_called_once()
+            assert create.call_args.kwargs["connect_args"]["options"] == (
+                "-c timezone=UTC -c statement_timeout=10000"
+            )
+    finally:
+        db._process_engine.cache_clear()
 
 
 def test_readiness_names_redis_and_redacts_details(client: TestClient) -> None:
@@ -177,3 +264,23 @@ def test_logging_correlation_and_request_id_validation(client: TestClient) -> No
         request_id.reset(token)
     response = client.get("/healthz", headers={"X-Request-ID": "x" * 129})
     assert len(response.headers["X-Request-ID"]) == 36
+
+
+def test_unhandled_exception_logs_traceback(capsys: pytest.CaptureFixture[str]) -> None:
+    app = create_app()
+
+    @app.get("/crash")
+    def crash() -> None:
+        raise RuntimeError("fixture failure")
+
+    with TestClient(app) as client:
+        response = client.get("/crash", headers={"X-Request-ID": "crash-id"})
+    assert response.status_code == 500
+    assert "fixture failure" not in response.text
+    records = [json.loads(line) for line in capsys.readouterr().err.splitlines()]
+    failure = next(record for record in records if record["message"] == "request_failed")
+    assert failure["request_id"] == "crash-id"
+    assert failure["error_type"] == "RuntimeError"
+    assert "Traceback (most recent call last)" in failure["exc_info"]
+    assert "in crash" in failure["exc_info"]
+    assert "RuntimeError: fixture failure" in failure["exc_info"]
