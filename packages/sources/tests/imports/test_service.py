@@ -1,5 +1,6 @@
 import csv
 import io
+import json
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from datetime import UTC, date, datetime
@@ -14,6 +15,8 @@ from sqlalchemy.orm import Session
 
 from pulso_core.models import CollectorRun, CollectorRunTarget, RawPayload, SearchTrend, Source
 from pulso_core.settings import Settings
+from pulso_sources import imports as import_service
+from pulso_sources import storage
 from pulso_sources.imports import (
     ADAPTERS,
     TEMPLATES,
@@ -199,6 +202,98 @@ def test_storage_and_adapter_failures_are_durable_and_sanitized(
     assert failed_parse.status == "partial" and failed_parse.error_message == "ValueError"
     assert session.scalar(select(func.count()).select_from(RawPayload)) == 1
     assert session.scalar(select(func.count()).select_from(SearchTrend)) == 0
+
+
+@pytest.mark.parametrize("mode", ["csv", "json"])
+def test_future_dates_cannot_enter_observations(
+    session: Session,
+    settings: Settings,
+    s3: MagicMock,
+    mode: Literal["csv", "json"],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    clock = MagicMock(wraps=datetime)
+    clock.now.return_value = datetime(2026, 1, 1, 23, 59, tzinfo=UTC)
+    monkeypatch.setattr(import_service, "datetime", clock)
+    body = template_csv("shopify_stores").replace(b"2026-01-01", b"2026-01-02")
+    if mode == "json":
+        body = b'{"products":[{"keyword":"future"}]}'
+    run = commit_import(
+        session,
+        "shopify_stores",
+        body,
+        settings=settings,
+        mode=mode,
+        observed_for=date(2026, 1, 2) if mode == "json" else None,
+    )
+    assert run.status == "failed"
+    assert session.scalar(select(func.count()).select_from(SearchTrend)) == 0
+    if mode == "csv":
+        assert run.error_code == "no_valid_rows" and run.params["invalid_rows"] == 1
+        payload = session.get_one(RawPayload, run.params["raw_payload_id"])
+        assert payload.captured_at.replace(tzinfo=UTC) == clock.now.return_value
+    else:
+        s3.put_object.assert_not_called()
+
+
+@pytest.mark.parametrize("mode", ["csv", "json"])
+def test_replay_validates_dates_against_original_capture(
+    session: Session,
+    settings: Settings,
+    s3: MagicMock,
+    mode: Literal["csv", "json"],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Legacy evidence captured before the date bound existed; today's date cannot legalize it.
+    source = session.scalars(select(Source).where(Source.key == "shopify_stores")).one()
+    original = CollectorRun(source_id=source.id, trigger="csv", status="failed")
+    session.add(original)
+    session.flush()
+    body = template_csv(source.key) if mode == "csv" else b'{"products":[{"keyword":"future"}]}'
+    payload = storage.store_capture(
+        session,
+        source_id=source.id,
+        source_key=source.key,
+        run_id=original.id,
+        body=body,
+        content_type="text/csv" if mode == "csv" else "application/json",
+        status_code=None,
+        etag=None,
+        captured_at=datetime(2025, 12, 31, tzinfo=UTC),
+        request={"mode": mode, "mapping": {}, "parser_version": "1", "observed_for": "2026-01-01"},
+    )
+    payload.template_version = "csv-v1" if mode == "csv" else "shopify-json-v1"
+    session.commit()
+    monkeypatch.setitem(ADAPTERS, source.key, lambda data: FakeAdapter(data, "2"))
+    replay = replay_import(session, payload.id, settings=settings)
+    assert replay.status == "failed"
+    assert session.scalar(select(func.count()).select_from(SearchTrend)) == 0
+    assert s3.put_object.call_count == 1
+    if mode == "csv":
+        assert replay.params["errors"][0]["column"] == "observed_for"
+
+
+@pytest.mark.parametrize("duplicates", [False, True])
+def test_persisted_errors_are_bounded_but_counts_are_complete(
+    session: Session,
+    settings: Settings,
+    s3: MagicMock,
+    duplicates: bool,
+) -> None:
+    body = (
+        b"sku,name,unit_cost\n" + b"SKU,Example,1\n" * 100_000
+        if duplicates
+        else b"keyword,date,interest\n" + b"a,invalid,101\n" * 100_000
+    )
+    run = commit_import(session, "cj" if duplicates else "google_trends", body, settings=settings)
+    session.expire_all()
+    assert run.status == "failed" and len(run.params["errors"]) == 100
+    assert run.params["invalid_rows"] == 100_000
+    assert run.params["error_count"] == (100_000 if duplicates else 200_000)
+    assert run.params["errors_by_column"] == (
+        {"sku": 100_000} if duplicates else {"date": 100_000, "interest": 100_000}
+    )
+    assert len(json.dumps(run.params).encode()) < 64 * 1024
 
 
 @pytest.mark.db
