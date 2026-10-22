@@ -109,6 +109,9 @@ def store_capture(
             raise ValueError("304 captures cannot have a body")
         body = None
     metadata = _clean(request)
+    # Replay must use exactly the column mapping the import parser validated.
+    if isinstance(metadata, dict) and metadata.get("mapping") != request.get("mapping"):
+        raise ValueError("Import column mapping changes during sanitization; rename the columns")
     digest = hashlib.sha256(body if body is not None else b"").hexdigest()
     storage_key = None
     if body is not None:
