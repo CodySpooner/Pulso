@@ -91,7 +91,7 @@ This file holds deferred ideas and research extras that are **not** in the §11 
 
 | Deferred work | Evidence | When | Notes |
 |---|---|---|---|
-| P1-03b: FW-4 consecutive 403/429/430 block rule, exactly one disable source_event, full Retry-After deadline persistence and at most 600 seconds in-process waiting | P1-03 task's explicit ~400-line split; DEC-063 | Before any live adapter enablement | Core lifecycle/replay/guards/settings delivered; add response Retry-After metadata, five-block and cross-run deadline tests. Current runner respects an already-persisted future deadline by immediately ending partial; it does not yet persist server deadlines or auto-disable. Keep FW-4/R-08 unchecked. |
+| P1-03b: FW-4 block rule, one disable source_event, full Retry-After persistence and bounded waiting | DEC-063; DEC-069; P1-19 findings 1 and 5 | Implemented offline; lead review/merge before live enablement | Five consecutive blocks disable once; every block stops the plan; 503 honours server deadlines; later runs wait or defer. Fetch/S3/waits hold no transaction. Optional quota hook delivered for P1-08/P1-09; no adapter uses it yet. FW-4/R-08 verified with SQLite and fake HTTP/S3; PostgreSQL/real S3 remain unverified locally (no Docker). |
 
 ## P1-05 import integration handoff (2026-10-22)
 
