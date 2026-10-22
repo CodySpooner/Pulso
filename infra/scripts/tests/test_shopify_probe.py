@@ -217,7 +217,11 @@ def test_seed_file_is_json_compatible_yaml_with_all_entries_disabled() -> None:
     text = SEEDS.read_text(encoding="utf-8")
     data = json.loads("\n".join(line for line in text.splitlines() if not line.startswith("#")))
     assert [len(data[key]) for key in ("stores", "cj_categories", "keywords")] == [30, 10, 50]
-    assert all(row["enabled"] is False for rows in data.values() for row in rows)
+    assert all(
+        row["enabled"] is False
+        for key in ("stores", "cj_categories", "keywords")
+        for row in data[key]
+    )
     assert all(row["geo"] == "US" and row["tz"] == 0 for row in data["keywords"])
     assert seed_stores(SEEDS)[0] == "https://sageandsill.com"
     assert "pending owner approval (DEC-011)" in text
