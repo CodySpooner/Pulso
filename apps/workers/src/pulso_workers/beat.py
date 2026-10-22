@@ -1,20 +1,78 @@
-"""Guarded Beat entry point; schedules and the DEC-002 lock arrive in Phase 1."""
+"""Collector-host-only Beat, fenced by a dedicated PostgreSQL session."""
+
+import logging
+from typing import Any
+
+from celery.beat import PersistentScheduler  # type: ignore[import-untyped]
 
 from pulso_core.settings import get_settings
 from pulso_core.worktree import is_linked_worktree
+from pulso_workers.locks import AdvisoryLock
+
+logger = logging.getLogger("pulso.scheduler")
 
 
 def guard_scheduler(**kwargs: object) -> None:
     if not get_settings().pulso_scheduler:
+        logger.error("Beat requires PULSO_SCHEDULER=on on the collector host.")
         raise SystemExit("Beat requires PULSO_SCHEDULER=on on the collector host.")
     if is_linked_worktree(__file__):
         raise SystemExit("Beat is forbidden inside a linked git worktree.")
 
 
+class LockedScheduler(PersistentScheduler):  # type: ignore[misc]
+    lock: AdvisoryLock | None = None
+
+    @property
+    def producer(self) -> None:
+        # Beat's eager broker connection logs exception text before our publish boundary.
+        return None
+
+    def setup_schedule(self) -> None:
+        guard_scheduler()
+        super().setup_schedule()
+
+    def tick(self, **kwargs: Any) -> float:
+        try:
+            held = self.lock is not None and self.lock.held()
+        except Exception:
+            held = False
+        if not held:
+            logger.error("scheduler_lock_lost")
+            raise SystemExit(1)
+        return float(super().tick(**kwargs))
+
+    def apply_entry(self, entry: Any, producer: Any = None) -> None:
+        from pulso_workers.tasks import enqueue_scheduled
+
+        enqueue_scheduled(*entry.args)
+
+    def close(self) -> None:
+        try:
+            super().close()
+        finally:
+            if self.lock is not None:
+                self.lock.close()
+
+
+def init_scheduler(sender: Any, **kwargs: object) -> None:
+    guard_scheduler()
+    if not isinstance(sender.scheduler, LockedScheduler):
+        raise SystemExit("Beat requires LockedScheduler.")
+    lock = AdvisoryLock(0)
+    try:
+        if not lock.acquire():
+            raise RuntimeError("scheduler_lock_held")
+    except Exception:
+        lock.close()
+        logger.error("scheduler_lock_unavailable")
+        raise SystemExit(1) from None
+    sender.scheduler.lock = lock
+
+
 def main() -> None:
     guard_scheduler()
 
-    # TODO(DEC-002, Phase 1): hold/check a Postgres advisory lock before enabling schedules.
     from pulso_workers.celery_app import app
 
     app.start(["beat", "--loglevel=INFO"])

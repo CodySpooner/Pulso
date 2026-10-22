@@ -12,6 +12,7 @@ from starlette.middleware.base import RequestResponseEndpoint
 from starlette.responses import Response
 
 from pulso_api.errors import PROBLEM_RESPONSES, APIError, problem_response
+from pulso_api.publisher import get_publisher
 from pulso_api.routers import account, admin, health
 from pulso_core.logging import configure_logging, request_id
 
@@ -83,6 +84,7 @@ def create_app() -> FastAPI:
     app.include_router(health.router)
     app.include_router(account.router)
     app.include_router(admin.router)
+    app.dependency_overrides[admin.get_publisher] = get_publisher
     return app
 
 
