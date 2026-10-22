@@ -208,3 +208,23 @@ def test_logging_correlation_and_request_id_validation(client: TestClient) -> No
         request_id.reset(token)
     response = client.get("/healthz", headers={"X-Request-ID": "x" * 129})
     assert len(response.headers["X-Request-ID"]) == 36
+
+
+def test_unhandled_exception_logs_traceback(capsys: pytest.CaptureFixture[str]) -> None:
+    app = create_app()
+
+    @app.get("/crash")
+    def crash() -> None:
+        raise RuntimeError("fixture failure")
+
+    with TestClient(app) as client:
+        response = client.get("/crash", headers={"X-Request-ID": "crash-id"})
+    assert response.status_code == 500
+    assert "fixture failure" not in response.text
+    records = [json.loads(line) for line in capsys.readouterr().err.splitlines()]
+    failure = next(record for record in records if record["message"] == "request_failed")
+    assert failure["request_id"] == "crash-id"
+    assert failure["error_type"] == "RuntimeError"
+    assert "Traceback (most recent call last)" in failure["exc_info"]
+    assert "in crash" in failure["exc_info"]
+    assert "RuntimeError: fixture failure" in failure["exc_info"]

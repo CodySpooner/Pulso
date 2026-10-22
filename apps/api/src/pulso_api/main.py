@@ -38,7 +38,7 @@ def create_app() -> FastAPI:
             try:
                 response = await call_next(request)
             except Exception as exc:
-                logger.error("request_failed", extra={"error_type": type(exc).__name__})
+                logger.exception("request_failed", extra={"error_type": type(exc).__name__})
                 response = problem_response(
                     request,
                     500,
