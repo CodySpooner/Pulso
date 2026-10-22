@@ -8,10 +8,10 @@ from dataclasses import asdict, dataclass
 from datetime import UTC, date, datetime
 from typing import Any, Literal
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
-from pulso_core.models import CollectorRun, RawPayload, Source
+from pulso_core.models import CollectorRun, CollectorRunTarget, RawPayload, Source
 from pulso_core.settings import Settings
 from pulso_sources import storage
 from pulso_sources.framework import Adapter, Request, Target, enqueue_run, execute_run
@@ -107,6 +107,25 @@ def _execute(
     )
 
 
+def _from_capture(payload: RawPayload, source_key: str) -> tuple[ImportData, Adapter[Any]]:
+    """Rebuild an import from the capture's own bytes, capture date and request metadata."""
+    if payload.template_version not in {TEMPLATES[source_key].template_version, "shopify-json-v1"}:
+        raise ValueError("Capture is not a supported import")
+    metadata = payload.request
+    observed_for = (
+        date.fromisoformat(metadata["observed_for"]) if metadata.get("observed_for") else None
+    )
+    data = _prepare(
+        source_key,
+        storage.read_capture(payload),
+        metadata["mode"],
+        metadata.get("mapping"),
+        observed_for,
+        payload.captured_at.date(),
+    )
+    return data, ADAPTERS[source_key](data)
+
+
 def _failed(session: Session, run: CollectorRun, exc: Exception) -> CollectorRun:
     session.rollback()
     if isinstance(exc, DuplicateEntityRows):
@@ -127,7 +146,9 @@ def commit_import(
     mapping: Mapping[str, str] | None = None,
     observed_for: date | None = None,
 ) -> CollectorRun:
-    """Synchronous worker entry point; repeats skip before parsing, adapter lookup or S3.
+    """Synchronous worker entry point; repeats of an imported capture skip before parsing,
+    adapter lookup or S3. A capture with no successful run re-runs on its stored bytes and
+    metadata with the current parser, unless a run on it is still queued/running (DEC-092).
 
     Pass mapping from the preview; otherwise use sources.config.csv_mapping. Returns
     terminal run evidence (including sanitized failures), with row errors in params.
@@ -148,10 +169,40 @@ def commit_import(
             )
         )
         if payload is not None:
-            run.status, run.finished_at = "skipped", datetime.now(UTC)
-            run.params = {"raw_payload_id": payload.id, "original_run_id": payload.run_id}
-            session.commit()
-            return run
+            done = session.scalar(
+                select(CollectorRunTarget.run_id)
+                .where(
+                    CollectorRunTarget.raw_payload_id == payload.id,
+                    CollectorRunTarget.status == "success",
+                )
+                .order_by(CollectorRunTarget.run_id)
+                .limit(1)
+            )
+            active = session.scalar(
+                select(CollectorRun.id)
+                .where(
+                    CollectorRun.status.in_(["queued", "running"]),
+                    or_(
+                        CollectorRun.id == payload.run_id,
+                        CollectorRun.params["raw_payload_id"].as_integer() == payload.id,
+                    ),
+                )
+                .limit(1)
+            )
+            if done or active:
+                run.status, run.finished_at = "skipped", datetime.now(UTC)
+                reason = {} if done else {"reason": "in_progress"}
+                run.params = {
+                    "raw_payload_id": payload.id,
+                    "original_run_id": done or active,
+                    **reason,
+                }
+                session.commit()
+                return run
+            run.params = {"raw_payload_id": payload.id}
+            session.commit()  # The params link claims the retry before the source lock drops.
+            data, adapter = _from_capture(payload, source_key)
+            return _execute(session, run, payload, data, adapter, settings)
         mapping = mapping if mapping is not None else source.config.get("csv_mapping", {})
         captured_at = datetime.now(UTC)
         data = _prepare(source_key, body, mode, mapping, observed_for, captured_at.date())
@@ -186,25 +237,8 @@ def replay_import(session: Session, raw_payload_id: int, *, settings: Settings) 
     source = session.get_one(Source, payload.source_id)
     run = enqueue_run(session, source_id=source.id, trigger="csv", publish=lambda _: None)
     try:
-        if payload.template_version not in {
-            TEMPLATES[source.key].template_version,
-            "shopify-json-v1",
-        }:
-            raise ValueError("Capture is not a supported import")
-        metadata = payload.request
-        observed_for = (
-            date.fromisoformat(metadata["observed_for"]) if metadata.get("observed_for") else None
-        )
-        data = _prepare(
-            source.key,
-            storage.read_capture(payload),
-            metadata["mode"],
-            metadata.get("mapping"),
-            observed_for,
-            payload.captured_at.date(),
-        )
-        adapter = ADAPTERS[source.key](data)
-        if adapter.parser_version == metadata["parser_version"]:
+        data, adapter = _from_capture(payload, source.key)
+        if adapter.parser_version == payload.request["parser_version"]:
             raise ValueError("Parser correction requires a new parser_version")
         return _execute(session, run, payload, data, adapter, settings)
     except Exception as exc:

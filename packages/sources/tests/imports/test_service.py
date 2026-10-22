@@ -204,6 +204,63 @@ def test_storage_and_adapter_failures_are_durable_and_sanitized(
     assert session.scalar(select(func.count()).select_from(SearchTrend)) == 0
 
 
+def test_reupload_after_failed_parse_retries_existing_capture_then_skips(
+    session: Session, settings: Settings, s3: MagicMock, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    body = template_csv("cj")
+    parse = FakeAdapter.parse
+    failures = [ValueError("transient")]
+
+    def flaky(self: FakeAdapter, body: bytes) -> object:
+        if failures:
+            raise failures.pop()
+        return parse(self, body)
+
+    monkeypatch.setattr(FakeAdapter, "parse", flaky)
+    first = commit_import(session, "cj", body, settings=settings)
+    assert first.status == "partial"
+    payload = session.scalars(select(RawPayload)).one()
+    # DEC-064: an unchanged parser_version is still not a correction.
+    assert replay_import(session, payload.id, settings=settings).status == "failed"
+    retry = commit_import(session, "cj", body, settings=settings)
+    assert retry.status == "success" and retry.rows_inserted == 1
+    assert retry.params["raw_payload_id"] == payload.id
+    again = commit_import(session, "cj", body, settings=settings)
+    assert again.status == "skipped"
+    assert again.params == {"raw_payload_id": payload.id, "original_run_id": retry.id}
+    assert session.scalar(select(func.count()).select_from(RawPayload)) == 1
+    assert session.scalar(select(func.count()).select_from(SearchTrend)) == 1
+    assert s3.put_object.call_count == 1
+
+
+def test_reupload_does_not_duplicate_a_queued_or_running_run_on_the_capture(
+    session: Session, settings: Settings, s3: MagicMock, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The worker dies before claiming the run: the capture is committed, the run stays queued.
+    monkeypatch.setattr(
+        import_service, "execute_run", lambda s, run_id, *a, **k: s.get_one(CollectorRun, run_id)
+    )
+    body = template_csv("cj")
+    first = commit_import(session, "cj", body, settings=settings)
+    assert first.status == "queued"
+    payload_id = session.scalars(select(RawPayload.id)).one()
+    second = commit_import(session, "cj", body, settings=settings)
+    assert second.status == "skipped"
+    assert second.params == {
+        "raw_payload_id": payload_id,
+        "original_run_id": first.id,
+        "reason": "in_progress",
+    }
+    first.status = "failed"  # e.g. abandoned-run recovery
+    session.commit()
+    retry = commit_import(session, "cj", body, settings=settings)
+    assert retry.status == "queued" and retry.params["raw_payload_id"] == payload_id
+    third = commit_import(session, "cj", body, settings=settings)
+    assert third.status == "skipped" and third.params["original_run_id"] == retry.id
+    assert s3.put_object.call_count == 1
+    assert session.scalar(select(func.count()).select_from(RawPayload)) == 1
+
+
 @pytest.mark.parametrize("mode", ["csv", "json"])
 def test_future_dates_cannot_enter_observations(
     session: Session,
