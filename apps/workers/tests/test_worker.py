@@ -3,13 +3,16 @@ from pathlib import Path
 from unittest.mock import Mock
 
 import pytest
+from celery.signals import beat_init, worker_process_init  # type: ignore[import-untyped]
 
 from pulso_core.settings import Settings, get_settings
+from pulso_workers import beat
 
 
 @pytest.fixture(autouse=True)
 def isolated_settings(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Iterator[None]:
     monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(beat, "__file__", str(tmp_path / "installed" / "beat.py"))
     for name in Settings.model_fields:
         monkeypatch.delenv(name.upper(), raising=False)
     monkeypatch.setenv("DATABASE_URL", "postgresql+psycopg://test:test@localhost/pulso_test")
@@ -32,32 +35,52 @@ def test_ping_in_eager_mode(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.mark.parametrize("flag", [None, "off", "false", "0"])
-def test_beat_refuses_disabled_scheduler(monkeypatch: pytest.MonkeyPatch, flag: str | None) -> None:
-    from pulso_workers.beat import main
+@pytest.mark.parametrize("entrypoint", ["main", "signal"])
+def test_beat_refuses_disabled_scheduler(
+    monkeypatch: pytest.MonkeyPatch, flag: str | None, entrypoint: str
+) -> None:
+    from pulso_workers.celery_app import app
 
     if flag is not None:
         monkeypatch.setenv("PULSO_SCHEDULER", flag)
     with pytest.raises(SystemExit, match="PULSO_SCHEDULER=on"):
-        main()
+        if entrypoint == "main":
+            beat.main()
+        else:
+            beat_init.send(sender=app)
 
 
-def test_beat_refuses_worktree(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    from pulso_workers.beat import main
+@pytest.mark.parametrize("origin", ["cwd", "package"])
+@pytest.mark.parametrize("entrypoint", ["main", "signal"])
+def test_beat_refuses_worktree(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, origin: str, entrypoint: str
+) -> None:
+    from pulso_workers.celery_app import app
 
     monkeypatch.setenv("PULSO_SCHEDULER", "on")
-    (tmp_path / ".git").write_text("gitdir: /unused/worktrees/test", encoding="utf-8")
-    nested = tmp_path / "apps"
-    nested.mkdir()
-    monkeypatch.chdir(nested)
+    worktree = tmp_path / "worktree"
+    nested = worktree / "apps"
+    nested.mkdir(parents=True)
+    (worktree / ".git").write_text("gitdir: /unused/worktrees/test", encoding="utf-8")
+    if origin == "cwd":
+        monkeypatch.chdir(nested)
+    else:
+        monkeypatch.setattr(beat, "__file__", str(nested / "beat.py"))
     with pytest.raises(SystemExit, match="linked git worktree"):
-        main()
+        if entrypoint == "main":
+            beat.main()
+        else:
+            beat_init.send(sender=app)
 
 
-def test_enabled_beat_calls_celery_without_running_it(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_enabled_beat_calls_celery_without_running_it(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     from pulso_workers.beat import main
     from pulso_workers.celery_app import app
 
     monkeypatch.setenv("PULSO_SCHEDULER", "on")
+    (tmp_path / ".git").mkdir()
     start = Mock()
     monkeypatch.setattr(app, "start", start)
     main()
@@ -65,8 +88,6 @@ def test_enabled_beat_calls_celery_without_running_it(monkeypatch: pytest.Monkey
 
 
 def test_process_signal_creates_engine(monkeypatch: pytest.MonkeyPatch) -> None:
-    from celery.signals import worker_process_init  # type: ignore[import-untyped]
-
     from pulso_workers import celery_app
 
     assert celery_app.engine is None

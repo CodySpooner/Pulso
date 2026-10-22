@@ -1,10 +1,11 @@
 """Celery entry point; importing this module never opens database connections."""
 
 from celery import Celery  # type: ignore[import-untyped]
-from celery.signals import worker_process_init  # type: ignore[import-untyped]
+from celery.signals import beat_init, worker_process_init  # type: ignore[import-untyped]
 from sqlalchemy import Engine, create_engine
 
 from pulso_core.settings import get_settings
+from pulso_workers.beat import guard_scheduler
 
 app = Celery("pulso")
 engine: Engine | None = None
@@ -36,6 +37,7 @@ def init_process(**kwargs: object) -> None:
 
 
 worker_process_init.connect(init_process, weak=False)
+beat_init.connect(guard_scheduler, weak=False)
 
 
 def ping() -> str:

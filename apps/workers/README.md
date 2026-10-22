@@ -14,10 +14,11 @@ create no engine or connection. The Redis broker comes from shared settings.
 The eager test checks its return value without Redis.
 
 The collector-host-only entry point is `python -m pulso_workers.beat`. It rejects
-scheduler-off and linked-worktree starts. Never run Beat in an Orca worktree.
+scheduler-off and linked-worktree starts, checking both the working directory and
+installed package path. The same guard runs on `beat_init` for raw `celery beat`
+and embedded `worker -B` starts. Never run Beat in an Orca worktree.
 Phase 0 has no schedules. **Phase 1 must implement DEC-002's advisory lock before
-adding schedules or enabling Beat on a collector host.** Do not invoke raw
-`celery beat` or `worker -B`, which bypass the entry-point guards.
+adding schedules or enabling Beat on a collector host.**
 
 ```powershell
 uv run ruff check apps/workers
