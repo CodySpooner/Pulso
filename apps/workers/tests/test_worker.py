@@ -1,10 +1,11 @@
 from collections.abc import Iterator
 from pathlib import Path
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 import pytest
 from celery.signals import beat_init, worker_process_init  # type: ignore[import-untyped]
 
+from pulso_core import db
 from pulso_core.settings import Settings, get_settings
 from pulso_workers import beat
 
@@ -91,15 +92,25 @@ def test_process_signal_creates_engine(monkeypatch: pytest.MonkeyPatch) -> None:
     from pulso_workers import celery_app
 
     assert celery_app.engine is None
-    factory = Mock()
-    monkeypatch.setattr(celery_app, "create_engine", factory)
     monkeypatch.setattr(celery_app, "engine", None)
-    created_engine = factory.return_value
-    worker_process_init.send(sender=None)
-    factory.assert_called_once_with(
-        "postgresql+psycopg://test:test@localhost/pulso_test", pool_size=3, max_overflow=0
-    )
-    assert celery_app.engine == created_engine
-    worker_process_init.send(sender=None)
-    created_engine.dispose.assert_called_once_with(close=False)
-    assert factory.call_count == 2
+    db._process_engine.cache_clear()
+    try:
+        with patch.object(db, "create_engine", side_effect=lambda *a, **k: Mock()) as factory:
+            worker_process_init.send(sender=None)
+            created_engine = celery_app.engine
+            assert created_engine is db.get_engine()
+            factory.assert_called_once_with(
+                "postgresql+psycopg://test:test@localhost/pulso_test",
+                pool_pre_ping=True,
+                hide_parameters=True,
+                connect_args={"connect_timeout": 3, "options": "-c timezone=UTC"},
+            )
+            with patch("pulso_core.db.os.getpid", return_value=-1):
+                worker_process_init.send(sender=None)
+                assert celery_app.engine is db.get_engine()
+                assert celery_app.engine is not created_engine
+            assert isinstance(created_engine, Mock)
+            created_engine.dispose.assert_called_once_with(close=False)
+            assert factory.call_count == 2
+    finally:
+        db._process_engine.cache_clear()
