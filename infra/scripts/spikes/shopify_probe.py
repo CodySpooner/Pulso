@@ -17,11 +17,16 @@ from urllib.robotparser import RobotFileParser
 
 import httpx
 
-MAX_REQUESTS = 50
+MAX_REQUESTS = 20  # whole-run default (DEC-003, DEC-073, DEC-077)
+HARD_MAX_REQUESTS = 50  # DEC-052 ceiling; --max-requests can only lower it
 CATALOG = "/products.json?limit=1"
 
 
 class StopStore(Exception):
+    pass
+
+
+class StopRun(Exception):
     pass
 
 
@@ -101,9 +106,12 @@ def probe(
     transport: httpx.BaseTransport | None = None,
     sleep: Callable[[float], None] = time.sleep,
     clock: Callable[[], float] = time.monotonic,
+    max_requests: int = MAX_REQUESTS,
 ) -> str:
     if not contact.strip() or not contact.isascii() or any(ord(c) < 32 for c in contact):
         raise ValueError("Set PULSO_BOT_CONTACT to the owner's public contact URL")
+    if not 1 <= max_requests <= HARD_MAX_REQUESTS:
+        raise ValueError(f"max_requests must be 1-{HARD_MAX_REQUESTS}")
     origins = list(dict.fromkeys(store_origin(s) for s in stores))
     user_agent = f"PulsoBot/0.1 (+{contact.strip()})"
     rows: list[Row] = []
@@ -125,8 +133,8 @@ def probe(
                 row.note = "robots.txt Disallow"
                 rows.append(row)
                 return None
-            if count >= MAX_REQUESTS:
-                raise RequestCap
+            if count >= max_requests:
+                raise RequestCap(origin + path)
             rows.append(row)
             sleep(max(0, next_at - clock()))
             started = clock()
@@ -169,13 +177,17 @@ def probe(
                     )
                     else "no"
                 )
-            if response.is_redirect:
+            if response.has_redirect_location:
                 row.note = "redirect not followed"
-            if response.status_code in (429, 430, 403) or row.state == "password":
+            if response.status_code in (429, 430, 403):
+                row.note = "run stopped; no retry"
+                raise StopRun(f"HTTP {response.status_code} from {origin}{path}")
+            if row.state == "password":
                 row.note = "store stopped; no retry"
                 raise StopStore
             return response
 
+        stop = "none; run finished"
         for origin in origins:
             try:
                 spacing = 3.0
@@ -223,16 +235,24 @@ def probe(
                     rows.append(Row(origin, "/products/<handle>.js", note="no usable first handle"))
             except StopStore:
                 continue
-            except RequestCap:
+            except RequestCap as exc:
+                stop = f"request budget of {max_requests} spent; next request not sent ({exc})"
                 break
+            except StopRun as exc:
+                stop = f"{exc}; whole run stopped, no retry"
+                break
+    reached = {row.store for row in rows}
+    unreached = [origin for origin in origins if origin not in reached]
     headers = (
         "Store | Path | Status | Retry-After | ETag -> 304 | Currency | State | "
         "inventory_quantity | Latency ms | Note"
     )
     report = [
         "## Shopify home-PC spike",
-        f"\nCaptured at {datetime.now(UTC).isoformat()}; {count}/{MAX_REQUESTS} requests.",
-        "Request cap reached; run stopped." if count == MAX_REQUESTS else "Run finished.",
+        f"\nCaptured at {datetime.now(UTC).isoformat()}; {count}/{max_requests} requests; "
+        f"{len(reached)}/{len(origins)} stores reached.",
+        f"Stop reason: {stop}.",
+        f"Not reached: {', '.join(unreached) or 'none'}.",
         "States are observations; 404 alone cannot establish a headless store.\n",
         f"| {headers} |",
         "| " + " | ".join(["---"] * 10) + " |",
@@ -253,19 +273,27 @@ def main(argv: list[str] | None = None) -> None:
         "--seed-file", type=Path, help="draft seed_v1.yaml; diagnostic only, flags unchanged"
     )
     parser.add_argument("--out", type=Path, help="write Markdown results (default: stdout)")
+    parser.add_argument(
+        "--max-requests",
+        type=int,
+        default=MAX_REQUESTS,
+        help=f"whole-run request budget, 1-{HARD_MAX_REQUESTS} (default {MAX_REQUESTS})",
+    )
     args = parser.parse_args(argv)
     contact = os.environ.get("PULSO_BOT_CONTACT", "")
     if not contact.strip():
         parser.error("PULSO_BOT_CONTACT is required; owner chooses a public contact URL")
     if bool(args.stores) == bool(args.seed_file):
         parser.error("provide store domains OR --seed-file")
+    if args.out and not args.out.parent.is_dir():
+        parser.error("--out directory must exist before any request is sent")
     if (Path(__file__).resolve().parents[3] / ".git").is_file():
         parser.error(
             "Live probes are forbidden in linked worktrees; owner runs from C:\\dev\\pulso"
         )
     try:
         stores = seed_stores(args.seed_file) if args.seed_file else args.stores
-        report = probe(stores, contact)
+        report = probe(stores, contact, max_requests=args.max_requests)
         if args.out:
             args.out.write_text(report, encoding="utf-8", newline="\n")
         else:
