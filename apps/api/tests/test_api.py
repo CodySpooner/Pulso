@@ -275,10 +275,10 @@ def test_openapi_export_deterministic(tmp_path: Path) -> None:
     assert first.read_bytes() == second.read_bytes()
     schema = json.loads(first.read_bytes())
     operations = [op for path in schema["paths"].values() for op in path.values()]
-    assert len({op["operationId"] for op in operations}) == len(operations) == 5
-    assert all(
-        "schema" in op["responses"]["200"]["content"]["application/json"] for op in operations
-    )
+    assert len({op["operationId"] for op in operations}) == len(operations) == 12
+    for op in operations:
+        success = op["responses"].get("200") or op["responses"]["202"]
+        assert "schema" in next(iter(success["content"].values()))
     assert schema["paths"]["/v1/me"]["get"]["security"] == [{"HTTPBearer": []}]
 
 
