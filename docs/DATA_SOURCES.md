@@ -144,10 +144,11 @@ The report's own caveat: states are observations, and a 404 alone cannot establi
 
 ## Frankfurter FX (`fx_frankfurter`)
 
-- **Access:** `GET https://api.frankfurter.dev/v2/rates?base=USD&from=<last+1>&to=<today>` once a day (self-fills gaps). No key. Manual FX CSV fallback.
+- **Adapter terms checked 2026-10-22 (P1-09):** read the [v2 documentation](https://frankfurter.dev/), [response examples](https://frankfurter.dev/javascript/) and [license/terms](https://frankfurter.dev/license/), without calling data endpoints. The FAQ permits commercial blended-rate use and local storage; the license warns that rates can be late, missing or revised and cannot grant rights a provider withholds. Only the blended route is used; no provider-specific queries or change to compliance policy.
+- **Access:** daily `GET /v2/rates?base=USD&quotes=EUR,GBP,CAD,AUD,CNY,JPY,KWD` on `https://api.frankfurter.dev`; first fetch a missing historical range using `from`/`to` through yesterday, then latest, in one framework target. A failed backfill prevents latest from advancing the stored date. First-run history starts 2025-01-01; explicit ranges are supported. No key; CSV columns `date,base,quote,rate` use the existing import service with `source=manual`.
 - **Terms (checked 2026-10-22):** blended rates free for commercial use; provider-specific endpoints follow provider terms (not used) — https://frankfurter.dev/
 - **Limits:** no quotas; abuse rate limits only.
-- **Use:** `fx_rates(date, base, quote, rate, source)`; convert at the rate for the observation's UTC date (latest earlier date on weekends/holidays).
+- **Use:** first rate per date/base/quote/source is retained (DEC-051/060); each fetch retains raw evidence, and conflicting rates add an `fx_conflict` event instead of rewriting history. Features select only rates captured before the next UTC midnight and carry the latest observed rate forward (DEC-031, D4). Late backfills cannot improve earlier features. Conversion uses integer minor units and explicit Decimal rounding (DEC-088).
 - **Risk:** low for blended rates; provider-specific terms differ, outages can delay rates, and abuse blocking still follows the default block rule. No key expiry. Evidence: `Source - Frankfurter FX`, SF §13.
 - **Cost:** free; no paid tier documented for this keyless service. **Status:** planned. **Phase:** 1.
 

@@ -91,6 +91,7 @@ New entries go at the bottom with the next number. Never renumber or delete; mar
 | DEC-076 | Seed revision ordering and stored-target validation | proposed (P1-25) |
 | DEC-077 | Bounded Shopify probe: whole-run request budget, first-block run stop, public bot page | proposed (data-01) |
 | DEC-090 | SPK-3: Shopify crawler go/no-go after SPK-2 (conditional go; enables nothing) | proposed (data-04) |
+| DEC-088 | Frankfurter gap recovery, first-rate evidence and explicit FX rounding | proposed (P1-09) |
 
 Superseded review defaults, not given entries: default #0 (move the repo) is done, see DEC-005. Default #2 (no local collection at all) is replaced by DEC-002. Default #15 (CSS-only motion) is replaced by DEC-007, and its remaining rules are in DEC-025. Review question D1 (Railway Pro from Phase 1) is answered by DEC-001, D2 by DEC-003, D3 by DEC-004, D5 by DEC-008 and D8 by DEC-006.
 
@@ -1027,3 +1028,11 @@ Superseded review defaults, not given entries: default #0 (move the repo) is don
   - no `inventory_quantity` anywhere.
 
   The conditions are cheap, change none of the compliance rules and only make the adapter politer than the probe. The owner can veto them or make them stricter.
+
+### DEC-088 · Frankfurter gap recovery, first-rate evidence and explicit FX rounding
+**2026-10-22 · proposed (P1-09)** · FX-1, DOC-1 FX; DEC-031/051/060/063/069/071/074; D4
+- **Decision:** preserve the existing first-rate primary key without migration, as clarified by the coordinator. Fresh fetches keep separate raw captures; existing rates are never updated/deleted. Conflicts emit one `fx_conflict` source event per raw capture/parser, pointing to the retained raw evidence; replay adds neither rates nor duplicate events. Manual CSV rates use `source=manual` through the existing import service, with positive NUMERIC(18,8) validation.
+- **Plan:** USD base and the seven non-USD currencies already supported by the currency table. Daily requests backfill from the slowest pair's latest stored date plus one through yesterday, then fetch latest. They share one target so failed backfills stop latest from hiding a gap. Initial history starts 2025-01-01 (working default from the source note); explicit range backfills remain available. No dates are fabricated for weekends/holidays or missing provider data.
+- **Read/conversion:** `rate_as_of(session, quote, day, source=...)` selects the latest observed date on/before day among captures strictly before day+1 UTC. The returned row retains provenance; absent history returns None. `convert_minor` takes a Decimal quote/base rate and requires an explicit rounding mode, checks BIGINT boundaries, and rounds only the destination amount; exact `to_minor` stays unchanged.
+- **Alternatives:** a per-capture FX migration contradicts the existing exception; newest-capture-only ordering promotes old backfills; latest-first requests hide failed backfills; implicit rounding or floats lose money precision. Reuse the standard-library HTTPS transport and existing settings, framework retries/blocks and import service; no new dependency, environment variable, enablement or compliance policy.
+- **Scope:** FX ships first; TRD-1 and DOC-1 Trends are left for P1-09b under the dispatch size rule. Public Frankfurter docs/terms were checked 2026-10-22 (DATA_SOURCES); all payload execution uses synthetic fixtures only. Scheduler wiring belongs to P1-04 and must pass `FX_WALL_TIME_SECONDS` into `execute_run`.

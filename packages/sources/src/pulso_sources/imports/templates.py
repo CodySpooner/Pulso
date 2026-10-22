@@ -8,7 +8,7 @@ from typing import Literal
 
 @dataclass(frozen=True)
 class Column:
-    kind: Literal["text", "money", "currency", "date", "bool", "int", "interest", "country"]
+    kind: Literal["text", "money", "currency", "date", "bool", "int", "interest", "country", "rate"]
     example: str
     required: bool = False
     default: str = ""
@@ -59,6 +59,14 @@ TEMPLATES = {
             "interest": Column("interest", "50", True),
             "geo": Column("country", "US", default="US"),
             "source": Column("text", "manual"),
+        }
+    ),
+    "fx_frankfurter": Template(
+        {
+            "date": Column("date", "2026-01-01", True),
+            "base": Column("currency", "USD", True),
+            "quote": Column("currency", "JPY", True),
+            "rate": Column("rate", "150", True),
         }
     ),
 }
