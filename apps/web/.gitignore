@@ -1,0 +1,4 @@
+# The repo-root .gitignore covers node_modules, .next, .env*, test output and build artefacts.
+next-env.d.ts
+*.pem
+.vercel
