@@ -81,6 +81,7 @@ New entries go at the bottom with the next number. Never renumber or delete; mar
 | DEC-064 | Offline import templates, identity, preview and original-capture parser correction | proposed (P1-05) |
 | DEC-065 | Versioned seed loading and approval guard | proposed (P1-06) |
 | DEC-066 | Releasing worker worktrees on Windows: stop processes standing in the folder first | proposed (P1-21) |
+| DEC-067 | Non-stop build: leads every 15 minutes (Claude/Codex), 5 workers, improvement backlog | approved by owner 2026-10-22 |
 
 Superseded review defaults, not given entries: default #0 (move the repo) is done, see DEC-005. Default #2 (no local collection at all) is replaced by DEC-002. Default #15 (CSS-only motion) is replaced by DEC-007, and its remaining rules are in DEC-025. Review question D1 (Railway Pro from Phase 1) is answered by DEC-001, D2 by DEC-003, D3 by DEC-004, D5 by DEC-008 and D8 by DEC-006.
 
@@ -888,3 +889,13 @@ Superseded review defaults, not given entries: default #0 (move the repo) is don
   - **Framework ownership exception:** the coordinator authorized the additive `Request.raw_payload_id: int | None` hook in P1-05 while P1-03b was unstarted. Offline reuse verifies source identity and a stored body, respects the wall-time budget, reads through `storage.read_capture`, and never stores another capture; live reuse is rejected before network. No other framework or storage behavior changes.
 - **Alternatives:** deduping after S3 writes violates the repeat rule; including observed date/mapping/parser in identity duplicates evidence; a second upsert path loses framework transactions; inferred preview counts misstate updates; rewriting corrected observations loses history. Source factories and the additive request field reuse the existing pipeline with about 430 production lines including templates/validation and the hook.
 - **Validation:** offline CSV fixtures and the real SQLAlchemy lifecycle/storage with SQLite plus fake S3 cover templates, BOM/mapping, exact money, invalid rows, caps, previews, versioned identity, duplicates, original timestamps and correction idempotency. Framework tests cover reuse, source mismatch, missing body and live rejection. The same import integration cases are PostgreSQL-marked; real PostgreSQL constraints/locking/UTC and real S3 remain unverified locally (no Docker).
+
+### DEC-067 · Non-stop build
+**2026-10-22 · approved by owner 2026-10-22** · extends DEC-049
+- **Owner instruction (2026-10-22):** both agents should build the full website all the way through without stopping, keep refining it (features, tools, UI) and work non-stop. Capacity chosen by the owner: 5 workers, 3 Codex + 2 Claude.
+- **Decision:**
+  - Two Orca lead automations alternate every 15 minutes: "Pulso lead" (Claude, :00 and :30 UTC) and "Pulso lead · Codex" (:15 and :45). Both follow the vault note Agents/Lead Playbook; a lock in Agents/Lead State keeps one lead active at a time.
+  - Up to 5 workers run at once (3 Codex + 2 Claude). When no phase task is ready, leads take next-phase tasks whose dependencies are met, then the vault Agents/Improvement Backlog, refilled by rotating audits (UX flow, visual polish, accessibility and performance, data connections, competitor feature gaps, code health, data quality). After Phase 8 the build stays in improvement mode.
+  - This decision changes cadence and capacity only. It grants no new data or collector-host permissions: seed approval (DEC-011), the crawler contact and collector-host operations stay with the owner.
+- **Alternatives:** hourly leads with 3 workers (DEC-049) — workers sat idle up to an hour between runs; a single lead provider — one usage limit would stop the build.
+- **Why:** keeps both agents busy continuously and survives a usage limit on either plan.

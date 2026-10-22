@@ -24,7 +24,7 @@ If a vault note disagrees with SPEC or DECISIONS, SPEC/DECISIONS win. Fix the no
 
 ## 2. Working rules (SPEC §0)
 
-- **Continuous build (DEC-049).** Phases still run in order (SPEC §11), but phase gates do **not** block: when a phase's exit checks pass, the lead writes the phase summary and the build moves straight on to the next phase. The owner reviews asynchronously and can stop or redirect at any time. Tasks *within* a phase may run in parallel. The hourly lead automation follows the vault note `Agents/Lead Playbook`.
+- **Continuous build (DEC-049).** Phases still run in order (SPEC §11), but phase gates do **not** block: when a phase's exit checks pass, the lead writes the phase summary and the build moves straight on to the next phase. The owner reviews asynchronously and can stop or redirect at any time. Tasks *within* a phase may run in parallel. **Non-stop (DEC-067):** two lead automations alternate every 15 minutes (Claude at :00/:30 UTC, Codex at :15/:45) and keep up to 5 workers busy (3 Codex + 2 Claude); when no phase task is ready they take improvement work from the vault `Agents/Improvement Backlog`. Both follow the vault note `Agents/Lead Playbook`.
 - **End of every phase:**
   - lint, typecheck and tests all pass, and the UI checklist (§8) passes;
   - update `docs/PROGRESS.md`, including the §6 items done and pending;
