@@ -56,6 +56,7 @@ Canonical compliance record required by SPEC §4.2: for every data source, its a
 - **Access:** `GET /meta.json`, `/products.json?limit=250&page=N` with `If-None-Match`, `/products/<handle>.js` for tracked products, `/robots.txt`. No auth. Headless and password-protected stores return 403/404 and are marked untrackable. Web Bot Auth signing deferred. Manual CSV / URL-paste fallback (same request limits).
 - **Never:** `/cart*`, `/search`, `sort_by` collection pages, `/recommendations/products`, Storefront GraphQL, Global Catalog MCP.
 - **Terms (checked 2026-10-22):**
+  - **P1-07 adapter check (2026-10-22):** reviewed the recorded primary-source terms check below, `Source - Shopify Stores` / `Compliance Rules`, and the saved SPK-2 report; this carries forward DEC-003's existing risk decision, grants no new permission and makes no further storefront requests. Catalog implementation and fixture evidence: DEC-087; source remains disabled.
   - Default robots.txt does not disallow the JSON catalog endpoints.
   - Shopify Terms of Service §1 item 9 (updated 2026-10-20) bans accessing or monitoring the Services with robots/scrapers; may bind the owner as a merchant — https://www.shopify.com/legal/terms
   - API License & Terms (updated 2026-10-07) §2.3.4, §2.3.8, §2.3.14, §2.3.24 (no AI/ML training on data derived from any merchant store), §6.2.5 apply to API use; relevant once a Pulso Shopify app exists (Phase 7) — https://www.shopify.com/legal/api-terms
@@ -77,7 +78,7 @@ Canonical compliance record required by SPEC §4.2: for every data source, its a
   - **Stopping:** the first 429, 430 or 403 stops the whole run with no retry. The remaining stores are recorded as not reached.
   - **Report:** the header records the requests used out of the budget, the stores reached, the stop reason and any stores not reached. The table rows are the observations. If the `--out` directory is missing, the run is refused before any request is sent.
   - The results table goes into this section and into the vault note `Source - Shopify Stores`; SPK-3's go/no-go is a separate proposed DEC. Public bot page: [`docs/BOT.md`](BOT.md).
-- **Count semantics:** Grade A = `.js` `inventory_quantity` deltas where `inventory_management=shopify` and `inventory_policy=deny` (undocumented field, may disappear); Grade B = `updated_at` bump counts (lower bound on order events); availability flips. Store count is a Saturation input, not demand. Features prefixed `shp_`.
+- **Count semantics:** Grade A = `.js` `inventory_quantity` deltas where `inventory_management=shopify` and `inventory_policy=deny` (undocumented field, may disappear); Grade B = `updated_at` bump counts (lower bound on order events); availability flips. Store count is a Saturation input, not demand. Features prefixed `shopify_*` (DEC-033, Phase 1 D5).
 - **Risk:** merchant-account ToS exposure (DEC-003), cloud-IP blocking and undocumented inventory fields disappearing; no key expiry. Evidence: `Source - Shopify Stores`, SI §2–3.
 - **Cost:** free public endpoints / CSV; no paid access tier. **Status:** planned. **Phase:** 1.
 
