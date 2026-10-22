@@ -21,7 +21,7 @@ from typing import Any
 
 REPO_ID = "8f52a451-9501-439a-ac12-e886e441a93a"
 WORKSPACES = Path.home() / "orca" / "workspaces" / "pulso"
-PROTECTED = {"pulso-lead"}  # the lead's integration workspace is never released
+PROTECTED = {"pulso-lead", "pulso-lead-codex", ".lead-lock"}  # lead workspaces and the lead lock
 
 
 def is_inside(child: Path, parent: Path) -> bool:

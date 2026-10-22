@@ -28,7 +28,7 @@ New entries go at the bottom with the next number. Never renumber or delete; mar
 | DEC-008 | Scope: spec phases, plus enhancements marked "pending approval" | approved by owner 2026-10-22 |
 | DEC-009 | CJ account must transact every 30 days | pending owner |
 | DEC-010 | Vendor-scraped demand data policy | pending owner |
-| DEC-011 | Starter seed lists | pending owner |
+| DEC-011 | Starter seed lists | approved by owner 2026-10-22 (DEC-073) |
 | DEC-012 | Local dev runtime: infrastructure in compose, apps native | proposed — pending Phase 0 approval |
 | DEC-013 | Collector host runtime, gap detection and update procedure | proposed — pending Phase 0 approval |
 | DEC-014 | Railway service layout and configuration (for go-live) | proposed — pending Phase 0 approval |
@@ -82,6 +82,8 @@ New entries go at the bottom with the next number. Never renumber or delete; mar
 | DEC-065 | Versioned seed loading and approval guard | proposed (P1-06) |
 | DEC-066 | Releasing worker worktrees on Windows: stop processes standing in the folder first | proposed (P1-21) |
 | DEC-067 | Non-stop build: leads every 15 minutes (Claude/Codex), 5 workers, improvement backlog | approved by owner 2026-10-22 |
+| DEC-072 | Non-stop safety: atomic lead lock, a lead worktree per provider, protected paths, batched reviews, always-on e2e smoke; repo public | proposed (own-001) |
+| DEC-073 | Data collection approvals: seed_v1, crawler ID, Shopify test, collector host via scripts | approved by owner 2026-10-22 |
 
 Superseded review defaults, not given entries: default #0 (move the repo) is done, see DEC-005. Default #2 (no local collection at all) is replaced by DEC-002. Default #15 (CSS-only motion) is replaced by DEC-007, and its remaining rules are in DEC-025. Review question D1 (Railway Pro from Phase 1) is answered by DEC-001, D2 by DEC-003, D3 by DEC-004, D5 by DEC-008 and D8 by DEC-006.
 
@@ -226,7 +228,7 @@ Superseded review defaults, not given entries: default #0 (move the repo) is don
 - **Interim default:** official sources plus manual CSV only. Revisit at Phase 1 exit with the measured coverage numbers (DEC-039) and a vendor quote.
 
 ### DEC-011 · Starter seed lists
-**2026-10-22 · pending owner** · Review M6, D7
+**2026-10-22 · approved by owner 2026-10-22 (DEC-073)** · Review M6, D7 · originally pending owner
 - **Question:** Approve the drafted starter lists or supply your own.
 - **Interim default:**
   - Agents draft about 30 competitor store domains, 10 CJ categories and 50 US keywords in the vault note `Data/Seed Lists`. The owner adds his own store domains and approves.
@@ -398,7 +400,7 @@ Superseded review defaults, not given entries: default #0 (move the repo) is don
 
 ### DEC-023 · Commit identity
 **2026-10-22 · proposed — pending Phase 0 approval** · default #13
-- **Decision:** A repo-local git identity of `CodySpooner` with the GitHub noreply email. The repo stays private.
+- **Decision:** A repo-local git identity of `CodySpooner` with the GitHub noreply email. The repo stays private. *(Superseded in part by DEC-072: the owner made the repo public on 2026-10-22.)*
 - **Alternatives:** the owner's personal email.
 - **Why:** Keeps the personal email out of commit history. The owner confirms (owner to-do).
 
@@ -899,3 +901,27 @@ Superseded review defaults, not given entries: default #0 (move the repo) is don
   - This decision changes cadence and capacity only. It grants no new data or collector-host permissions: seed approval (DEC-011), the crawler contact and collector-host operations stay with the owner.
 - **Alternatives:** hourly leads with 3 workers (DEC-049) — workers sat idle up to an hour between runs; a single lead provider — one usage limit would stop the build.
 - **Why:** keeps both agents busy continuously and survives a usage limit on either plan.
+
+### DEC-072 · Non-stop safety rails
+**2026-10-22 · proposed (own-001)** · hardens DEC-067; amends DEC-023 and DEC-049
+- **Decision:**
+  - **Atomic lead lock.** `infra/scripts/lead_lock.py` (stdlib, tested): a directory created with one atomic `mkdir` at `C:\Users\Xody2\orca\workspaces\pulso\.lead-lock`, outside OneDrive and every worktree, with a heartbeat; a holder that stops beating for 20 minutes is stale. Each lead acquires it first, beats before every side effect and releases it at the end. The `lock:` line in the vault Lead State is a display copy only.
+  - **A lead worktree per provider.** Claude leads run in `pulso-lead`, Codex leads in `pulso-lead-codex`; every git command uses `git -C <own lead worktree>` after checking `rev-parse --show-toplevel` (the automation's run context names `C:/dev/pulso`). `release_worktree.py` protects both lead worktrees and the lock directory.
+  - **Protected paths.** The lead never auto-merges a branch touching AGENTS.md, CLAUDE.md, apps/web/AGENTS.md, `.github/`, `.gitignore`, `infra/seeds/`, the collector-host scripts or the SPEC amendment log, or adding "approved by owner", or relaxing AGENTS.md §3/§4 or a compliance decision (AGENTS.md §6).
+  - **Batched cross-reviews.** One review by the other agent covers all risky merges (migrations, money math, auth, live-collector paths, CI) since the last one; dispatched at 3 risky merges or 2 hours.
+  - **CI e2e smoke always runs** under the E2E auth bypass; only the real-Clerk sign-in check waits for secrets. Until now every e2e step was skipped without Clerk secrets.
+  - **Repo is public** (owner, 2026-10-22). GitHub secret scanning, push protection and a "Protect main" ruleset (no deletion, no force-push) are on, per the owner.
+  - DEC-049's "in the main checkout" for the lead now reads "in the lead worktrees".
+- **Alternatives:** the lock as a line in a OneDrive-synced note — sync delay and conflict copies allow two leads at once; one shared lead worktree — one lead could reset the other's tree mid-merge; reviewing every merge — took 8 of 14 Phase 1 worker slots.
+- **Why:** an adversarial review of the non-stop design (2026-10-22) found these as the ways two alternating leads and five workers could collide, widen their own permissions or ship untested UI.
+
+### DEC-073 · Data collection approvals
+**2026-10-22 · approved by owner 2026-10-22** · resolves DEC-011; authorizes Lead Playbook §6 steps 2–5; SPEC A-12
+- **Owner's answers (2026-10-22, ticked explicitly in the owner's session):** "Seed list as drafted", "Crawler ID = repo URL", "Shopify test: 4 stores", "Lead runs collector host".
+- **Decision:**
+  - **Seeds:** the drafted list in the vault note Data/Seed Lists (30 competitor stores, 10 CJ categories, 50 US keywords) is approved as `seed_v1`. The owner's own store domains go in a gitignored `infra/seeds/private*` file, never in the public repo. The owner may edit or veto entries at any time; a changed list is a new seed version. A follow-up task re-verifies each store (live, US-shipping, actually selling) and proposes `seed_v2`.
+  - **Crawler identity:** User-Agent `PulsoBot/0.1 (+https://github.com/CodySpooner/Pulso/blob/main/docs/BOT.md)`; `PULSO_BOT_CONTACT` is that URL. No email.
+  - **Shopify test (SPK-2):** one run from the owner's home connection against sageandsill.com, meowingtons.com, thecloudies.com and bleame.com, at most 20 requests in total (DEC-003), stopping the whole run on the first 429/430/403.
+  - **Collector host:** once Docker works, the lead may operate `C:\dev\pulso` only through the repo's collector scripts: `git pull --ff-only` on a clean checkout, start the collector project, back up then migrate, load approved seeds, enable approved sources one at a time after their fixture tests and the block-rule tests pass, and check Data Health. Never destructive (`down -v`, deleting volumes, databases, snapshots or raw payloads, downgrade migrations on the collector database). A file `C:\dev\pulso\.collector-hold` pauses all collector-host operations.
+  - Accuracy first: official sources before anything else; no vendor-scraped data (DEC-010 stays pending owner).
+- **Why:** the owner asked to start populating accurate, organic data, and approved each of the four steps needed for real collection.

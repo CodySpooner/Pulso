@@ -33,3 +33,6 @@ desktop.ini
 .idea/
 .vscode/*
 !.vscode/extensions.json
+
+# Owner-only seed lists (e.g. his own store domains): never in the public repo (DEC-073)
+infra/seeds/private*

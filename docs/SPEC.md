@@ -20,6 +20,7 @@ Only owner-approved decisions are applied to this file. Proposed defaults live i
 | A-9 | 2026-10-22 | §6 intro | The §11 phases stay the scope. Research-backed enhancements are tracked in vault feature notes as "[Added — pending approval]" and are out of scope until approved. | DEC-008 |
 | A-10 | 2026-10-22 | §11 Phase 1, Phase 8 | Phase 1 collection runs on the home PC until go-live, and gaps are accepted, detected and flagged. Railway is prepared so go-live can happen at any time. | DEC-001 |
 | A-11 | 2026-10-22 | §0 Working rules, §6 intro, §11 | Continuous build: phases run in order, but phase gates no longer stop the build. At each phase end the summary goes to PROGRESS.md and the vault, and work moves on to the next phase; I review asynchronously and can stop it any time. "[Added — pending approval]" items are in scope when their phase is built unless I veto them. Hard stops remain for paid services, keys and accounts, ToS/compliance, deploys, destructive data operations and the collector host. | DEC-049 |
+| A-12 | 2026-10-22 | §0, §4.3, §11 | Non-stop build: two lead automations alternate every 15 minutes and keep up to 5 workers busy, then keep improving after Phase 8. Data collection approved: the drafted seed list (seed_v1), the crawler identity linking to the public repo, a one-time Shopify test of 4 stores (at most 20 requests), and the lead may operate the collector host through the repo's collector scripts only, never destructively. | DEC-067, DEC-072, DEC-073 |
 
 ---
 

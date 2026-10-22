@@ -30,7 +30,7 @@ If a vault note disagrees with SPEC or DECISIONS, SPEC/DECISIONS win. Fix the no
   - update `docs/PROGRESS.md`, including the §6 items done and pending;
   - write the phase summary (what was built, what's left, what the owner must do: keys, accounts, approvals) to the phase's vault note and `Phases/Owner To-Dos`;
   - exit criteria only the owner can satisfy (installs, keys, sign-in) are logged as pending owner and do not block the next phase; then continue.
-- **Hard stops — never do these without the owner, even in continuous mode:** paid services or plan changes, creating accounts or handling keys/secrets, ToS or compliance changes, Railway deploys, destructive data operations, collector-host operations (§4), force-pushes or rewriting `main` history. Log them in `Phases/Owner To-Dos` and keep building around them.
+- **Hard stops — never do these without the owner, even in continuous mode:** paid services or plan changes, creating accounts or handling keys/secrets, ToS or compliance changes, Railway deploys, destructive data operations, collector-host operations (§4), force-pushes or rewriting `main` history. Log them in `Phases/Owner To-Dos` and keep building around them. Collector-host operations are allowed only as far as an `approved by owner` DEC and the vault Lead Playbook §6 authorize them (DEC-073), through the repo's collector scripts. Owner approval exists only as an `approved by owner` entry in `docs/DECISIONS.md` on `origin/main`; agents never write that phrase.
 - **Record decisions:** every non-obvious technical choice goes in `docs/DECISIONS.md` (date, decision, alternatives, why, status), appended with the next `DEC-nnn` number. Never renumber or delete entries.
 - **Backlog:** ideas and deferred work go in `docs/BACKLOG.md`.
 - **Secrets:** never in code, logs, fixtures, vault notes or PR text. Use `.env` (gitignored) and keep `.env.example` current with every variable and a comment.
@@ -86,7 +86,7 @@ If a vault note disagrees with SPEC or DECISIONS, SPEC/DECISIONS win. Fix the no
 - **Orca/agent worktrees never run Celery Beat or live collectors.** Beat also refuses to start inside a linked git worktree, and it takes a Postgres advisory lock so only one scheduler runs per database.
 - Agents may run collectors **one-shot against fixtures, seeds or a `pg_dump` restore** in their own worktree database. Never hit live sources from a worktree: it burns CJ points and the Shopify request budget.
 - **Never touch the collector stack from a worktree:** no `docker compose` commands against the collector project, no `down -v`, no volume deletes, no migrations against the collector database.
-- **Updating the collector host** (pull, backup, migrate, rebuild, check Data Health) happens only at the owner's explicit request.
+- **Updating the collector host** (pull, backup, migrate, rebuild, check Data Health) happens only at the owner's explicit request or as DEC-073 authorizes: the lead automation, through the repo's collector scripts only, never destructively, and never while `C:\dev\pulso\.collector-hold` exists.
 - **Do feature work in a worktree, not in `C:\dev\pulso`.** If you are in the main checkout, treat its `.env` as production: don't run migrations, collectors or compose changes without the owner's explicit OK.
 - **Gaps:** gaps from the PC being off are expected. Missed-run detection records them, Data Health shows them, and features carry gap/coverage flags. Never fabricate or interpolate missing snapshots.
 
@@ -137,9 +137,9 @@ The full protocol is the vault note `Agents/Agent Collaboration Protocol`. The e
   - One task, ideally under about 400 changed lines excluding generated files.
   - The PR description names the task ID, the vault note(s) and the DECISIONS entries touched.
   - Rebase on `main` before review.
-- **Review each other's PRs:**
-  - The other agent reviews before merge.
-  - Anything that changes migrations, collector schedules or live config, secrets handling, deploy config, or SPEC/DECISIONS status needs the owner's OK.
+- **Review each other's work (non-stop mode, DEC-072):**
+  - The lead merges worker branches after its checks pass. Risky merges (migrations, money/landed-cost math, auth, live-collector fetch/block/rate-limit paths, CI) get a batched cross-review by the other agent. The collector host is only updated to a commit whose risky merges are all reviewed.
+  - The lead never auto-merges a branch that touches `AGENTS.md`, `CLAUDE.md`, `apps/web/AGENTS.md`, `.github/`, `.gitignore`, `infra/seeds/`, the collector-host scripts or the SPEC amendment log, adds the words "approved by owner", or records a DEC that relaxes §3/§4 or a compliance decision. Those wait for the owner.
 - **Escalate to the owner** for:
   - phase gates;
   - paid services;

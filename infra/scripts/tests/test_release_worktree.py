@@ -18,6 +18,8 @@ def test_only_direct_children_of_the_workspaces_folder_are_releasable(tmp_path: 
     root = tmp_path / "workspaces"
     assert path_refusal(root / "p1-05-imports", root) is None
     assert path_refusal(root / "pulso-lead", root) == "pulso-lead is protected"
+    assert path_refusal(root / "pulso-lead-codex", root) is not None
+    assert path_refusal(root / ".lead-lock", root) is not None
     assert path_refusal(root / "p1-05-imports" / "apps", root) is not None
     assert path_refusal(tmp_path / "pulso", root) is not None  # e.g. the main checkout
 
