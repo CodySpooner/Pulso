@@ -6,7 +6,6 @@ import * as m from "motion/react-m";
 import { Activity, Compass, Ellipsis, FlaskConical, Search, type LucideIcon } from "lucide-react";
 
 import { spring } from "@/lib/motion";
-import { cn } from "@/lib/utils";
 
 import { useShell } from "./app-shell";
 import { useActiveHref } from "./nav-list";
@@ -48,7 +47,7 @@ export function BottomBar() {
           Search
         </button>
         {linkTab({ href: "/testing", label: "Testing", icon: FlaskConical })}
-        <button type="button" onClick={openNav} className={cn(tab)}>
+        <button type="button" onClick={openNav} className={tab}>
           <TabIcon icon={Ellipsis} />
           More
         </button>

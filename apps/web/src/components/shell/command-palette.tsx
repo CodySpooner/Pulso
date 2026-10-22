@@ -153,7 +153,7 @@ export function CommandPalette({
                     <Command.Input
                       value={query}
                       onValueChange={setQuery}
-                      placeholder="Type a command or page… Search arrives in Phase 2"
+                      placeholder="Type a command or page…"
                       className="h-full min-w-0 flex-1 bg-transparent text-title-3 text-foreground outline-none placeholder:text-subtle-foreground max-md:text-base"
                     />
                     <Kbd className="max-md:hidden">Esc</Kbd>

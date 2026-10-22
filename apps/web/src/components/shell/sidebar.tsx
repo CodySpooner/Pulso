@@ -36,9 +36,9 @@ export function Sidebar() {
   return (
     <aside
       data-collapsed={collapsed}
-      className="group/sidebar sticky top-0 hidden h-dvh w-14 shrink-0 flex-col bg-sidebar py-3 lg:flex xl:w-60 xl:data-[collapsed=true]:w-14"
+      className="group/sidebar sticky top-0 hidden h-dvh w-14 shrink-0 flex-col bg-sidebar pt-1 pb-3 lg:flex xl:w-60 xl:data-[collapsed=true]:w-14"
     >
-      <div className="flex h-9 items-center px-2 pb-3">
+      <div className="flex h-12 shrink-0 items-center px-2">
         <Link href="/" aria-label="Pulso, go to Daily Pulse" className="flex h-8 items-center rounded-md px-2 max-xl:mx-auto group-data-[collapsed=true]/sidebar:mx-auto">
           <span className={cn("items-center", whenExpanded)}>
             <Logo />
@@ -47,7 +47,7 @@ export function Sidebar() {
         </Link>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-4 [scrollbar-width:thin] mask-b-from-[calc(100%-1.5rem)]">
+      <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-12 [scrollbar-width:thin] mask-b-from-[calc(100%-3rem)]">
         <NavList variant="sidebar" rail={rail} />
       </div>
 

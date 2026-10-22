@@ -1,12 +1,11 @@
 "use client";
 
-import { useState } from "react";
 import * as m from "motion/react-m";
 import { Bell, Sprout, Star, Store, TrendingUp, type LucideIcon } from "lucide-react";
 
 import { EmptyState } from "@/components/pulso/empty-state";
 import { duration, ease, stagger } from "@/lib/motion";
-import { useIsClientNavigation } from "@/lib/navigation";
+import { useOncePerSession } from "@/lib/navigation";
 import { cn } from "@/lib/utils";
 
 interface Card {
@@ -26,7 +25,7 @@ const cards: Card[] = [
     beta: true,
     icon: Sprout,
     empty: "No emerging products yet",
-    body: "Trend Score (Beta) ranks products once there are a few days of snapshots. Collectors start in Phase 1.",
+    body: "Trend Score (Beta) ranks products once the Phase 1 collectors have a few days of snapshots.",
     span: "xl:col-span-7",
   },
   {
@@ -34,7 +33,7 @@ const cards: Card[] = [
     title: "Biggest movers",
     icon: TrendingUp,
     empty: "Movers need 7 days of history",
-    body: "7-day growth, up and down, comes from daily snapshots. Collectors start in Phase 1.",
+    body: "Growth up and down is measured over 7 days, so movers appear a week after collection starts.",
     span: "xl:col-span-5",
   },
   {
@@ -42,48 +41,34 @@ const cards: Card[] = [
     title: "New in tracked stores",
     icon: Store,
     empty: "No tracked stores yet",
-    body: "Launches appear after the store crawler runs and you track stores. Collectors start in Phase 1.",
-    span: "xl:col-span-6",
+    body: "New products from the stores you track show up here the morning after the crawler sees them.",
+    span: "xl:col-span-7",
   },
   {
     id: "alerts",
     title: "Alerts",
     icon: Bell,
     empty: "No alerts yet",
-    body: "Alert rules arrive in Phase 4 and fire once per crossing. Collectors start in Phase 1.",
-    span: "xl:col-span-6",
+    body: "Alert rules arrive in Phase 4. Each one fires once per crossing, never on every refresh.",
+    span: "xl:col-span-5",
   },
   {
     id: "watchlist",
     title: "Watchlist",
     icon: Star,
     empty: "Your watchlist is empty",
-    body: "Products you watch show 30-day sparklines and daily change here. Collectors start in Phase 1.",
+    body: "Watch products from Discover to follow their 30-day sparklines and daily change here.",
     span: "md:col-span-2 xl:col-span-12",
   },
 ];
 
-const FLAG = "pulso:pulse-stagger";
-
-function shouldStagger(isNavigation: boolean): boolean {
-  if (!isNavigation) return false;
-  try {
-    if (sessionStorage.getItem(FLAG)) return false;
-    sessionStorage.setItem(FLAG, "1");
-  } catch {
-    // Storage blocked: stagger anyway, it is cosmetic.
-  }
-  return true;
-}
-
 // Cards stagger in once per session on a client navigation (Motion System pattern 16: 40ms, first 6,
 // opacity + y 8→0). The server-rendered first paint never animates.
 export function PulseCards() {
-  const isNavigation = useIsClientNavigation();
-  const [animate] = useState(() => shouldStagger(isNavigation));
+  const animate = useOncePerSession("pulso:pulse-stagger");
 
   return (
-    <div className="grid grid-cols-1 gap-4 md:grid-cols-2 md:gap-6 xl:grid-cols-12">
+    <div className="mt-2 grid grid-cols-1 gap-4 md:grid-cols-2 md:gap-6 xl:grid-cols-12">
       {cards.map((card, i) => (
         <m.section
           key={card.id}

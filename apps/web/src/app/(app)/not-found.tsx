@@ -3,11 +3,11 @@ import { Compass } from "lucide-react";
 
 import { EmptyState } from "@/components/pulso/empty-state";
 import { Button } from "@/components/ui/button";
-import { Kbd } from "@/components/ui/kbd";
+import { ModKey } from "@/components/pulso/mod-key";
 
 export default function NotFound() {
   return (
-    <div className="mx-auto w-full max-w-280 rounded-xl border border-border bg-card shadow-card">
+    <div className="w-full max-w-280 rounded-xl border border-border bg-card shadow-card">
       <EmptyState
         icon={Compass}
         headingLevel="h1"
@@ -18,7 +18,7 @@ export default function NotFound() {
           </Button>
         }
       >
-        This address isn&apos;t a Pulso page. Press <Kbd>Ctrl K</Kbd> to jump to any page.
+        This address isn&apos;t a Pulso page. Press <ModKey /> to jump to any page.
       </EmptyState>
     </div>
   );

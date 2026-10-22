@@ -60,7 +60,7 @@ export function NavLink({
     >
       {active && (
         // Shared active pill: slides between items (pattern 3), jumps under reduced motion.
-        <m.span layoutId="nav-active" transition={spring.snappy} className="absolute inset-0 rounded-md bg-accent shadow-[inset_2px_0_0_var(--brand)]" />
+        <m.span layoutId="nav-active" transition={spring.snappy} className="absolute inset-0 rounded-md bg-accent before:absolute before:inset-y-2 before:left-0 before:w-0.5 before:rounded-full before:bg-brand" />
       )}
       <Icon className="relative size-4.5 shrink-0" strokeWidth={1.5} aria-hidden />
       <span className={cn("relative truncate", variant === "sidebar" && labelRail)}>{item.label}</span>

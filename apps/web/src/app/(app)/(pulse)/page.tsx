@@ -1,11 +1,11 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 
-import { LogoMark } from "@/components/pulso/logo";
 import { PageHeader } from "@/components/pulso/page-header";
 import { StatusDot } from "@/components/pulso/status-dot";
 import { Button } from "@/components/ui/button";
 
+import { FirstRunMark } from "./first-run-mark";
 import { PulseCards } from "./pulse-cards";
 
 export const metadata: Metadata = { title: "Daily Pulse" };
@@ -36,22 +36,22 @@ export default function DailyPulsePage() {
         actions={
           <Link
             href="/admin/data-health"
-            className="inline-flex h-7 items-center gap-1.5 rounded-md border border-border-subtle px-2 text-label font-medium text-muted-foreground transition-colors duration-(--duration-fast) ease-standard hover:border-border-strong"
+            className="inline-flex h-8 items-center gap-1.5 rounded-md border border-border-subtle px-2 text-label font-medium text-muted-foreground transition-colors duration-(--duration-fast) ease-standard hover:border-border-strong"
           >
-            <StatusDot state="disabled" className="size-1.5" />
+            <StatusDot state="disabled" />
             No collector host yet
           </Link>
         }
       />
 
-      <section aria-labelledby="first-run-title" className="rounded-xl border border-border bg-card p-6 shadow-card md:p-8">
+      <section aria-labelledby="first-run-title" className="rounded-xl border border-border bg-card p-6 shadow-card">
         <div className="flex flex-col gap-6 md:flex-row md:items-center">
           <div className="relative grid size-16 shrink-0 place-items-center overflow-hidden rounded-xl border border-border bg-background">
             <div
               aria-hidden
               className="absolute inset-0 bg-[linear-gradient(var(--border-subtle)_1px,transparent_1px),linear-gradient(90deg,var(--border-subtle)_1px,transparent_1px)] bg-size-[8px_8px] [mask-image:radial-gradient(circle,black_20%,transparent_75%)]"
             />
-            <LogoMark draw className="relative size-9 text-brand" />
+            <FirstRunMark />
           </div>
           <div className="flex min-w-0 flex-1 flex-col gap-1.5">
             <h2 id="first-run-title" className="text-title-2 font-semibold text-foreground">
@@ -66,7 +66,7 @@ export default function DailyPulsePage() {
             <Link href="/admin/data-health">Open Data Health</Link>
           </Button>
         </div>
-        <ol className="mt-6 grid gap-4 border-t border-border-subtle pt-6 sm:grid-cols-3">
+        <ol className="mt-6 hidden gap-4 border-t border-border-subtle pt-6 sm:grid sm:grid-cols-3">
           {steps.map((step, i) => (
             <li key={step.title} className="flex gap-3">
               <span className="grid size-6 shrink-0 place-items-center rounded-full border border-border font-mono text-micro text-muted-foreground">

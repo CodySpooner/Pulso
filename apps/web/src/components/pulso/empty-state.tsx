@@ -33,7 +33,7 @@ export function EmptyState({
       >
         <Icon className="size-5" strokeWidth={1.5} aria-hidden />
       </div>
-      <Heading tabIndex={Heading === "h1" ? -1 : undefined} className="text-title-3 font-semibold text-foreground outline-none">
+      <Heading tabIndex={Heading === "h1" ? -1 : undefined} className={cn("text-foreground outline-none", size === "md" ? "text-title-3 font-semibold" : "text-body font-medium")}>
         {title}
       </Heading>
       {children && <div className="max-w-[46ch] text-data text-muted-foreground">{children}</div>}

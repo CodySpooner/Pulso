@@ -25,7 +25,7 @@ export default async function ComingSoonPage({ params }: PageProps<"/[...slug]">
   const { item } = route;
 
   return (
-    <div className="mx-auto flex w-full max-w-280 flex-col gap-6">
+    <div className="flex w-full max-w-280 flex-col gap-6">
       <PageHeader title={item.label} description={item.summary} />
       <section aria-label="Status" className="rounded-xl border border-border bg-card shadow-card">
         <EmptyState
@@ -34,7 +34,7 @@ export default async function ComingSoonPage({ params }: PageProps<"/[...slug]">
           title={`${item.label} arrives in Phase ${item.phase}`}
           action={
             <Button asChild variant="secondary">
-              <Link href="/">Back to Daily Pulse</Link>
+              <Link href="/">Go to Daily Pulse</Link>
             </Button>
           }
         >
@@ -59,7 +59,7 @@ export default async function ComingSoonPage({ params }: PageProps<"/[...slug]">
               </li>
             ))}
           </ol>
-          <div aria-hidden className="mt-3 flex flex-wrap justify-between gap-2 text-label text-subtle-foreground">
+          <div aria-hidden className="mt-3 flex flex-wrap gap-x-6 gap-y-2 text-label text-subtle-foreground">
             <span className="inline-flex items-center gap-1.5">
               <span className="size-2 rounded-full bg-brand" />
               Now: Phase {CURRENT_PHASE} · {PHASES[CURRENT_PHASE]}
