@@ -80,3 +80,9 @@ This file holds deferred ideas and research extras that are **not** in the §11 
 | External heartbeat monitor | Phase 1 brainstorm | With the Phase 7 alerts | Needs an account, so ask the owner first |
 | Count immutable facts (FX, Keepa-style series) as of their own date in features | Phase 1 brainstorm D4; DEC-031 | Phase 6, only via an owner SPEC amendment | Until then features use only `captured_at < d+1 00:00Z` |
 | Automatic five-year Trends backfill | Phase 1 note; Phase 1 brainstorm | After the Trends alpha or an approved paid tier | Paid tier needs owner approval |
+
+## P1-03 framework follow-up (2026-10-22)
+
+| Deferred work | Evidence | When | Notes |
+|---|---|---|---|
+| P1-03b: FW-4 consecutive 403/429/430 block rule, exactly one disable source_event, full Retry-After deadline persistence and at most 600 seconds in-process waiting | P1-03 task's explicit ~400-line split; DEC-063 | Before any live adapter enablement | Core lifecycle/replay/guards/settings delivered; add response Retry-After metadata, five-block and cross-run deadline tests. Current runner respects an already-persisted future deadline by immediately ending partial; it does not yet persist server deadlines or auto-disable. Keep FW-4/R-08 unchecked. |
