@@ -44,7 +44,7 @@ def test_enabled_fetch_passes_honest_user_agent(
     request = Request()
     assert fetch(adapter, request, settings=Settings()).status_code == 200
     adapter.fetch.assert_called_once_with(
-        request, user_agent="PulsoBot/1.0 (+https://example.test/bot)"
+        request, user_agent="PulsoBot/0.1 (+https://example.test/bot)"
     )
 
 

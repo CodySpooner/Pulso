@@ -69,7 +69,7 @@ class Settings(BaseSettings):
     def collector_user_agent(self) -> str:
         if self.pulso_bot_contact is None:
             raise ValueError("PULSO_BOT_CONTACT is required for live collection")
-        return f"PulsoBot/1.0 (+{self.pulso_bot_contact})"
+        return f"PulsoBot/0.1 (+{self.pulso_bot_contact})"  # DEC-073
 
     api_port: int = 8000
     log_level: str = "INFO"

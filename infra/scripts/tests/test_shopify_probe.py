@@ -45,6 +45,7 @@ def fixture_response(request: httpx.Request) -> httpx.Response:
 def run_probe(
     respond: Callable[[httpx.Request], httpx.Response] = fixture_response,
     stores: list[str] | None = None,
+    **kwargs: int,
 ) -> tuple[str, list[httpx.Request], list[float]]:
     clock = Clock()
     requests: list[httpx.Request] = []
@@ -63,6 +64,7 @@ def run_probe(
         transport=httpx.MockTransport(handle),
         sleep=clock.sleep,
         clock=clock,
+        **kwargs,
     )
     return report, requests, times
 
@@ -81,31 +83,73 @@ def test_sequence_spacing_304_currency_inventory_and_latency() -> None:
     assert "| 304 | - | yes |" in report
     assert "| USD |" in report
     assert "| public JSON | yes | 125.0 |" in report
-    assert "10/50 requests" in report
+    assert "10/20 requests" in report
+    assert "Stop reason: none; run finished." in report
 
 
-def test_request_cap_is_global() -> None:
+def redirecting_response(request: httpx.Request) -> httpx.Response:
+    if request.url.path in ("/meta.json", "/products/test-product.js"):
+        return httpx.Response(
+            302, headers={"Location": f"https://elsewhere.example{request.url.path}"}
+        )
+    return fixture_response(request)
+
+
+def test_default_budget_covers_four_stores_with_redirects_unfollowed() -> None:
+    stores = [f"shop{i}.example" for i in range(4)]
+    report, requests, _ = run_probe(redirecting_response, stores)
+    assert len(requests) == 20
+    assert {r.url.host for r in requests} == {f"shop{i}.example" for i in range(4)}
+    assert report.count("redirect not followed") == 8
+    assert "20/20 requests; 4/4 stores reached." in report
+    assert "Stop reason: none; run finished." in report
+
+
+@pytest.mark.parametrize("cap", [1, 7, 19])
+def test_budget_is_global_and_configurable(cap: int) -> None:
+    stores = [f"shop{i}.example" for i in range(4)]
+    report, requests, _ = run_probe(redirecting_response, stores, max_requests=cap)
+    assert len(requests) == cap
+    reached = cap // 5 + 1
+    assert f"{cap}/{cap} requests; {reached}/4 stores reached." in report
+    assert f"Stop reason: request budget of {cap} spent; next request not sent" in report
+    assert "Not reached: " + ", ".join(f"https://shop{i}.example" for i in range(reached, 4)) in (
+        report
+    )
+
+
+def test_default_budget_is_global_across_many_stores() -> None:
     report, requests, _ = run_probe(stores=[f"shop{i}.example" for i in range(12)])
-    assert len(requests) == 50
-    assert requests[-1].url.host == "shop9.example"
-    assert "Request cap reached; run stopped" in report
+    assert len(requests) == 20
+    assert requests[-1].url.host == "shop3.example"
+    assert "Stop reason: request budget of 20 spent" in report
+
+
+@pytest.mark.parametrize("cap", [0, -1, 51])
+def test_budget_outside_one_to_fifty_refused_before_network(cap: int) -> None:
+    with pytest.raises(ValueError, match="max_requests"):
+        run_probe(max_requests=cap)
 
 
 @pytest.mark.parametrize("status", [429, 430, 403])
 @pytest.mark.parametrize("path", ["/robots.txt", "/products.json", "/meta.json"])
-def test_block_stops_store_without_retry_and_honours_retry_after(status: int, path: str) -> None:
+def test_first_block_stops_whole_run_without_retry(status: int, path: str) -> None:
     def respond(request: httpx.Request) -> httpx.Response:
         if request.url.host == "blocked.example" and request.url.path == path:
             return httpx.Response(status, headers={"Retry-After": "60"})
         return fixture_response(request)
 
-    report, requests, times = run_probe(respond, ["blocked.example", "other.example"])
-    blocked = [r for r in requests if r.url.host == "blocked.example"]
-    assert blocked[-1].url.path == path
-    assert sum(r.url.path == path for r in blocked) == 1
-    assert times[len(blocked)] - times[len(blocked) - 1] >= 60
+    report, requests, _ = run_probe(respond, ["first.example", "blocked.example", "other.example"])
+    assert [r.url.host for r in requests[:5]] == ["first.example"] * 5
+    assert requests[-1].url.host == "blocked.example"
+    assert requests[-1].url.path == path
+    assert all(r.url.host != "other.example" for r in requests)
     assert f"| {status} | 60 |" in report
-    assert "store stopped; no retry" in report
+    assert "run stopped; no retry" in report
+    assert f"Stop reason: HTTP {status} from https://blocked.example{path}" in report
+    assert f"{len(requests)}/20 requests; 2/3 stores reached." in report
+    assert "Not reached: https://other.example" in report
+    assert "| https://first.example | /products/test-product.js | 200 |" in report
 
 
 @pytest.mark.parametrize(
@@ -186,7 +230,7 @@ def test_transport_failure_counts_toward_cap_and_is_recorded() -> None:
         raise httpx.ConnectError("fixture failure", request=request)
 
     report, requests, times = run_probe(respond, [f"shop{i}.example" for i in range(60)])
-    assert len(requests) == 50
+    assert len(requests) == 20
     assert all(b - a >= 3 for a, b in pairwise(times))
     assert "ConnectError" in report
 
@@ -271,18 +315,33 @@ def test_cli_seed_input_file_and_stdout(
     monkeypatch.setattr(shopify_probe, "__file__", str(tmp_path / "infra/scripts/spikes/probe.py"))
     clock = Clock()
 
-    def offline_probe(stores: list[str], contact: str) -> str:
+    def offline_probe(stores: list[str], contact: str, *, max_requests: int) -> str:
         return probe(
             stores,
             contact,
             transport=httpx.MockTransport(fixture_response),
             sleep=clock.sleep,
             clock=clock,
+            max_requests=max_requests,
         )
 
     monkeypatch.setattr(shopify_probe, "probe", offline_probe)
     output = tmp_path / "spike.md"
     main(["--seed-file", str(SEEDS), "--out", str(output)])
-    assert "50/50 requests" in output.read_text(encoding="utf-8")
+    assert "20/20 requests" in output.read_text(encoding="utf-8")
     main(["shop.example"])
-    assert "5/50 requests" in capsys.readouterr().out
+    assert "5/20 requests" in capsys.readouterr().out
+    main(["shop.example", "--max-requests", "3"])
+    assert "3/3 requests" in capsys.readouterr().out
+    with pytest.raises(SystemExit, match="2"):
+        main(["shop.example", "--max-requests", "0"])
+
+
+def test_cli_refuses_missing_report_directory_before_network(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("PULSO_BOT_CONTACT", CONTACT)
+    monkeypatch.setattr(shopify_probe, "__file__", str(tmp_path / "infra/scripts/spikes/probe.py"))
+    monkeypatch.setattr(shopify_probe, "probe", lambda *a, **k: pytest.fail("network reached"))
+    with pytest.raises(SystemExit, match="2"):
+        main(["shop.example", "--out", str(tmp_path / "missing/spike.md")])

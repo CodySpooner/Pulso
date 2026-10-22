@@ -57,8 +57,20 @@ Canonical compliance record required by SPEC §4.2: for every data source, its a
   - Since 2026-09-29 cloud IPs report 429 (`retry-after: 60`) on the first request even when signed; staff: a signature is "necessary but not sufficient" without registration.
 - **Owner risk acceptance (2026-10-22):** the owner accepts the ToS risk; strict §4.2 behaviour; runs from the home-PC collector host (residential IP). Moving this collector to a different network *because* of a block requires a new owner decision. Recorded in DECISIONS.md as DEC-003 (approved 2026-10-22).
 - **Limits:** none published. Our budget: ≤ 30 requests/min total across all stores, sequential, honour `retry-after`, no IP changes.
-- **Block rule:** 1 × 430 → disable; 5 consecutive 429 → disable. 403/404 on one store → that store only.
+- **Block rule (DEC-069):** any 429, 430 or 403, even from one store, stops the whole run at once with no retry and no further stores (the run ends partial). The framework counts consecutive blocks across runs (any other live response resets the count) and auto-disables the source at `COLLECTOR_BLOCK_THRESHOLD` (default 5) with a Data Health alert. The adapter must also treat a single 430 as fatal and disable the source at once. A 404 is not a block; it marks only that store as possibly headless or unavailable. The SPK-2 spike stops at the first block (below).
 - **Availability pre-check (2026-10-22, not the DEC-003 spike):** one `/meta.json` per candidate store from the home PC, 2 s apart: 37/46 returned 200 JSON, 1 returned 403 (inspireuplift.com), rest dead/headless. No 429s. The `/products.json` spike that gates enabling (DEC-003, Phase 0 SPK-2) has not run yet.
+- **SPK-2 spike command (DEC-073, DEC-077; not run yet):** the lead runs it exactly once, from `C:\dev\pulso` only, after every precondition in the vault Lead Playbook §6 step 2 holds. The script refuses linked worktrees. PowerShell 5.1:
+
+  ```powershell
+  Set-Location C:\dev\pulso
+  $env:PULSO_BOT_CONTACT = 'https://github.com/CodySpooner/Pulso/blob/main/docs/BOT.md'
+  uv run python infra/scripts/spikes/shopify_probe.py sageandsill.com meowingtons.com thecloudies.com bleame.com --max-requests 20 --out C:/Users/Xody2/orca/workspaces/pulso/spike-SPK-2.md
+  ```
+
+  - **Budget:** at most 20 requests in the whole run. That covers robots.txt, `/products.json?limit=1`, one conditional repeat of it, `/meta.json` and one `/products/<handle>.js`: 5 per fully probed store, so the four stores fit exactly. Redirects count as requests and are never followed. Requests are at least 3 s apart (≤ 20/min). The cap must be between 1 and 50.
+  - **Stopping:** the first 429, 430 or 403 stops the whole run with no retry. The remaining stores are recorded as not reached.
+  - **Report:** the header records the requests used out of the budget, the stores reached, the stop reason and any stores not reached. The table rows are the observations. If the `--out` directory is missing, the run is refused before any request is sent.
+  - The results table goes into this section and into the vault note `Source - Shopify Stores`; SPK-3's go/no-go is a separate proposed DEC. Public bot page: [`docs/BOT.md`](BOT.md).
 - **Count semantics:** Grade A = `.js` `inventory_quantity` deltas where `inventory_management=shopify` and `inventory_policy=deny` (undocumented field, may disappear); Grade B = `updated_at` bump counts (lower bound on order events); availability flips. Store count is a Saturation input, not demand. Features prefixed `shp_`.
 - **Risk:** merchant-account ToS exposure (DEC-003), cloud-IP blocking and undocumented inventory fields disappearing; no key expiry. Evidence: `Source - Shopify Stores`, SI §2–3.
 - **Cost:** free public endpoints / CSV; no paid access tier. **Status:** planned. **Phase:** 1.

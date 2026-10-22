@@ -85,11 +85,16 @@ def test_collector_defaults_and_honest_user_agent(monkeypatch: pytest.MonkeyPatc
     assert s.trends_monthly_search_limit == 250
     with pytest.raises(ValueError, match="PULSO_BOT_CONTACT"):
         _ = s.collector_user_agent
-    monkeypatch.setenv("PULSO_BOT_CONTACT", "https://example.test/bot")
+    # The exact DEC-073 crawler identity.
+    monkeypatch.setenv(
+        "PULSO_BOT_CONTACT", "https://github.com/CodySpooner/Pulso/blob/main/docs/BOT.md"
+    )
     monkeypatch.setenv("CJ_API_KEY", "fixture-cj-secret")
     monkeypatch.setenv("SERPAPI_API_KEY", "fixture-serpapi-secret")
     configured = Settings()
-    assert configured.collector_user_agent == "PulsoBot/1.0 (+https://example.test/bot)"
+    assert configured.collector_user_agent == (
+        "PulsoBot/0.1 (+https://github.com/CodySpooner/Pulso/blob/main/docs/BOT.md)"
+    )
     assert "fixture-cj-secret" not in repr(configured)
     assert "fixture-serpapi-secret" not in repr(configured)
 
