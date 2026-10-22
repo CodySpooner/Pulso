@@ -67,7 +67,8 @@ def runs(session: Session, *where: ColumnElement[bool], limit: int | None = None
 
     rows = session.execute(
         select(
-            CollectorRun.__table__,
+            # params can hold an import's row errors (megabytes); no response returns it.
+            *(c for c in CollectorRun.__table__.c if c.key != "params"),
             Source.key.label("source_key"),
             count().label("target_count"),
             count(CollectorRunTarget.status == "success").label("successful_target_count"),
