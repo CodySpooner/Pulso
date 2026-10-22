@@ -2,6 +2,7 @@ from collections.abc import Callable
 from contextlib import closing
 from typing import Annotated, Literal
 
+from botocore.config import Config
 from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel
 from redis import Redis
@@ -35,7 +36,11 @@ def check_redis(settings: Settings) -> None:
 
 
 def check_s3(settings: Settings) -> None:
-    with closing(make_client(settings)) as client:
+    with closing(
+        make_client(
+            settings, config=Config(connect_timeout=2, read_timeout=2, retries={"max_attempts": 1})
+        )
+    ) as client:
         client.head_bucket(Bucket=settings.s3_bucket_raw)
 
 
