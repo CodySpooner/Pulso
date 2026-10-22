@@ -1,4 +1,4 @@
-"""Exact currency conversion. Reject fractional minor units instead of rounding."""
+"""Exact money parsing; FX conversion requires an explicit rounding mode."""
 
 from decimal import Decimal, localcontext
 
@@ -35,3 +35,19 @@ def from_minor(amount_minor: int, currency: str) -> Decimal:
     if isinstance(amount_minor, bool) or not isinstance(amount_minor, int):
         raise TypeError("Minor units must be an integer")
     return Decimal(amount_minor).scaleb(-CURRENCY_EXPONENTS[currency])
+
+
+def convert_minor(amount_minor: int, base: str, quote: str, rate: Decimal, *, rounding: str) -> int:
+    """Convert using quote major units per base unit, rounding only the final amount."""
+    amount = from_minor(amount_minor, base)
+    to_minor(amount, base)
+    if not isinstance(rate, Decimal):
+        raise TypeError("FX rate must be Decimal")
+    if not rate.is_finite() or rate <= 0:
+        raise ValueError("FX rate must be finite and positive")
+    with localcontext() as context:
+        context.prec = max(28, len(str(abs(amount_minor))) + len(rate.as_tuple().digits) + 6)
+        converted = (amount * rate).quantize(
+            Decimal(1).scaleb(-CURRENCY_EXPONENTS[quote]), rounding=rounding
+        )
+        return to_minor(converted, quote)
