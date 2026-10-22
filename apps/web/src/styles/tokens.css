@@ -110,6 +110,7 @@
   --stat-value-size: 1.75rem; --sparkline-stroke: 1.5px;
   /* Motion duration mirror of src/lib/motion.ts (vault Design/Motion System) */
   --duration-fast: 120ms; --duration-base: 200ms; --duration-slow: 280ms; --duration-slower: 400ms;
+  --skeleton-delay: 150ms; --duration-shimmer: 1.6s; /* pattern 14: no flash on fast loads, slow sweep */
 }
 .dark, :root { --button-brand-bg: var(--green-400); --button-brand-fg: var(--green-950); }
 .light       { --button-brand-bg: var(--green-500); --button-brand-fg: var(--green-950); }

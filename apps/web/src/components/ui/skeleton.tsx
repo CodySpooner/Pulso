@@ -7,8 +7,8 @@ function Skeleton({ className, ...props }: React.ComponentProps<"div">) {
     <div
       aria-hidden
       className={cn(
-        "relative overflow-hidden rounded-sm bg-skeleton opacity-0 animate-[appear_var(--duration-fast)_150ms_forwards]",
-        "after:absolute after:inset-0 after:-translate-x-full after:bg-linear-to-r after:from-transparent after:via-skeleton-highlight after:to-transparent after:animate-[shimmer_1.6s_var(--ease-in-out)_infinite]",
+        "relative overflow-hidden rounded-sm bg-skeleton opacity-0 animate-[appear_var(--duration-fast)_var(--skeleton-delay)_forwards]",
+        "after:absolute after:inset-0 after:-translate-x-full after:bg-linear-to-r after:from-transparent after:via-skeleton-highlight after:to-transparent after:animate-[shimmer_var(--duration-shimmer)_var(--ease-in-out)_infinite]",
         className,
       )}
       {...props}
