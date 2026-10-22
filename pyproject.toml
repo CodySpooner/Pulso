@@ -21,6 +21,7 @@ select = ["E", "F", "W", "I", "UP", "B"]
 
 [tool.mypy]
 python_version = "3.14"
+mypy_path = ["packages/core/src"]
 strict = true
 plugins = ["pydantic.mypy"]
 files = ["apps", "packages", "infra/scripts"]

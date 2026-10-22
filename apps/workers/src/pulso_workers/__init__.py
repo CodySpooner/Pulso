@@ -1,1 +1,3 @@
-"""Pulso Celery workers and scheduled jobs (filled in by the workers lane)."""
+"""Pulso Celery application, also discoverable with `celery -A pulso_workers`."""
+
+from pulso_workers.celery_app import app as app

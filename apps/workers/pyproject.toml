@@ -1,9 +1,16 @@
 [project]
 name = "pulso-workers"
 version = "0.0.0"
-description = "Pulso Celery workers and scheduled jobs (filled in by the workers lane)."
+description = "Pulso Celery workers and guarded scheduler entry point."
 requires-python = ">=3.14,<3.15"
-dependencies = ["pulso-core", "pulso-ml", "pulso-sources"]
+dependencies = [
+    "celery[redis]>=5.6,<6",
+    "psycopg[binary]>=3.3,<4",
+    "pulso-core",
+    "pulso-ml",
+    "pulso-sources",
+    "sqlalchemy>=2.0,<3",
+]
 
 [build-system]
 requires = ["uv_build>=0.11,<0.14"]
