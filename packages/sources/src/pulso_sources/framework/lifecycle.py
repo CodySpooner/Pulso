@@ -73,6 +73,15 @@ def _capture[R](
     settings: Settings,
     deadline: float,
 ) -> tuple[Response, RawPayload]:
+    if request.raw_payload_id is not None:
+        if request.mode not in {"csv", "json", "fixture"}:
+            raise ValueError("Existing raw captures require an offline request")
+        if time.monotonic() >= deadline:
+            raise RunDeferred("wall_time_budget")
+        payload = session.get_one(RawPayload, request.raw_payload_id)
+        if payload.source_id != run.source_id or payload.storage_key is None:
+            raise ValueError("Existing raw capture must belong to the source and have a body")
+        return Response(None, payload.status_code, payload.content_type, payload.etag), payload
     for attempt in range(settings.collector_max_retries + 1):
         if time.monotonic() >= deadline:
             raise RunDeferred("wall_time_budget")
