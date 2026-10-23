@@ -22,10 +22,10 @@ def fx_plan(session: Session, source: Source, job: str) -> Plan:
 
 
 def shopify_plan(session: Session, source: Source, job: str) -> Plan:
-    if job != "catalog":
+    if job not in {"catalog", "variants_js"}:
         raise ValueError("Unsupported Shopify job")
     settings = get_settings()
-    adapter, targets, finalize = shopify_stores.plan(session, source, settings=settings)
+    adapter, targets, finalize = shopify_stores.plan(session, source, settings=settings, job=job)
     return Plan(
         adapter,
         targets,

@@ -21,6 +21,7 @@ from pulso_core.models import (
 )
 from pulso_core.money import to_minor
 from pulso_sources.framework import UpsertStats, append_observation
+from pulso_sources.shopify_stores.variants import JSProduct, upsert_variants
 
 
 class Variant(BaseModel):
@@ -66,7 +67,7 @@ class Meta(BaseModel):
     country: str | None = Field(default=None, pattern=r"^[A-Z]{2}$")
 
 
-def parse(body: bytes) -> Sequence[Product | Meta]:
+def parse(body: bytes) -> Sequence[Product | Meta | JSProduct]:
     text = body.decode("utf-8-sig").strip()
     if (
         not text
@@ -81,6 +82,11 @@ def parse(body: bytes) -> Sequence[Product | Meta]:
     data = json.loads(text)
     if not isinstance(data, dict):
         raise ValueError("Expected storefront object")
+    if "variants" in data:
+        product = JSProduct.model_validate(data)
+        if len({v.id for v in product.variants}) != len(product.variants):
+            raise ValueError("Duplicate variant identity")
+        return [product]
     if "products" not in data:
         return [Meta.model_validate(data)]
     products = Catalog.model_validate(data).products
@@ -96,9 +102,17 @@ def current(row: Listing | ListingVariant, at: datetime) -> bool:
 
 
 def upsert(
-    session: Session, records: Sequence[Product | Meta], payload: RawPayload, *, parser_version: str
+    session: Session,
+    records: Sequence[Product | Meta | JSProduct],
+    payload: RawPayload,
+    *,
+    parser_version: str,
 ) -> UpsertStats:
     path = payload.request["path"]
+    if str(path).endswith(".js"):
+        if len(records) != 1 or not isinstance(records[0], JSProduct):
+            raise ValueError("Payload does not match requested endpoint")
+        return upsert_variants(session, records[0], payload, parser_version=parser_version)
     if (
         (path == "/robots.txt" and records)
         or (path == "/meta.json" and (len(records) != 1 or not isinstance(records[0], Meta)))
@@ -108,6 +122,8 @@ def upsert(
     store = session.get_one(Store, payload.request["store_id"])
     inserted = unchanged = 0
     for record in records:
+        if isinstance(record, JSProduct):
+            raise ValueError("Payload does not match requested endpoint")
         if isinstance(record, Meta):
             to_minor("0", record.currency)  # Reject unsupported currencies before catalog prices.
             store.shop_id, store.currency = str(record.id), record.currency

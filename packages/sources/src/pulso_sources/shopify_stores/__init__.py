@@ -1,7 +1,7 @@
 """Sequential, guarded Shopify catalogs; call collect under the worker's source lock."""
 
 import time
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Sequence
 from datetime import UTC, datetime, timedelta
 from typing import Any
 from urllib.error import HTTPError, URLError
@@ -16,6 +16,7 @@ from pulso_core.models import (
     CollectorRun,
     CollectorRunTarget,
     Listing,
+    ListingSnapshot,
     RawPayload,
     Source,
     SourceEvent,
@@ -27,6 +28,7 @@ from pulso_sources import storage
 from pulso_sources.framework import Request, Response, RunDeferred, Target, execute_run
 from pulso_sources.seed_approval import approved_targets
 from pulso_sources.shopify_stores.records import Catalog, Meta, parse, upsert
+from pulso_sources.shopify_stores.variants import JSProduct
 
 STORE_SPACING_SECONDS = 10
 _next_global = 0.0
@@ -43,7 +45,7 @@ class RobotsDisallowed(ValueError):
 
 
 class ShopifyAdapter:
-    parser_version = "shopify-1"
+    parser_version = "shopify-2"
     parse = staticmethod(parse)
     upsert = staticmethod(upsert)
 
@@ -125,7 +127,7 @@ class ShopifyAdapter:
             source.disabled_at, source.disabled_reason = datetime.now(UTC), "http_430"
             session.add(SourceEvent(source_id=source.id, action="disable", reason="http_430"))
 
-    def catalog(self, store: Store) -> Iterator[Request]:
+    def catalog(self, store: Store, panel: Sequence[Listing] | None = None) -> Iterator[Request]:
         origin = f"https://{store.domain}"
 
         def request(path: str) -> Request:
@@ -133,7 +135,7 @@ class ShopifyAdapter:
             cached = self.cache.get(url)
             conditional = (
                 cached
-                and path.startswith("/products.json?")
+                and (path.startswith("/products.json?") or path.endswith(".js"))
                 and (cached[0].request.get("currency") == store.currency)
             )
             return Request(
@@ -171,6 +173,21 @@ class ShopifyAdapter:
             raise RobotsDisallowed()
         yield request("/meta.json")
         Meta.model_validate_json(self.responses[origin + "/meta.json"].body or b"")
+        if panel is not None:
+            for listing in panel:
+                path = f"/products/{listing.handle}.js"
+                if not robots.can_fetch("PulsoBot", origin + path):
+                    raise RobotsDisallowed()
+                item = Request(params={**request(path).params, "listing_id": listing.id})
+                yield item
+                response = self.responses[origin + path]
+                if response.status_code == 304:
+                    if not item.params["etag"]:
+                        raise ValueError("unproven_304")
+                    product = JSProduct.model_validate_json(self.cache[origin + path][1])
+                    if listing.external_id != f"{store.shop_id}:{product.id}":
+                        raise ValueError("Product identity changed")
+            return
         seen = self.seen[store.domain] = set()
         page = 1
         while True:
@@ -197,13 +214,15 @@ class ShopifyAdapter:
 
 
 def plan(
-    session: Session, source: Source, *, settings: Settings
+    session: Session, source: Source, *, settings: Settings, job: str = "catalog"
 ) -> tuple[ShopifyAdapter, list[Target], Callable[[Session, CollectorRun], None]]:
-    """Preload the catalog plan under the source lock; return its successful-store finalizer."""
+    """Preload under the source lock; only catalog plans finalize store completeness."""
     global _next_global
     session.expire_on_commit = False
     if source.key != "shopify_stores":
         raise ValueError("Wrong source")
+    if job not in {"catalog", "variants_js"}:
+        raise ValueError("Unsupported Shopify job")
     domains = {row["domain"] for row in approved_targets(session, source.key)}
     stores = list(
         session.scalars(
@@ -239,7 +258,7 @@ def plan(
             RawPayload.source_id == source.id,
             RawPayload.request["domain"].as_string().in_(domains),
             RawPayload.status_code == 200,
-            CollectorRunTarget.scope == "shopify_catalog",
+            CollectorRunTarget.scope.in_(["shopify_catalog", "shopify_variants_js"]),
             CollectorRunTarget.status == "success",
             CollectorRunTarget.target_id == RawPayload.request["domain"].as_string(),
         )
@@ -262,10 +281,36 @@ def plan(
         if store.status != "active":
             targets.append(Target("shopify_excluded", f"{store.domain}:{store.status}", ()))
         else:
-            targets.append(Target("shopify_catalog", store.domain, adapter.catalog(store)))
+            panel = None
+            if job == "variants_js":
+                latest = (
+                    select(ListingSnapshot.source_updated_at)
+                    .where(ListingSnapshot.listing_id == Listing.id)
+                    .order_by(ListingSnapshot.captured_at.desc(), ListingSnapshot.id.desc())
+                    .limit(1)
+                    .scalar_subquery()
+                )
+                panel = list(
+                    session.scalars(
+                        select(Listing)
+                        .where(
+                            Listing.store_id == store.id,
+                            Listing.source_id == source.id,
+                            Listing.delisted_at.is_(None),
+                            Listing.handle.is_not(None),
+                        )
+                        .order_by(latest.desc().nulls_last(), Listing.id)
+                        .limit(settings.shopify_js_panel_size)
+                    )
+                )
+                if not panel:
+                    continue
+            targets.append(Target(f"shopify_{job}", store.domain, adapter.catalog(store, panel)))
     session.commit()
 
     def finalize(session: Session, run: CollectorRun) -> None:
+        if job != "catalog":
+            return
         for store in stores:
             target = session.get(CollectorRunTarget, (run.id, "shopify_catalog", store.domain))
             if target is None or target.status != "success":
