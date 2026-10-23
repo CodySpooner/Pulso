@@ -27,11 +27,15 @@ from pulso_sources.framework import (
     Request,
     Response,
     UpsertStats,
+    Writer,
     append_observation,
 )
 
 if TYPE_CHECKING:
     from pulso_sources.imports import ImportData
+
+# DEC-156: manual prices are their own writer, read explicitly; detail keeps the default read.
+CSV_WRITER = Writer(RawPayload.request["mode"].as_string() == "csv", ("price_minor",))
 
 
 class Row(BaseModel):
@@ -113,9 +117,19 @@ class ImportAdapter:
             for row, cost in zip(rows, costs, strict=True):
                 variant = None
                 if row.sku:
-                    variant = session.scalars(
+                    matches = session.scalars(
                         select(ListingVariant).filter_by(listing_id=listing.id, sku=row.sku)
-                    ).one_or_none()
+                    ).all()
+                    # An ambiguous SKU falls back to the unique manual identity (P1-47 C-M3).
+                    variant = (
+                        matches[0]
+                        if len(matches) == 1
+                        else session.scalar(
+                            select(ListingVariant).filter_by(
+                                listing_id=listing.id, external_id=f"csv-sku:{row.sku}"
+                            )
+                        )
+                    )
                     if variant is None:
                         variant = ListingVariant(
                             listing_id=listing.id,
@@ -137,6 +151,7 @@ class ImportAdapter:
                                 json.dumps(values, sort_keys=True).encode()
                             ).hexdigest(),
                         ),
+                        writer=CSV_WRITER,
                     )
                     inserted += added
                     unchanged += not added

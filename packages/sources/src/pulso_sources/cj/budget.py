@@ -32,19 +32,27 @@ class PointsInfo(BaseModel):
 
 
 def record_points(source: Source, body: bytes | None, now: datetime) -> None:
-    """Keep only quota metadata, including from auth; never persist its token body."""
-    state = None
+    """Keep only quota metadata, including from auth; never persist its token body.
+
+    A body without pointsInfo keeps the debited evidence; a present invalid one clears it.
+    """
     try:
         data = json.loads(body or b"{}")
-        info = PointsInfo.model_validate(data.get("pointsInfo"))
+    except ValueError:
+        return
+    if not isinstance(data, dict) or "pointsInfo" not in data:
+        return
+    state = None
+    try:
+        info = PointsInfo.model_validate(data["pointsInfo"])
         state = {
             "info": info.model_dump(),
             "captured_at": now.isoformat(),
             "at": now.isoformat(),
             "balance": info.remaining * 1440,
         }
-    except ValueError, AttributeError:
-        pass  # Missing/malformed evidence invalidates the previous balance.
+    except ValueError:
+        pass  # Present but invalid: unknown, so paid sends fail closed.
     source.config = {**source.config, "cj_provider_points": state}
 
 

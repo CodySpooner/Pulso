@@ -64,6 +64,7 @@ class Transport:
         )
         self.deadline = time.monotonic() + settings.cj_wall_time_seconds
         self.sent = 0
+        self.renewed = False
         self.error: CJError | None = None
         self.auth_failure: Response | None = None
 
@@ -139,7 +140,19 @@ class Transport:
         params = {k: v for k, v in request.params.items() if k != "endpoint"}
         try:
             token = self.auth.token(self.send)
-            response = self.send(endpoint, params, token=token)
+            try:
+                response = self.send(endpoint, params, token=token)
+            except CJError as error:
+                if error.code != "cj_points_unknown" or self.renewed:
+                    raise
+                # DEC-156: one free getCategory per run may renew the balance; never assume it.
+                self.renewed = True
+                renewal = self.fetch(Request(params={"endpoint": "/product/getCategory"}))
+                if failure := classify_error(renewal):
+                    self.auth_failure = Response(None, renewal.status_code, headers=renewal.headers)
+                    raise failure from None
+                token = self.auth.token(self.send)
+                response = self.send(endpoint, params, token=token)
             failure = classify_error(response)
             if (
                 failure
