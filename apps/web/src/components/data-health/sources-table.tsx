@@ -39,7 +39,7 @@ const planned = [
 // ponytail: four rows fits Phase 1's seeded sources; derive the count if later phases make it vary.
 const loadingRows = [0, 1, 2, 3];
 // One bar per column, about as wide as its loaded content, so the header stays put too.
-const loadingCells = ["h-8 w-24", "h-4 w-48","h-4 w-28", "ml-auto h-4 w-24", "h-4 w-20", "h-4 w-4", "ml-auto h-4 w-8", "h-5 w-8", "ml-auto h-7 w-22"];
+const loadingCells = ["h-8 w-24", "h-4 w-48","h-4 w-28", "ml-auto h-4 w-24", "h-4 w-20", "h-4 w-4", "ml-auto h-4 w-8", "h-5 w-8", "ml-auto h-7 w-52"];
 
 const skeletonRows = loadingRows.map((i) => (
   <tr key={i} aria-hidden className="row-h-comfortable border-b border-border-subtle">
@@ -60,7 +60,7 @@ const skeletonCards = loadingRows.map((i) => (
     <Skeleton className="h-10 w-48" />
     <div className="flex items-center justify-between gap-2">
       <Skeleton className="h-5 w-24" />
-      <Skeleton className="h-7 w-22" />
+      <Skeleton className="h-7 w-52" />
     </div>
   </li>
 ));
