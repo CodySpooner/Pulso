@@ -5,9 +5,17 @@ infra/scripts/worktree_env.py), `.env`. Every variable is documented in `.env.ex
 """
 
 from functools import lru_cache
-from typing import Annotated, Literal
+from typing import Annotated, Literal, Self
 
-from pydantic import Field, HttpUrl, NonNegativeInt, PositiveInt, SecretStr, field_validator
+from pydantic import (
+    Field,
+    HttpUrl,
+    NonNegativeInt,
+    PositiveInt,
+    SecretStr,
+    field_validator,
+    model_validator,
+)
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 # A list read from a comma-separated env value ("a, b") instead of JSON.
@@ -64,6 +72,25 @@ class Settings(BaseSettings):
     trends_monthly_search_limit: Annotated[int, Field(ge=0, le=250)] = 250
     trends_wall_time_seconds: PositiveInt = 10 * 60
     fx_wall_time_seconds: PositiveInt = 5 * 60
+
+    @model_validator(mode="after")
+    def _collector_limits(self) -> Self:
+        budgets = (
+            self.collector_wall_time_seconds,
+            self.shopify_wall_time_seconds,
+            self.cj_wall_time_seconds,
+            self.trends_wall_time_seconds,
+            self.fx_wall_time_seconds,
+        )
+        if (
+            not max(budgets)
+            < self.collect_soft_time_limit_seconds
+            < self.collect_hard_time_limit_seconds
+        ):
+            raise ValueError("Collector budgets must be below soft limit, then hard limit")
+        if self.collector_backoff_base_seconds > self.collector_backoff_cap_seconds:
+            raise ValueError("Collector backoff base must not exceed cap")
+        return self
 
     @property
     def collector_user_agent(self) -> str:

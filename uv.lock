@@ -711,6 +711,7 @@ name = "pulso-api"
 version = "0.0.0"
 source = { editable = "apps/api" }
 dependencies = [
+    { name = "celery", extra = ["redis"] },
     { name = "fastapi" },
     { name = "pulso-core" },
     { name = "pulso-sources" },
@@ -721,6 +722,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
+    { name = "celery", extras = ["redis"], specifier = ">=5.6,<6" },
     { name = "fastapi", specifier = ">=0.135,<1" },
     { name = "pulso-core", editable = "packages/core" },
     { name = "pulso-sources", editable = "packages/sources" },

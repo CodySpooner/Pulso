@@ -89,6 +89,35 @@ def planned(*bodies: bytes) -> list[Target]:
     ]
 
 
+@pytest.mark.parametrize("trigger", ["schedule", "catchup"])
+@pytest.mark.parametrize("slot", [None, ""])
+def test_scheduled_runs_require_slots_before_writes(trigger: str, slot: str | None) -> None:
+    session, publisher = Mock(spec=Session), Mock()
+    with pytest.raises(ValueError, match="slot_key"):
+        enqueue_run(session, source_id=1, trigger=trigger, slot_key=slot, publish=publisher)
+    session.add.assert_not_called()
+    publisher.assert_not_called()
+
+
+def test_stop_exception_prevents_remaining_targets(
+    harness: tuple[Mock, CollectorRun, list[RawPayload]],
+    settings: Settings,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class Stop(Exception):
+        pass
+
+    session, run, _ = harness
+    fetch = Mock(side_effect=Stop("fixture-stop-secret"))
+    monkeypatch.setattr(lifecycle, "fetch", fetch)
+    execute_run(
+        session, 1, FakeAdapter(), planned(b"a", b"b"), settings=settings, stop_exceptions=(Stop,)
+    )
+    assert fetch.call_count == 1
+    assert run.status == "partial" and run.error_message == "Stop"
+    assert all(target.status == "partial" for target in session.add_all.call_args.args[0])
+
+
 def test_queued_commit_precedes_publish_and_failure_is_durable() -> None:
     session = Mock(spec=Session)
     added: list[CollectorRun] = []
