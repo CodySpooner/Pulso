@@ -26,7 +26,7 @@ New entries go at the bottom with the next number. Never renumber or delete; mar
 | DEC-006 | Notes home: Obsidian vault, one note per feature and aspect | approved by owner 2026-10-22 |
 | DEC-007 | UI: dark SaaS look with green, Motion library with strict rules | approved by owner 2026-10-22 |
 | DEC-008 | Scope: spec phases, plus enhancements marked "pending approval" | approved by owner 2026-10-22 |
-| DEC-009 | CJ account must transact every 30 days | pending owner |
+| DEC-009 | CJ account must transact every 30 days | approved by owner 2026-10-23 (DEC-136: use CJ now until it lapses) |
 | DEC-010 | Vendor-scraped demand data policy | pending owner |
 | DEC-011 | Starter seed lists | approved by owner 2026-10-22 (DEC-073) |
 | DEC-012 | Local dev runtime: infrastructure in compose, apps native | proposed — pending Phase 0 approval |
@@ -102,6 +102,7 @@ New entries go at the bottom with the next number. Never renumber or delete; mar
 | DEC-104 | Collector profile, guarded operations and Railway handoff | proposed (P1-13); merge approved by owner 2026-10-23 (DEC-129) |
 | DEC-128 | RustFS replaces MinIO as the local S3 emulator (R-05); Phase 0 screens approved (WEB-6) | approved by owner 2026-10-23 |
 | DEC-129 | Owner merges the protected collector scripts (P1-13 + P1-14) and sets up the collector host | approved by owner 2026-10-23 |
+| DEC-136 | Use CJ now until the 30-day rule lapses it; Pulso is for the owner's own stores, not a paid app | approved by owner 2026-10-23 |
 
 Superseded review defaults, not given entries: default #0 (move the repo) is done, see DEC-005. Default #2 (no local collection at all) is replaced by DEC-002. Default #15 (CSS-only motion) is replaced by DEC-007, and its remaining rules are in DEC-025. Review question D1 (Railway Pro from Phase 1) is answered by DEC-001, D2 by DEC-003, D3 by DEC-004, D5 by DEC-008 and D8 by DEC-006.
 
@@ -225,7 +226,7 @@ Superseded review defaults, not given entries: default #0 (move the repo) is don
 ## Pending owner decisions
 
 ### DEC-009 · CJ account must transact every 30 days
-**2026-10-22 · pending owner** · Review M3, D4
+**2026-10-22 · approved by owner 2026-10-23 (DEC-136)** · Review M3, D4 · originally pending owner
 - **Question:** Does the CJ account whose API key Pulso uses place at least one real order every 30 days?
 - **Why it matters:**
   - CJ disables API access after 30 consecutive days with zero transaction amount (error `1600014`), and reactivation is manual (SF §2).
@@ -1255,3 +1256,12 @@ Superseded review defaults, not given entries: default #0 (move the repo) is don
 - **Owner's answer (2026-10-23, in the owner's session), after a review of P1-13 (including the P1-14 backup tooling):** "Merge + set up collector (Recommended)".
 - **Decision:** merge `CodySpooner/p1-13-collector-compose` (collector compose profile, guarded `infra.scripts.collector` start/update/migrate/status, verified pre-migration backups to `OneDrive/Pulso Backups/db`, scratch-only restore); it supersedes `CodySpooner/p1-14-backup-tooling`, which is not merged. The owner's session creates `C:\dev\pulso\.env.collector` (random local credentials, collector ports 55432/56379/59000/59001, `PULSO_BOT_CONTACT` per DEC-073, `PULSO_SCHEDULER=on`, `COLLECTORS_LIVE=on`) — individual sources stay disabled until the lead enables them one at a time under Lead Playbook §6 step 4.
 - **Review notes:** preflight refuses dirty/linked/held checkouts; atomic operation lock and status file; no `down`, `-v`, `prune`, volume deletes or downgrades; restore only into new `pulso_restore_check*` databases; old backups are deleted only with an explicit `--delete-expired`. Low: the in-container `/tmp/pulso.dump` is left behind (overwritten each run) → backlog.
+
+### DEC-136 · Use CJ now; Pulso is for the owner's own stores
+**2026-10-23 · approved by owner 2026-10-23** · resolves DEC-009; the P1-08 CJ user-agreement escalation; DEC-073; affects Phase 8 scope (DEC-048)
+- **Owner's answers (2026-10-23, in the owner's session):** asked whether the CJ account orders every 30 days: "not yet because we havent started selling yet"; offered "use CJ now until it switches off" or "keep CJ off": "use it now"; asked about CJ's user agreement (Usage Rules 3: no commercial use or off-platform display without written permission): "yea i think im leaning towards just using this product for myself and keeping it to use for my stores only so it will not be a paid app".
+- **Decision:**
+  - **CJ:** the owner's key is in `.env.collector`. Enable `cj_dropshipping` on the collector host as early as Lead Playbook §6 step 4 allows, **right after Frankfurter FX** (its 30-day window is time-limited), then Shopify stores, then Google Trends. When CJ returns `1600014` (30 days without orders), the adapter's existing rule disables the source with the Data Health alert "CJ API disabled: 30 days without orders"; nobody retries around it. The owner requests reactivation in My CJ once he starts selling.
+  - **CJ terms:** CJ data is used only inside Pulso for the owner's own product research, which the owner accepts under CJ's agreement. If Pulso were ever offered to others, CJ's written permission comes first.
+  - **Product scope:** the owner currently intends Pulso for his own stores only, not as a paid app. SaaS-only work (Stripe billing, plans, team seats, public API, marketing site in SPEC §6.18/§11 Phase 8) is deprioritised to the end of the queue and not started without a new owner decision. The multi-tenant `workspace_id` model stays (already built, cheap to keep).
+- **Why:** free, real supplier data now beats waiting for the first sale; the auto-disable makes the lapse safe and visible.
