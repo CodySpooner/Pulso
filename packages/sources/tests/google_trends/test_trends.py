@@ -344,11 +344,13 @@ def test_transport_redaction_redirect_and_retries(
     settings: Settings,
     http: Mock,
     caplog: pytest.LogCaptureFixture,
+    sleep: Mock,
 ) -> None:
     settings.collector_max_retries = 1
     http.request.side_effect = OSError("fixture secret in URL")
     run = collect(session, settings)
     assert run.http_requests == 2
+    assert [call.args[0] for call in sleep.call_args_list] == [2]  # P1-49 stops after 2 attempts
     assert session.get_one(Source, 1).config["trends_quota"]["used"] == 2
     assert "fixture secret" not in str(run.error_message) + caplog.text
     adapter, request = live.GoogleTrendsAdapter(), list(trends.plan(session)[0].requests)[0]
