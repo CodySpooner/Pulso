@@ -5,6 +5,7 @@ import { LayoutGroup } from "motion/react";
 import * as m from "motion/react-m";
 import { Activity, Compass, Ellipsis, FlaskConical, Search, type LucideIcon } from "lucide-react";
 
+import { DataHealthNavBadge } from "@/components/data-health/nav-badge";
 import { spring } from "@/lib/motion";
 
 import { useShell } from "./app-shell";
@@ -50,6 +51,8 @@ export function BottomBar() {
         <button type="button" onClick={openNav} className={tab}>
           <TabIcon icon={Ellipsis} />
           More
+          {/* imp-091: the sidebar's DH-3 count sits behind More on a phone, so More carries it too. */}
+          <DataHealthNavBadge expandedClass="absolute top-1 left-1/2 ml-2 flex" />
         </button>
       </nav>
     </LayoutGroup>

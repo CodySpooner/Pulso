@@ -424,6 +424,41 @@ test.describe("phone width", () => {
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(375);
   });
 
+  // imp-091: the sidebar sits behind More on a phone, so the tab bar's More carries the same DH-3 count as the
+  // tablet's Open menu (imp-093, below): the same DataHealthNavBadge, named "<label>, N sources need attention".
+  for (const path of ["/", PAGE]) {
+    test(`More shows the DH-3 count on ${path} before the sheet opens`, async ({ page }) => {
+      await mockAdminApi(page);
+      await page.goto(path);
+      const more = page.getByRole("navigation", { name: "Tab bar" }).getByRole("button", { name: /^More/ });
+      await expect(more).toHaveAccessibleName(/^More\W+2 sources need attention$/);
+      await expect(more.getByTestId("data-health-badge")).toBeVisible();
+      await expect(more.getByTestId("data-health-badge")).toHaveText("2");
+      await expect(page.getByText(/sources need attention/).filter({ visible: true })).toHaveCount(1); // the hidden sidebar's and Open menu's copies aren't announced
+      expect(await more.evaluate((el) => el.getBoundingClientRect().height)).toBeGreaterThanOrEqual(44);
+      await more.click();
+      const sheet = page.getByRole("dialog");
+      await expect(sheet.getByRole("link", { name: /Data Health/ })).toHaveAccessibleName(/^Data Health\W+2 sources need attention$/);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(375);
+    });
+  }
+
+  test("More shows nothing when no source needs attention", async ({ page }) => {
+    await mockAdminApi(page, { sources: healthySources, host: { open_gaps: [], latest_gap_ends: {} } });
+    await page.goto("/");
+    await expect(page.getByText("Online · 4m ago").first()).toBeAttached(); // data has loaded
+    const more = page.getByRole("navigation", { name: "Tab bar" }).getByRole("button", { name: /^More/ });
+    await expect(more).toHaveAccessibleName("More");
+    await expect(more.getByTestId("data-health-badge")).toHaveCount(0);
+  });
+
+  test("More shows nothing while the API is down", async ({ page }) => {
+    await mockAdminApi(page, { down: true });
+    await page.goto(PAGE);
+    await expect(page.getByRole("heading", { level: 2, name: "Can't reach the API" })).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole("navigation", { name: "Tab bar" }).getByRole("button", { name: /^More/ })).toHaveAccessibleName("More");
+  });
+
   test("a suppressed slot's card says Skipped and why (imp-042)", async ({ page }) => {
     await mockAdminApi(page, { sources: suppressedSources });
     await open(page);
