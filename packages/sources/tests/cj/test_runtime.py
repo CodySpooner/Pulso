@@ -48,9 +48,29 @@ def test_categories_use_only_returned_ids_and_feed_existing_plan() -> None:
     expected = ["2252588B-72E3-4397-8C92-7D9967161084"]
     assert all(ids == expected for ids in resolved.values())
     targets = category_plan(fixture("categories"), names)
-    assert len(targets) == 3 and list(targets[0].requests)[0].params["categoryId"] == expected[0]
-    with pytest.raises(ValueError, match="Unresolved CJ category seed"):
+    assert len(targets) == 1 and list(targets[0].requests)[0].params["categoryId"] == expected[0]
+    with pytest.raises(CJError, match="Unresolved CJ category seed"):
         resolve(fixture("categories"), ["Pet Supplies"])
+
+
+def test_synthetic_category_expansion_and_unresolved_seed_evidence(session: Session) -> None:
+    targets = category_plan(
+        fixture("category_tree_synthetic"), ["Fixture Root", "Fixture Root › Fixture Group A"]
+    )
+    requests = list(targets[0].requests)
+    assert len(requests) == 45
+    assert {r.params["categoryId"] for r in requests} == {
+        "test-only-a",
+        "test-only-b",
+        "test-only-c",
+    }
+    run = enqueue_run(session, source_id=2, trigger="fixture", publish=lambda _: None)
+    collect(
+        session, run.id, category_plan(fixture("categories"), ["Pet Supplies"]), settings=settings()
+    )
+    assert run.error_code == "cj_category_unresolved" and run.status == "partial"
+    assert "Pet Supplies" in (run.error_message or "") and run.http_requests == 0
+    assert "cj_points" not in session.get_one(Source, 2).config
 
 
 @pytest.mark.parametrize("second_rejected,budget", [(False, 200), (True, 200), (False, 50)])

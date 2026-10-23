@@ -5,7 +5,7 @@ from collections.abc import Sequence
 
 from pydantic import BaseModel, Field
 
-from pulso_sources.cj.errors import classify_error
+from pulso_sources.cj.errors import cj_category_unresolved, classify_error
 from pulso_sources.framework import Response
 
 
@@ -43,6 +43,9 @@ def resolve(body: bytes, names: Sequence[str]) -> dict[str, list[str]]:
     for name in names:
         parts = tuple(part.strip().casefold() for part in name.split("›"))
         if parts not in index:
-            raise ValueError(f"Unresolved CJ category seed: {name}")
+            raise cj_category_unresolved(
+                "cj_category_unresolved",
+                f"Unresolved CJ category seed: {name}; verify the category tree",
+            )
         resolved[name] = sorted(index[parts])
     return resolved

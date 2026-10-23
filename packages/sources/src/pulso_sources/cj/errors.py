@@ -28,6 +28,10 @@ class cj_rate_limited(CJError):
     pass
 
 
+class cj_category_unresolved(CJError):
+    pass
+
+
 def classify_error(response: Response) -> CJError | None:
     try:
         payload = json.loads(response.body or b"{}")

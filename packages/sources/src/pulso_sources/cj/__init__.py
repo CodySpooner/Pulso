@@ -3,7 +3,7 @@
 import hashlib
 import json
 import logging
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
 from datetime import UTC, datetime
 from decimal import Decimal, InvalidOperation
 from typing import Annotated
@@ -139,9 +139,14 @@ def dry_run(category_count: int, *, tracked_products: int = 300, freight_quotes:
 
 
 def category_plan(body: bytes, names: Sequence[str]) -> list[Target]:
-    ids = sorted({cid for group in resolve(body, names).values() for cid in group})
-    dry_run(len(ids))
-    return plan(ids)
+    def requests() -> Iterator[Request]:
+        # Resolve inside the lifecycle so missing seed evidence is visible in Data Health.
+        ids = sorted({cid for group in resolve(body, names).values() for cid in group})
+        dry_run(len(ids))
+        for panel in plan(ids):
+            yield from panel.requests
+
+    return [Target("cj_category_resolution", "catalog", requests())]
 
 
 class CJAdapter:
