@@ -33,28 +33,29 @@ export const sources: S["SourceHealth"][] = [
     key: "shopify_stores", name: "Shopify stores", type: "public_endpoint", phase: 1, enabled: false, status: "blocked",
     disabled_reason: "5 consecutive 429 responses", disabled_at: at(5), retry_not_before: at(-1), last_status_code: 429,
     last_run: shopifyFailed, freshness: at(29), seed_approved: true, approved_targets: 4, quota_used: null, quota_limit: null,
+    csv_import: "preview_only",
   },
   {
     key: "cj", name: "CJ Dropshipping", type: "official_api", phase: 1, enabled: true, status: "active", disabled_reason: null,
     disabled_at: null, retry_not_before: null, last_status_code: 200,
     last_run: run({ id: 418, source_key: "cj", slot_key: "2026-10-22T12", queued_at: at(1.6), started_at: at(1.6), finished_at: at(1.5), rows_fetched: 1240, rows_inserted: 36, rows_updated: 112, rows_unchanged: 1092, http_requests: 26, target_count: 10, successful_target_count: 10 }),
-    freshness: at(1.5), seed_approved: true, approved_targets: 10, quota_used: 2650, quota_limit: 50000,
+    freshness: at(1.5), seed_approved: true, approved_targets: 10, quota_used: 2650, quota_limit: 50000, csv_import: "preview_only",
   },
   {
     key: "google_trends", name: "Google Trends", type: "vendor", phase: 1, enabled: true, status: "active", disabled_reason: null,
     disabled_at: null, retry_not_before: null, last_status_code: 200,
     last_run: run({ id: 405, source_key: "google_trends", slot_key: "2026-10-21", queued_at: at(14), started_at: at(14), finished_at: at(13.9), rows_fetched: 180, rows_inserted: 180, http_requests: 12, target_count: 12, successful_target_count: 12 }),
-    freshness: at(13.9), seed_approved: true, approved_targets: 12, quota_used: null, quota_limit: null,
+    freshness: at(13.9), seed_approved: true, approved_targets: 12, quota_used: null, quota_limit: null, csv_import: "preview_only",
   },
   {
     key: "fx_frankfurter", name: "Frankfurter FX", type: "official_api", phase: 1, enabled: false, status: "disabled", disabled_reason: null,
     disabled_at: null, retry_not_before: null, last_status_code: null, last_run: null, freshness: null, seed_approved: null,
-    approved_targets: null, quota_used: null, quota_limit: null,
+    approved_targets: null, quota_used: null, quota_limit: null, csv_import: "ready",
   },
   {
     key: "backup", name: "Backups", type: "internal", phase: 1, enabled: true, status: "active", disabled_reason: null, disabled_at: null,
     retry_not_before: null, last_status_code: null, last_run: run({ id: 417, source_key: "backup", queued_at: at(11), started_at: at(11), finished_at: at(10.95) }),
-    freshness: null, seed_approved: null, approved_targets: null, quota_used: null, quota_limit: null,
+    freshness: null, seed_approved: null, approved_targets: null, quota_used: null, quota_limit: null, csv_import: null,
   },
 ];
 
