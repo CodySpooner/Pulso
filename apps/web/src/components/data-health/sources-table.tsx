@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Database, Play } from "lucide-react";
 
 import { EmptyState } from "@/components/pulso/empty-state";
@@ -51,6 +51,7 @@ export function SourcesPanel({ now, onOpen }: { now: number; onOpen: (key: strin
   const run = $api.useMutation("post", "/v1/admin/sources/{key}/run");
   const [notice, setNotice] = useState<Notice | null>(null);
   const [confirm, setConfirm] = useState<Confirm | null>(null);
+  const toggled = useRef<HTMLElement | null>(null); // the dialog has no Radix trigger, so focus returns here
 
   const gaps = host.data?.open_gaps ?? [];
   const rows = sources.data?.filter((s) => s.type !== "internal") ?? [];
@@ -71,6 +72,7 @@ export function SourcesPanel({ now, onOpen }: { now: number; onOpen: (key: strin
   }
 
   function toggle(source: SourceHealth, enabled: boolean) {
+    toggled.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     if (!enabled) setConfirm({ source, mode: "disable" });
     else if (source.status === "blocked") setConfirm({ source, mode: "reenable" });
     else setEnabled(source, true);
@@ -267,7 +269,7 @@ export function SourcesPanel({ now, onOpen }: { now: number; onOpen: (key: strin
         </>
       )}
 
-      <ReasonDialog confirm={confirm} pending={patch.isPending} onCancel={() => setConfirm(null)} onSubmit={(reason) => confirm && setEnabled(confirm.source, confirm.mode === "reenable", reason)} />
+      <ReasonDialog returnFocusRef={toggled} confirm={confirm} pending={patch.isPending} onCancel={() => setConfirm(null)} onSubmit={(reason) => confirm && setEnabled(confirm.source, confirm.mode === "reenable", reason)} />
     </Panel>
   );
 }
@@ -344,11 +346,13 @@ function RunButton({ name, blocker, pending, onRun }: { name: string; blocker: s
 }
 
 function ReasonDialog({
+  returnFocusRef,
   confirm,
   pending,
   onCancel,
   onSubmit,
 }: {
+  returnFocusRef: React.RefObject<HTMLElement | null>;
   confirm: Confirm | null;
   pending: boolean;
   onCancel: () => void;
@@ -357,7 +361,12 @@ function ReasonDialog({
   const reenable = confirm?.mode === "reenable";
   return (
     <Dialog open={confirm != null} onOpenChange={(open) => !open && onCancel()}>
-      <DialogContent>
+      <DialogContent
+        onCloseAutoFocus={(e) => {
+          e.preventDefault();
+          returnFocusRef.current?.focus();
+        }}
+      >
         {confirm && (
           <form
             className="flex flex-col gap-4"

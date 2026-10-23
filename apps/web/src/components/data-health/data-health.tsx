@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { RotateCw, Upload } from "lucide-react";
 
 import { PageHeader } from "@/components/pulso/page-header";
@@ -23,6 +23,11 @@ export function DataHealth() {
   const host = useHost();
   const refresh = useRefreshAdmin();
   const [openKey, setOpenKey] = useState<string | null>(null);
+  const opener = useRef<HTMLElement | null>(null); // the drawer has no Radix trigger, so focus returns here
+  const openRuns = (key: string) => {
+    opener.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    setOpenKey(key);
+  };
   const now = Math.max(sources.dataUpdatedAt, host.dataUpdatedAt);
   const fetching = sources.isFetching || host.isFetching;
 
@@ -84,11 +89,11 @@ export function DataHealth() {
         <BackupCard now={now} />
       </div>
 
-      <SourcesPanel now={now} onOpen={setOpenKey} />
+      <SourcesPanel now={now} onOpen={openRuns} />
       <CoveragePanel now={now} />
       <ImportPanel />
 
-      <RunDrawer source={sources.data?.find((s) => s.key === openKey) ?? null} now={now} onClose={() => setOpenKey(null)} />
+      <RunDrawer source={sources.data?.find((s) => s.key === openKey) ?? null} now={now} onClose={() => setOpenKey(null)} returnFocusRef={opener} />
     </div>
   );
 }

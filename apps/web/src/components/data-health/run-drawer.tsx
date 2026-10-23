@@ -21,10 +21,27 @@ const runTone = (status: string) =>
 
 // Source drawer (vault Features/Data Health): the source's every DH-1 field, then its runs newest first.
 // The newest run opens expanded, so a failing source's error is one click from the table.
-export function RunDrawer({ source, now, onClose }: { source: SourceHealth | null; now: number; onClose: () => void }) {
+export function RunDrawer({
+  source,
+  now,
+  onClose,
+  returnFocusRef,
+}: {
+  source: SourceHealth | null;
+  now: number;
+  onClose: () => void;
+  returnFocusRef: React.RefObject<HTMLElement | null>;
+}) {
   return (
     <Sheet open={source != null} onOpenChange={(open) => !open && onClose()}>
-      <SheetContent side="right" closeLabel="Close runs" aria-describedby={undefined}>
+      <SheetContent
+        side="right"
+        closeLabel="Close runs"
+        onCloseAutoFocus={(e) => {
+          e.preventDefault();
+          returnFocusRef.current?.focus();
+        }}
+      >
         {source && <DrawerBody source={source} now={now} />}
       </SheetContent>
     </Sheet>
