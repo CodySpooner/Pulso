@@ -205,6 +205,11 @@ def test_registered_csv_disabled_source_dates_variants_freight_and_replay(sessio
     )
     repeated = imports.commit_import(session, "cj", body, settings=settings())
     assert repeated.status == "skipped" and repeated.rows_inserted == 0
+    unchanged = imports.commit_import(
+        session, "cj", imports.template_csv("cj"), settings=settings()
+    )
+    assert (unchanged.status, unchanged.error_code) == ("failed", "no_valid_rows")  # DEC-191
+    assert session.scalar(select(func.count()).select_from(ListingSnapshot)) == 2
     assert not session.get_one(Source, 2).enabled
     assert "stock" not in imports.TEMPLATES["cj"].columns
 
