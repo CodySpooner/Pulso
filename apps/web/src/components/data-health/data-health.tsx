@@ -102,16 +102,18 @@ export function DataHealth() {
 function ImportPanel() {
   return (
     <Panel id="import" title="CSV import" note="Every source has a CSV fallback (§4.2)">
-      <div className="m-4 flex flex-col items-center gap-2 rounded-lg border border-dashed border-border-strong px-6 py-6 text-center">
-        <div className="mb-1 grid size-10 place-items-center rounded-lg border border-border bg-secondary text-muted-foreground">
+      <div className="m-4 flex flex-col items-center gap-3 rounded-lg border border-dashed border-border-strong px-5 py-4 text-center sm:flex-row sm:text-left">
+        <div className="grid size-10 shrink-0 place-items-center rounded-lg border border-border bg-secondary text-muted-foreground">
           <Upload className="size-5" aria-hidden />
         </div>
-        <h3 className="text-body font-medium text-foreground">Import arrives with P1-11b</h3>
-        <p className="max-w-[52ch] text-data text-muted-foreground">
-          The template, preview and commit endpoints aren&apos;t in this build&apos;s API yet. Once they are, you drop a CSV here and see
-          the preview before anything is written.
-        </p>
-        <Button variant="secondary" size="sm" disabled className="mt-2">
+        <div className="flex flex-col gap-0.5">
+          <h3 className="text-body font-medium text-foreground">Import arrives with P1-11b</h3>
+          <p className="max-w-[72ch] text-data text-muted-foreground">
+            The template, preview and commit endpoints aren&apos;t in this build&apos;s API yet. Once they are, you drop a CSV here and see
+            the preview before anything is written.
+          </p>
+        </div>
+        <Button variant="secondary" size="sm" disabled className="sm:ml-auto">
           Choose CSV…
         </Button>
       </div>
