@@ -7,12 +7,20 @@ from pydantic import SecretStr
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from pulso_core.models import CollectorRun, CollectorRunTarget, ListingSnapshot, RawPayload, Source
+from pulso_core.models import (
+    CollectorRun,
+    CollectorRunTarget,
+    ListingSnapshot,
+    RawPayload,
+    Source,
+    SourceEvent,
+)
 from pulso_core.settings import Settings
-from pulso_sources.cj import CJAdapter
+from pulso_sources import framework
+from pulso_sources.cj import CJAdapter, collect
 from pulso_sources.cj.budget import reserve
 from pulso_sources.cj.errors import CJError
-from pulso_sources.framework import Request, Target, enqueue_run, execute_run
+from pulso_sources.framework import Request, Response, Target, enqueue_run, execute_run
 
 BODY = (Path(__file__).parent / "fixtures/list_v2.json").read_bytes()
 ERRORS = json.loads((Path(__file__).parent / "fixtures/errors.json").read_bytes())[:4]
@@ -99,3 +107,65 @@ def test_error_fixture_reaches_data_health_and_stops_plan(
     assert session.scalar(select(func.count()).select_from(RawPayload)) == 1
     source = session.get_one(Source, 2)
     assert not source.enabled and source.consecutive_block_count == 0
+
+
+@pytest.mark.parametrize("case", ERRORS)
+def test_mock_http_reserves_before_send_and_persists_cj_error(
+    session: Session, monkeypatch: pytest.MonkeyPatch, case: dict[str, object]
+) -> None:
+    cfg = settings()
+    cfg.collectors_live = True
+    cfg.pulso_bot_contact = "https://example.test/bot"  # type: ignore[assignment]
+    source = session.get_one(Source, 2)
+    source.enabled = True
+    session.commit()
+    monkeypatch.setattr(framework, "is_linked_worktree", lambda _: False)
+
+    def fake_fetch(*args: object, **kwargs: object) -> Response:
+        assert not session.in_transaction()
+        assert source.config["cj_points"]["reserved"] == 50
+        return Response(json.dumps(case["body"]).encode(), int(str(case["status"])))
+
+    monkeypatch.setattr(CJAdapter, "fetch", fake_fetch)
+    run = enqueue_run(session, source_id=2, trigger="manual", publish=lambda _: None)
+    collect(
+        session,
+        run.id,
+        [
+            Target(
+                "cj_catalog_panel",
+                "fixture",
+                [
+                    Request(params={"endpoint": "/product/listV2"}),
+                    Request(params={"endpoint": "/product/listV2"}),
+                ],
+            )
+        ],
+        settings=cfg,
+    )
+    assert run.error_code == case["expected"] and run.http_requests == 1
+    assert run.status == "partial" and run.params["cj_points_reserved"] == 50
+    assert source.enabled == (
+        case["expected"] not in {"cj_ip_user_limit", "cj_api_disabled_inactivity"}
+    )
+    assert source.consecutive_block_count == int(case["status"] == 429)
+    assert session.scalar(select(func.count()).select_from(SourceEvent)) == int(not source.enabled)
+
+
+def test_budget_stops_before_next_request(
+    session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    cfg = settings()
+    cfg.collectors_live, cfg.cj_daily_points_budget = True, 50
+    cfg.pulso_bot_contact = "https://example.test/bot"  # type: ignore[assignment]
+    source = session.get_one(Source, 2)
+    source.enabled = True
+    session.commit()
+    monkeypatch.setattr(framework, "is_linked_worktree", lambda _: False)
+    monkeypatch.setattr(CJAdapter, "fetch", lambda *a, **kw: Response(BODY, 200))
+    run = enqueue_run(session, source_id=2, trigger="manual", publish=lambda _: None)
+    requests = [Request(params={"endpoint": "/product/listV2"})] * 2
+    collect(session, run.id, [Target("cj_catalog_panel", "fixture", requests)], settings=cfg)
+    assert run.status == "partial" and run.error_code == "cj_daily_budget"
+    assert run.http_requests == 1 and run.rows_inserted == 2
+    assert source.enabled and source.consecutive_block_count == 0

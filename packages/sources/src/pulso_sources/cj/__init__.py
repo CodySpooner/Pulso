@@ -4,6 +4,7 @@ import hashlib
 import json
 import logging
 from collections.abc import Sequence
+from datetime import UTC, datetime
 from decimal import Decimal, InvalidOperation
 from typing import Annotated
 
@@ -11,9 +12,19 @@ from pydantic import BaseModel, Field, NonNegativeInt, StrictInt
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from pulso_core.models import Listing, ListingSnapshot, RawPayload, Supplier
+from pulso_core.models import (
+    CollectorRun,
+    Listing,
+    ListingSnapshot,
+    RawPayload,
+    Source,
+    SourceEvent,
+    Supplier,
+)
 from pulso_core.money import to_minor
-from pulso_sources.cj.errors import classify_error
+from pulso_core.settings import Settings
+from pulso_sources.cj.budget import reserve
+from pulso_sources.cj.errors import CJError, classify_error
 from pulso_sources.framework import (
     CollectorsLiveDisabled,
     Request,
@@ -21,6 +32,7 @@ from pulso_sources.framework import (
     Target,
     UpsertStats,
     append_observation,
+    execute_run,
 )
 
 logger = logging.getLogger(__name__)
@@ -184,3 +196,65 @@ class CJAdapter:
                 ),
             )
         return UpsertStats(inserted=inserted, unchanged=len(records) - inserted)
+
+
+def collect(
+    session: Session, run_id: int, targets: Sequence[Target], *, settings: Settings
+) -> CollectorRun:
+    """Call under the scheduler's source lock; network transport remains disabled."""
+    run = session.get_one(CollectorRun, run_id)
+    source = session.get_one(Source, run.source_id)
+    if source.key != "cj":
+        raise ValueError("CJ collector requires the CJ source")
+    error: CJError | None = None
+
+    def hook(
+        db: Session,
+        source: Source,
+        run: CollectorRun,
+        request: Request,
+        response: Response | None,
+    ) -> None:
+        nonlocal error
+        try:
+            if response is None:
+                reserve(
+                    db,
+                    source,
+                    run,
+                    str(request.params["endpoint"]),
+                    settings=settings,
+                    now=datetime.now(UTC),
+                )
+            elif failure := classify_error(response):
+                raise failure
+        except CJError as failure:
+            error = failure
+            raise
+
+    result = execute_run(
+        session,
+        run_id,
+        CJAdapter(),
+        targets,
+        settings=settings,
+        wall_time_seconds=settings.cj_wall_time_seconds,
+        request_hook=hook,
+    )
+    if error is not None:
+        # P1-30 preserves the generic HTTP block stop; record CJ's more specific code afterward.
+        result.error_code, result.error_message = error.code, str(error)
+        if error.disable and source.enabled:
+            source.enabled, source.status = False, "blocked"
+            source.disabled_at, source.disabled_reason = datetime.now(UTC), error.code
+            session.add(
+                SourceEvent(
+                    source_id=source.id,
+                    actor="system",
+                    action="disable",
+                    reason=error.code,
+                    at=source.disabled_at,
+                )
+            )
+        session.commit()
+    return result
