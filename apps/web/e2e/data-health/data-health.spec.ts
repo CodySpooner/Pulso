@@ -413,7 +413,7 @@ test.describe("phone width", () => {
       await expect(more).toHaveAccessibleName(/^More\W+2 sources need attention$/);
       await expect(more.getByTestId("data-health-badge")).toBeVisible();
       await expect(more.getByTestId("data-health-badge")).toHaveText("2");
-      await expect(page.getByText(/need attention/).filter({ visible: true })).toHaveCount(1); // the hidden sidebar's and Open menu's copies aren't announced
+      await expect(page.getByText(/sources need attention/).filter({ visible: true })).toHaveCount(1); // the hidden sidebar's and Open menu's copies aren't announced
       expect(await more.evaluate((el) => el.getBoundingClientRect().height)).toBeGreaterThanOrEqual(44);
       await more.click();
       const sheet = page.getByRole("dialog");
