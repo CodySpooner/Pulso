@@ -1494,6 +1494,7 @@ Superseded review defaults, not given entries: default #0 (move the repo) is don
   - One line with only the reason truncated: rejected, because "retry after" plus the time takes about 160 of the 192 px.
   - The wall clock when the dialog opens: rejected, because the rest of the page reads one snapshot. The two can differ by at most the 5-minute refetch, and a stale "future" errs toward caution.
 - **Validation:** `apps/web/e2e/data-health/retry-deadline.spec.ts` covers the unclipped deadline at 1440 and 375, 12 px type and status text, the dialog stating a future deadline once with no "passed" wording, an unchanged PATCH body and keyboard flow, and unchanged copy for a past deadline and for no deadline.
+
 ### DEC-179 · Import panel: a running import keeps its Source select
 **2026-10-23 · proposed (imp-089)** · DEC-117b, DEC-145, DEC-175; imp-081 report P2; vault Features/CSV Export & Import, Features/Data Health
 - **Cause:** the Source select's change called `commit.reset()` and re-checked the file for the new source. Mid-import that detached the panel from the running commit: the server still imported the file, but its outcome, Open runs and the data refresh never appeared, and the file was re-checked against another template.
