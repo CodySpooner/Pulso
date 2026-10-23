@@ -7,7 +7,7 @@ import { mockAdminApi, problem } from "./fixtures";
 // GET /host fails, no source may read Healthy, the gap check says why, and the counts read as floors.
 
 const PAGE = "/admin/data-health";
-const REASON = "Gap check unavailable: the collector host didn't load";
+const REASON = "Gap check didn't load";
 const isHost = (url: URL) => url.pathname === "/api/v1/admin/host";
 
 /** Sources answer 200, the host 503 (a later route wins over mockAdminApi's). */
@@ -27,6 +27,7 @@ test("1440: with the host 503, no source reads Healthy, Trends says why, the cou
   const table = page.getByRole("region", { name: "Sources table" });
   const trends = table.getByRole("row", { name: /Google Trends/ });
   await expect(trends).toContainText(`Unknown${REASON}`);
+  expect(await trends.getByText(REASON).evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true); // not cut by the ellipsis
   await expect(table.getByRole("row", { name: /CJ Dropshipping/ })).toContainText("Unknown");
   await expect(table.getByText("Healthy", { exact: true })).toHaveCount(0);
   await expect(table.getByRole("row", { name: /Shopify stores/ })).toContainText("Blocked"); // host-independent states stay

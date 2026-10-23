@@ -25,7 +25,7 @@ export const ATTENTION: ReadonlySet<SourceState> = new Set(["blocked", "failing"
 /** States settled before the gap check, so the host's gap summary can't change them. */
 const BEFORE_GAP_CHECK: ReadonlySet<SourceState> = new Set(["blocked", "disabled", "running", "failing"]);
 
-/** `latestGapEnds` is undefined while the host call is loading or failed (imp-133). */
+/** `latestGapEnds` is undefined while the host call is loading or failed (imp-133, DEC-196). */
 export function sourceState(source: SourceHealth, latestGapEnds: HostHealth["latest_gap_ends"] | undefined, now: number): SourceState {
   if (source.status === "blocked") return "blocked";
   if (!source.enabled) return "disabled";

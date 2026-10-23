@@ -376,7 +376,7 @@ function StatusNote({ source, state, className }: { source: SourceHealth; state:
   const reason = [
     source.disabled_reason,
     state === "skipped" && source.last_run && skipNote(source.last_run),
-    state === "unknown" && "Gap check unavailable: the collector host didn't load",
+    state === "unknown" && "Gap check didn't load", // short enough for the table's truncated note; the hint says the rest
   ]
     .filter(Boolean)
     .join(" · ");
