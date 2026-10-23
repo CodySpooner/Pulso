@@ -1093,6 +1093,7 @@ Superseded review defaults, not given entries: default #0 (move the repo) is don
   - **Dockerfiles:** no BuildKit cache mounts. Railway's builder rejects a cache mount unless its id is `s/<service id>-<path>`, which would bind the images to one Railway project and break compose and CI.
   - **Wait for CI:** on for web and api, as DEC-014 says (GitHub Actions runs again since the repo went public).
   - **Config:** service settings are dashboard state, applied through `railway environment edit` (no `railway.json` or `railway.toml`). Connection values are Railway variable references, the Postgres password comes from a Railway `secret()` generator, and the owner enters the Clerk keys.
+  - **Postgres start command:** `docker-entrypoint.sh postgres -c dynamic_shared_memory_type=mmap`. A Railway start command replaces the image entrypoint, so a bare `postgres` runs as root and refuses to start.
 - **Alternatives:** service-id cache mounts per Railway service; R2 now; Pro now; full go-live.
 - **Why:** the owner wants the site viewable before the collector cutover, with one vendor and no new account for storage. Removing the cache mounts is the only builder fix that keeps one Dockerfile per image across Railway, compose and CI.
 - **Consequences:** slower image rebuilds without the uv and pnpm caches. The bucket has no lifecycle rules. Hobby's included usage is shared with the owner's other Railway projects.
