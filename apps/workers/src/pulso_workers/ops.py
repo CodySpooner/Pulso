@@ -69,9 +69,10 @@ def audit_slots(
             if gap is not None:
                 gap.filled_by_run_id = success
             continue
-        overdue |= latest[slot.split(":", 1)[0]] == slot
-        if due >= today or ("-W" in slot and due >= week):
-            missing.append(slot)
+        if due <= now - OFFLINE_AFTER:
+            overdue |= latest[slot.split(":", 1)[0]] == slot
+            if due >= today or ("-W" in slot and due >= week):
+                missing.append(slot)
         if offline and previous is not None and due > previous and gap is None:
             day = due.replace(hour=0, minute=0, second=0, microsecond=0)
             session.add(
@@ -93,7 +94,9 @@ def audit_slots(
     return missing
 
 
-def recover_source(session: Session, source: Source, now: datetime, missing: list[str]) -> None:
+def recover_source(
+    session: Session, source: Source, now: datetime, missing: list[str]
+) -> int | None:
     session.execute(
         update(CollectorRun)
         .where(
@@ -112,6 +115,21 @@ def recover_source(session: Session, source: Source, now: datetime, missing: lis
     )
     session.commit()
     session.refresh(source, with_for_update=True)
+    latest: dict[str, str] = {}
+    attempted = set()
+    for slot, status, trigger in session.execute(
+        select(CollectorRun.slot_key, CollectorRun.status, CollectorRun.trigger)
+        .where(CollectorRun.source_id == source.id, CollectorRun.slot_key.in_(missing))
+        .order_by(CollectorRun.id.desc())
+    ):
+        latest.setdefault(slot, status)
+        if trigger == "catchup" or status == "success":
+            attempted.add(slot)
+    missing = [
+        slot
+        for slot in missing
+        if slot not in attempted and latest.get(slot) in {None, "failed", "skipped"}
+    ]
     today = now.replace(hour=0, minute=0, second=0, microsecond=0)
     if (
         not source.enabled
@@ -121,27 +139,25 @@ def recover_source(session: Session, source: Source, now: datetime, missing: lis
             .where(
                 CollectorRun.source_id == source.id,
                 (CollectorRun.status.in_(["queued", "running"]))
-                | ((CollectorRun.trigger == "catchup") & (CollectorRun.queued_at >= today))
-                | (
-                    (CollectorRun.slot_key == missing[0])
-                    & ((CollectorRun.trigger == "catchup") | (CollectorRun.status == "success"))
-                ),
+                | ((CollectorRun.trigger == "catchup") & (CollectorRun.queued_at >= today)),
             )
             .limit(1)
         )
     ):
         session.commit()
-        return
+        return None
     try:
-        enqueue_run(
+        # Commit under the lock; audit publishes after releasing it.
+        return enqueue_run(
             session,
             source_id=source.id,
             trigger="catchup",
             slot_key=missing[0],
-            publish=publish_run,
-        )
+            publish=lambda _: None,
+        ).id
     except Exception as exc:
         logger.error("catchup_publish_failed", extra={"error_type": type(exc).__name__})
+        return None
 
 
 def audit(*, heartbeat: bool = False) -> None:
@@ -165,12 +181,31 @@ def audit(*, heartbeat: bool = False) -> None:
             ):
                 missing = audit_slots(session, source, now, previous) if source.enabled else []
                 source_lock = AdvisoryLock(source.id)
+                run_id = None
                 try:
                     if source_lock.acquire():
                         session.refresh(source)
-                        recover_source(session, source, now, missing)
+                        run_id = recover_source(session, source, now, missing)
                 finally:
                     source_lock.close()
+                if run_id is not None:
+                    try:
+                        publish_run(run_id)
+                    except Exception as exc:
+                        session.execute(
+                            update(CollectorRun)
+                            .where(CollectorRun.id == run_id, CollectorRun.status == "queued")
+                            .values(
+                                status="failed",
+                                error_code="publish_failed",
+                                error_message="Publish failed",
+                                finished_at=datetime.now(UTC),
+                            )
+                        )
+                        session.commit()
+                        logger.error(
+                            "catchup_publish_failed", extra={"error_type": type(exc).__name__}
+                        )
             if heartbeat:
                 session.add(HostHeartbeat(host=gethostname(), at=now))
                 session.commit()
