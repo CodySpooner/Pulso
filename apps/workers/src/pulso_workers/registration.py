@@ -6,8 +6,9 @@ from sqlalchemy.orm import Session
 
 from pulso_core.models import Source
 from pulso_core.settings import get_settings
-from pulso_sources import shopify_stores
+from pulso_sources import google_trends, shopify_stores
 from pulso_sources.fx_frankfurter import FrankfurterAdapter, plan
+from pulso_sources.google_trends.live import GoogleTrendsAdapter
 from pulso_workers.tasks import PLANS, Plan
 
 
@@ -36,5 +37,19 @@ def shopify_plan(session: Session, source: Source, job: str) -> Plan:
     )
 
 
+def trends_plan(session: Session, source: Source, job: str) -> Plan:
+    if job != "trends":
+        raise ValueError("Unsupported Trends job")
+    adapter = GoogleTrendsAdapter()
+    return Plan(
+        adapter,
+        google_trends.plan(session),
+        get_settings().trends_wall_time_seconds,
+        request_hook=adapter.request_hook,
+        finalize=adapter.finalize,
+    )
+
+
 PLANS["fx_frankfurter"] = fx_plan
 PLANS["shopify_stores"] = shopify_plan
+PLANS["google_trends"] = trends_plan

@@ -477,7 +477,7 @@ def test_import_template_and_preview_write_nothing(admin: TestClient, engine: En
     assert keys == {
         "shopify_stores": "preview_only",
         "cj": "preview_only",
-        "google_trends": "preview_only",
+        "google_trends": "ready",
         "fx_frankfurter": "ready",
         "backup": None,
     }
