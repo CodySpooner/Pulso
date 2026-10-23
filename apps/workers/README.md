@@ -35,6 +35,9 @@ Adapter lanes register `tasks.PLANS[source_key] = factory`. A factory receives
 request_hook=None)`. Jobs are `catalog`, `variants_js`, `freight`, `trends`, `fx`;
 manual runs default to catalog (Trends/FX use their own job). Registration must be
 imported at worker startup. Missing adapters fail the queued run without fetching.
+Frankfurter is registered. Shopify registration remains P1-04c under the permitted
+size split: its existing `collect()` needs a reusable plan/finalization extraction
+that preserves cache eligibility, retry suppression and successful-target delisting.
 The consumer holds the source advisory lock across `execute_run`, passes
 `SoftTimeLimitExceeded` as a stop exception, and applies 60/75-minute soft/hard
 limits from settings. Settings require every source budget below soft below hard,
