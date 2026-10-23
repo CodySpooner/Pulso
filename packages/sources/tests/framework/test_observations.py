@@ -170,7 +170,7 @@ def test_skipped_capture_correction_compares_only_prior_captures(
     assert append_observation(session, observation(2, parser="10", value="b", at=AT - step))
     assert not append_observation(session, observation(2, parser="10", value="b", at=AT - step))
     corrected = effective_observation(
-        session, ListingSnapshot, key={"listing_id": 1}, before=(AT, 3)
+        session, ListingSnapshot, key={"listing_id": 1}, before=(AT.date(), AT, 3)
     )
     assert corrected is not None and corrected.raw_payload_id == 2
     assert corrected.parser_version == "10" and corrected.values_hash == "b" * 64
@@ -184,7 +184,7 @@ def test_out_of_order_first_capture_is_not_suppressed(offline_session: Session) 
             offline_session,
             ListingSnapshot,
             key={"listing_id": 1},
-            before=(AT - timedelta(days=1), 1),
+            before=((AT - timedelta(days=1)).date(), AT - timedelta(days=1), 1),
         )
         is None
     )
@@ -201,6 +201,39 @@ def test_historical_import_does_not_replace_current_or_live_baseline(
     current = effective_observation(session, ListingSnapshot, key={"listing_id": 1})
     assert current is not None and current.raw_payload_id == 1
     assert not append_observation(session, observation(3, at=AT + timedelta(days=1)))
+
+
+def test_history_import_keeps_earlier_unchanged_value(offline_session: Session) -> None:
+    session = offline_session
+    assert append_observation(session, observation(1, at=datetime(2026, 10, 1, tzinfo=UTC)))
+    historical = observation(2)
+    historical.observed_for = date(2026, 9, 15)
+    assert append_observation(session, historical)
+    rows = list(session.scalars(select(ListingSnapshot).order_by(ListingSnapshot.observed_for)))
+    assert [(row.observed_for, row.values_hash) for row in rows] == [
+        (date(2026, 9, 15), "a" * 64),
+        (date(2026, 10, 1), "a" * 64),
+    ]
+    current = effective_observation(session, ListingSnapshot, key={"listing_id": 1})
+    assert current is not None and current.raw_payload_id == 1
+    assert not append_observation(session, observation(3, at=AT + timedelta(days=1)))
+
+
+def test_history_import_dates_change_before_later_live_value(offline_session: Session) -> None:
+    session = offline_session
+    historical = observation(1, value="b", at=AT - timedelta(days=2))
+    historical.observed_for = date(2026, 9, 15)
+    assert append_observation(session, historical)
+    assert append_observation(session, observation(2, at=datetime(2026, 10, 1, tzinfo=UTC)))
+    change = observation(3)
+    change.observed_for = date(2026, 9, 20)
+    assert append_observation(session, change)
+    rows = list(session.scalars(select(ListingSnapshot).order_by(ListingSnapshot.observed_for)))
+    assert [(row.observed_for, row.values_hash) for row in rows] == [
+        (date(2026, 9, 15), "b" * 64),
+        (date(2026, 9, 20), "a" * 64),
+        (date(2026, 10, 1), "a" * 64),
+    ]
 
 
 @pytest.mark.parametrize(

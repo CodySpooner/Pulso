@@ -179,8 +179,14 @@ def _capture[R](
                         source.retry_not_before = max(source.retry_not_before or retry_at, retry_at)
             session.commit()
             if request.mode == "live" and request_hook is not None:
-                request_hook(session, source, run, request, response)
-                session.commit()
+                try:
+                    request_hook(session, source, run, request, response)
+                    session.commit()
+                except Exception as exc:
+                    session.rollback()
+                    if response.status_code in BLOCK_STATUSES:
+                        raise RunDeferred(f"http_{response.status_code}") from exc
+                    raise
             if (
                 response.status_code not in RETRY_STATUSES
                 or attempt == settings.collector_max_retries
