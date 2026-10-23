@@ -34,6 +34,9 @@ export function ImportPanel({ onOpen }: { onOpen: (key: string) => void }) {
   const source = importable.find((s) => s.key === picked) ?? defaultImportSource(importable);
 
   function check(next: File, key: string) {
+    // A running import keeps its file (imp-092): replacing it would reset the commit, losing its outcome and
+    // Open runs. Only another file is refused; the Source select re-checks the same file (imp-089 locks that).
+    if (commit.isPending && next !== file) return;
     setFile(next);
     commit.reset();
     preview.reset();
@@ -136,8 +139,9 @@ export function ImportPanel({ onOpen }: { onOpen: (key: string) => void }) {
 
         <div
           onDragOver={(e) => {
-            e.preventDefault();
-            setDragging(true);
+            e.preventDefault(); // even while importing: a file dropped outside a drop target opens in the tab
+            if (commit.isPending) e.dataTransfer.dropEffect = "none";
+            else setDragging(true);
           }}
           onDragLeave={() => setDragging(false)}
           onDrop={(e) => {
@@ -173,7 +177,14 @@ export function ImportPanel({ onOpen }: { onOpen: (key: string) => void }) {
               if (chosen) check(chosen, source.key);
             }}
           />
-          <Button variant="secondary" size="sm" className="sm:ml-auto" onClick={() => input.current?.click()}>
+          <Button
+            variant="secondary"
+            size="sm"
+            // Locked like the Import button, but dimmed with a token, not opacity, so its focus ring keeps 3:1.
+            className="sm:ml-auto aria-disabled:pointer-events-auto aria-disabled:cursor-not-allowed aria-disabled:text-subtle-foreground aria-disabled:opacity-100"
+            aria-disabled={commit.isPending}
+            onClick={() => !commit.isPending && input.current?.click()}
+          >
             {file ? "Choose another…" : "Choose CSV…"}
           </Button>
         </div>
