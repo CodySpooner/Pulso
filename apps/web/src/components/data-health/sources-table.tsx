@@ -46,7 +46,7 @@ const loadingCells = ["h-8 w-24", "h-4 w-48","h-4 w-28", "ml-auto h-4 w-24", "h-
 const skeletonRows = loadingRows.map((i) => (
   <tr key={i} aria-hidden className="row-h-comfortable border-b border-border-subtle">
     {loadingCells.map((bar, j) => (
-      <td key={j} className="px-2 py-1.5">
+      <td key={j} className="px-2 py-1.5 first:pl-4 last:pr-4">
         <Skeleton className={bar} />
       </td>
     ))}
@@ -73,7 +73,7 @@ type Failure = { tone: "error"; text: string; key: string; error: unknown };
 type Notice = { tone: "ok"; text: string } | Failure;
 type Confirm = { source: SourceHealth; mode: "disable" | "reenable" };
 
-const th = "h-8 border-b border-border px-2 text-label font-medium whitespace-nowrap text-muted-foreground";
+const th = "h-8 border-b border-border px-2 first:pl-4 last:pr-4 text-label font-medium whitespace-nowrap text-muted-foreground";
 
 /** A failed action on `source`: what failed, then why and what next. The transport copy is imp-078's next step. */
 function actionFailure(source: SourceHealth, action: string, error: unknown): Failure {
@@ -279,7 +279,7 @@ export function SourcesPanel({ now, onOpen, onImport }: { now: number; onOpen: (
                   const state = sourceState(s, latestGapEnds, now);
                   return (
                     <tr key={s.key} className="row-h-comfortable border-b border-border-subtle hover:bg-(--table-row-hover)">
-                      <td className="px-2 py-1.5">
+                      <td className="py-1.5 pr-2 pl-4">
                         <SourceName source={s} onOpen={onOpen} />
                       </td>
                       {/* Under a coarse pointer the pill's 44 px hit square stays inside its row (A11Y-02). */}
@@ -318,7 +318,7 @@ export function SourcesPanel({ now, onOpen, onImport }: { now: number; onOpen: (
                         )}
                       </td>
                       <td className="px-2">{c.toggle}</td>
-                      <td className="px-2">
+                      <td className="pr-4 pl-2">
                         <div className="flex justify-end gap-2">
                           {c.import}
                           {c.run}
@@ -330,14 +330,14 @@ export function SourcesPanel({ now, onOpen, onImport }: { now: number; onOpen: (
               </tbody>
               <tbody className="text-subtle-foreground">
                 <tr>
-                  <th scope="rowgroup" colSpan={9} className="h-8 px-2 text-left text-label font-medium">
+                  <th scope="rowgroup" colSpan={9} className="h-8 px-4 text-left text-label font-medium">
                     Planned
                   </th>
                 </tr>
                 {planned.map((p) => (
                   <tr key={p.name} className="row-h border-t border-border-subtle">
-                    <td className="px-2 font-medium">{p.name}</td>
-                    <td colSpan={8} className="px-2">
+                    <td className="pr-2 pl-4 font-medium">{p.name}</td>
+                    <td colSpan={8} className="pr-4 pl-2">
                       No source yet · arrives in Phase {p.phase}. {p.why}.
                     </td>
                   </tr>
