@@ -289,6 +289,65 @@ Found with built-in web search/fetch of public documentation only; no data endpo
 | CrUX popularity rank | log10 buckets (1k … 1M) ([metrics](https://developer.chrome.com/docs/crux/methodology/metrics)); inclusion threshold and data licence not stated | Coarse; most small stores fall below panel thresholds (SI §7) |
 | USITC HTS REST API (duty reference) | The official [user guide](https://www.usitc.gov/documents/hts/hts_external_user_guide.pdf) returned 403 to the research fetch; hts.usitc.gov renders client-side | Unverified; check by hand before proposing. Duty rates stay owner-entered (vault `Product Page - Profit`) |
 
+### Audit D second pass (aud-007, checked 2026-10-23)
+
+Same method and meaning of **Verified** / **Unknown** as above: public documentation only, read 2026-10-23 between 06:19 and 06:36 UTC, no data endpoint called, no sign-up or login. Scope: DEC-136 personal use, US. Nothing here is enabled or approved; each new entry needs a DEC before an adapter. Full report: `C:/Users/Xody2/orca/reports/aud-007-data-connections.md`.
+
+#### Evidence updates to audit D candidates
+- **Census (`census_trade`, `census_retail`):** no change. The [Economic Indicators page](https://www.census.gov/data/developers/data-sets/economic-indicators.html) (last revised 2026-05-20) still says "All data queries to the Census Data API now require an API key" and still lists MARTS and MRTS; no quarterly e-commerce dataset is listed there.
+- **Wikimedia Pageviews:** the [rate-limit page](https://www.mediawiki.org/wiki/Wikimedia_APIs/Rate_limits) (last edited 2026-10-15) is unchanged: 200/min with a compliant bot User-Agent, 10/min by IP only, "being deployed in 2026" with no effective date. Per-article path, from the [docs example](https://doc.wikimedia.org/generated-data-platform/aqs/analytics-api/examples/page-metrics.html): `/metrics/pageviews/per-article/{project}/{access}/{agent}/{article}/daily/{YYYYMMDD}/{YYYYMMDD}`. **Unknown:** the allowed `agent` values (for example `user`) are not listed there.
+- **CPSC Recalls:** [Programmer's Guide v1.4](https://www.cpsc.gov/s3fs-public/RecallRetrievalWebServicesProgrammersGuide20180917.pdf) (2018-09-17) states no key, registration, rate limit or terms.
+  - Records include product Name, Model, Type, CategoryID and NumberOfUnits, plus UPCs, manufacturer countries, hazards, remedies, retailers, importers and images.
+  - A misspelled search parameter returns *all* recall records (more than 8,000 in 2018), so an adapter must whitelist parameter names.
+- **Merchant API:** the [market guide](https://developers.google.com/merchant/api/guides/reports/understand-the-market) (updated 2026-09-24) still gives eligibility only as "minimum eligibility requirements". It also documents `price_competitiveness_product_view` (below).
+- **Microsoft Advertising search counts:** the [operation page](https://learn.microsoft.com/en-us/advertising/ad-insight-service/gethistoricalsearchcount) is unchanged (dated 2024-11-13): `English@US`, at most 1,000 keywords per request, and no throttling statement.
+- **Google Ads Keyword Planner:** the [access levels page](https://developers.google.com/google-ads/api/docs/api-policy/access-levels) (updated 2026-10-19) says "Permissible use … applies only to projects with Standard access". Explorer still cannot call planning services, and Basic still needs brand verification. Not interpreted here; the owner review is unchanged.
+- **Pinterest Trends:** [rate limits](https://developers.pinterest.com/docs/reference/rate-limits/) are unchanged, and the page has no last-updated date.
+
+#### USITC HTS general duty rates (`hts_duty`)
+- **Signal / metric:** the official general (MFN) duty rate for each HS-6 candidate in `docs/HS6_SEED_CATEGORIES.md`, shown as a *suggestion* on the Profit tab's duty line, never auto-applied. Metric: seed categories with an official general-rate suggestion; baseline 0 of 10.
+- **Verified:** the [data.gov listing for the 2026 HTS](https://catalog.data.gov/dataset/harmonized-tariff-schedule-of-the-united-states-2025) has publisher USITC Office of Tariff Affairs and Trade Agreements and a public-domain licence. It offers CSV, XLSX and JSON for the Basic Edition and Revisions 1–21 (for example `https://www.usitc.gov/sites/default/files/tata/hts/hts_2026_revision_21_json.json`), and was last checked 2026-10-09. The [2022 listing](https://catalog.data.gov/dataset/harmonized-tariff-schedule-of-the-united-states-2022) also names an "HTS REST API … in JSON format".
+- **Unknown:**
+  - The REST API's endpoints, limits and terms: usitc.gov returned 403 to every automated fetch on 2026-10-23.
+  - How Chapter 99 additional duties (China-origin and others) appear in the export.
+  - The HS-6 → HTS-8/10 choice for 7 low-confidence mappings.
+- **CSV fallback (primary at first):** the owner downloads the revision's JSON or CSV in a browser and imports it. Any automated fetch needs its own DEC after a by-hand docs check. The general rate is never the whole duty; the owner confirms the total.
+
+#### openFDA device recalls (`openfda_device_recalls`)
+- **Signal / metric:** FDA device recalls and enforcement reports → possible-recall flags for device-like products in the Beauty Tools and Fitness seed categories, beside CPSC. Metric: share of tracked products in those categories checked against FDA device recalls; baseline 0%.
+- **Verified:** the [device endpoints](https://open.fda.gov/apis/device/) include `device/recall` ("Recalls") and `device/enforcement` ("Recall enforcement reports"). [Authentication](https://open.fda.gov/apis/authentication/): without a key, 240 requests/min and 1,000/day per IP; with a free key ("free of charge"), 240/min and 120,000/day per key.
+- **Unknown:** terms of service text (not opened); how many dropship gadgets are FDA devices at all.
+- **CSV fallback:** an owner-supplied recall CSV.
+
+#### Merchant API price competitiveness (part of `merchant_bestsellers`)
+- **Signal / metric:** Google's `benchmark_price` beside the owner's own price for products in the owner's Merchant Center. Metric: pushed products with a benchmark price; baseline 0.
+- **Verified:** the [market guide](https://developers.google.com/merchant/api/guides/reports/understand-the-market) shows `price_competitiveness_product_view` (id, title, brand, price, report country, `benchmark_price`) covering "the same products that you sell". It has the same eligibility wording and the same Merchant Center terms as Best Sellers.
+- **Unknown:** coverage for products without GTINs (likely low).
+
+#### Owner's own accounts (personal use, DEC-136)
+These read only the owner's own data. They are listed here because each still adds a source, scope or secret that needs a DEC.
+- **ShopifyQL `sessions` (`shopify_own_analytics`):**
+  - **What it gives:** sessions, cart-addition sessions and conversion rate by `landing_page_path` (per product page) for the owner's stores, for the Testing Board. Sources: [sessions schema](https://shopify.dev/docs/api/shopifyql/latest/schemas/sessions_and_behavior/sessions) and [shopifyqlQuery](https://shopify.dev/docs/apps/build/shopifyql/graphql-admin-api).
+  - **Requirements:** API 2025-10 or later, the `read_reports` scope and Level 2 protected customer data. [Protected customer data](https://shopify.dev/docs/apps/launch/protected-customer-data): custom apps "Always available"; admin-created custom apps "Varies by plan".
+  - **Risk:** Shopify API License §2.3.24 (see `shopify_stores`) applies before any model training on this data.
+- **Meta Marketing API Insights (`meta_ads_insights`):**
+  - **What it gives:** daily spend and results for the owner's own ad account, replacing manual or CSV ad spend.
+  - **Access:** [authorization](https://developers.facebook.com/docs/marketing-api/get-started/authorization) says that for an app managing only the developer's own ad account, "standard access to the `ads_read` and `ads_management` permissions are sufficient".
+  - **Unknown:** the same page calls the default Limited tier "For development only. Not for production apps running for live advertisers" and "Heavily rate-limited per ad account". Which tier a one-owner app needs is unverified.
+
+#### Checked 2026-10-23, not proposed (aud-007)
+
+| Source | Finding | Why not |
+|---|---|---|
+| Google Search Console API | Free; Search Analytics 1,200 QPM per site and per user ([limits](https://developers.google.com/webmaster-tools/limits), updated 2025-08-28) | Paid-traffic stores get little organic search; revisit if the owner does SEO |
+| FRED API | Key required; third-party copyrighted series need permission beyond personal use; required "not endorsed or certified" notice; no numeric limit ([terms](https://fred.stlouisfed.org/docs/api/terms_of_use.html)) | A second key with no signal beyond Census MARTS |
+| NOAA NCEI CDO v2 | Token; 5 requests/s and 10,000/day; GHCND daily, GSOM monthly ([docs](https://www.ncdc.noaa.gov/cdo-web/webservices/v2)) | No evidence weather improves product forecasts; revisit after Phase 6 error analysis |
+| USPTO TSDR / Open Data Portal | From uspto.gov search results (pages render client-side): TSDR is lookup by serial number at 60 requests/min per key; ODP keys need a USPTO.gov account plus ID.me validation; no word-mark search API found | No keyword search; identity verification. A link-out to USPTO trademark search covers the need |
+| Meta Ad Library API | [Reference](https://developers.facebook.com/docs/graph-api/reference/ads_archive/) v26.0: ads that never reached the EU return only if about social issues, elections or politics | Unchanged; no US commercial ads |
+| TikTok Commercial Content API | [Product page](https://developers.tiktok.com/products/commercial-content-api): "in this phase we are ONLY including data from EU countries" | Unchanged; no US data |
+| Google Trends official API | [Page](https://developers.google.com/search/apis/trends): still "accepting applications for alpha testers" | Unchanged |
+| Etsy Open API v3; Federal Register API; 17TRACK pricing | Terms page 403; developer docs redirected to a CAPTCHA (not attempted); price page redirects to a logged-in dashboard (not followed) | Unverifiable without a login or CAPTCHA |
+
 ## Excluded
 
 | Source | Reason |
@@ -311,3 +370,4 @@ Found with built-in web search/fetch of public documentation only; no data endpo
 - 2026-10-22 — file created from the verified research pass and spec review; owner decisions recorded (US only; home-PC collector host; Shopify ToS risk accepted). Seed lists drafted for approval (vault: `Data/Seed Lists.md`).
 - 2026-10-22 — P0-12 / DOC-3 (Codex): completed access/CSV, terms, limits, free/first-paid cost and risk fields from vault evidence plus public-doc gap checks; recorded Pinterest/Store Leads permission risks and remaining unverified details. No collection, source enablement or decision changes.
 - 2026-10-22 — imp-002 / audit D (Claude): public-documentation audit of free official connections. Updated Merchant Best Sellers (monthly granularity, `reportDate` filter), Pinterest (numeric rate limits) and YouTube (III.E.4.b/h make the planned velocity history not adoptable as designed); added six candidates (Census trade, Census retail, Wikimedia Pageviews, CPSC Recalls, Microsoft Advertising search counts, Google Ads Keyword Planner) and a checked-not-proposed table. No data requests, source enablement, compliance or decision changes.
+- 2026-10-23 — aud-007 / audit D second pass (Claude): public-documentation recheck of the audit D candidates (CPSC and Wikimedia gaps closed; Google Ads permissible-use wording recorded) and new candidates (USITC HTS general duty rates, openFDA device recalls, Merchant price competitiveness, ShopifyQL sessions and Meta Insights for the owner's own accounts), plus a checked-not-proposed table. Candidate sections only; no data requests, enablement, compliance or decision changes (DEC-151 unused).
