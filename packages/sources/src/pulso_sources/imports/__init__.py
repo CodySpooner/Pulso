@@ -16,6 +16,7 @@ from pulso_core.settings import Settings
 from pulso_sources import storage
 from pulso_sources.framework import Adapter, Request, Target, enqueue_run, execute_run
 from pulso_sources.fx_frankfurter import FrankfurterAdapter
+from pulso_sources.google_trends.live import GoogleTrendsAdapter
 from pulso_sources.imports.csv import (
     DuplicateEntityRows,
     ParsedCSV,
@@ -45,7 +46,10 @@ class ImportData:
 
 
 # Source modules register factories at startup, e.g. ADAPTERS["cj"] = make_import_adapter.
-ADAPTERS: dict[str, Callable[[ImportData], Adapter[Any]]] = {"fx_frankfurter": FrankfurterAdapter}
+ADAPTERS: dict[str, Callable[[ImportData], Adapter[Any]]] = {
+    "fx_frankfurter": FrankfurterAdapter,
+    "google_trends": GoogleTrendsAdapter,
+}
 
 
 def _prepare(

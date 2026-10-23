@@ -1,14 +1,15 @@
-"""Offline Trends parser, approved plan and quota hook; live integration is P1-09c."""
+"""Trends capture parsing, approved targets and conservative monthly reservations."""
 
 import json
 from collections.abc import Sequence
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, time, timedelta
 from typing import TYPE_CHECKING, Literal
 
 from pydantic import BaseModel, Field, StrictBool
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from pulso_core.models import CollectorRun, RawPayload, SearchTrend, Source
+from pulso_core.models import CollectorRun, CollectorRunTarget, RawPayload, SearchTrend, Source
 from pulso_core.settings import get_settings
 from pulso_core.worktree import is_linked_worktree
 from pulso_sources.framework import (
@@ -87,6 +88,31 @@ def plan(session: Session) -> list[Target]:
         Target("trends", row["keyword"], [Request(params={**PARAMS, "q": row["keyword"]})])
         for row in entries
     ]
+
+
+def series_as_of(session: Session, keyword: str, day: date) -> list[SearchTrend]:
+    """One successful US daily capture known before the UTC cutoff, even when empty."""
+    capture = session.scalar(
+        select(RawPayload.id)
+        .join(Source, Source.id == RawPayload.source_id)
+        .join(CollectorRunTarget, CollectorRunTarget.raw_payload_id == RawPayload.id)
+        .where(
+            Source.key == "google_trends",
+            CollectorRunTarget.scope == "trends",
+            CollectorRunTarget.target_id == keyword,
+            CollectorRunTarget.status == "success",
+            RawPayload.captured_at < datetime.combine(day + timedelta(days=1), time(), UTC),
+        )
+        .order_by(RawPayload.captured_at.desc(), RawPayload.id.desc())
+        .limit(1)
+    )
+    return list(
+        session.scalars(
+            select(SearchTrend)
+            .where(SearchTrend.raw_payload_id == capture, SearchTrend.keyword == keyword)
+            .order_by(SearchTrend.observed_for)
+        )
+    )
 
 
 def request_hook(
