@@ -1,4 +1,4 @@
-# Dev infrastructure only (DEC-012): Postgres + pgvector, Redis and RustFS (S3 emulator).
+# Default: dev infrastructure (DEC-012). Profile collector adds the built workers and Beat.
 # Web, API and workers run natively. Start with `pnpm infra:up`, which passes `--env-file .env`
 # from the repo root. Every worktree shares this one `pulso` project, each with its own database
 # and Redis DB (infra/scripts/worktree_env.py). The collector host runs the same file as the
@@ -9,6 +9,25 @@ name: pulso
 x-logging: &logging
   driver: json-file
   options: { max-size: "10m", max-file: "5" }
+
+x-collector: &collector
+  profiles: [collector]
+  image: pulso-collector-worker
+  build:
+    context: ..
+    dockerfile: infra/docker/worker.Dockerfile
+  # Only this file supplies live/scheduler flags; shell and dev flags are not forwarded.
+  # Optional for config validation; collector commands require it before any operation.
+  env_file:
+    - path: ../.env.collector
+      required: false
+      format: raw
+  depends_on:
+    postgres: { condition: service_healthy }
+    redis: { condition: service_healthy }
+    s3: { condition: service_healthy }
+  restart: unless-stopped
+  logging: *logging
 
 services:
   postgres:
@@ -63,7 +82,31 @@ services:
     restart: unless-stopped
     logging: *logging
 
+  worker:
+    <<: *collector
+
+  # Explicit one-shot only: the guarded command verifies a backup before invoking this.
+  migrate:
+    <<: *collector
+    profiles: [collector-tools]
+    image: pulso-collector-api
+    build:
+      context: ..
+      dockerfile: infra/docker/api.Dockerfile
+    command: ["alembic", "-c", "alembic.ini", "upgrade", "head"]
+    restart: "no"
+
+  worker-ops:
+    <<: *collector
+    command: ["celery", "-A", "pulso_workers.celery_app:app", "worker", "-Q", "ops", "--loglevel=INFO"]
+
+  beat:
+    <<: *collector
+    command: ["celery", "-A", "pulso_workers.celery_app:app", "beat", "--loglevel=INFO", "--schedule=/home/pulso/schedule"]
+    volumes: ["beatdata:/home/pulso"]
+
 volumes:
   pgdata: {}
   redisdata: {}
   s3data: {}
+  beatdata: {}
