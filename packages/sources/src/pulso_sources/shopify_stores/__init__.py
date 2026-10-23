@@ -111,9 +111,11 @@ class ShopifyAdapter:
         if response is None:
             return
         store = session.get_one(Store, request.params["store_id"])
+        path = str(request.params["path"])
         if response.status_code == 403:
             store.status = "blocked"
-        elif request.params["path"] != "/robots.txt" and (
+        # Only qualification/catalog responses judge the store; a product .js fails its panel.
+        elif (path == "/meta.json" or path.startswith("/products.json?")) and (
             response.status_code in {402, 404}
             or any(
                 k.lower() == "location" and "/password" in v.lower()
@@ -290,15 +292,30 @@ def plan(
                     .limit(1)
                     .scalar_subquery()
                 )
+                # One listing per handle (newest sighting): a reused handle is one .js URL.
+                newest = (
+                    select(
+                        Listing.id,
+                        func.row_number()
+                        .over(
+                            partition_by=Listing.handle,
+                            order_by=(Listing.last_seen_at.desc(), Listing.id.desc()),
+                        )
+                        .label("rank"),
+                    )
+                    .where(
+                        Listing.store_id == store.id,
+                        Listing.source_id == source.id,
+                        Listing.delisted_at.is_(None),
+                        Listing.handle.is_not(None),
+                    )
+                    .subquery()
+                )
                 panel = list(
                     session.scalars(
                         select(Listing)
-                        .where(
-                            Listing.store_id == store.id,
-                            Listing.source_id == source.id,
-                            Listing.delisted_at.is_(None),
-                            Listing.handle.is_not(None),
-                        )
+                        .join(newest, newest.c.id == Listing.id)
+                        .where(newest.c.rank == 1)
                         .order_by(latest.desc().nulls_last(), Listing.id)
                         .limit(settings.shopify_js_panel_size)
                     )
