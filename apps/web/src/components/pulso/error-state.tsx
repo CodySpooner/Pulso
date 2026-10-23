@@ -5,7 +5,7 @@ import { TriangleAlert } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 
-import { CopyButton } from "./copy-button";
+import { CopyButton, SelectableId } from "./copy-button";
 import { EmptyState } from "./empty-state";
 
 /** The server-side error id Next attaches to errors from Server Components (matches the logs). */
@@ -50,7 +50,7 @@ export function ErrorState({
       <p>Something failed while loading this. A retry usually fixes it; if it keeps failing, the error ID matches the server logs.</p>
       {digest && (
         <p className="mt-2 font-mono text-label text-subtle-foreground">
-          Error ID <span className="select-all selection:text-foreground">{digest}</span>
+          Error ID <SelectableId value={digest} label="Error ID" />
         </p>
       )}
     </EmptyState>

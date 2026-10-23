@@ -14,7 +14,7 @@ import {
 
 import { useRef, useState } from "react";
 
-import { CopyButton } from "@/components/pulso/copy-button";
+import { CopyButton, SelectableId } from "@/components/pulso/copy-button";
 import { EmptyState } from "@/components/pulso/empty-state";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -161,7 +161,7 @@ export function PanelError({
         <p>
           {problem.detail}{" "}
           <span className="font-mono text-label text-subtle-foreground">
-            Error ID <span className="select-all selection:text-foreground">{problem.request_id}</span>
+            Error ID <SelectableId value={problem.request_id} label="Error ID" />
           </span>
         </p>
       ) : (

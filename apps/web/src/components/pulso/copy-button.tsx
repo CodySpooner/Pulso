@@ -5,6 +5,7 @@ import { Check, Copy, TriangleAlert } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { cn } from "@/lib/utils";
 
 /** Writes `value` to the clipboard. Resolves false, never rejects, when the browser denies the write or has
  * no clipboard API (an insecure origin). */
@@ -21,13 +22,32 @@ export async function copyText(value: string): Promise<boolean> {
 // read, and its hint says why and what to do next (vault Design/UI States). The why stays general because
 // copyText can't tell the causes apart honestly: no clipboard API (an insecure origin) or a refused write
 // (permission, focus or policy) all mean the clipboard isn't available.
-// ponytail: the hint names "the ID" because every consumer copies an ID shown beside the button, marked
-// `select-all` so one click selects it; take the hint as a prop when one copies something else. The tooltip
+// ponytail: the hint names "the ID" because every consumer copies an ID shown beside the button in a
+// SelectableId; take the hint as a prop when one copies something else. The tooltip
 // shows the why and the next step a line each (`\n`); the announcement reads it as one space.
 export const results = {
   copied: { text: "Copied", ms: 1200 },
   failed: { text: "Couldn’t copy", hint: "The clipboard isn’t available here.\nSelect the ID to copy it.", ms: 5000 },
 };
+
+/** The ID a CopyButton copies, selectable without the clipboard API: one click (`select-all`) or keyboard focus
+ * selects the whole ID, ready for Ctrl/⌘+C. Screen readers get a read-only textbox named `label`. */
+// ponytail: a span, not a read-only <input>, so the ID stays in page text selection and keeps its inline styling.
+export function SelectableId({ value, label, className, ...props }: React.ComponentProps<"span"> & { value: string; label: string }) {
+  return (
+    <span
+      {...props}
+      role="textbox"
+      aria-readonly
+      aria-label={label}
+      tabIndex={0}
+      onFocus={(e) => getSelection()?.selectAllChildren(e.currentTarget)}
+      className={cn("relative hit-area rounded-sm select-all selection:text-foreground", className)}
+    >
+      {value}
+    </span>
+  );
+}
 
 export function CopyButton({ value, label }: { value: string; label: string }) {
   const [result, setResult] = useState<keyof typeof results | null>(null);

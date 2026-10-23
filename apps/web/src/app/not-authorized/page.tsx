@@ -3,7 +3,7 @@ import { SignOutButton } from "@clerk/nextjs";
 import { auth } from "@clerk/nextjs/server";
 
 import { AuthFrame } from "@/components/pulso/auth-frame";
-import { CopyButton } from "@/components/pulso/copy-button";
+import { CopyButton, SelectableId } from "@/components/pulso/copy-button";
 import { Button } from "@/components/ui/button";
 import { authBypass } from "@/lib/auth";
 
@@ -21,7 +21,7 @@ export default async function NotAuthorizedPage() {
       {userId && (
         <div className="flex w-full items-center gap-2 rounded-lg border border-border bg-card py-1 pr-1 pl-3 shadow-card">
           <span className="text-label text-subtle-foreground">User ID</span>
-          <code className="min-w-0 flex-1 truncate text-label text-foreground select-all">{userId}</code>
+          <SelectableId value={userId} label="User ID" data-mono className="min-w-0 flex-1 truncate text-label text-foreground" />
           <CopyButton value={userId} label="Copy" />
         </div>
       )}
