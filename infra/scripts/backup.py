@@ -39,15 +39,27 @@ Runner = Callable[[list[str], Path, str | None], str]
 SnapshotFactory = Callable[[Path], AbstractContextManager[tuple[str, dict[str, object]]]]
 
 # Count every public table, including future snapshot/forecast tables, in the same transaction.
-METADATA = r"""
+REVISION = r"""
+SELECT to_regclass('public.alembic_version') IS NOT NULL AS has_revision \gset
+\if :has_revision
 SELECT json_build_object('server_version', current_setting('server_version'),
-  'alembic_version', (SELECT json_agg(version_num ORDER BY version_num) FROM alembic_version));
+  'alembic_version', (SELECT coalesce(json_agg(version_num ORDER BY version_num), '[]'::json)
+                    FROM alembic_version));
+\else
+SELECT json_build_object('server_version', current_setting('server_version'),
+  'alembic_version', '[]'::json);
+\endif
+"""
+METADATA = (
+    REVISION
+    + r"""
 SELECT format('SELECT json_build_object(''table'', %L, ''count'', count(*)) FROM %I.%I',
   table_name, table_schema, table_name)
 FROM information_schema.tables WHERE table_schema = 'public' AND table_type = 'BASE TABLE'
 ORDER BY table_name
 \gexec
 """
+)
 PSQL = ["psql", "-XqAt", "--set", "ON_ERROR_STOP=1", "-U", "pulso", "-d"]
 
 
@@ -257,55 +269,77 @@ def backup(
     open_snapshot: SnapshotFactory = snapshot,
 ) -> Path:
     with operation(checkout, "backup", run) as emit:
-        started = datetime.now(UTC)
-        success = False
-        temporary: Path | None = None
-        try:
-            directory.mkdir(parents=True, exist_ok=True)
-            dump = directory / f"pulso-{started.strftime(STAMP)}.dump"
-            temporary = dump.with_suffix(".dump.partial")
-            with open_snapshot(checkout) as (token, details):
-                postgres(
-                    checkout,
-                    [
-                        "pg_dump",
-                        "-U",
-                        "pulso",
-                        "-d",
-                        "pulso",
-                        "-Fc",
-                        "-f",
-                        "/tmp/pulso.dump",
-                        "--snapshot",
-                        token,
-                    ],
-                    run,
-                )
-            postgres(checkout, ["pg_restore", "--list", "/tmp/pulso.dump"], run)
-            run([*COMPOSE, "cp", "postgres:/tmp/pulso.dump", str(temporary)], checkout, None)
-            manifest = Manifest.model_validate(
-                {**details, "captured_at": started, "sha256": checksum(temporary)}
+        return create_dump(
+            checkout,
+            directory,
+            emit,
+            delete_expired=delete_expired,
+            database_url=database_url,
+            run=run,
+            open_snapshot=open_snapshot,
+        )
+
+
+def create_dump(
+    checkout: Path,
+    directory: Path,
+    emit: Callable[[str], None],
+    *,
+    delete_expired: bool = False,
+    database_url: str | None = None,
+    run: Runner = command,
+    open_snapshot: SnapshotFactory = snapshot,
+) -> Path:
+    """Write a verified backup while the caller holds the collector operation lock."""
+    started = datetime.now(UTC)
+    success = False
+    temporary: Path | None = None
+    try:
+        directory.mkdir(parents=True, exist_ok=True)
+        dump = directory / f"pulso-{started.strftime(STAMP)}.dump"
+        temporary = dump.with_suffix(".dump.partial")
+        with open_snapshot(checkout) as (token, details):
+            postgres(
+                checkout,
+                [
+                    "pg_dump",
+                    "-U",
+                    "pulso",
+                    "-d",
+                    "pulso",
+                    "-Fc",
+                    "-f",
+                    "/tmp/pulso.dump",
+                    "--snapshot",
+                    token,
+                ],
+                run,
             )
-            write_json(dump.with_suffix(".manifest.json"), manifest.model_dump(mode="json"))
-            temporary.rename(dump)
-            success = True
-            emit(f"Saved {dump.name}: database only; raw-object coverage none")
-            candidates = [
-                p for p in directory.glob("pulso-*.dump") if p.is_file() and not p.is_symlink()
-            ]
-            for path in expired_dumps(candidates):
-                emit(f"Retention {'delete' if delete_expired else 'would expire'}: {path.name}")
-                if delete_expired:
-                    path.unlink()
-            return dump
-        finally:
-            if temporary is not None:
-                temporary.unlink(missing_ok=True)
-            if database_url:
-                try:
-                    record_run(database_url, started, success)
-                except Exception as exc:
-                    emit(f"Backup run recording failed: {type(exc).__name__}; dump retained")
+        postgres(checkout, ["pg_restore", "--list", "/tmp/pulso.dump"], run)
+        run([*COMPOSE, "cp", "postgres:/tmp/pulso.dump", str(temporary)], checkout, None)
+        manifest = Manifest.model_validate(
+            {**details, "captured_at": started, "sha256": checksum(temporary)}
+        )
+        write_json(dump.with_suffix(".manifest.json"), manifest.model_dump(mode="json"))
+        temporary.rename(dump)
+        success = True
+        emit(f"Saved {dump.name}: database only; raw-object coverage none")
+        candidates = [
+            p for p in directory.glob("pulso-*.dump") if p.is_file() and not p.is_symlink()
+        ]
+        for path in expired_dumps(candidates):
+            emit(f"Retention {'delete' if delete_expired else 'would expire'}: {path.name}")
+            if delete_expired:
+                path.unlink()
+        return dump
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
+        if database_url:
+            try:
+                record_run(database_url, started, success)
+            except Exception as exc:
+                emit(f"Backup run recording failed: {type(exc).__name__}; dump retained")
 
 
 def arguments(description: str) -> argparse.ArgumentParser:
@@ -316,11 +350,12 @@ def arguments(description: str) -> argparse.ArgumentParser:
     return parser
 
 
-def detach(checkout: Path) -> None:
+def detach(checkout: Path, child_args: list[str] | None = None) -> None:
     preflight(checkout)
     flags = subprocess.DETACHED_PROCESS | subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
     subprocess.Popen(
-        [
+        child_args
+        or [
             sys.executable,
             str(Path(sys.argv[0]).resolve()),
             *(arg for arg in sys.argv[1:] if arg != "--detach"),
