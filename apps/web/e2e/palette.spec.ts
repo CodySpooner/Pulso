@@ -62,40 +62,55 @@ test.describe("command palette", () => {
 });
 
 // A11Y-01 (imp-025): the focused palette input shows the token focus ring (2px solid --ring, globals.css),
-// and the ring sits inside the dialog, so overflow-hidden can't clip it.
+// and the ring sits inside the dialog, so overflow-hidden can't clip it. imp-040: the ring lines up with the
+// row highlight (same height, gutters and radius; the highlight fills its row) and encloses the search icon.
 const ringCases = [
-  ...(["dark", "light"] as const).flatMap((theme) => [1440, 375].map((width) => ({ theme, width, forced: false }))),
-  { theme: "dark" as const, width: 1440, forced: true }, // forced colors repaint the ring in a system colour
+  ...(["dark", "light"] as const).flatMap((theme) => [1440, 375].map((width) => ({ theme, width, forced: false, touch: false }))),
+  { theme: "dark" as const, width: 1440, forced: true, touch: false }, // forced colors repaint the ring in a system colour
+  { theme: "dark" as const, width: 375, forced: false, touch: true }, // touch rows and input are 44px (imp-026)
 ];
-for (const { theme, width, forced } of ringCases) {
-  test(`the focused palette input shows the focus ring: ${theme} ${width}px${forced ? " forced colors" : ""}`, async ({ page }) => {
-    await page.setViewportSize({ width, height: 900 });
-    await page.emulateMedia({ colorScheme: theme, reducedMotion: "reduce", forcedColors: forced ? "active" : "none" });
-    await page.addInitScript((t) => localStorage.setItem("theme", t), theme);
-    await page.goto("/");
-    await expect(page.getByRole("heading", { level: 1, name: "Daily Pulse" })).toBeVisible();
-    await page.keyboard.press("Control+K");
-    const input = page.getByRole("combobox");
-    await expect(input).toBeFocused();
+for (const { theme, width, forced, touch } of ringCases) {
+  test.describe(() => {
+    test.use({ hasTouch: touch });
+    test(`the focused palette input shows the focus ring: ${theme} ${width}px${forced ? " forced colors" : ""}${touch ? " touch" : ""}`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 900 });
+      await page.emulateMedia({ colorScheme: theme, reducedMotion: "reduce", forcedColors: forced ? "active" : "none" });
+      await page.addInitScript((t) => localStorage.setItem("theme", t), theme);
+      await page.goto("/");
+      await expect(page.getByRole("heading", { level: 1, name: "Daily Pulse" })).toBeVisible();
+      await page.keyboard.press("Control+K");
+      const input = page.getByRole("combobox");
+      await expect(input).toBeFocused();
 
-    const ring = () =>
-      input.evaluate((el, forced) => {
-        const probe = document.body.appendChild(document.createElement("i"));
-        probe.style.color = "var(--ring)";
-        const token = getComputedStyle(probe).color;
-        probe.remove();
-        const s = getComputedStyle(el);
-        const reach = parseFloat(s.outlineOffset) + parseFloat(s.outlineWidth);
-        const r = el.getBoundingClientRect();
-        const box = el.closest('[role="dialog"]')!.getBoundingClientRect();
-        return {
-          style: s.outlineStyle,
-          thick: parseFloat(s.outlineWidth) >= 2,
-          token: forced || s.outlineColor === token,
-          inside: r.top - reach >= box.top && r.bottom + reach <= box.bottom && r.left - reach >= box.left && r.right + reach <= box.right,
-        };
-      }, forced);
-    await expect.poll(ring).toEqual({ style: "solid", thick: true, token: true, inside: true });
+      const ring = () =>
+        input.evaluate((el, forced) => {
+          const probe = document.body.appendChild(document.createElement("i"));
+          probe.style.color = "var(--ring)";
+          const token = getComputedStyle(probe).color;
+          probe.remove();
+          const s = getComputedStyle(el);
+          const reach = parseFloat(s.outlineOffset) + parseFloat(s.outlineWidth);
+          const r = el.getBoundingClientRect();
+          const outer = { top: r.top - reach, bottom: r.bottom + reach, left: r.left - reach, right: r.right + reach };
+          const dialog = el.closest('[role="dialog"]')!;
+          const box = dialog.getBoundingClientRect();
+          const row = dialog.querySelector('[role="option"][aria-selected="true"]')!;
+          const highlight = row.getBoundingClientRect();
+          const icon = el.parentElement!.querySelector("svg")!.getBoundingClientRect();
+          const same = (a: number, b: number) => Math.abs(a - b) < 0.5;
+          return {
+            style: s.outlineStyle,
+            thick: parseFloat(s.outlineWidth) >= 2,
+            token: forced || s.outlineColor === token,
+            inside: outer.top >= box.top && outer.bottom <= box.bottom && outer.left >= box.left && outer.right <= box.right,
+            rowHeight: same(outer.bottom - outer.top, highlight.height),
+            rowInset: same(outer.left, highlight.left) && same(outer.right, highlight.right),
+            rowRadius: s.borderRadius === getComputedStyle(row).borderRadius,
+            iconInside: icon.left >= outer.left + 2 && icon.right <= outer.right - 2 && icon.top >= outer.top + 2 && icon.bottom <= outer.bottom - 2,
+          };
+        }, forced);
+      await expect.poll(ring).toEqual({ style: "solid", thick: true, token: true, inside: true, rowHeight: true, rowInset: true, rowRadius: true, iconInside: true });
+    });
   });
 }
 
