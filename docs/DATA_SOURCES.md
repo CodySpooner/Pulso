@@ -135,15 +135,15 @@ The report's own caveat: states are observations, and a 404 alone cannot establi
 
 ## Google Trends (`google_trends`)
 
-- **Access:** SerpApi vendor API `engine=google_trends`, `geo=US`, `tz=0`, one keyword per search, `date=today 3-m` weekly and `today 5-y` once per keyword. Official Trends API alpha by application (owner to apply). DataForSEO only with owner approval. Manual Trends CSV fallback.
+- **Access:** SerpApi vendor API `engine=google_trends`, `geo=US`, `tz=0`, one approved keyword per search, `data_type=TIMESERIES`, `date=today 3-m` (daily points, weekly plan). Five-year backfill is deferred. Official Trends API alpha by application (owner to apply). DataForSEO only with owner approval. Manual CSV template: `keyword,date,interest,geo,source`; imports use the same `search_trends` writer with `window=manual` because the template carries no request window.
 - **Excluded:** pytrends (archived 2025-04-17; returns 429/404) and any direct scraping (Google terms prohibit automated access).
 - **Terms (checked 2026-10-22):** official alpha "can't open the API for everyone yet" — https://developers.google.com/search/apis/trends · SerpApi Trends engine — https://serpapi.com/google-trends-api · pricing — https://serpapi.com/pricing. SerpApi performs the scraping; Google's litigation against SerpApi is ongoing (impact unknown).
 - **Vendor terms (checked 2026-10-22):** SerpApi §1/§12 prohibit unauthorized use and infringement; §16 permits termination without notice; §13 excludes Free, Starter and Developer plans from its Legal Shield — https://serpapi.com/legal . Buying API access does not grant source-data rights.
-- **Limits:** SerpApi free tier 250 searches/month (paid from $25/1k). Plan: 50 keywords weekly ≈ 217 searches/month.
-- **Block rule:** 401 → disable; monthly cap reached → quota (pause until next month).
-- **Count semantics:** relative index 0–100 rescaled **per request**; last point partial. Every capture is appended in full to `search_trends`; slopes only within one capture. Features prefixed `gt_`.
+- **Limits:** SerpApi free tier 250 searches/month (paid from $25/1k). Fifty keywords weekly use 200–250 searches in a UTC calendar month, before retries. `TRENDS_MONTHLY_SEARCH_LIMIT` defaults to 250 and cannot exceed it. DEC-099 reserves every attempt under a source row lock in `sources.config.trends_quota`, committed before HTTP; errors/retries/cached responses get no refund. The 251st reservation stops partial; rollover uses UTC. This counter covers Pulso attempts, not other use of the same SerpApi account.
+- **Block rule:** 401/invalid key → disable; monthly cap reached → quota (pause until next month); 403/429 use the framework's first-block run stop, persistent Retry-After and consecutive-block disable rule. Response-side integration remains P1-09c.
+- **Count semantics:** relative index 0–100 rescaled **per capture**, never search volumes. Every capture appends the complete returned series to `search_trends`; `is_partial` copies the timeline point's flag, defaulting false when absent, never guessed from position. Empty timelines append no observations, never synthetic zeros. Collection computes no velocity or smoothing; slopes belong within one capture. Features prefixed `gt_`.
 - **Risk:** API-key rejection, quota exhaustion or vendor withdrawal/litigation can stop Trends; official alpha admission is not guaranteed. Evidence: `Source - Google Trends`, TA §2.7.
-- **Cost:** free at ≤250 searches/month; first paid SerpApi tier $25/month for 1,000 (owner approval). Official alpha quotas and free/paid pricing are unpublished in TA §2.7. **Status:** planned. **Phase:** 1.
+- **Cost:** free at ≤250 searches/month; first paid SerpApi tier $25/month for 1,000 (owner approval). Official alpha quotas and free/paid pricing are unpublished in TA §2.7. **Status:** disabled; P1-09b parser/fixtures/persisted quota built, HTTP and registration deferred to P1-09c under the size split. The existing 2026-10-22 terms check above was reused; no source requests or new terms review. **Phase:** 1.
 
 ## Frankfurter FX (`fx_frankfurter`)
 
