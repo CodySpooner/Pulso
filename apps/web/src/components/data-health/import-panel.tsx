@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { ChevronDown, CircleCheck, CircleDashed, CircleX, Download, FileSpreadsheet, History, TriangleAlert, Upload } from "lucide-react";
 
 import { EmptyState } from "@/components/pulso/empty-state";
@@ -26,7 +26,9 @@ export function ImportPanel({ onOpen }: { onOpen: (key: string) => void }) {
   const [tooBig, setTooBig] = useState(false);
   const [dragging, setDragging] = useState(false);
   const input = useRef<HTMLInputElement>(null);
+  const openRuns = useRef<HTMLButtonElement>(null);
   const ids = useId();
+  useTakeLostFocus(openRuns, commit.data);
 
   const importable = sources.data?.filter((s) => s.csv_import != null) ?? [];
   const source = importable.find((s) => s.key === picked) ?? defaultImportSource(importable);
@@ -69,15 +71,25 @@ export function ImportPanel({ onOpen }: { onOpen: (key: string) => void }) {
   } else {
     const blocker = preview.data && commitBlocker(source, preview.data);
     const outcome = commit.data && importOutcome(commit.data, source.name);
-    const problem = [preview.error, commit.error].find(isProblem);
-    // One short announcement per step; the tables and buttons stay out of the live region.
-    const announce = tooBig
-      ? "The file is over 20 MB."
+    const failed = preview.isError && file ? failure(preview.error, CHECK_FAILED) : commit.isError ? failure(commit.error, IMPORT_FAILED) : null;
+    // One short announcement per step, in one region only: failures are assertive, progress and results
+    // polite (aud-004 C2-01). A failure empties the status, so a stale preview summary is never re-read.
+    const alert = tooBig
+      ? TOO_BIG
+      : failed
+        ? `${failed.text}${failed.retry ? " Select Retry to try again." : ""}`
+        : outcome?.tone === "error"
+          ? outcome.text
+          : "";
+    const status = alert
+      ? ""
       : preview.isPending && file
         ? `Checking ${file.name}…`
-        : preview.data
-          ? [previewSummary(preview.data), blocker].filter(Boolean).join(". ")
-          : (outcome?.text ?? problem?.detail ?? "");
+        : commit.isPending && file
+          ? `Importing ${file.name}…`
+          : preview.data
+            ? [previewSummary(preview.data), blocker].filter(Boolean).join(". ")
+            : (outcome?.text ?? "");
     body = (
       <div className="flex flex-col gap-4 p-4">
         <div className="flex flex-wrap items-end gap-x-3 gap-y-2">
@@ -167,10 +179,13 @@ export function ImportPanel({ onOpen }: { onOpen: (key: string) => void }) {
         </div>
 
         <p role="status" className="sr-only">
-          {announce}
+          {status}
+        </p>
+        <p role="alert" className="sr-only">
+          {alert}
         </p>
         <div className="flex flex-col gap-3 empty:hidden">
-          {tooBig && <p className="text-data text-negative">This file is over 20 MB. Split it into smaller files and import each.</p>}
+          {tooBig && <p className="text-data text-negative">{TOO_BIG}</p>}
           {preview.isPending && file && (
             <>
               <p className="text-data text-muted-foreground">Checking {file.name}…</p>
@@ -178,7 +193,7 @@ export function ImportPanel({ onOpen }: { onOpen: (key: string) => void }) {
             </>
           )}
           {preview.isError && file && (
-            <ErrorLine error={preview.error} retry={() => check(file, source.key)} fallback="The API didn't answer while checking the file." />
+            <ErrorLine error={preview.error} retry={() => check(file, source.key)} fallback={CHECK_FAILED} />
           )}
           {preview.data && file && (
             <PreviewResult
@@ -190,7 +205,7 @@ export function ImportPanel({ onOpen }: { onOpen: (key: string) => void }) {
               onImport={importFile}
             />
           )}
-          {commit.isError && <ErrorLine error={commit.error} retry={importFile} fallback="The API didn't answer while importing." />}
+          {commit.isError && <ErrorLine error={commit.error} retry={importFile} fallback={IMPORT_FAILED} />}
           {outcome && (
             <div
               className={cn(
@@ -200,7 +215,7 @@ export function ImportPanel({ onOpen }: { onOpen: (key: string) => void }) {
             >
               {outcome.tone === "error" ? <CircleX className="size-4 text-negative" aria-hidden /> : <CircleCheck className="size-4 text-muted-foreground" aria-hidden />}
               <p className="min-w-0 flex-1 text-foreground">{outcome.text}</p>
-              <Button size="sm" variant="secondary" onClick={() => onOpen(source.key)}>
+              <Button ref={openRuns} size="sm" variant="secondary" onClick={() => onOpen(source.key)}>
                 <History aria-hidden />
                 Open runs
               </Button>
@@ -235,6 +250,8 @@ function PreviewResult({
   onImport: () => void;
 }) {
   const unavailable = blocker != null || pending;
+  const importButton = useRef<HTMLButtonElement>(null);
+  useTakeLostFocus(importButton); // e.g. after a preview Retry, whose line this result replaces
   return (
     <>
       <div className="flex flex-wrap items-center gap-2">
@@ -250,6 +267,7 @@ function PreviewResult({
           </Pill>
         )}
         <Button
+          ref={importButton}
           variant="primary"
           size="sm"
           className="ml-auto aria-disabled:pointer-events-auto aria-disabled:cursor-not-allowed"
@@ -302,18 +320,40 @@ function fileSize(bytes: number): string {
   return kb < 1024 ? `${kb.toFixed(1)} KB` : `${(kb / 1024).toFixed(1)} MB`;
 }
 
-function ErrorLine({ error, retry, fallback }: { error: unknown; retry: () => void; fallback: string }) {
+const TOO_BIG = "This file is over 20 MB. Split it into smaller files and import each.";
+const CHECK_FAILED = "The API didn't answer while checking the file.";
+const IMPORT_FAILED = "The API didn't answer while importing.";
+
+/** A failed request in words. A 422 is about the file itself: retrying the same bytes can't help. */
+function failure(error: unknown, fallback: string) {
   const problem = isProblem(error) ? error : null;
+  return { problem, text: problem ? problem.detail : fallback, retry: problem?.status !== 422 };
+}
+
+/**
+ * Focuses `ref` once `when` holds, but only when nothing has focus (aud-004 C2-02): the control a keyboard
+ * user just used (Import, Retry) left with the step it belonged to. Never takes focus from another control.
+ */
+function useTakeLostFocus(ref: React.RefObject<HTMLElement | null>, when: unknown = true) {
+  useEffect(() => {
+    if (when && document.activeElement === document.body) ref.current?.focus();
+  }, [ref, when]);
+}
+
+function ErrorLine({ error, retry, fallback }: { error: unknown; retry: () => void; fallback: string }) {
+  const { problem, text, retry: retryable } = failure(error, fallback);
+  const retryButton = useRef<HTMLButtonElement>(null);
+  useTakeLostFocus(retryButton); // a Retry that failed again comes back focused
   return (
+    // Spoken by the panel's alert region, with the Retry hint; this line has no live role of its own.
     <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border border-negative/40 bg-negative-muted px-4 py-3 text-data">
       <TriangleAlert className="size-4 text-negative" aria-hidden />
       <p className="min-w-0 flex-1 text-foreground">
-        {problem ? problem.detail : fallback}
+        {text}
         {problem && <span className="ml-2 font-mono text-label text-subtle-foreground">Error ID {problem.request_id}</span>}
       </p>
-      {/* A 422 is about the file itself: retrying the same bytes can't help. */}
-      {problem?.status !== 422 && (
-        <Button size="sm" variant="secondary" onClick={retry}>
+      {retryable && (
+        <Button ref={retryButton} size="sm" variant="secondary" onClick={retry}>
           Retry
         </Button>
       )}
