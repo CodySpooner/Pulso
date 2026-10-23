@@ -22,9 +22,10 @@ export async function copyText(value: string): Promise<boolean> {
 // read, and its hint says why and what to do next (vault Design/UI States). The why stays general because
 // copyText can't tell the causes apart honestly: no clipboard API (an insecure origin) or a refused write
 // (permission, focus or policy) all mean the clipboard isn't available.
-// ponytail: the hint names "the ID" because every consumer copies an ID shown beside the button in a
-// SelectableId; take the hint as a prop when one copies something else. The tooltip
-// shows the why and the next step a line each (`\n`); the announcement reads it as one space.
+// ponytail: the hint names "the ID" because every consumer copies an ID shown beside the button that one click
+// selects (a SelectableId, or the import panel's `select-all` span); take the hint as a prop when one copies
+// something else. The tooltip shows the why and the next step a line each (`\n`); the announcement reads it as
+// one space.
 export const results = {
   copied: { text: "Copied", ms: 1200 },
   failed: { text: "Couldn’t copy", hint: "The clipboard isn’t available here.\nSelect the ID to copy it.", ms: 5000 },
