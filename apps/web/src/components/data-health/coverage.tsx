@@ -1,6 +1,6 @@
 "use client";
 
-import { CalendarDays, ChevronLeft, ChevronRight } from "lucide-react";
+import { ArrowDown, CalendarDays, ChevronLeft, ChevronRight } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { EmptyState } from "@/components/pulso/empty-state";
@@ -11,7 +11,7 @@ import { cn } from "@/lib/utils";
 import { useCoverage, useHost, useOlderGaps, useSources } from "./api";
 import { Panel, PanelError } from "./atoms";
 import { LoadMore } from "./load-more";
-import { coverageRows, gapsNote, mergeGaps, plural, utcDays, type CoverageDay } from "./model";
+import { coverageRows, gapReasons, gapsNote, mergeGaps, plural, utcDays, type CoverageDay, type MissedSlot } from "./model";
 
 export const COVERAGE_DAYS = 90;
 /** Phones show the most recent month; the cells before it are hidden below md. */
@@ -45,13 +45,6 @@ const legend = (
     ))}
   </ul>
 );
-
-const reasonLabel: Record<string, string> = {
-  host_offline: "Host offline",
-  run_failed: "Run failed",
-  source_disabled: "Source disabled",
-  blocked: "Blocked",
-};
 
 const day = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
 const dayLabel = (iso: string) => day.format(new Date(`${iso}T00:00:00Z`));
@@ -150,6 +143,26 @@ export function CoveragePanel({ now }: { now: number }) {
 }
 
 const SHOWN_GAPS = 8;
+export const OPEN_GAPS_ID = "open-gaps";
+
+/**
+ * An Overdue source's missed slot, then its reason on a line of its own, as an in-page link to the Open gaps table
+ * (imp-124). Following it focuses the table's heading.
+ */
+export function GapsLink({ missed, onClick }: { missed: MissedSlot; onClick?: (e: React.MouseEvent<HTMLAnchorElement>) => void }) {
+  const lines = missed.reason ? [missed.slot, missed.reason] : [missed.slot];
+  return (
+    <a href={`#${OPEN_GAPS_ID}`} onClick={onClick} className="relative hit-area flex w-fit flex-col rounded-sm underline decoration-border-strong underline-offset-2 hover:decoration-current">
+      {lines.map((line, i) => (
+        <span key={i}>
+          {line}
+          {i === lines.length - 1 && <ArrowDown aria-hidden className="ml-0.5 inline size-3 align-[-2px]" />}
+        </span>
+      ))}
+      <span className="sr-only"> (in Open gaps)</span>
+    </a>
+  );
+}
 
 function OpenGaps({ names, host }: { names: Map<string, string>; host: ReturnType<typeof useHost> }) {
   const older = useOlderGaps(host.data?.next_cursor ?? null);
@@ -164,7 +177,8 @@ function OpenGaps({ names, host }: { names: Map<string, string>; host: ReturnTyp
   }
   return (
     <div className="flex flex-col gap-2 border-t border-border-subtle pt-3">
-      <h3 className="text-data font-medium text-foreground">
+      {/* The target of GapsLink: following it focuses this heading; the scroll margin clears the phone's top bar. */}
+      <h3 id={OPEN_GAPS_ID} tabIndex={-1} className="scroll-mt-18 text-data font-medium text-foreground lg:scroll-mt-4">
         Open gaps <span className="font-normal text-subtle-foreground">· {plural(ranges.length, "range")}{older.hasMore ? " loaded" : ""}, newest first · feature dates touching them carry gap flags</span>
       </h3>
       <ScrollCue label="Open gaps">
@@ -185,7 +199,7 @@ function OpenGaps({ names, host }: { names: Map<string, string>; host: ReturnTyp
                   {formatUtc(r.start)} → {formatUtc(r.end)}
                 </td>
                 <td className="num pr-3">{r.slots}</td>
-                <td className="pr-3 text-muted-foreground">{reasonLabel[r.reason] ?? r.reason}</td>
+                <td className="pr-3 text-muted-foreground">{gapReasons[r.reason] ?? r.reason}</td>
               </tr>
             ))}
           </tbody>

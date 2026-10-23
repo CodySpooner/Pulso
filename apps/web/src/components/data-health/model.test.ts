@@ -11,6 +11,7 @@ import {
   importEntry,
   importOutcome,
   mergeGaps,
+  missedNote,
   previewSummary,
   sampleColumns,
   sampleNote,
@@ -164,6 +165,31 @@ test("mergeGaps joins consecutive slots per source and reason, newest first", ()
     ["fx", "host_offline", 1, ago(9), ago(8)],
     ["cj", "host_offline", 2, ago(10), ago(8)],
   ]);
+});
+
+// imp-124 (aud-010 A10-02): an Overdue source names its latest missed slot, with the range and reason when
+// that gap is on the loaded page.
+describe("missedNote", () => {
+  const ends = { cj: ago(2) }; // NOW is 14:00 UTC
+  test("the merged range ending at the source's latest gap end, with its reason", () => {
+    const gaps = [gap({ slot_start: ago(4), slot_end: ago(3) }), gap({ slot_start: ago(3), slot_end: ago(2) }), gap({ source_key: "fx", slot_start: ago(3), slot_end: ago(2) })];
+    expect(missedNote("cj", ends, gaps)).toEqual({ slot: "Missed Oct 22, 10:00–12:00\u00a0UTC", reason: "Host offline" });
+  });
+  test("an older range of the same source is not the latest slot", () => {
+    const gaps = [gap({ slot_start: ago(30), slot_end: ago(29), reason: "run_failed" }), gap({ slot_start: ago(3), slot_end: ago(2), reason: "run_failed" })];
+    expect(missedNote("cj", ends, gaps)).toEqual({ slot: "Missed Oct 22, 11:00–12:00\u00a0UTC", reason: "Run failed" });
+  });
+  test("a range across midnight names both days", () => {
+    const gaps = [gap({ slot_start: ago(15), slot_end: ago(14) }), gap({ slot_start: ago(14), slot_end: ago(13) })];
+    expect(missedNote("cj", { cj: ago(13) }, gaps)).toEqual({ slot: "Missed Oct 21, 23:00 – Oct 22, 01:00 UTC", reason: "Host offline" });
+  });
+  test("an unknown reason code reads as sent", () => {
+    expect(missedNote("cj", ends, [gap({ slot_start: ago(3), slot_end: ago(2), reason: "new_reason" })])).toEqual({ slot: "Missed Oct 22, 11:00–12:00\u00a0UTC", reason: "new_reason" });
+  });
+  test("off the loaded page, only the end from the gap summary", () => {
+    expect(missedNote("cj", ends, [gap({ source_key: "fx", slot_start: ago(3), slot_end: ago(2) })])).toEqual({ slot: "Missed a slot ending Oct 22, 12:00 UTC", reason: null });
+  });
+  test("no gap for the source", () => expect(missedNote("fx", ends, [])).toBeNull());
 });
 
 test("utcDays ends on today's UTC date", () => {

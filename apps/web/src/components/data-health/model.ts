@@ -1,4 +1,5 @@
 import type { components } from "@/lib/api/schema";
+import { formatUtc } from "@/lib/format";
 
 // Pure Data Health rules over the DH-1 contract (DEC-068), shared by the page and the nav badge (DEC-096).
 
@@ -112,6 +113,34 @@ export function mergeGaps(gaps: Gap[]): GapRange[] {
     }
   }
   return ranges.sort((a, b) => Date.parse(b.start) - Date.parse(a.start));
+}
+
+export const gapReasons: Record<string, string> = {
+  host_offline: "Host offline",
+  run_failed: "Run failed",
+  source_disabled: "Source disabled",
+  blocked: "Blocked",
+};
+
+export interface MissedSlot {
+  slot: string;
+  /** The gap's reason as the Open gaps table words it; null when the gap isn't on the loaded page. */
+  reason: string | null;
+}
+
+/**
+ * An Overdue source's latest missed slot (imp-124): its range and reason when that gap is on the loaded open-gaps
+ * page, else only its end from the complete gap summary (DEC-133).
+ */
+export function missedNote(key: string, latestGapEnds: HostHealth["latest_gap_ends"], gaps: Gap[]): MissedSlot | null {
+  const end = latestGapEnds[key];
+  if (!end) return null;
+  const range = mergeGaps(gaps.filter((g) => g.source_key === key)).find((r) => Date.parse(r.end) === Date.parse(end));
+  if (!range) return { slot: `Missed a slot ending ${formatUtc(end)}`, reason: null };
+  const [start, stop] = [range.start, range.end].map((iso) => new Date(iso).toISOString());
+  // A no-break space keeps UTC on its time's line when a narrow column wraps the note.
+  const when = start.slice(0, 10) === stop.slice(0, 10) ? `${formatUtc(start).slice(0, -4)}–${stop.slice(11, 16)}\u00a0UTC` : `${formatUtc(start).slice(0, -4)} – ${formatUtc(stop)}`;
+  return { slot: `Missed ${when}`, reason: gapReasons[range.reason] ?? range.reason };
 }
 
 /** The open-gaps footer (DEC-166): ranges on screen, and slots loaded until the 90-day history is complete. */
