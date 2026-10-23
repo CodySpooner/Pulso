@@ -1,5 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 
+import { mockAdminApi } from "./data-health/fixtures";
+
 // Review P0-08b #1: dismissing the navigation sheet returns focus to the button that opened it; following a
 // link to another page focuses that page's h1 instead.
 async function openSheet(page: Page, opener: string) {
@@ -152,5 +154,69 @@ test.describe("tablet touch tooltips", () => {
     await expect(page.getByRole("dialog")).toBeHidden();
     await expect(button).toBeFocused();
     await expectNoTooltip(page);
+  });
+});
+
+// imp-099: imp-093's DH-3 count and imp-097's tooltip share the tablet Open menu (fixture DH-1: 2 sources need
+// attention). The count stays in the accessible name, the tooltip still reads "Open menu" below the badge, and focus
+// handed back after a click or tap still opens no tooltip.
+const menuWithCount = /^Open menu\W+2 sources need attention$/;
+
+async function gotoPulseWithCount(page: Page) {
+  await mockAdminApi(page);
+  await gotoPulse(page);
+  const menu = page.getByRole("banner").getByRole("button", { name: /^Open menu/ });
+  await expect(menu).toHaveAccessibleName(menuWithCount);
+  await expect(menu.getByTestId("data-health-badge")).toHaveText("2");
+  return menu;
+}
+
+for (const width of [768, 1023]) {
+  test.describe(`tablet ${width}px Open menu with the DH-3 count`, () => {
+    test.use({ viewport: { width, height: 1024 } });
+
+    test("hover and Esc-returned focus show the tooltip, a click-close shows none, and the count stays named", async ({ page }) => {
+      const menu = await gotoPulseWithCount(page);
+      await menu.hover();
+      await expect(page.getByRole("tooltip")).toHaveText("Open menu");
+      const badge = (await menu.getByTestId("data-health-badge").boundingBox())!;
+      const bubble = (await page.locator("[data-radix-popper-content-wrapper]").boundingBox())!;
+      expect(bubble.y).toBeGreaterThanOrEqual(badge.y + badge.height); // the bubble never covers the count
+      await expect(menu).toHaveAccessibleName(menuWithCount);
+      await expect(page.getByText(/need attention/).filter({ visible: true })).toHaveCount(1); // the count is announced once
+      await page.mouse.move(width / 2, 600, { steps: 4 });
+      await expect(page.getByRole("tooltip")).toHaveCount(0);
+
+      await menu.click();
+      await expect(page.getByRole("dialog")).toBeVisible();
+      await page.getByRole("button", { name: "Close menu" }).click();
+      await expect(page.getByRole("dialog")).toBeHidden();
+      await expect(menu).toBeFocused();
+      await expectNoTooltip(page);
+
+      await page.keyboard.press("Enter");
+      await expect(page.getByRole("dialog")).toBeVisible();
+      await page.keyboard.press("Escape");
+      await expect(menu).toBeFocused();
+      await expect(page.getByRole("tooltip")).toHaveText("Open menu");
+      await expect(menu).toHaveAccessibleName(menuWithCount);
+    });
+  });
+}
+
+test.describe("tablet touch Open menu with the DH-3 count", () => {
+  test.use({ viewport: { width: 768, height: 1024 }, hasTouch: true });
+
+  test("tap open and tap Close menu leave no tooltip and keep the count", async ({ page }) => {
+    const menu = await gotoPulseWithCount(page);
+    await menu.tap();
+    await expect(page.getByRole("dialog")).toBeVisible();
+    await expect(page.getByRole("tooltip")).toHaveCount(0);
+    await page.getByRole("button", { name: "Close menu" }).tap();
+    await expect(page.getByRole("dialog")).toBeHidden();
+    await expect(menu).toBeFocused();
+    await expectNoTooltip(page);
+    await expect(menu).toHaveAccessibleName(menuWithCount);
+    await expect(menu.getByTestId("data-health-badge")).toBeVisible();
   });
 });
