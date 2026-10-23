@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session, attributes
 from sqlalchemy.schema import DefaultClause
 
 from pulso_core.db import Base
-from pulso_core.models import CollectorRun, RawPayload, Source, SourceEvent
+from pulso_core.models import CollectorRun, CollectorRunTarget, RawPayload, Source, SourceEvent
 from pulso_core.settings import Settings
 from pulso_sources import framework, storage
 from pulso_sources.framework import Request, Response, Target, enqueue_run, execute_run, lifecycle
@@ -192,7 +192,79 @@ def test_after_hook_error_preserves_block_stop_rule(
     assert source.config == {} and source.consecutive_block_count == (requests == 1)
     captures = list(session.scalars(select(RawPayload).order_by(RawPayload.id)))
     assert len(captures) == requests and captures[0].status_code == status
+    # P1-47 T-L1: the failed hook's capture stays linked to its target.
+    first = session.get_one(CollectorRunTarget, (run.id, "catalog", "0"))
+    assert first.raw_payload_id == captures[0].id
     assert not any(active for _, active in calls)
+
+
+def test_owner_disable_during_fetch_survives_block_accounting(
+    session: Session, settings: Settings, network: Network
+) -> None:
+    adapter, responses, _ = network
+    session.get_one(Source, 1).consecutive_block_count = 4
+    session.commit()
+
+    def owner_disables(*_: Any, **__: Any) -> Response:
+        with Session(session.get_bind()) as owner:
+            source = owner.get_one(Source, 1)
+            source.enabled, source.status = False, "disabled"
+            source.disabled_reason = "store asked us to stop"
+            owner.commit()
+        return Response(b"slow down", 429)
+
+    responses.side_effect = owner_disables
+    run = enqueue_run(session, source_id=1, trigger="manual", publish=lambda _: None)
+    execute_run(session, run.id, adapter, [Target("catalog", "a", [Request()])], settings=settings)
+    session.expire_all()
+    source = session.get_one(Source, 1)
+    assert (source.enabled, source.status) == (False, "disabled")
+    assert source.disabled_reason == "store asked us to stop"
+    assert source.consecutive_block_count == 5
+    assert not list(session.scalars(select(SourceEvent)))
+
+
+def test_closed_live_guard_skips_hook_and_request_count(
+    session: Session, settings: Settings, network: Network
+) -> None:
+    adapter, responses, _ = network
+    settings.collectors_live = False
+    hook = Mock()
+    run = enqueue_run(session, source_id=1, trigger="manual", publish=lambda _: None)
+    with pytest.raises(framework.CollectorsLiveDisabled):
+        execute_run(
+            session,
+            run.id,
+            adapter,
+            [Target("catalog", "a", [Request()])],
+            settings=settings,
+            request_hook=hook,
+        )
+    hook.assert_not_called()
+    responses.assert_not_called()
+    assert session.get_one(CollectorRun, run.id).http_requests == 0
+
+
+@pytest.mark.parametrize("started", [False, True])
+def test_enqueue_publishes_outside_a_transaction(session: Session, started: bool) -> None:
+    assert session.expire_on_commit  # the production get_session() default
+
+    def publish(run_id: int) -> None:
+        assert not session.in_transaction()
+        if started:
+            with Session(session.get_bind()) as worker:
+                worker.get_one(CollectorRun, run_id).status = "running"
+                worker.commit()
+            raise ConnectionError("fixture-broker-secret")
+
+    if started:
+        with pytest.raises(ConnectionError):
+            enqueue_run(session, source_id=1, trigger="manual", publish=publish)
+    else:
+        enqueue_run(session, source_id=1, trigger="manual", publish=publish)
+    # A late publish failure never overwrites a delivery that already started.
+    status = session.scalars(select(CollectorRun.status)).one()
+    assert status == ("running" if started else "queued")
 
 
 class Clock:
@@ -302,6 +374,21 @@ def test_503_waits_before_retry_and_hook_commits_before_each_attempt(
     assert clock.waits == [120]
     assert order == ["before", "fetch", "after"] * 2
     assert not any(active for _, active in calls)
+
+
+@pytest.mark.parametrize("past", [False, True])
+def test_expired_5xx_retry_after_keeps_backoff(
+    session: Session, settings: Settings, network: Network, clock: Clock, past: bool
+) -> None:
+    adapter, responses, _ = network
+    header = format_datetime(clock.now - timedelta(hours=1), usegmt=True) if past else "0"
+    responses.side_effect = [
+        Response(b"busy", 503, headers={"Retry-After": header}),
+        Response(b"ok", 200),
+    ]
+    run = enqueue_run(session, source_id=1, trigger="manual", publish=lambda _: None)
+    execute_run(session, run.id, adapter, [Target("catalog", "a", [Request()])], settings=settings)
+    assert run.status == "success" and clock.waits == [settings.collector_backoff_base_seconds]
 
 
 def test_block_count_resets_only_on_live_nonblock_response(

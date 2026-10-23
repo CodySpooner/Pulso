@@ -64,16 +64,20 @@ class Adapter[R](Protocol):
     ) -> UpsertStats: ...
 
 
+def require_live(request: Request, settings: Settings) -> None:
+    if request.mode != "live" or not settings.collectors_live or is_linked_worktree(__file__):
+        raise CollectorsLiveDisabled(
+            "Live collection requires COLLECTORS_LIVE=on outside worktrees"
+        )
+
+
 def fetch[R](adapter: Adapter[R], request: Request, *, settings: Settings) -> Response:
     """Only this boundary calls adapter HTTP; offline inputs never call adapter.fetch."""
     if request.raw_payload_id is not None and request.mode == "live":
         raise ValueError("Existing raw captures require an offline request")
     if request.mode in {"fixture", "csv", "json"}:
         return Response(request.body, content_type=request.content_type)
-    if request.mode != "live" or not settings.collectors_live or is_linked_worktree(__file__):
-        raise CollectorsLiveDisabled(
-            "Live collection requires COLLECTORS_LIVE=on outside worktrees"
-        )
+    require_live(request, settings)
     return adapter.fetch(request, user_agent=settings.collector_user_agent)
 
 

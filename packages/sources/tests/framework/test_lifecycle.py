@@ -123,10 +123,10 @@ def test_queued_commit_precedes_publish_and_failure_is_durable() -> None:
     added: list[CollectorRun] = []
     session.add.side_effect = added.append
 
-    def commit() -> None:
+    def flush() -> None:
         added[0].id = 7
 
-    session.commit.side_effect = commit
+    session.flush.side_effect = flush
 
     def publish(run_id: int) -> None:
         assert run_id == 7
