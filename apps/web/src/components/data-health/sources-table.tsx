@@ -34,6 +34,37 @@ const planned = [
   { name: "TikTok ads", phase: 8, why: "Ads linked to the products they promote" },
 ];
 
+// First load: the loaded table and cards with one skeleton row per Phase 1 source, each as tall as a loaded
+// row (the name and type lines set it), so nothing below moves when the data lands (CLS < 0.1, imp-082).
+// ponytail: four rows fits Phase 1's seeded sources; derive the count if later phases make it vary.
+const loadingRows = [0, 1, 2, 3];
+// One bar per column, about as wide as its loaded content, so the header stays put too.
+const loadingCells = ["h-8 w-24", "h-4 w-48","h-4 w-28", "ml-auto h-4 w-24", "h-4 w-20", "h-4 w-4", "ml-auto h-4 w-8", "h-5 w-8", "ml-auto h-7 w-22"];
+
+const skeletonRows = loadingRows.map((i) => (
+  <tr key={i} aria-hidden className="row-h-comfortable border-b border-border-subtle">
+    {loadingCells.map((bar, j) => (
+      <td key={j} className="px-3 py-1.5">
+        <Skeleton className={bar} />
+      </td>
+    ))}
+  </tr>
+));
+
+const skeletonCards = loadingRows.map((i) => (
+  <li key={i} aria-hidden className="flex flex-col gap-2 px-4 py-3">
+    <div className="flex items-center justify-between gap-2">
+      <Skeleton className="h-8 w-32" />
+      <Skeleton className="h-5.5 w-18" />
+    </div>
+    <Skeleton className="h-10 w-48" />
+    <div className="flex items-center justify-between gap-2">
+      <Skeleton className="h-5 w-24" />
+      <Skeleton className="h-7 w-22" />
+    </div>
+  </li>
+));
+
 type Notice = { tone: "ok" | "error"; text: string };
 type Confirm = { source: SourceHealth; mode: "disable" | "reenable" };
 
@@ -127,15 +158,9 @@ export function SourcesPanel({ now, onOpen }: { now: number; onOpen: (key: strin
         {notice?.text}
       </p>
 
-      {sources.isPending ? (
-        <div className="flex flex-col gap-2 p-4">
-          {[0, 1, 2, 3].map((i) => (
-            <Skeleton key={i} className="h-8 w-full" />
-          ))}
-        </div>
-      ) : sources.isError ? (
+      {sources.isError ? (
         <PanelError title="Couldn't load sources" error={sources.error} retry={() => sources.refetch()} />
-      ) : rows.length === 0 ? (
+      ) : sources.data && rows.length === 0 ? (
         <EmptyState icon={Database} size="sm" title="No sources configured">
           Apply the database migrations to seed the Phase 1 sources (Shopify stores, CJ, Google Trends, Frankfurter FX).
         </EmptyState>
@@ -143,6 +168,7 @@ export function SourcesPanel({ now, onOpen }: { now: number; onOpen: (key: strin
         <>
           {/* Phone and small tablet: one card per source (vault Features/Data Health, Mobile). */}
           <ul className="flex flex-col divide-y divide-border-subtle md:hidden">
+            {sources.isPending && skeletonCards}
             {rows.map((s) => {
               const c = controls(s);
               const state = sourceState(s, latestGapEnds, now);
@@ -203,6 +229,7 @@ export function SourcesPanel({ now, onOpen }: { now: number; onOpen: (key: strin
                 </tr>
               </thead>
               <tbody>
+                {sources.isPending && skeletonRows}
                 {rows.map((s) => {
                   const c = controls(s);
                   const lr = s.last_run;

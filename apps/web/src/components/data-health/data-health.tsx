@@ -37,10 +37,13 @@ export function DataHealth() {
       title="Data Health"
       description="Every source's runs, freshness and gaps, the collector host and backups."
       meta={
-        now > 0 && (
+        // "As of —" until the first fetch lands, so the line is there from the start and nothing moves (imp-082).
+        now > 0 ? (
           <span title="Fetched from GET /v1/admin/* · refetches every 5 min">
             As of <time dateTime={new Date(now).toISOString()}>{formatUtc(new Date(now).toISOString())}</time>
           </span>
+        ) : (
+          "As of —"
         )
       }
       actions={

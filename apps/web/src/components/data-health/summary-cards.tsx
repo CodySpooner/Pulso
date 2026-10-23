@@ -43,8 +43,9 @@ function Fact({ label, children }: { label: string; children: React.ReactNode })
 
 function CardSkeleton() {
   return (
-    <div className="flex flex-col gap-3 px-4 py-3">
-      {[0, 1, 2, 3].map((i) => (
+    // One bar per fact at the facts' row gap, so the card keeps its loaded height (imp-082).
+    <div className="flex flex-col gap-2 px-4 py-3">
+      {[0, 1, 2, 3, 4].map((i) => (
         <Skeleton key={i} className="h-4.5 w-full" />
       ))}
     </div>

@@ -35,6 +35,17 @@ const cellStyle: Record<CellStatus, { label: string; className: string }> = {
   none: { label: "No data", className: "bg-accent" },
 };
 
+const legend = (
+  <ul aria-label="Legend" className="flex flex-wrap gap-x-4 gap-y-1.5 text-label text-muted-foreground">
+    {(["success", "partial", "failed", "gap", "filled", "running", "none"] as const).map((s) => (
+      <li key={s} className="flex items-center gap-1.5">
+        <span aria-hidden className={cn("size-3 rounded-xs", cellStyle[s].className)} />
+        {cellStyle[s].label}
+      </li>
+    ))}
+  </ul>
+);
+
 const reasonLabel: Record<string, string> = {
   host_offline: "Host offline",
   run_failed: "Run failed",
@@ -64,10 +75,29 @@ export function CoveragePanel({ now }: { now: number }) {
   return (
     <Panel id="coverage" title="Coverage" note="One cell per UTC day · newest on the right">
       {coverage.isPending || sources.isPending ? (
-        <div className="flex flex-col gap-2 p-4">
-          {[0, 1, 2, 3].map((i) => (
-            <Skeleton key={i} className="h-4 w-full" />
-          ))}
+        // The loaded layout (imp-082): a row per Phase 1 source, the axis line, the legend and an open-gaps
+        // block sized for a heading and two ranges, so nothing below moves when the data lands.
+        <div className="flex flex-col gap-3 p-4">
+          <div aria-hidden className="flex flex-col gap-1.5">
+            {[0, 1, 2, 3].map((i) => (
+              <div key={i} className="grid grid-cols-[6.5rem_1fr] items-center gap-3 sm:grid-cols-[9rem_1fr]">
+                <Skeleton className="h-4 w-24" />
+                <Skeleton className="h-4" />
+              </div>
+            ))}
+            <div className="h-3.5" />
+          </div>
+          {legend}
+          <div aria-hidden className="flex flex-col gap-2 border-t border-border-subtle pt-3">
+            <Skeleton className="h-4.5 w-72 max-w-full" />
+            <div>
+              {["h-7", "row-h-compact border-t", "row-h-compact border-t"].map((row, i) => (
+                <div key={i} className={cn("flex items-center border-border-subtle", row)}>
+                  <Skeleton className="h-4 w-full" />
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
       ) : coverage.isError ? (
         <PanelError title="Couldn't load coverage" error={coverage.error} retry={() => coverage.refetch()} />
@@ -110,14 +140,7 @@ export function CoveragePanel({ now }: { now: number }) {
             </div>
           </div>
 
-          <ul aria-label="Legend" className="flex flex-wrap gap-x-4 gap-y-1.5 text-label text-muted-foreground">
-            {(["success", "partial", "failed", "gap", "filled", "running", "none"] as const).map((s) => (
-              <li key={s} className="flex items-center gap-1.5">
-                <span aria-hidden className={cn("size-3 rounded-xs", cellStyle[s].className)} />
-                {cellStyle[s].label}
-              </li>
-            ))}
-          </ul>
+          {legend}
 
           <OpenGaps names={new Map(sources.data.map((s) => [s.key, s.name]))} host={host} />
         </div>
