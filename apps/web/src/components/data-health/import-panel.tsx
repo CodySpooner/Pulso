@@ -382,7 +382,7 @@ function RowErrors({ result }: { result: Pick<ImportPreview, "errors" | "error_c
             {result.errors.map((e, i) => (
               <tr key={i} className="border-b border-border-subtle last:border-0">
                 <td className="px-3 py-1.5 text-right align-top font-mono tabular-nums">{e.row}</td>
-                <td className="hidden px-3 py-1.5 align-top font-mono text-muted-foreground sm:table-cell">{e.column || "—"}</td>
+                <td className="hidden px-3 py-1.5 align-top font-mono whitespace-nowrap text-muted-foreground sm:table-cell">{e.column || "—"}</td>
                 <td className="px-3 py-1.5 align-top text-foreground">
                   {e.column && <span className="block font-mono text-muted-foreground sm:hidden">{e.column}</span>}
                   {e.message}

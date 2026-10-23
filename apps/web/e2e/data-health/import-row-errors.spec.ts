@@ -30,8 +30,8 @@ test("a visible Row errors heading names the table", async ({ page }) => {
   await expect(table.getByRole("row", { name: SKIPPED })).toBeVisible();
 });
 
-for (const width of [375, 640, 768]) {
-  test(`at ${width}px Problem keeps at least 12rem and nothing scrolls sideways`, async ({ page }) => {
+for (const width of [375, 640, 768, 1440]) {
+  test(`at ${width}px Problem keeps at least 12rem, the column name one line, and nothing scrolls sideways`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 });
     const panel = await openPanel(page, () => cjPreview);
     await panel.getByLabel("Source").selectOption("cj");
@@ -40,6 +40,14 @@ for (const width of [375, 640, 768]) {
     await expect(table.getByRole("row", { name: "19 cj_product_id or sku One identifier required", exact: true })).toBeVisible();
     const problem = await table.getByRole("columnheader", { name: "Problem" }).evaluate((el) => el.getBoundingClientRect().width);
     expect(problem).toBeGreaterThanOrEqual(12 * 16);
+    // From 640px the name has its own Column cell; below, it sits above its problem. Either way, one line.
+    const name = table.getByText("cj_product_id or sku", { exact: true }).locator("visible=true");
+    const lines = await name.evaluate((el) => {
+      const range = document.createRange();
+      range.selectNodeContents(el);
+      return new Set([...range.getClientRects()].map((r) => Math.round(r.top))).size;
+    });
+    expect(lines).toBe(1);
     expect(await table.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
   });
