@@ -148,17 +148,20 @@ export function CommandPalette({
               >
                 <Dialog.Title className="sr-only">Command palette</Dialog.Title>
                 <Command label="Command palette" value={selected} onValueChange={setSelected} loop className="flex h-full flex-col">
-                  <div className="flex h-13 items-center gap-2 border-b border-border-subtle px-4 text-subtle-foreground pointer-coarse:h-14">
-                    <Search className="size-4 shrink-0" strokeWidth={1.5} aria-hidden />
+                  <div className="relative border-b border-border-subtle p-1.5 text-subtle-foreground">
+                    <Search className="pointer-events-none absolute top-1/2 left-3.5 size-4 -translate-y-1/2" strokeWidth={1.5} aria-hidden />
                     <Command.Input
                       value={query}
                       onValueChange={setQuery}
                       placeholder="Type a command or page…"
-                      // Keeps the global focus ring (A11Y-01); h-9 in the 52px bar (h-11 in 56px on touch) leaves room for its 4px reach.
-                      className="h-9 min-w-0 flex-1 rounded-md bg-transparent px-2 pointer-coarse:h-11 text-title-3 text-foreground placeholder:text-subtle-foreground max-md:text-base"
+                      // Keeps the global focus ring (A11Y-01), drawn inset so it matches a row highlight: same height
+                      // (40px, 44px on touch), 6px gutters and radius, with the icon, Esc and Close inside (imp-040).
+                      className="h-10 w-full rounded-lg bg-transparent pr-14 pl-9 -outline-offset-2 pointer-coarse:h-11 text-title-3 text-foreground placeholder:text-subtle-foreground max-md:text-base"
                     />
-                    <Kbd className="max-md:hidden">Esc</Kbd>
-                    <Dialog.Close className="relative hit-area text-data font-medium text-muted-foreground md:hidden">Close</Dialog.Close>
+                    <Kbd className="absolute top-1/2 right-3.5 -translate-y-1/2 max-md:hidden">Esc</Kbd>
+                    <Dialog.Close className="absolute top-1/2 right-3.5 hit-area -translate-y-1/2 text-data font-medium text-muted-foreground md:hidden">
+                      Close
+                    </Dialog.Close>
                   </div>
                   <LayoutGroup id="palette">
                     <Command.List className="max-h-105 flex-1 scroll-py-1.5 overflow-y-auto overscroll-contain py-1.5 max-md:max-h-none">
