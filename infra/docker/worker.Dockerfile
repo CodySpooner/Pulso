@@ -16,5 +16,8 @@ ENV PATH="/app/.venv/bin:$PATH" PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1 \
 RUN useradd --create-home --uid 10001 pulso && mkdir /app && chown pulso:pulso /app
 WORKDIR /app
 COPY --from=build /app/.venv ./.venv
+# Collector seeds/enable/disable step (DEC-131); seed data arrives on stdin, never in the image.
+COPY infra/scripts/seeds/__init__.py ./infra/scripts/seeds/
+COPY infra/scripts/collector/__init__.py infra/scripts/collector/sources.py ./infra/scripts/collector/
 USER pulso
 CMD ["celery", "-A", "pulso_workers.celery_app:app", "worker", "-Q", "collect,default", "--loglevel=INFO"]
