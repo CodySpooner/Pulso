@@ -51,7 +51,10 @@ def plan(session: Session, day: Date) -> list[Target]:
             .group_by(FxRate.quote)
         )
     }
-    start = min(latest.get(quote, Date(2024, 12, 31)) for quote in QUOTES) + timedelta(days=1)
+    start = min(latest.get(quote, Date(2024, 12, 31)) for quote in QUOTES)
+    if latest:  # A quote lagging the newest one by >31 days (or never returned) stops pinning it.
+        start = max(start, max(latest.values()) - timedelta(days=31))
+    start += timedelta(days=1)
     # One target: a failed backfill must prevent latest from advancing the date watermark.
     requests = list(backfill(start, day - timedelta(days=1))[0].requests) if start < day else []
     requests.append(Request(params={"base": "USD", "quotes": ",".join(QUOTES)}))

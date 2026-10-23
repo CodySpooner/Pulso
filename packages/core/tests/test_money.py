@@ -82,6 +82,12 @@ def test_fx_rounding_is_explicit_and_only_at_destination() -> None:
     assert convert_minor(100, "USD", "KWD", Decimal("0.3075"), rounding=ROUND_HALF_UP) == 308
 
 
+def test_inverse_rate_rounds_the_exact_quotient_once() -> None:
+    # P1-32 L6: EUR 12.12 at 0.96 EUR per USD is exactly USD 12.625; 1/rate double-rounds.
+    rate = Decimal("0.96")
+    assert convert_minor(1212, "EUR", "USD", rate, rounding=ROUND_HALF_EVEN, inverse=True) == 1262
+
+
 @pytest.mark.parametrize("rate", ["0", "-1", "NaN", "Infinity"])
 def test_fx_rejects_invalid_rate(rate: str) -> None:
     with pytest.raises(ValueError):

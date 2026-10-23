@@ -108,7 +108,13 @@ def probe(
     clock: Callable[[], float] = time.monotonic,
     max_requests: int = MAX_REQUESTS,
 ) -> str:
-    if not contact.strip() or not contact.isascii() or any(ord(c) < 32 for c in contact):
+    try:
+        parts = urlsplit(contact.strip())
+        public_url = parts.scheme in {"http", "https"} and bool(parts.hostname)
+        public_url = public_url and parts.username is None and parts.password is None
+    except ValueError:
+        public_url = False
+    if not public_url or not contact.isascii() or any(ord(c) < 32 for c in contact):
         raise ValueError("Set PULSO_BOT_CONTACT to the owner's public contact URL")
     if not 1 <= max_requests <= HARD_MAX_REQUESTS:
         raise ValueError(f"max_requests must be 1-{HARD_MAX_REQUESTS}")
