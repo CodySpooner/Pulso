@@ -116,6 +116,8 @@ const textPairs: Pair[] = [
   ["negative", "negative-muted", "card"],
   ["warning", "warning-muted", "card"],
   ["model", "model-muted", "card"],
+  // Selected text (the global ::selection rule in globals.css): an opaque pair, so it holds on every surface.
+  ["selection-foreground", "selection"],
 ];
 
 // Non-text UI and large text (≥ 3:1): focus ring, brand marks (logo, active-nav bar), input outlines.
