@@ -1,0 +1,9 @@
+{
+  "code": 200,
+  "result": true,
+  "data": [
+    {"logisticName": "Fixture Standard", "logisticPrice": 4.71, "logisticPriceCn": 30.54, "logisticAging": "7-12"},
+    {"logisticName": "Fixture Express", "logisticPrice": "6.00", "logisticAging": "3-5"},
+    {"logisticName": "Fixture Unknown ETA", "logisticPrice": 0, "logisticAging": null}
+  ]
+}

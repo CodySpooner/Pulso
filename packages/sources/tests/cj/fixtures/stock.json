@@ -1,0 +1,14 @@
+{
+  "code": 200,
+  "result": true,
+  "data": {
+    "inventories": [{"countryCode": "CN", "totalInventoryNum": 20}],
+    "variantInventories": [
+      {"vid": "fixture-variant-a", "inventory": [
+        {"countryCode": "CN", "totalInventory": 12, "cjInventory": 2, "factoryInventory": 10, "stock": null},
+        {"countryCode": "US", "totalInventory": 3, "cjInventory": 3, "factoryInventory": 0, "stock": [{"inventory": 3}]}
+      ]},
+      {"vid": "fixture-variant-b", "inventory": []}
+    ]
+  }
+}

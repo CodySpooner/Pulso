@@ -1,0 +1,14 @@
+{
+  "code": 200,
+  "result": true,
+  "data": {
+    "pid": "fixture-product",
+    "productNameEn": "Synthetic CJ product",
+    "sellPrice": "1.25-2.50",
+    "listedNum": 17,
+    "variants": [
+      {"vid": "fixture-variant-a", "variantSku": "TEST-A", "variantNameEn": "Small", "variantSellPrice": 1.25},
+      {"vid": "fixture-variant-b", "variantSku": "TEST-B", "variantNameEn": "Large", "variantSellPrice": "2.50"}
+    ]
+  }
+}

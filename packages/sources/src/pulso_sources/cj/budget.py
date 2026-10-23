@@ -8,7 +8,12 @@ from pulso_core.models import CollectorRun, Source
 from pulso_core.settings import Settings
 from pulso_sources.cj.errors import CJError
 
-POINTS = {"/product/listV2": 50}
+POINTS = {
+    "/product/listV2": 50,
+    "/product/query": 10,
+    "/product/stock/getInventoryByPid": 10,
+    "/logistic/freightCalculate": 10,
+}
 
 
 def reserve(

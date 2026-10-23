@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session, attributes
 from sqlalchemy.schema import DefaultClause
 
 from pulso_core.db import Base
-from pulso_core.models import Listing, ListingSnapshot, RawPayload, Source
+from pulso_core.models import Listing, ListingSnapshot, ListingVariant, RawPayload, Source
 from pulso_sources import storage
 from pulso_sources.cj import transport
 
@@ -40,6 +40,9 @@ def session(monkeypatch: pytest.MonkeyPatch) -> Iterator[Session]:
         "suppliers",
         "listings",
         "listing_snapshots",
+        "listing_variants",
+        "variant_snapshots",
+        "shipping_options",
     ):
         table = metadata.tables[name]
         for column in table.columns:
@@ -71,7 +74,7 @@ def session(monkeypatch: pytest.MonkeyPatch) -> Iterator[Session]:
             if isinstance(column.type, DateTime) and value is not None:
                 attributes.set_committed_value(row, column.key, value.replace(tzinfo=UTC))
 
-    for model in (Listing, ListingSnapshot, RawPayload):
+    for model in (Listing, ListingSnapshot, ListingVariant, RawPayload):
         event.listen(model, "load", utc)
         event.listen(model, "refresh", utc)
     try:
@@ -80,7 +83,7 @@ def session(monkeypatch: pytest.MonkeyPatch) -> Iterator[Session]:
             session.commit()
             yield session
     finally:
-        for model in (Listing, ListingSnapshot, RawPayload):
+        for model in (Listing, ListingSnapshot, ListingVariant, RawPayload):
             event.remove(model, "load", utc)
             event.remove(model, "refresh", utc)
         engine.dispose()

@@ -6,7 +6,7 @@ import logging
 from collections.abc import Iterator, Sequence
 from datetime import UTC, datetime
 from decimal import Decimal, InvalidOperation
-from typing import Annotated
+from typing import TYPE_CHECKING, Annotated, Any
 
 from pydantic import BaseModel, Field, NonNegativeInt, StrictInt
 from sqlalchemy import select
@@ -24,11 +24,12 @@ from pulso_core.models import (
 from pulso_core.money import to_minor
 from pulso_core.settings import Settings
 from pulso_sources import storage
-from pulso_sources.cj.budget import reserve
+from pulso_sources.cj.budget import POINTS, reserve
 from pulso_sources.cj.categories import resolve
 from pulso_sources.cj.errors import CJError, classify_error
 from pulso_sources.cj.transport import Transport
 from pulso_sources.framework import (
+    Adapter,
     CollectorsLiveDisabled,
     Request,
     Response,
@@ -38,6 +39,9 @@ from pulso_sources.framework import (
     execute_run,
 )
 from pulso_sources.framework.lifecycle import BLOCK_STATUSES, _retry_after
+
+if TYPE_CHECKING:
+    from pulso_sources.cj.tracked import TrackedAdapter
 
 logger = logging.getLogger(__name__)
 Identifier = Annotated[str, Field(min_length=1, max_length=200)]
@@ -219,7 +223,12 @@ class CJAdapter:
 
 
 def collect(
-    session: Session, run_id: int, targets: Sequence[Target], *, settings: Settings
+    session: Session,
+    run_id: int,
+    targets: Sequence[Target],
+    *,
+    settings: Settings,
+    adapter: CJAdapter | TrackedAdapter | None = None,
 ) -> CollectorRun:
     """Call under the scheduler's source lock; own commits before actual HTTP attempts."""
     run = session.get_one(CollectorRun, run_id)
@@ -234,7 +243,7 @@ def collect(
     failure_response: Response | None = None
 
     def before_send(endpoint: str) -> None:
-        if endpoint == "/product/listV2":
+        if endpoint in POINTS:
             reserve(session, source, run, endpoint, settings=settings, now=datetime.now(UTC))
         run.http_requests = before_count + transport.sent + 1
         session.commit()
@@ -255,6 +264,9 @@ def collect(
         session.commit()
 
     transport = Transport(settings, before_send, rejected)
+    adapter = adapter or CJAdapter()
+    adapter.transport = transport
+    run_adapter: Adapter[Any] = adapter
 
     def hook(
         db: Session,
@@ -288,7 +300,7 @@ def collect(
         result = execute_run(
             session,
             run_id,
-            CJAdapter(transport),
+            run_adapter,
             targets,
             settings=settings,
             wall_time_seconds=settings.cj_wall_time_seconds,
