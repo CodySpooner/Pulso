@@ -1,12 +1,14 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
+
+import { mockAdminApi } from "./data-health/fixtures";
 
 // A11Y-02 (imp-026, vault Design/Accessibility): under a coarse pointer every visible control owns a 44×44px
 // square around its centre. elementFromPoint probes measure the real hit area, so an invisible ::after hit
 // area counts, and a neighbour or a clipping ancestor that takes part of the square fails the check.
-const routes = [
+const routes: { path: string; h1: string; ready?: string }[] = [
   { path: "/", h1: "Daily Pulse" },
   { path: "/admin/ui", h1: "UI gallery" },
-  { path: "/admin/data-health", h1: "Data Health" },
+  { path: "/admin/data-health", h1: "Data Health", ready: "As of Oct 22, 14:00 UTC" },
 ];
 
 function measure({ min, root }: { min: number; root: string }) {
@@ -37,10 +39,12 @@ for (const width of [375, 1024, 1440]) {
   test.describe(`touch ${width}px`, () => {
     test.use({ viewport: { width, height: 900 }, hasTouch: true });
 
-    for (const { path, h1 } of routes) {
+    for (const { path, h1, ready } of routes) {
       test(`every control on ${path} has a 44×44px hit area`, async ({ page }) => {
+        await mockAdminApi(page); // Data Health and the nav badge render from the DH-1 fixtures
         await page.goto(path);
         await expect(page.getByRole("heading", { level: 1, name: h1 })).toBeVisible();
+        if (ready) await expect(page.getByText(ready)).toBeVisible();
         const result = await page.evaluate(measure, { min: 44, root: "body" });
         console.log(`${width}px ${path}: ${result.checked} controls, ${result.visuallySmall} drawn under 44px, ${result.small.length} hit areas under 44px`);
         expect(result.coarse).toBe(true);
@@ -52,19 +56,28 @@ for (const width of [375, 1024, 1440]) {
   });
 }
 
-// The shared dialogs: the phone's More sheet and the command palette (Search tab).
+// The shared dialogs: the phone's More sheet, the command palette (Search tab), and Data Health's run drawer
+// (right sheet) and disable-reason dialog.
+const dialogs: { name: string; path: string; open: (page: Page) => Promise<void> }[] = [
+  { name: "More sheet", path: "/", open: (page) => page.getByRole("navigation", { name: "Tab bar" }).getByRole("button", { name: "More" }).click() },
+  { name: "command palette", path: "/", open: (page) => page.getByRole("navigation", { name: "Tab bar" }).getByRole("button", { name: "Search" }).click() },
+  { name: "run drawer", path: "/admin/data-health", open: (page) => page.getByRole("button", { name: "Shopify stores: open runs" }).click() },
+  { name: "reason dialog", path: "/admin/data-health", open: (page) => page.getByRole("switch", { name: "CJ Dropshipping enabled" }).click() },
+];
+
 test.describe("touch 375px dialogs", () => {
   test.use({ viewport: { width: 375, height: 812 }, hasTouch: true });
 
-  for (const opener of ["More", "Search"]) {
-    test(`every control in the ${opener} dialog has a 44×44px hit area`, async ({ page }) => {
-      await page.goto("/");
-      await expect(page.getByRole("heading", { level: 1, name: "Daily Pulse" })).toBeVisible();
-      await page.getByRole("navigation", { name: "Tab bar" }).getByRole("button", { name: opener }).click();
+  for (const { name, path, open } of dialogs) {
+    test(`every control in the ${name} has a 44×44px hit area`, async ({ page }) => {
+      await mockAdminApi(page);
+      await page.goto(path);
+      await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+      await open(page);
       await expect(page.getByRole("dialog")).toBeVisible();
       await page.waitForTimeout(400); // the enter animation moves the dialog
       const result = await page.evaluate(measure, { min: 44, root: "[role=dialog]" });
-      console.log(`375px ${opener} dialog: ${result.checked} controls, ${result.visuallySmall} drawn under 44px, ${result.small.length} hit areas under 44px`);
+      console.log(`375px ${name}: ${result.checked} controls, ${result.visuallySmall} drawn under 44px, ${result.small.length} hit areas under 44px`);
       expect(result.checked).toBeGreaterThan(0);
       expect(result.small).toEqual([]);
     });

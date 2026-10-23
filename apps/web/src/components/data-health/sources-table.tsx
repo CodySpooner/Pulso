@@ -281,9 +281,9 @@ function SourceName({ source, onOpen }: { source: SourceHealth; onOpen: (key: st
         type="button"
         onClick={() => onOpen(source.key)}
         aria-label={`${source.name}: open runs`}
-        className="self-start truncate rounded-sm text-left font-medium text-foreground underline-offset-4 hover:underline"
+        className="relative hit-area max-w-full self-start rounded-sm text-left font-medium text-foreground underline-offset-4 hover:underline"
       >
-        {source.name}
+        <span className="block truncate">{source.name}</span>
       </button>
       <span className="text-micro text-subtle-foreground">{typeLabel[source.type] ?? source.type}</span>
     </div>
