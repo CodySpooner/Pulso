@@ -1,6 +1,6 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
 
-import { healthySources, host, mockAdminApi, NOW, operationId, runDetail, sources, suppressedSources } from "./fixtures";
+import { healthySources, host, manyGaps, mockAdminApi, operationId, runDetail, sources, suppressedSources } from "./fixtures";
 
 // DH-2 / DH-3 (P1-12): the Data Health page and nav badge against fixture DH-1 responses (E2E auth bypass).
 
@@ -32,17 +32,11 @@ test("bounded pages disclose omitted rows and preserve overdue sources beyond th
 
 test("missed slots and gap ranges read in the singular, plural and zero (imp-076)", async ({ page }) => {
   const hostCard = page.getByRole("region", { name: "Collector host" });
-  // Two hours apart, so each gap is its own range.
-  const apart = (n: number) =>
-    Array.from({ length: n }, (_, i) => {
-      const start = NOW.getTime() - (3 + 2 * i) * 3_600_000;
-      return { ...host.open_gaps[0], slot_key: `gap-${i}`, slot_start: new Date(start).toISOString(), slot_end: new Date(start + 3_600_000).toISOString() };
-    });
   for (const [gaps, card, heading, older] of [
     [[host.open_gaps[2]], "1 missed slot · latest CJ Dropshipping", "· 1 range, newest first", null],
     [host.open_gaps, "3 missed slots · latest Google Trends", "· 2 ranges, newest first", null],
-    [apart(9), "9 missed slots", "· 9 ranges, newest first", "Show 1 older range"],
-    [apart(10), "10 missed slots", "· 10 ranges, newest first", "Show 2 older ranges"],
+    [manyGaps(9), "9 missed slots", "· 9 ranges, newest first", "Show 1 older range"],
+    [manyGaps(10), "10 missed slots", "· 10 ranges, newest first", "Show 2 older ranges"],
   ] as const) {
     await mockAdminApi(page, { host: { open_gaps: [...gaps] } });
     await open(page);
