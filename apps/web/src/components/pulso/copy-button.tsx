@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Check, Copy, TriangleAlert } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 /** Writes `value` to the clipboard. Resolves false, never rejects, when the browser denies the write or has
  * no clipboard API (an insecure origin). */
@@ -16,33 +17,56 @@ export async function copyText(value: string): Promise<boolean> {
   }
 }
 
-// How long each result shows before the label returns. A failure stays longer so it can be read.
-const resultMs = { copied: 1200, failed: 4000 };
+// What each result says and how long it shows before the label returns. A failure stays longer so it can be
+// read, and its hint says what to do next (vault Design/UI States).
+// ponytail: the hint names "the ID" because every consumer copies an ID shown beside the button; take it as
+// a prop when one copies something else.
+export const results = {
+  copied: { text: "Copied", ms: 1200 },
+  failed: { text: "Couldn’t copy", hint: "Select the ID to copy it.", ms: 4000 },
+};
 
 export function CopyButton({ value, label }: { value: string; label: string }) {
-  const [result, setResult] = useState<keyof typeof resultMs | null>(null);
+  const [result, setResult] = useState<keyof typeof results | null>(null);
   useEffect(() => {
     if (!result) return;
-    const timer = setTimeout(() => setResult(null), resultMs[result]);
+    const timer = setTimeout(() => setResult(null), results[result].ms);
     return () => clearTimeout(timer);
   }, [result]);
   return (
-    <Button
-      variant="ghost"
-      size="sm"
-      onClick={() => {
-        setResult(null); // so a retry that fails again is announced again and restarts the timer
-        void copyText(value).then((ok) => setResult(ok ? "copied" : "failed"));
-      }}
-    >
-      {result === "copied" ? (
-        <Check className="text-positive" aria-hidden />
-      ) : result === "failed" ? (
-        <TriangleAlert className="text-negative" aria-hidden />
-      ) : (
-        <Copy aria-hidden />
-      )}
-      <span aria-live="polite">{result === "copied" ? "Copied" : result === "failed" ? "Couldn’t copy" : label}</span>
-    </Button>
+    // The hint opens by itself while the failure shows (no hover needed) and closes with it; Esc dismisses both.
+    <Tooltip open={result === "failed"}>
+      <TooltipTrigger asChild>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => {
+            setResult(null); // so a retry that fails again is announced again and restarts the timer
+            void copyText(value).then((ok) => setResult(ok ? "copied" : "failed"));
+          }}
+        >
+          {result === "copied" ? (
+            <Check className="text-positive" aria-hidden />
+          ) : result === "failed" ? (
+            <TriangleAlert className="text-negative" aria-hidden />
+          ) : (
+            <Copy aria-hidden />
+          )}
+          <span aria-live="polite">
+            {result ? results[result].text : label}
+            {result === "failed" && <span className="sr-only">. {results.failed.hint}</span>}
+          </span>
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent
+        side="bottom"
+        sideOffset={8} // clears the button's 4px focus ring
+        onEscapeKeyDown={() => setResult(null)}
+        // Opened by state, not hover, so Radix marks it instant-open: give it the same fade and scale-in.
+        className="data-[state=instant-open]:animate-in data-[state=instant-open]:fade-in-0 data-[state=instant-open]:zoom-in-96"
+      >
+        {results.failed.hint}
+      </TooltipContent>
+    </Tooltip>
   );
 }
