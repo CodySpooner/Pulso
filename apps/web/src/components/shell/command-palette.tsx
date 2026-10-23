@@ -154,7 +154,8 @@ export function CommandPalette({
                       value={query}
                       onValueChange={setQuery}
                       placeholder="Type a command or page…"
-                      className="h-full min-w-0 flex-1 bg-transparent text-title-3 text-foreground outline-none placeholder:text-subtle-foreground max-md:text-base"
+                      // Keeps the global focus ring (A11Y-01); h-9 in the 52px bar leaves room for its 4px reach.
+                      className="h-9 min-w-0 flex-1 rounded-md bg-transparent px-2 text-title-3 text-foreground placeholder:text-subtle-foreground max-md:text-base"
                     />
                     <Kbd className="max-md:hidden">Esc</Kbd>
                     <Dialog.Close className="text-data font-medium text-muted-foreground md:hidden">Close</Dialog.Close>
