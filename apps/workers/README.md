@@ -23,10 +23,20 @@ stop Beat. Ticks sleep at most five seconds. Detached lock connections close the
 physical session, so no session-level lock leaks back into a pool.
 
 `schedules.py` defines six collection and two ops UTC crontabs. `LockedScheduler` checks `sources.enabled`,
-skips queued/running work or a successful current slot, and calls `enqueue_run`
+skips recent queued/running work of the same job or a successful current slot, and calls `enqueue_run`
 before publishing `collect.run(run_id)` to `collect`. Broker failures persist
 `failed/publish_failed` and log only the exception class; Beat's eager producer
 connection is bypassed so it cannot log broker exception text before that boundary.
+Under DEC-108, schedule/catch-up enqueue decisions serialize on the source row;
+scheduling does not take the source execution lock. A running catalog therefore
+allows freight to queue and use DEC-098's bounded busy-delivery retry. Same-job
+suppression persists a `skipped` run with `params.blocked_by`, `complete=false`,
+and `error_code=slot_suppressed`, visible in Data Health and still missing to the audit.
+The `slot_suppressed` log carries only source, job, slot, blocking run id and age
+in its message (the shared JSON formatter drops arbitrary extras). Rows at least
+max(two hours, twice the source budget) old never suppress scheduling; age uses
+`started_at` or otherwise `queued_at`, exactly as recovery does. Only the audit,
+with the source execution lock free, may mark them abandoned.
 The API overrides `get_publisher` with its own lightweight Celery publisher, keeping
 P1-27's fixed-text error wrapper and keeping worker/ML packages out of the API image.
 

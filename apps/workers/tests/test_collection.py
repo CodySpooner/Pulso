@@ -69,7 +69,7 @@ def test_publish_failure_does_not_leak_into_json_logs(
     )
 
 
-def test_scheduled_enqueue_cannot_race_an_active_source_lock(
+def test_scheduled_enqueue_persists_while_source_execution_lock_is_busy(
     session: Session,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -77,9 +77,12 @@ def test_scheduled_enqueue_cannot_race_an_active_source_lock(
     lock = Mock(acquire=Mock(return_value=False))
     monkeypatch.setattr(tasks, "AdvisoryLock", lambda _: lock)
     tasks.enqueue_scheduled("fixture", "catalog", "daily")
-    assert not session.scalars(select(CollectorRun)).all()
-    app.send_task.assert_not_called()
-    lock.close.assert_called_once()
+    run = session.scalars(select(CollectorRun)).one()
+    assert run.status == "queued"
+    app.send_task.assert_called_once_with(
+        "collect.run", args=[run.id], queue="collect", retry=False
+    )
+    lock.acquire.assert_not_called()
 
 
 @pytest.mark.parametrize("locked", [False, True])
