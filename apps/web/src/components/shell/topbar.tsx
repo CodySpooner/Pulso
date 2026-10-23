@@ -2,8 +2,10 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import type { FocusEvent } from "react";
 import { Menu, Search } from "lucide-react";
 
+import { DataHealthNavBadge } from "@/components/data-health/nav-badge";
 import { Logo } from "@/components/pulso/logo";
 import { ModKey } from "@/components/pulso/mod-key";
 import { StatusDot } from "@/components/pulso/status-dot";
@@ -37,6 +39,12 @@ function Breadcrumbs() {
   );
 }
 
+// The menu sheet and the palette hand focus back to their button on close. After a tap or click that focus isn't
+// :focus-visible, so this skips Radix's open-on-focus and leaves no tooltip over the page; keyboard focus still opens it.
+function keyboardFocusOnly(e: FocusEvent) {
+  if (!e.currentTarget.matches(":focus-visible")) e.preventDefault();
+}
+
 // Top bar (vault Design/App Shell & Navigation): breadcrumbs, search trigger, market and freshness chips,
 // workspace chip (/v1/me), theme toggle and the Clerk user menu. Below 1024px: menu button and the logo (the page h1 names the page).
 export function Topbar() {
@@ -44,9 +52,18 @@ export function Topbar() {
 
   return (
     <header className="sticky top-0 z-30 flex h-14 shrink-0 items-center gap-2 border-b border-border-subtle bg-background px-4 pt-[env(safe-area-inset-top)] md:px-6 lg:static lg:h-12 lg:pt-0">
-      <Button variant="ghost" size="icon" className="-ml-2 hidden md:inline-flex lg:hidden" aria-label="Open menu" onClick={openNav}>
-        <Menu strokeWidth={1.5} aria-hidden />
-      </Button>
+      <Tooltip>
+        <TooltipTrigger asChild onFocus={keyboardFocusOnly}>
+          <Button variant="ghost" size="icon" className="-ml-2 hidden md:inline-flex lg:hidden" onClick={openNav}>
+            <Menu strokeWidth={1.5} aria-hidden />
+            {/* imp-093: no sidebar or tab bar at 768–1023px, so the menu button carries the DH-3 count. Text, not
+                aria-label, so the badge's sr-only wording joins the name. */}
+            <span className="sr-only">Open menu</span>
+            <DataHealthNavBadge expandedClass="absolute -top-1.5 left-1/2 ml-1 flex" />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent align="start">Open menu</TooltipContent>
+      </Tooltip>
       <Link href="/" aria-label="Pulso, go to Daily Pulse" className="relative hit-area flex h-8 items-center rounded-md lg:hidden">
         <Logo />
       </Link>
@@ -63,9 +80,16 @@ export function Topbar() {
           <span className="truncate">Search or run a command…</span>
           <ModKey className="ml-auto" />
         </button>
-        <Button variant="ghost" size="icon" className="hidden md:inline-flex lg:hidden" aria-label="Open command palette" onClick={openPalette}>
-          <Search strokeWidth={1.5} aria-hidden />
-        </Button>
+        <Tooltip>
+          <TooltipTrigger asChild onFocus={keyboardFocusOnly}>
+            <Button variant="ghost" size="icon" className="hidden md:inline-flex lg:hidden" aria-label="Open command palette" onClick={openPalette}>
+              <Search strokeWidth={1.5} aria-hidden />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>
+            Open command palette <ModKey className="ml-1" />
+          </TooltipContent>
+        </Tooltip>
 
         <span className="hidden h-8 items-center rounded-md border border-border-subtle px-2 text-label font-medium whitespace-nowrap text-muted-foreground xl:inline-flex">
           US · USD

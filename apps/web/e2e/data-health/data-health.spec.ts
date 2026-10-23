@@ -380,6 +380,42 @@ test.describe("phone width", () => {
   });
 });
 
+// imp-093: at 768–1023px the sidebar is hidden and there is no tab bar, so the top bar's Open menu carries the DH-3 count.
+for (const width of [768, 1023]) {
+  test.describe(`tablet ${width}px`, () => {
+    test.use({ viewport: { width, height: 1024 } });
+    const menuButton = (page: Page) => page.getByRole("banner").getByRole("button", { name: /^Open menu/ });
+
+    test("Open menu shows the DH-3 count before the sheet opens", async ({ page }) => {
+      await mockAdminApi(page);
+      await page.goto("/");
+      const menu = menuButton(page);
+      await expect(menu).toHaveAccessibleName(/^Open menu\W+2 sources need attention$/);
+      await expect(menu.getByTestId("data-health-badge")).toBeVisible();
+      await expect(menu.getByTestId("data-health-badge")).toHaveText("2");
+      await expect(page.getByText(/need attention/).filter({ visible: true })).toHaveCount(1); // the hidden sidebar's copy isn't announced
+      await menu.click();
+      await expect(page.getByRole("dialog").getByRole("link", { name: /Data Health/ })).toHaveAccessibleName(/^Data Health\W+2 sources need attention$/);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
+    });
+
+    test("Open menu shows nothing when no source needs attention", async ({ page }) => {
+      await mockAdminApi(page, { sources: healthySources, host: { open_gaps: [], latest_gap_ends: {} } });
+      await page.goto("/");
+      await expect(page.getByText("Online · 4m ago").first()).toBeAttached(); // data has loaded
+      await expect(menuButton(page)).toHaveAccessibleName("Open menu");
+      await expect(menuButton(page).getByTestId("data-health-badge")).toHaveCount(0);
+    });
+
+    test("Open menu shows nothing while the API is down", async ({ page }) => {
+      await mockAdminApi(page, { down: true });
+      await page.goto(PAGE);
+      await expect(page.getByRole("heading", { level: 2, name: "Can't reach the API" })).toBeVisible({ timeout: 15_000 });
+      await expect(menuButton(page)).toHaveAccessibleName("Open menu");
+    });
+  });
+}
+
 // Keeps the fixture honest: the overdue source comes from an open gap, not from a status field.
 test("fixture sanity", () => {
   expect(sources.find((s) => s.key === "google_trends")?.status).toBe("active");
