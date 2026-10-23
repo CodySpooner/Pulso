@@ -139,7 +139,7 @@ def test_upload_timestamp_and_parser_correction_reuse_original_capture(
         body,
         settings=settings,
         mode=mode,
-        observed_for=date(2020, 1, 1),
+        observed_for=date(2020, 1, 1) if mode == "json" else None,
     )
     after = datetime.now(UTC)
     assert run.status == "success", run.error_message
@@ -163,10 +163,23 @@ def test_upload_timestamp_and_parser_correction_reuse_original_capture(
     assert all(row.captured_at.replace(tzinfo=UTC) == original_at for row in rows)
     assert payload.run_id == run.id and s3.put_object.call_count == 1
     assert session.scalar(select(func.count()).select_from(RawPayload)) == 1
+    observed = date(2000, 1, 1) if mode == "json" else None
     duplicate = commit_import(
-        session, "shopify_stores", body, settings=settings, mode=mode, observed_for=date(2000, 1, 1)
+        session, "shopify_stores", body, settings=settings, mode=mode, observed_for=observed
     )
     assert duplicate.status == "skipped" and s3.put_object.call_count == 1
+
+
+def test_csv_rejects_an_unused_observed_for(
+    session: Session, settings: Settings, s3: MagicMock
+) -> None:
+    # P1-22 #10: CSV rows use their own date column or the capture date, never this one.
+    run = commit_import(
+        session, "cj", template_csv("cj"), settings=settings, observed_for=date(2020, 1, 1)
+    )
+    assert (run.status, run.error_message) == ("failed", "ValueError")
+    assert not s3.put_object.called
+    assert session.scalar(select(func.count()).select_from(RawPayload)) == 0
 
 
 @pytest.mark.parametrize(
