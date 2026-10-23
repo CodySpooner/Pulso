@@ -1,7 +1,8 @@
 "use client";
 
+import { useState } from "react";
 import { useAuth } from "@clerk/nextjs";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQueryClient, type InfiniteData, type UseInfiniteQueryResult } from "@tanstack/react-query";
 
 import { $api } from "@/lib/api/client";
 import { authBypass } from "@/lib/auth";
@@ -41,12 +42,66 @@ export function useSourceRuns(key: string) {
     "get",
     "/v1/admin/runs",
     { params: { query: { source: key, limit: 20 } } },
-    { enabled: useApiReady(), pageParamName: "cursor", initialPageParam: undefined, getNextPageParam: (page) => page.next_cursor ?? undefined },
+    // null, not undefined: openapi-react-query sends an undefined page param as cursor=0, which the API rejects.
+    { enabled: useApiReady(), pageParamName: "cursor", initialPageParam: null, getNextPageParam: (page) => page.next_cursor },
   );
 }
 
 export function useRunDetail(runId: number) {
   return $api.useQuery("get", "/v1/admin/runs/{run_id}", { params: { path: { run_id: runId } } }, { enabled: useApiReady() });
+}
+
+/** A Load more page is the API's largest, so older rows take the fewest presses (DEC-166). */
+export const MORE_LIMIT = 200;
+
+/** Open-gap pages older than the host's first page, which ended at `cursor` (DEC-166). */
+export function useOlderGaps(cursor: string | null) {
+  const [asked, setAsked] = useState<string | null>();
+  const query = $api.useInfiniteQuery(
+    "get",
+    "/v1/admin/host",
+    { params: { query: { cursor: cursor ?? undefined, limit: MORE_LIMIT } } },
+    { enabled: useApiReady() && asked === cursor && cursor != null, pageParamName: "cursor", initialPageParam: cursor, getNextPageParam: (page) => page.next_cursor },
+  );
+  return loadMore(query, cursor, asked === cursor, () => setAsked(cursor));
+}
+
+/** A run's target pages after its first page, which ended at `cursor` (DEC-166). */
+export function useMoreTargets(runId: number, cursor: string | null) {
+  const [asked, setAsked] = useState<string | null>();
+  const query = $api.useInfiniteQuery(
+    "get",
+    "/v1/admin/runs/{run_id}",
+    { params: { path: { run_id: runId }, query: { cursor: cursor ?? undefined, limit: MORE_LIMIT } } },
+    { enabled: useApiReady() && asked === cursor && cursor != null, pageParamName: "cursor", initialPageParam: cursor, getNextPageParam: (page) => page.next_cursor },
+  );
+  return loadMore(query, cursor, asked === cursor, () => setAsked(cursor));
+}
+
+/**
+ * Load more after a first page the caller already holds (DEC-166): nothing loads until `load()`, then one page
+ * per call. The query key carries the cursor that first page ended on, so when a refetch moves it the extra
+ * pages drop away (`on` turns false) instead of skipping or repeating rows, and nothing older loads unasked.
+ */
+function loadMore<P extends { next_cursor: string | null }>(
+  query: UseInfiniteQueryResult<InfiniteData<P>, unknown>,
+  cursor: string | null,
+  on: boolean,
+  ask: () => void,
+) {
+  const pages = on ? (query.data?.pages ?? []) : [];
+  return {
+    on,
+    pages,
+    hasMore: pages.length > 0 ? query.hasNextPage : cursor != null,
+    pending: on && query.isFetching,
+    error: on && query.isError ? query.error : null,
+    load: () => {
+      if (!on) ask();
+      else if (query.isError && !query.isFetchNextPageError) void query.refetch();
+      else void query.fetchNextPage();
+    },
+  };
 }
 
 /** Refetches every admin query after a toggle or a Run now. */

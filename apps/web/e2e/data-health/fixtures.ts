@@ -94,6 +94,35 @@ export const host: S["HostHealth"] = {
   open_gaps: [gap("google_trends", "2026-10-22T10", 4), gap("google_trends", "2026-10-22T11", 3), gap("cj", "2026-10-19T06", 80, "run_failed")],
 };
 
+/** `count` open gaps newest first, two hours apart so none merge: each is its own range (imp-075). */
+export function manyGaps(count: number): S["Gap"][] {
+  return Array.from({ length: count }, (_, i) => gap("google_trends", `gap-${i}`, 3 + 2 * i));
+}
+
+/** `count` targets of one run in the API's (scope, target_id) order; every tenth failed (imp-075). */
+export function manyTargets(count: number): S["RunTarget"][] {
+  return Array.from({ length: count }, (_, i) => ({
+    scope: "store", target_id: `store-${String(i + 1).padStart(3, "0")}.example`, captured_at: at(5),
+    status: i % 10 === 9 ? "failed" : "success", raw_payload_id: i % 10 === 9 ? null : 20_000 + i,
+  }));
+}
+
+/** An API problem body (RFC 9457) for a failed request. */
+export const problem = (status: number, request_id: string) => ({
+  type: "about:blank", title: "Service Unavailable", status, code: "unavailable", detail: "The API is restarting. Try again.", request_id, errors: [],
+});
+
+/**
+ * The API's keyset pages (DEC-133): `limit` items (default 50) after the cursor, which names the previous page's
+ * last item (here by `key`), so a cursor moves when the rows before it change.
+ */
+function paged<T>(items: T[], url: URL, key: (item: T) => string): { items: T[]; next_cursor: string | null } {
+  const cursor = url.searchParams.get("cursor");
+  const start = cursor === null ? 0 : items.findIndex((item) => key(item) === cursor) + 1;
+  const end = start + Number(url.searchParams.get("limit") ?? 50);
+  return { items: items.slice(start, end), next_cursor: end < items.length ? key(items[end - 1]) : null };
+}
+
 /** 90 UTC days per collecting source: collection starts 40 days ago, with a few failures and gaps. */
 export function coverage(): S["CoverageDay"][] {
   const days: S["CoverageDay"][] = [];
@@ -172,6 +201,10 @@ export interface MockOptions {
   sources?: S["SourceHealth"][];
   host?: Partial<S["HostHealth"]>;
   coverage?: S["CoverageDay"][];
+  /** Every open gap, newest first, served in cursor pages; read per request, so a test can change it. */
+  gaps?: S["Gap"][];
+  /** Every target of each run, served in cursor pages; run target counts follow. */
+  targets?: S["RunTarget"][];
   /** Abort every admin call, as when the API (on the home PC) is down. */
   down?: boolean;
   /** Hold every response this long, to show loading skeletons. */
@@ -183,6 +216,9 @@ export async function mockAdminApi(page: Page, options: MockOptions = {}): Promi
   const calls: Call[] = [];
   const imported = new Map<string, number>(); // file bytes → the run that imported them
   const list = options.sources ?? sources;
+  const targets = options.targets;
+  const withTargets = <R extends S["Run"]>(r: R): R =>
+    targets ? { ...r, target_count: targets.length, successful_target_count: targets.filter((t) => t.status === "success").length } : r;
   await page.clock.setFixedTime(NOW);
   await page.route("**/api/v1/admin/**", async (route) => {
     const request = route.request();
@@ -196,16 +232,26 @@ export async function mockAdminApi(page: Page, options: MockOptions = {}): Promi
 
     const json = (body: unknown, status = 200) => route.fulfill({ status, json: body });
     if (method === "GET" && apiPath === "/v1/admin/sources") return json(list);
-    if (method === "GET" && apiPath === "/v1/admin/host") return json({ ...host, ...options.host });
+    if (method === "GET" && apiPath === "/v1/admin/host") {
+      if (!options.gaps) return json({ ...host, ...options.host });
+      const { items, next_cursor } = paged(options.gaps, url, (g) => g.slot_key);
+      return json({ ...host, ...options.host, open_gaps: items, next_cursor });
+    }
     if (method === "GET" && apiPath === "/v1/admin/coverage") return json(options.coverage ?? coverage());
     if (method === "GET" && apiPath === "/v1/admin/runs") {
       const source = url.searchParams.get("source");
       if (source === "backup") return json(backupRuns);
       const items = source === "shopify_stores" ? shopifyRuns : list.filter((s) => s.key === source && s.last_run).map((s) => s.last_run!);
-      return json({ items, next_cursor: null });
+      return json({ items: items.map(withTargets), next_cursor: null });
     }
     const runMatch = apiPath.match(/^\/v1\/admin\/runs\/(\d+)$/);
-    if (method === "GET" && runMatch) return json(runDetail(Number(runMatch[1])) ?? {}, runDetail(Number(runMatch[1])) ? 200 : 404);
+    if (method === "GET" && runMatch) {
+      const detail = runDetail(Number(runMatch[1]));
+      if (!detail) return json({}, 404);
+      if (!options.targets) return json(detail);
+      const { items, next_cursor } = paged(options.targets, url, (t) => t.target_id);
+      return json({ ...withTargets(detail), targets: items, next_cursor });
+    }
     const sourceMatch = apiPath.match(/^\/v1\/admin\/sources\/([^/]+)(\/run)?$/);
     const source = sourceMatch && list.find((s) => s.key === sourceMatch[1]);
     if (source && method === "PATCH") {

@@ -101,6 +101,20 @@ export function mergeGaps(gaps: Gap[]): GapRange[] {
   return ranges.sort((a, b) => Date.parse(b.start) - Date.parse(a.start));
 }
 
+/** The open-gaps footer (DEC-166): ranges on screen, and slots loaded until the 90-day history is complete. */
+export function gapsNote(shown: number, ranges: number, slots: number, more: boolean): string {
+  const showing = shown < ranges ? `Showing ${shown} of ${plural(ranges, "range")}` : `Showing ${plural(ranges, "range")}`;
+  return more
+    ? `${showing} · ${plural(slots, "missed slot")} loaded, older gaps not loaded yet`
+    : `${showing} · all ${plural(slots, "missed slot")} in the last 90 days`;
+}
+
+/** The run-targets footer (DEC-166), against the run's target count; targets landing after the count raise it. */
+export function targetsNote(shown: number, total: number, more: boolean): string {
+  if (!more) return `Showing all ${plural(shown, "target")}`;
+  return `Showing ${shown} of ${total > shown ? plural(total, "target") : `at least ${plural(shown + 1, "target")}`}`;
+}
+
 /** The last `count` UTC dates (YYYY-MM-DD), oldest first, ending today in UTC (DEC-031). */
 export function utcDays(count: number, now: number): string[] {
   const today = Math.floor(now / (24 * HOUR));
@@ -128,7 +142,7 @@ export type ImportResult = components["schemas"]["ImportResult"];
 /** The API's upload cap (decode_upload): a bigger file is refused before it is sent. */
 export const IMPORT_MAX_BYTES = 20 * 1024 * 1024;
 
-const plural = (n: number, one: string, many = `${one}s`) => `${n.toLocaleString("en-US")} ${n === 1 ? one : many}`;
+export const plural = (n: number, one: string, many = `${one}s`) => `${n.toLocaleString("en-US")} ${n === 1 ? one : many}`;
 
 /** The preselected import source: the first that can commit, so the common case needs no change. */
 export function defaultImportSource(sources: SourceHealth[]): SourceHealth | undefined {

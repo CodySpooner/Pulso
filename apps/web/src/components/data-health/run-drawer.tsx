@@ -10,9 +10,10 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { formatUtc } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
-import { useHost, useRunDetail, useSourceRuns } from "./api";
+import { useHost, useMoreTargets, useRunDetail, useSourceRuns } from "./api";
 import { Ago, Missing, PanelError, runStatus, StatePill } from "./atoms";
-import { skipNote, sourceState, type Run, type SourceHealth } from "./model";
+import { LoadMore } from "./load-more";
+import { skipNote, sourceState, targetsNote, type Run, type SourceHealth } from "./model";
 
 const RUNS_API = "GET /v1/admin/runs";
 
@@ -171,6 +172,8 @@ function RunItem({ run, now, defaultOpen }: { run: Run; now: number; defaultOpen
 
 function RunDetailView({ run }: { run: Run }) {
   const detail = useRunDetail(run.id);
+  const more = useMoreTargets(run.id, detail.data?.next_cursor ?? null);
+  const targets = detail.data ? [detail.data.targets, ...more.pages.map((p) => p.targets)].flat() : [];
   const skipped = run.error_code === "slot_suppressed"; // a skip, not a failure (imp-042)
   return (
     <div className="flex flex-col gap-3 border-t border-border-subtle px-3 py-3">
@@ -209,7 +212,7 @@ function RunDetailView({ run }: { run: Run }) {
         <Skeleton className="h-16 w-full" />
       ) : detail.isError ? (
         <PanelError title="Couldn't load targets" error={detail.error} retry={() => detail.refetch()} />
-      ) : detail.data.targets.length === 0 ? (
+      ) : targets.length === 0 ? (
         <p className="text-label text-muted-foreground">No targets recorded for this run.</p>
       ) : (
         <div role="region" aria-label={`Run ${run.id} targets`} tabIndex={0} className="relative overflow-x-auto">
@@ -222,7 +225,7 @@ function RunDetailView({ run }: { run: Run }) {
               </tr>
             </thead>
             <tbody>
-              {detail.data.targets.map((t) => (
+              {targets.map((t) => (
                 <tr key={`${t.scope} ${t.target_id}`} className="row-h-compact border-t border-border-subtle">
                   <td className="max-w-56 truncate pr-3" title={`${t.scope} · ${t.target_id} · captured ${formatUtc(t.captured_at)}`}>
                     <span className="text-subtle-foreground">{t.scope} · </span>
@@ -240,8 +243,18 @@ function RunDetailView({ run }: { run: Run }) {
               ))}
             </tbody>
           </table>
-          {detail.data.next_cursor && <p className="text-label text-subtle-foreground">Showing the first {detail.data.targets.length} targets. More targets are not shown.</p>}
         </div>
+      )}
+      {detail.isSuccess && detail.data.next_cursor && targets.length > 0 && (
+        <LoadMore
+          note={targetsNote(targets.length, (more.pages.at(-1) ?? detail.data).target_count, more.hasMore)}
+          label="Load more targets"
+          more={more.hasMore}
+          pending={more.pending}
+          error={more.error}
+          errorTitle="Couldn't load more targets"
+          onLoad={more.load}
+        />
       )}
     </div>
   );

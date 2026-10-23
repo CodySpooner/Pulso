@@ -6,12 +6,14 @@ import {
   commitBlocker,
   coverageRows,
   defaultImportSource,
+  gapsNote,
   hostState,
   importOutcome,
   mergeGaps,
   previewSummary,
   skipNote,
   sourceState,
+  targetsNote,
   utcDays,
   type Gap,
   type ImportPreview,
@@ -187,5 +189,21 @@ describe("CSV import flow", () => {
       tone: "error",
       text: "Import failed as run #42: the file has no valid rows.",
     });
+  });
+});
+
+// imp-075 (DEC-166): the Load more footers say what is on screen and never claim a total the API didn't give.
+describe("load more notes", () => {
+  test("gaps: the preview, a partial history and the complete 90 days", () => {
+    expect(gapsNote(8, 23, 50, true)).toBe("Showing 8 of 23 ranges · 50 missed slots loaded, older gaps not loaded yet");
+    expect(gapsNote(23, 23, 250, true)).toBe("Showing 23 ranges · 250 missed slots loaded, older gaps not loaded yet");
+    expect(gapsNote(8, 12, 12, false)).toBe("Showing 8 of 12 ranges · all 12 missed slots in the last 90 days");
+    expect(gapsNote(1, 1, 1_260, false)).toBe("Showing 1 range · all 1,260 missed slots in the last 90 days");
+  });
+
+  test("targets: counted against the run's total, which never reads below what is shown", () => {
+    expect(targetsNote(50, 260, true)).toBe("Showing 50 of 260 targets");
+    expect(targetsNote(260, 260, false)).toBe("Showing all 260 targets");
+    expect(targetsNote(250, 240, true)).toBe("Showing 250 of at least 251 targets"); // targets landed after the count
   });
 });
