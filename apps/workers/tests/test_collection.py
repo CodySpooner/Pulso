@@ -1,14 +1,11 @@
-from collections.abc import Iterator
 from datetime import UTC, datetime
 from unittest.mock import Mock
 
 import pytest
 from celery.exceptions import SoftTimeLimitExceeded  # type: ignore[import-untyped]
-from sqlalchemy import JSON, Integer, MetaData, create_engine, select, text
+from sqlalchemy import select
 from sqlalchemy.orm import Session
-from sqlalchemy.schema import DefaultClause
 
-from pulso_core.db import Base
 from pulso_core.logging import JsonFormatter
 from pulso_core.models import CollectorRun, RawPayload, Source
 from pulso_sources import storage
@@ -17,26 +14,6 @@ from pulso_sources.framework import fetch as framework_fetch
 from pulso_workers import tasks
 from pulso_workers.beat import LockedScheduler
 from pulso_workers.celery_app import app
-
-
-@pytest.fixture
-def session(monkeypatch: pytest.MonkeyPatch) -> Iterator[Session]:
-    metadata = MetaData()
-    engine = create_engine("sqlite://")
-    for name in ("sources", "collector_runs", "raw_payloads", "collector_run_targets"):
-        table = Base.metadata.tables[name].to_metadata(metadata)
-        for column in table.columns:
-            if column.name == "id":
-                column.type = Integer()
-            if isinstance(column.type, JSON):
-                column.type, column.server_default = JSON(), DefaultClause(text("'{}'"))
-        table.create(engine)
-    with Session(engine) as session:
-        session.add(Source(id=1, key="fixture", name="Fixture", type="api", phase=1, enabled=True))
-        session.commit()
-        monkeypatch.setattr(tasks, "get_session", lambda: Session(engine))
-        yield session
-    engine.dispose()
 
 
 @pytest.mark.parametrize("existing", [None, "queued", "running", "success", "disabled", "off"])

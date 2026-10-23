@@ -135,6 +135,7 @@ def test_second_beat_exits_and_dropped_session_stops_ticks(
 
     monkeypatch.setenv("PULSO_SCHEDULER", "on")
     monkeypatch.setattr(locks, "get_engine", lambda: db_engine)
+    monkeypatch.setattr(app, "send_task", Mock())
     key = 65536 + uuid4().int % (2**31 - 65536)
     monkeypatch.setattr(beat, "AdvisoryLock", lambda _: locks.AdvisoryLock(key))
     first, second = (beat.LockedScheduler(app=app, lazy=True) for _ in range(2))

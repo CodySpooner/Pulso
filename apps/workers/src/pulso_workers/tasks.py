@@ -36,6 +36,47 @@ def publish_run(run_id: int) -> None:
     app.send_task("collect.run", args=[run_id], queue="collect", retry=False)
 
 
+def defer_busy(session: Session, run_id: int) -> None:
+    run = session.scalar(
+        select(CollectorRun)
+        .where(CollectorRun.id == run_id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
+    if run is None or run.status != "queued":
+        return
+    retries = int(run.params.get("lock_retries", 0))
+    settings = get_settings()
+    if retries >= settings.collector_task_max_retries:
+        run.status, run.finished_at = "failed", datetime.now(UTC)
+        run.error_code = run.error_message = "source_lock_busy"
+        session.commit()
+        return
+    run.params = {**run.params, "lock_retries": retries + 1}
+    session.commit()
+    try:
+        app.send_task(
+            "collect.run",
+            args=[run_id],
+            queue="collect",
+            retry=False,
+            countdown=settings.collector_task_retry_seconds,
+        )
+    except Exception as exc:
+        session.execute(
+            update(CollectorRun)
+            .where(CollectorRun.id == run_id, CollectorRun.status == "queued")
+            .values(
+                status="failed",
+                finished_at=datetime.now(UTC),
+                error_code="publish_failed",
+                error_message="Publish failed",
+            )
+        )
+        session.commit()
+        logger.error("retry_publish_failed", extra={"error_type": type(exc).__name__})
+
+
 def enqueue_scheduled(source_key: str, job: str, cadence: Literal["daily", "weekly"]) -> None:
     if not get_settings().pulso_scheduler:
         return
@@ -43,23 +84,36 @@ def enqueue_scheduled(source_key: str, job: str, cadence: Literal["daily", "week
         source = session.scalar(select(Source).where(Source.key == source_key, Source.enabled))
         if source is None:
             return
-        slot = slot_key(job, datetime.now(UTC), cadence=cadence)
-        if session.scalar(
-            select(CollectorRun.id)
-            .where(
-                CollectorRun.source_id == source.id,
-                (CollectorRun.status.in_(["queued", "running"]))
-                | ((CollectorRun.slot_key == slot) & (CollectorRun.status == "success")),
-            )
-            .limit(1)
-        ):
-            return
+        lock = AdvisoryLock(source.id)
         try:
-            enqueue_run(
-                session, source_id=source.id, trigger="schedule", slot_key=slot, publish=publish_run
-            )
-        except Exception as exc:
-            logger.error("run_publish_failed", extra={"error_type": type(exc).__name__})
+            if not lock.acquire():
+                return
+            session.refresh(source)
+            if not source.enabled:
+                return
+            slot = slot_key(job, datetime.now(UTC), cadence=cadence)
+            if session.scalar(
+                select(CollectorRun.id)
+                .where(
+                    CollectorRun.source_id == source.id,
+                    (CollectorRun.status.in_(["queued", "running"]))
+                    | ((CollectorRun.slot_key == slot) & (CollectorRun.status == "success")),
+                )
+                .limit(1)
+            ):
+                return
+            try:
+                enqueue_run(
+                    session,
+                    source_id=source.id,
+                    trigger="schedule",
+                    slot_key=slot,
+                    publish=publish_run,
+                )
+            except Exception as exc:
+                logger.error("run_publish_failed", extra={"error_type": type(exc).__name__})
+        finally:
+            lock.close()
 
 
 def collect_run(run_id: int) -> None:
@@ -68,8 +122,11 @@ def collect_run(run_id: int) -> None:
         if run.status != "queued":
             return
         lock = AdvisoryLock(run.source_id)
+        acquired = False
         try:
-            if not lock.acquire():
+            acquired = lock.acquire()
+            if not acquired:
+                defer_busy(session, run_id)
                 return
             session.refresh(run)
             if run.status != "queued":
@@ -105,7 +162,7 @@ def collect_run(run_id: int) -> None:
                 update(CollectorRun)
                 .where(
                     CollectorRun.id == run_id,
-                    CollectorRun.status.in_(["queued", "running"]),
+                    CollectorRun.status.in_(["queued", "running"] if acquired else ["queued"]),
                 )
                 .values(
                     status="failed",
