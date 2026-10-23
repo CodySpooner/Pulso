@@ -128,6 +128,21 @@ test("a missed slot off the loaded gap page reads its end from the gap summary",
   await expect(page.getByRole("dialog", { name: "Google Trends" })).toContainText("Missed a slot ending Oct 22, 12:00 UTC");
 });
 
+test("a cross-midnight slot keeps each phrase whole and the table still fits at 1440px", async ({ page }) => {
+  // p1-53: Google Trends' gaps 11 h earlier, so the slot runs Oct 21, 23:00 – Oct 22, 01:00.
+  const earlier = (iso: string) => new Date(Date.parse(iso) - 11 * 3_600_000).toISOString();
+  const open_gaps = host.open_gaps.map((g) => (g.source_key === "google_trends" ? { ...g, slot_start: earlier(g.slot_start), slot_end: earlier(g.slot_end) } : g));
+  await load(page, 1440, "dark", { host: { open_gaps, latest_gap_ends: { ...host.latest_gap_ends, google_trends: earlier(host.latest_gap_ends.google_trends!) } } });
+  const link = row(page, 1440, "Google Trends").getByRole("link", { name: "Missed Oct 21, 23:00 – Oct 22, 01:00 UTC Host offline (in Open gaps)" });
+  await expect(link).toBeVisible();
+  // A line may break between the phrases, never inside one, whatever the font's widths.
+  const phrases = link.locator(".whitespace-nowrap");
+  await expect(phrases).toHaveText(["Missed Oct 21, 23:00 –", "Oct 22, 01:00 UTC"]);
+  for (const phrase of await phrases.all()) expect(await phrase.evaluate((el) => el.getClientRects().length)).toBe(1);
+  const region = page.getByRole("region", { name: "Sources table" });
+  expect(await region.evaluate((el) => el.scrollWidth - el.clientWidth)).toBe(0);
+});
+
 /** Whether the element owns the 44×44 px square around its centre, as e2e/touch-targets.spec.ts probes it (A11Y-02). */
 const ownsSquare = (el: Locator) =>
   el.evaluate((node) => {
