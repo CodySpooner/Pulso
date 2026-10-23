@@ -228,7 +228,7 @@ test.describe("states", () => {
   test("loading shows skeletons, then content", async ({ page }) => {
     await mockAdminApi(page, { delayMs: 1500 });
     await open(page);
-    await expect(page.getByRole("region", { name: "Sources", exact: true }).locator('[aria-hidden="true"].bg-skeleton').first()).toBeVisible();
+    await expect(page.getByRole("region", { name: "Sources", exact: true }).locator('[aria-hidden="true"].bg-skeleton:visible').first()).toBeVisible();
     await expect(page.getByRole("button", { name: "CJ Dropshipping: open runs" }).first()).toBeVisible({ timeout: 10_000 });
   });
 
