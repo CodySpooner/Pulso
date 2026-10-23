@@ -84,7 +84,7 @@ function DrawerBody({ source, now, onGaps }: { source: SourceHealth; now: number
         </div>
         {/* Why it is Overdue while its newest run may read Succeeded (imp-124). The link closes the drawer first. */}
         {missed && (
-          <p className="text-data text-muted-foreground">
+          <p className="text-data text-foreground">
             <GapsLink
               missed={missed}
               onClick={(e) => {
