@@ -27,6 +27,8 @@ class Plan:
     targets: Sequence[Target]
     wall_time_seconds: int
     request_hook: RequestHook | None = None
+    collector_max_retries: int | None = None
+    finalize: Callable[[Session, CollectorRun], None] | None = None
 
 
 PLANS: dict[str, Callable[[Session, Source, str], Plan]] = {}
@@ -185,16 +187,23 @@ def collect_run(run_id: int) -> None:
             if not 0 < plan.wall_time_seconds < get_settings().collect_soft_time_limit_seconds:
                 raise ValueError("Plan budget must be positive and below soft limit")
             session.commit()
-            execute_run(
+            settings = get_settings()
+            if plan.collector_max_retries is not None:
+                settings = settings.model_copy(
+                    update={"collector_max_retries": plan.collector_max_retries}
+                )
+            result = execute_run(
                 session,
                 run_id,
                 plan.adapter,
                 plan.targets,
-                settings=get_settings(),
+                settings=settings,
                 wall_time_seconds=plan.wall_time_seconds,
                 request_hook=plan.request_hook,
                 stop_exceptions=(SoftTimeLimitExceeded,),
             )
+            if plan.finalize is not None:
+                plan.finalize(session, result)
         except Exception as exc:
             session.rollback()
             session.execute(
