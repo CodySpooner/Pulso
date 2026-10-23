@@ -6,6 +6,7 @@ import { useState } from "react";
 import { LayoutGroup } from "motion/react";
 import * as m from "motion/react-m";
 
+import { DataHealthNavBadge } from "@/components/data-health/nav-badge";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { spring } from "@/lib/motion";
 import { isBuilt, navGroups, resolveRoute, type NavItem } from "@/lib/nav";
@@ -69,6 +70,9 @@ export function NavLink({
           <span aria-hidden>P{item.phase}</span>
           <span className="sr-only">, arrives in Phase {item.phase}</span>
         </span>
+      )}
+      {built && item.href === "/admin/data-health" && (
+        <DataHealthNavBadge expandedClass={variant === "sidebar" ? whenExpanded : "flex"} railClass={variant === "sidebar" ? whenRail : undefined} />
       )}
     </Link>
   );
