@@ -1,7 +1,7 @@
 import io
 import logging
 import time
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -20,6 +20,7 @@ from sqlalchemy import (
     String,
     Table,
     create_engine,
+    func,
     insert,
     select,
     text,
@@ -46,7 +47,16 @@ from pulso_core.models import (
     SourceEvent,
 )
 from pulso_core.settings import Settings, get_settings
-from pulso_sources.framework import Request, Response, Target, enqueue_run, execute_run
+from pulso_sources import storage
+from pulso_sources.framework import (
+    Request,
+    Response,
+    Target,
+    UpsertStats,
+    enqueue_run,
+    execute_run,
+)
+from pulso_sources.imports import ADAPTERS, ImportData, Row, template_csv
 
 NOW = datetime.now(UTC).replace(microsecond=0)
 PRINCIPAL = Principal(uuid4(), uuid4())
@@ -65,6 +75,9 @@ ROUTES = [
     ("GET", "/v1/admin/runs/1"),
     ("GET", "/v1/admin/coverage"),
     ("GET", "/v1/admin/host"),
+    ("GET", "/v1/admin/sources/cj/import/template"),
+    ("POST", "/v1/admin/sources/cj/import/preview"),
+    ("POST", "/v1/admin/sources/cj/import"),
 ]
 
 
@@ -432,3 +445,106 @@ def test_host_reports_latest_heartbeat_and_open_gaps(admin: TestClient, engine: 
         tzinfo=None
     )
     assert [(g["source_key"], g["slot_key"]) for g in host["open_gaps"]] == [("cj", "catalog:open")]
+
+
+class ImportAdapter:
+    """Accepts the validated rows and writes no observations (the source packages own those)."""
+
+    parser_version = "1"
+
+    def __init__(self, data: ImportData) -> None:
+        self.data = data
+
+    def fetch(self, request: Request, *, user_agent: str) -> Response:
+        raise AssertionError("imports never fetch")
+
+    def parse(self, body: bytes) -> list[Row]:
+        assert self.data.csv is not None
+        return self.data.csv.rows
+
+    def upsert(
+        self, session: Session, records: Sequence[Row], payload: RawPayload, *, parser_version: str
+    ) -> UpsertStats:
+        return UpsertStats(inserted=len(records))
+
+
+def test_import_template_and_preview_write_nothing(admin: TestClient, engine: Engine) -> None:
+    template = admin.get("/v1/admin/sources/google_trends/import/template")
+    assert template.headers["content-type"].startswith("text/csv")
+    assert template.content == template_csv("google_trends")
+    assert admin.get("/v1/admin/sources/backup/import/template").status_code == 404
+    keys = {s["key"]: s["csv_import"] for s in admin.get("/v1/admin/sources").json()}
+    assert keys == {
+        "shopify_stores": "preview_only",
+        "cj": "preview_only",
+        "google_trends": "preview_only",
+        "fx_frankfurter": "ready",
+        "backup": None,
+    }
+
+    def preview(key: str, body: bytes) -> dict[str, Any]:
+        response = admin.post(
+            f"/v1/admin/sources/{key}/import/preview",
+            content=body,
+            headers={"Content-Type": "application/octet-stream"},
+        )
+        result: dict[str, Any] = response.json()
+        return result
+
+    body = template.content + b"other,2026-13-01,50,US,manual\n\n"
+    checked = preview("google_trends", body)
+    assert {k: checked[k] for k in ("valid", "invalid", "skipped", "error_count")} == {
+        "valid": 1,
+        "invalid": 1,
+        "skipped": 1,
+        "error_count": 1,
+    }
+    assert checked["errors"] == [{"row": 3, "column": "date", "message": "Invalid date value"}]
+    assert checked["rows"][0]["keyword"] == "example keyword"
+
+    many = template_csv("google_trends") + b"k,bad,50,US,x\n" * 150
+    capped = preview("google_trends", many)
+    assert (len(capped["errors"]), capped["error_count"], capped["invalid"]) == (100, 150, 150)
+    twice = template_csv("cj") + template_csv("cj").splitlines(keepends=True)[1]
+    duplicate = preview("cj", twice)  # rejects the whole file, naming both rows
+    assert (duplicate["valid"], duplicate["invalid"]) == (0, 2)
+    assert preview("cj", b"nope\n1\n")["code"] == "invalid_file"
+    assert preview("cj", b"name\xff\n")["detail"] == "Save the file as CSV UTF-8."
+    with Session(engine) as session:
+        assert session.scalar(select(func.count()).select_from(CollectorRun)) == 0
+        assert session.scalar(select(func.count()).select_from(RawPayload)) == 0
+
+
+def test_import_commit_then_repeat_skips(
+    admin: TestClient, engine: Engine, settings: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    objects: dict[str, bytes] = {}
+    s3 = Mock()
+    s3.put_object.side_effect = lambda **kw: objects.__setitem__(kw["Key"], kw["Body"])
+    s3.get_object.side_effect = lambda **kw: {"Body": io.BytesIO(objects[kw["Key"]])}
+    monkeypatch.setattr(storage, "make_client", lambda _: s3)
+    monkeypatch.setattr(storage, "get_settings", lambda: settings)
+    monkeypatch.setitem(ADAPTERS, "google_trends", ImportAdapter)
+    upload = {"headers": {"Content-Type": "application/octet-stream"}}
+    body = template_csv("google_trends") + b"other,2026-13-01,50,US,manual\n"
+
+    first = admin.post("/v1/admin/sources/google_trends/import", content=body, **upload).json()
+    assert (first["run"]["status"], first["run"]["trigger"]) == ("success", "csv")
+    assert first["run"]["rows_inserted"] == 1 and first["original_run_id"] is None
+    assert first["error_count"] == 1 and first["errors"][0]["row"] == 3
+    repeat = admin.post("/v1/admin/sources/google_trends/import", content=body, **upload).json()
+    assert (repeat["run"]["status"], repeat["in_progress"]) == ("skipped", False)
+    assert (repeat["raw_payload_id"], repeat["original_run_id"]) == (
+        first["raw_payload_id"],
+        first["run"]["id"],
+    )
+    with Session(engine) as session:
+        assert session.scalar(select(func.count()).select_from(RawPayload)) == 1
+    assert s3.put_object.call_count == 1
+
+    json_cj = admin.post(
+        "/v1/admin/sources/cj/import", params={"mode": "json"}, content=b"{}", **upload
+    )
+    assert json_cj.json()["code"] == "invalid_import"
+    unbuilt = admin.post("/v1/admin/sources/cj/import", content=template_csv("cj"), **upload)
+    assert (unbuilt.status_code, unbuilt.json()["code"]) == (409, "import_unavailable")

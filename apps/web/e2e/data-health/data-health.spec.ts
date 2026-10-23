@@ -49,7 +49,7 @@ test("renders every DH-1 field from fixtures", async ({ page }) => {
   const gaps = page.getByRole("region", { name: "Open gaps" });
   await expect(gaps.getByRole("row", { name: /Google Trends/ })).toContainText("Host offline");
   await expect(gaps.getByRole("row", { name: /Google Trends/ })).toContainText("2");
-  await expect(page.getByRole("heading", { name: "Import arrives with P1-11b" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Import arrives with P1-11c" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Choose CSV…" })).toBeDisabled();
 
   // Run drawer: error text and raw-payload ids for the newest run, plus the source's remaining fields.

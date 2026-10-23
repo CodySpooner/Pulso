@@ -1,6 +1,7 @@
 """Data Health admin shapes (DH-1). Null means unknown: the UI shows "no source yet", never 0."""
 
 from datetime import date, datetime
+from decimal import Decimal
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -66,6 +67,9 @@ class SourceHealth(BaseModel):
     approved_targets: int | None
     quota_used: int | None = Field(None, description="Null until quota usage is persisted.")
     quota_limit: int | None = None
+    csv_import: Literal["ready", "preview_only"] | None = Field(
+        description="Null: no CSV template. preview_only: commit waits for its import adapter."
+    )
 
 
 class SourcePatch(BaseModel):
@@ -103,3 +107,30 @@ class HostHealth(BaseModel):
     live_runs_allowed: bool = Field(description="False: Run now answers 409 (D2).")
     latest_heartbeat: Heartbeat | None
     open_gaps: list[Gap] = Field(description="Unfilled gaps starting in the last 90 days.")
+
+
+class RowError(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    row: int
+    column: str
+    message: str
+
+
+class ImportPreview(BaseModel):
+    rows: list[dict[str, bool | int | Decimal | date | str]] = Field(
+        description="First 20 valid rows; nothing is written."
+    )
+    valid: int
+    invalid: int
+    skipped: int = Field(description="Blank lines.")
+    error_count: int
+    errors: list[RowError] = Field(description="First 100 row errors.")
+
+
+class ImportResult(BaseModel):
+    run: Run
+    raw_payload_id: int | None
+    original_run_id: int | None = Field(description="Set when a repeat upload was skipped.")
+    in_progress: bool = Field(description="Skipped because original_run_id is still importing.")
+    error_count: int
+    errors: list[RowError] = Field(description="First 100 row errors.")

@@ -2,13 +2,14 @@
 
 import logging
 from collections.abc import Callable
-from datetime import UTC, datetime, timedelta
-from typing import Annotated
+from datetime import UTC, date, datetime, timedelta
+from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Body, Depends, Query
 from sqlalchemy import Date, Integer, String, column, func, select, table
 from sqlalchemy.orm import Session
 from sqlalchemy.sql import ColumnElement
+from starlette.responses import Response
 
 from pulso_api.auth import Principal, current_principal
 from pulso_api.dependencies import get_db
@@ -18,6 +19,9 @@ from pulso_api.schemas.admin import (
     Gap,
     Heartbeat,
     HostHealth,
+    ImportPreview,
+    ImportResult,
+    RowError,
     Run,
     RunDetail,
     RunPage,
@@ -36,11 +40,17 @@ from pulso_core.models import (
 from pulso_core.settings import Settings, get_settings
 from pulso_core.worktree import is_linked_worktree
 from pulso_sources.framework import enqueue_run
+from pulso_sources.imports import ADAPTERS, TEMPLATES, commit_import, parse_csv, template_csv
+from pulso_sources.imports.csv import DuplicateEntityRows, ParsedCSV
 from pulso_sources.seed_approval import SEED_SOURCES, approved_targets, is_approved_seed
 
 logger = logging.getLogger("pulso.api")
 router = APIRouter(prefix="/v1/admin", dependencies=[Depends(current_principal)])
+MAX_ERRORS = 100  # first row errors returned; counts stay complete (P1-22 finding 4)
 DB = Annotated[Session, Depends(get_db)]
+Upload = Annotated[
+    bytes, Body(media_type="application/octet-stream", description="The file's raw bytes.")
+]
 COVERAGE = table(
     "source_daily_coverage",
     column("source_id", Integer),
@@ -90,6 +100,12 @@ def get_source(session: Session, key: str) -> Source:
     return source
 
 
+def csv_import(key: str) -> Literal["ready", "preview_only"] | None:
+    if key not in TEMPLATES:
+        return None
+    return "ready" if key in ADAPTERS else "preview_only"
+
+
 def source_health(session: Session) -> list[SourceHealth]:
     latest = select(func.max(CollectorRun.id)).group_by(CollectorRun.source_id)
     last_runs = {run.source_key: run for run in runs(session, CollectorRun.id.in_(latest))}
@@ -124,6 +140,7 @@ def source_health(session: Session) -> list[SourceHealth]:
                 freshness=freshness.get(source.id),
                 seed_approved=isinstance(seed, dict) and is_approved_seed(seed) if seeded else None,
                 approved_targets=len(approved_targets(session, source.key)) if seeded else None,
+                csv_import=csv_import(source.key),
             )
         )
     return result
@@ -251,4 +268,78 @@ def get_host(session: DB, settings: Annotated[Settings, Depends(get_settings)]) 
         live_runs_allowed=live_runs_allowed(settings),
         latest_heartbeat=Heartbeat.model_validate(heartbeat) if heartbeat else None,
         open_gaps=[Gap.model_validate(dict(row._mapping)) for row in gaps],
+    )
+
+
+def import_source(session: Session, key: str) -> Source:
+    source = get_source(session, key)
+    if key not in TEMPLATES:
+        raise APIError(404, "not_found", "This source has no import template.")
+    return source
+
+
+@router.get(
+    "/sources/{key}/import/template",
+    response_class=Response,
+    responses={200: {"content": {"text/csv": {"schema": {"type": "string"}}}}},
+)
+def get_import_template(key: str, session: DB) -> Response:
+    import_source(session, key)
+    return Response(
+        template_csv(key),
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{key}-template.csv"'},
+    )
+
+
+@router.post("/sources/{key}/import/preview", response_model=ImportPreview)
+def preview_import(key: str, body: Upload, session: DB) -> ImportPreview:
+    source = import_source(session, key)
+    # ponytail: validation-only until P1-07–09 register read-only classifiers for preview_csv.
+    try:
+        parsed = parse_csv(key, body, mapping=source.config.get("csv_mapping"))
+    except DuplicateEntityRows as exc:  # the whole file is rejected; the errors name the rows
+        parsed = ParsedCSV([], exc.errors, 0)
+    except ValueError as exc:
+        utf8 = isinstance(exc, UnicodeDecodeError)
+        raise APIError(
+            422, "invalid_file", "Save the file as CSV UTF-8." if utf8 else str(exc)
+        ) from exc
+    return ImportPreview(
+        rows=parsed.rows[:20],
+        valid=len(parsed.rows),
+        invalid=len({error.row for error in parsed.errors}),
+        skipped=parsed.skipped,
+        error_count=len(parsed.errors),
+        errors=[RowError.model_validate(error) for error in parsed.errors[:MAX_ERRORS]],
+    )
+
+
+@router.post("/sources/{key}/import", response_model=ImportResult)
+def commit_source_import(
+    key: str,
+    body: Upload,
+    session: DB,
+    settings: Annotated[Settings, Depends(get_settings)],
+    mode: Literal["csv", "json"] = "csv",
+    observed_for: date | None = None,
+) -> ImportResult:
+    import_source(session, key)
+    if mode == "json" and (key != "shopify_stores" or observed_for is None):
+        raise APIError(
+            422, "invalid_import", "JSON imports are Shopify-only and need observed_for."
+        )
+    if key not in ADAPTERS:  # otherwise commit_import would record a KeyError run
+        raise APIError(
+            409, "import_unavailable", "This source has no import adapter yet; preview works."
+        )
+    run = commit_import(session, key, body, settings=settings, mode=mode, observed_for=observed_for)
+    params = run.params or {}
+    return ImportResult(
+        run=runs(session, CollectorRun.id == run.id)[0],
+        raw_payload_id=params.get("raw_payload_id"),
+        original_run_id=params.get("original_run_id"),
+        in_progress=params.get("reason") == "in_progress",
+        error_count=params.get("error_count", 0),
+        errors=params.get("errors", [])[:MAX_ERRORS],
     )

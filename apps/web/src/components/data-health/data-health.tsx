@@ -98,7 +98,7 @@ export function DataHealth() {
   );
 }
 
-// P1-11b (the import endpoints) isn't merged, so the schema has no import operation: a designed disabled state.
+// The import endpoints are in the API (P1-11b, DEC-117); the upload flow lands with P1-11c: a designed disabled state.
 function ImportPanel() {
   return (
     <Panel id="import" title="CSV import" note="Every source has a CSV fallback (§4.2)">
@@ -107,10 +107,10 @@ function ImportPanel() {
           <Upload className="size-5" aria-hidden />
         </div>
         <div className="flex flex-col gap-0.5">
-          <h3 className="text-body font-medium text-foreground">Import arrives with P1-11b</h3>
+          <h3 className="text-body font-medium text-foreground">Import arrives with P1-11c</h3>
           <p className="max-w-[72ch] text-data text-muted-foreground">
-            The template, preview and commit endpoints aren&apos;t in this build&apos;s API yet. Once they are, you drop a CSV here and see
-            the preview before anything is written.
+            The template, preview and commit endpoints are ready; the upload flow comes next. Then you drop a CSV here and see the
+            preview before anything is written.
           </p>
         </div>
         <Button variant="secondary" size="sm" disabled className="sm:ml-auto">

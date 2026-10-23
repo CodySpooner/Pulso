@@ -29,7 +29,7 @@ function source(over: Partial<SourceHealth> = {}): SourceHealth {
   return {
     key: "cj", name: "CJ Dropshipping", type: "official_api", phase: 1, enabled: true, status: "active",
     disabled_reason: null, disabled_at: null, retry_not_before: null, last_status_code: 200, last_run: run(),
-    freshness: ago(1.9), seed_approved: true, approved_targets: 3, quota_used: null, quota_limit: null, ...over,
+    freshness: ago(1.9), seed_approved: true, approved_targets: 3, quota_used: null, quota_limit: null, csv_import: null, ...over,
   };
 }
 
