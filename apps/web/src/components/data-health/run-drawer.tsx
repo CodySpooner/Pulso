@@ -37,6 +37,11 @@ export function RunDrawer({
       <SheetContent
         side="right"
         closeLabel="Close runs"
+        // Focus the drawer itself: its first control is the status pill, and focus would open the pill's hint.
+        onOpenAutoFocus={(e) => {
+          e.preventDefault();
+          (e.currentTarget as HTMLElement).focus();
+        }}
         onCloseAutoFocus={(e) => {
           e.preventDefault();
           returnFocusRef.current?.focus();

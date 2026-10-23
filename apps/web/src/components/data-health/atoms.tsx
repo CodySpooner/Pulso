@@ -12,9 +12,12 @@ import {
   type LucideIcon,
 } from "lucide-react";
 
+import { useRef, useState } from "react";
+
 import { CopyButton } from "@/components/pulso/copy-button";
 import { EmptyState } from "@/components/pulso/empty-state";
 import { Button } from "@/components/ui/button";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { isProblem } from "@/lib/api/client";
 import { formatAgo, formatUtc } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -60,14 +63,31 @@ export const sourceStates: Record<SourceState, { label: string; icon: LucideIcon
   healthy: { label: "Healthy", icon: CircleCheck, tone: "neutral", hint: "The last run succeeded." },
 };
 
+/** A source's state with its hint on hover, keyboard focus and tap (imp-073). The hint is click-through, so an
+ * open one never covers a control. */
 export function StatePill({ state }: { state: SourceState }) {
   const s = sourceStates[state];
+  const [open, setOpen] = useState(false);
+  const pressedOpen = useRef<boolean | null>(null); // Radix closes on pointerdown, so the click needs the state before it
   return (
-    <span title={s.hint}>
-      <Pill tone={s.tone} icon={s.icon}>
-        {s.label}
-      </Pill>
-    </span>
+    <Tooltip open={open} onOpenChange={setOpen}>
+      <TooltipTrigger
+        className="relative hit-area inline-flex rounded-sm"
+        onPointerDown={() => {
+          pressedOpen.current = open;
+        }}
+        onClick={(e) => {
+          e.preventDefault(); // Radix closes on click; a tap, click or Enter toggles instead
+          setOpen(!(pressedOpen.current ?? open));
+          pressedOpen.current = null;
+        }}
+      >
+        <Pill tone={s.tone} icon={s.icon}>
+          {s.label}
+        </Pill>
+      </TooltipTrigger>
+      <TooltipContent className="pointer-events-none">{s.hint}</TooltipContent>
+    </Tooltip>
   );
 }
 

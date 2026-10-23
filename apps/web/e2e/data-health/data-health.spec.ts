@@ -281,8 +281,69 @@ test("keyboard: open a source's runs and close them again", async ({ page }) => 
   await expect(name).toBeFocused();
 });
 
+// imp-073: a status pill's hint opens on keyboard focus, not just on hover.
+test("keyboard: every status pill shows its hint on focus", async ({ page }) => {
+  await mockAdminApi(page);
+  await open(page);
+  const table = page.getByRole("region", { name: "Sources table" });
+  for (const [name, status, hint] of [
+    ["Shopify stores", "Blocked", "The block rule tripped and the adapter turned itself off (§4.2)."],
+    ["CJ Dropshipping", "Healthy", "The last run succeeded."],
+    ["Google Trends", "Overdue", "A scheduled run in the last 24 h was missed and not caught up."],
+    ["Frankfurter FX", "Disabled", "Disabled by the owner. Nothing is collected."],
+  ]) {
+    await table.getByRole("button", { name: `${name}: open runs` }).focus();
+    await page.keyboard.press("Tab");
+    const pill = table.getByRole("row", { name: new RegExp(name) }).getByRole("button", { name: status, exact: true });
+    await expect(pill).toBeFocused();
+    expect(await pill.evaluate((el) => getComputedStyle(el).outlineStyle)).not.toBe("none");
+    await expect(page.getByRole("tooltip", { name: hint })).toBeVisible();
+    await expect(pill).toHaveAccessibleDescription(hint);
+  }
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("tooltip")).toHaveCount(0);
+
+  // Opening the drawer focuses the drawer, not its pill, so no hint pops open uninvited; Tab reaches it.
+  await table.getByRole("button", { name: "CJ Dropshipping: open runs" }).click();
+  const drawer = page.getByRole("dialog", { name: "CJ Dropshipping" });
+  await expect(drawer).toBeFocused();
+  await expect(page.getByRole("tooltip")).toHaveCount(0);
+  await page.keyboard.press("Tab");
+  await expect(drawer.getByRole("button", { name: "Healthy", exact: true })).toBeFocused();
+  await expect(page.getByRole("tooltip", { name: "The last run succeeded." })).toBeVisible();
+});
+
 test.describe("phone width", () => {
   test.use({ viewport: { width: 375, height: 812 } });
+
+  test.describe("touch", () => {
+    test.use({ hasTouch: true });
+
+    test("a tap toggles a status hint, and an open hint never blocks a control (imp-073)", async ({ page }) => {
+      await mockAdminApi(page, { sources: suppressedSources });
+      await open(page);
+      const card = page.getByRole("listitem").filter({ has: page.getByRole("button", { name: "CJ Dropshipping: open runs" }) });
+      const pill = card.getByRole("button", { name: "Skipped", exact: true });
+      const hint = page.getByRole("tooltip");
+
+      await pill.tap();
+      await expect(hint).toContainText("The latest slot was skipped while an earlier run of the same job was active");
+      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(375);
+      // The hint is click-through: whatever it covers still takes the tap.
+      const box = (await page.locator("[data-radix-popper-content-wrapper]").boundingBox())!;
+      const under = await page.evaluate(([x, y]) => document.elementFromPoint(x, y)?.closest("[data-radix-popper-content-wrapper]") ?? null, [box.x + box.width / 2, box.y + box.height / 2]);
+      expect(under).toBeNull();
+      await pill.tap();
+      await expect(hint).toBeHidden();
+
+      // An open hint doesn't swallow the next action: one tap on the switch opens its dialog and closes the hint.
+      await pill.tap();
+      await expect(hint).toBeVisible();
+      await card.getByRole("switch", { name: "CJ Dropshipping enabled" }).tap();
+      await expect(page.getByRole("dialog", { name: "Disable CJ Dropshipping?" })).toBeVisible();
+      await expect(hint).toBeHidden();
+    });
+  });
 
   test("cards replace the table with no horizontal page scroll", async ({ page }) => {
     await mockAdminApi(page);
