@@ -215,10 +215,11 @@ def collect(session: Session, run_id: int, *, settings: Settings) -> CollectorRu
         )
     )
     adapter = ShopifyAdapter(settings)
+    capture_domain = RawPayload.request["domain"].as_string()
     last_captures = session.execute(
-        select(RawPayload.request["domain"].as_string(), func.max(RawPayload.captured_at))
+        select(capture_domain, func.max(RawPayload.captured_at))
         .where(RawPayload.source_id == source.id)
-        .group_by(RawPayload.request["domain"].as_string())
+        .group_by(capture_domain)
     ).all()
     now, monotonic = datetime.now(UTC), time.monotonic()
     for domain, captured_at in last_captures:
