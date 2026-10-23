@@ -288,7 +288,8 @@ function PreviewResult({
           ref={importButton}
           variant="primary"
           size="sm"
-          className="ml-auto aria-disabled:pointer-events-auto aria-disabled:cursor-not-allowed"
+          // Locked (importing or blocked) with secondary tokens, not opacity, so its focus ring keeps 3:1 (imp-095).
+          className="ml-auto aria-disabled:pointer-events-auto aria-disabled:cursor-not-allowed aria-disabled:border-border aria-disabled:bg-secondary aria-disabled:text-subtle-foreground aria-disabled:opacity-100"
           aria-disabled={unavailable}
           aria-describedby={blocker ? blockerId : undefined}
           onClick={() => !unavailable && onImport()}
