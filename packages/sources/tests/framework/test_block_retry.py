@@ -154,6 +154,47 @@ def test_blocks_stop_plan_and_disable_once_across_runs(
     assert not any(active for _, active in calls)
 
 
+@pytest.mark.parametrize(
+    "status,requests,error",
+    [
+        (403, 1, "RunDeferred"),
+        (429, 1, "RunDeferred"),
+        (430, 1, "RunDeferred"),
+        (200, 2, "KeyError"),
+    ],
+)
+def test_after_hook_error_preserves_block_stop_rule(
+    session: Session,
+    settings: Settings,
+    network: Network,
+    status: int,
+    requests: int,
+    error: str,
+) -> None:
+    adapter, responses, calls = network
+    responses.side_effect = [Response(b"first", status), Response(b"ok", 200)]
+
+    def hook(
+        db: Session, source: Source, run: CollectorRun, request: Request, response: Response | None
+    ) -> None:
+        if response is not None and responses.call_count == 1:
+            source.config = {"uncommitted": True}
+            db.flush()
+            raise KeyError("quota bookkeeping bug")
+
+    run = enqueue_run(session, source_id=1, trigger="manual", publish=lambda _: None)
+    targets = [Target("catalog", str(n), [Request()]) for n in range(2)]
+    execute_run(session, run.id, adapter, targets, settings=settings, request_hook=hook)
+    assert responses.call_count == run.http_requests == requests
+    assert run.status == "partial" and run.error_code == error
+    assert run.error_message == (f"http_{status}" if requests == 1 else "KeyError")
+    source = session.get_one(Source, 1)
+    assert source.config == {} and source.consecutive_block_count == (requests == 1)
+    captures = list(session.scalars(select(RawPayload).order_by(RawPayload.id)))
+    assert len(captures) == requests and captures[0].status_code == status
+    assert not any(active for _, active in calls)
+
+
 class Clock:
     now = datetime(2026, 10, 22, tzinfo=UTC)
     in_transaction = False

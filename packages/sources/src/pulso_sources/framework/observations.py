@@ -1,6 +1,6 @@
 """Append observations; FX's first-rate rule remains adapter-owned (DEC-060)."""
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any
 
 from sqlalchemy import select, tuple_
@@ -18,14 +18,16 @@ def effective_observation[T: ObservationRow](
     *,
     key: dict[str, Any],
     raw_payload_id: int | None = None,
-    before: tuple[datetime, int] | None = None,
+    before: tuple[date, datetime, int] | None = None,
 ) -> T | None:
     """Latest observed day/capture, or greatest id in one capture; before is exclusive."""
     if set(key) != set(model.observation_keys):
         raise ValueError("Supply every natural observation key")
     query = select(model).filter_by(**key)
     if before is not None:
-        query = query.where(tuple_(model.captured_at, model.raw_payload_id) < before)
+        query = query.where(
+            tuple_(model.observed_for, model.captured_at, model.raw_payload_id) < before
+        )
     if raw_payload_id is not None:
         query = query.where(model.raw_payload_id == raw_payload_id).order_by(model.id.desc())
     else:
@@ -58,7 +60,7 @@ def append_observation(session: Session, row: ObservationRow) -> bool:
     previous = effective_observation(session, model, key=key, raw_payload_id=row.raw_payload_id)
     if isinstance(row, (ListingSnapshot, VariantSnapshot)) and previous is None:
         latest = effective_observation(
-            session, model, key=key, before=(row.captured_at, row.raw_payload_id)
+            session, model, key=key, before=(row.observed_for, row.captured_at, row.raw_payload_id)
         )
         if (
             isinstance(latest, (ListingSnapshot, VariantSnapshot))
