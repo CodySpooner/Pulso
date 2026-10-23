@@ -50,8 +50,10 @@ class Transport:
         settings: Settings,
         before_send: Callable[[str], None],
         rejected: Callable[[Request, Response], None],
+        received: Callable[[Response], None] | None = None,
     ) -> None:
         self.settings, self.before_send, self.rejected = settings, before_send, rejected
+        self.received = received
         self.auth = Auth(
             settings,
             cache=Redis.from_url(
@@ -91,6 +93,8 @@ class Transport:
         self.sent += 1
         _next_request = time.monotonic() + 1 / self.settings.cj_requests_per_second
         response = self.http(endpoint, params, token=token)
+        if self.received is not None:
+            self.received(response)
         if token is None and classify_error(response):
             self.auth_failure = Response(None, response.status_code, headers=response.headers)
         return response

@@ -1,0 +1,5 @@
+cj_product_id,sku,name,unit_cost,currency,warehouse_country,ship_cost_us,min_days,max_days,moq,observed_for
+fixture-csv,fixture-a,Fixture CSV,1.25,USD,CN,4.71,7,12,2,2026-01-01
+,fixture-a,Fixture CSV,1.25,USD,US,2.00,2,4,2,2026-01-01
+fixture-csv,fixture-b,Fixture CSV,2.50,USD,CN,6.00,,,2,2026-01-01
+,fixture-only,Fixture SKU,3.00,EUR,,,,,,

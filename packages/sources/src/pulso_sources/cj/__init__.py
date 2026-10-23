@@ -4,7 +4,7 @@ import hashlib
 import json
 import logging
 from collections.abc import Iterator, Sequence
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from decimal import Decimal, InvalidOperation
 from typing import TYPE_CHECKING, Annotated, Any
 
@@ -24,7 +24,7 @@ from pulso_core.models import (
 from pulso_core.money import to_minor
 from pulso_core.settings import Settings
 from pulso_sources import storage
-from pulso_sources.cj.budget import POINTS, reserve
+from pulso_sources.cj.budget import POINTS, record_points, reserve
 from pulso_sources.cj.categories import resolve
 from pulso_sources.cj.errors import CJError, classify_error
 from pulso_sources.cj.transport import Transport
@@ -72,6 +72,8 @@ class Record(BaseModel):
     price_min_minor: int
     price_max_minor: int
     listed_count: int | None
+    currency: str = "USD"
+    observed_for: date | None = None
 
 
 def parse(body: bytes) -> list[Record]:
@@ -202,7 +204,7 @@ class CJAdapter:
             elif payload.captured_at >= listing.last_seen_at:
                 listing.title, listing.last_seen_at = record.title, payload.captured_at
             values = record.model_dump(
-                include={"price_min_minor", "price_max_minor", "listed_count"}
+                include={"price_min_minor", "price_max_minor", "listed_count", "currency"}
             )
             inserted += append_observation(
                 session,
@@ -210,9 +212,8 @@ class CJAdapter:
                     listing_id=listing.id,
                     raw_payload_id=payload.id,
                     captured_at=payload.captured_at,
-                    observed_for=payload.captured_at.date(),
+                    observed_for=record.observed_for or payload.captured_at.date(),
                     parser_version=parser_version,
-                    currency="USD",
                     values_hash=hashlib.sha256(
                         json.dumps(values, sort_keys=True).encode()
                     ).hexdigest(),
@@ -263,7 +264,11 @@ def collect(
         )
         session.commit()
 
-    transport = Transport(settings, before_send, rejected)
+    def received(response: Response) -> None:
+        record_points(source, response.body, datetime.now(UTC))
+        session.commit()
+
+    transport = Transport(settings, before_send, rejected, received)
     adapter = adapter or CJAdapter()
     adapter.transport = transport
     run_adapter: Adapter[Any] = adapter

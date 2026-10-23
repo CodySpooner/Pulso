@@ -1,7 +1,7 @@
 import io
 import time
 from collections.abc import Iterator
-from datetime import UTC
+from datetime import UTC, datetime
 from typing import Any
 from unittest.mock import Mock
 
@@ -11,9 +11,20 @@ from sqlalchemy.orm import Session, attributes
 from sqlalchemy.schema import DefaultClause
 
 from pulso_core.db import Base
-from pulso_core.models import Listing, ListingSnapshot, ListingVariant, RawPayload, Source
+from pulso_core.models import (
+    Listing,
+    ListingSnapshot,
+    ListingVariant,
+    RawPayload,
+    ShippingOption,
+    Source,
+    VariantSnapshot,
+)
 from pulso_sources import storage
 from pulso_sources.cj import transport
+from pulso_sources.cj.budget import record_points
+
+from .test_cj import fixture
 
 
 @pytest.fixture(autouse=True)
@@ -38,6 +49,7 @@ def session(monkeypatch: pytest.MonkeyPatch) -> Iterator[Session]:
         "collector_run_targets",
         "source_events",
         "suppliers",
+        "supplier_offers",
         "listings",
         "listing_snapshots",
         "listing_variants",
@@ -74,16 +86,18 @@ def session(monkeypatch: pytest.MonkeyPatch) -> Iterator[Session]:
             if isinstance(column.type, DateTime) and value is not None:
                 attributes.set_committed_value(row, column.key, value.replace(tzinfo=UTC))
 
-    for model in (Listing, ListingSnapshot, ListingVariant, RawPayload):
+    models = (Listing, ListingSnapshot, ListingVariant, RawPayload, VariantSnapshot, ShippingOption)
+    for model in models:
         event.listen(model, "load", utc)
         event.listen(model, "refresh", utc)
     try:
         with Session(engine, expire_on_commit=False) as session:
             session.add(Source(id=2, key="cj", name="CJ", type="api", phase=1, enabled=False))
+            record_points(session.get_one(Source, 2), fixture("list_v2"), datetime.now(UTC))
             session.commit()
             yield session
     finally:
-        for model in (Listing, ListingSnapshot, ListingVariant, RawPayload):
+        for model in models:
             event.remove(model, "load", utc)
             event.remove(model, "refresh", utc)
         engine.dispose()
