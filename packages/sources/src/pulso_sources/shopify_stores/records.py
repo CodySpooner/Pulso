@@ -21,7 +21,7 @@ from pulso_core.models import (
 )
 from pulso_core.money import to_minor
 from pulso_sources.framework import UpsertStats, append_observation
-from pulso_sources.shopify_stores.variants import JSProduct, upsert_variants
+from pulso_sources.shopify_stores.variants import CATALOG_WRITER, JSProduct, upsert_variants
 
 
 class Variant(BaseModel):
@@ -212,6 +212,7 @@ def upsert(
                         json.dumps(fields, sort_keys=True, default=str).encode()
                     ).hexdigest(),
                 ),
+                writer=CATALOG_WRITER if model is VariantSnapshot else None,
             )
             inserted += changed
             unchanged += not changed

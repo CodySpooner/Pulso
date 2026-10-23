@@ -22,8 +22,19 @@ from pulso_sources.framework import (
     Response,
     Target,
     UpsertStats,
+    Writer,
     append_observation,
 )
+
+# DEC-120: detail owns variant price and stock owns inventory; each is change-only alone.
+DETAIL_WRITER = Writer(
+    RawPayload.request["endpoint"].as_string() == "/product/query", ("price_minor",)
+)
+STOCK_WRITER = Writer(
+    RawPayload.request["endpoint"].as_string() == "/product/stock/getInventoryByPid",
+    ("inventory_quantity",),
+)
+VARIANT_WRITERS = (DETAIL_WRITER, STOCK_WRITER)
 
 Count = Annotated[StrictInt, Field(ge=0, le=2**63 - 1)]
 Money = Annotated[Decimal, Field(ge=0, allow_inf_nan=False)]
@@ -250,6 +261,7 @@ class TrackedAdapter:
                             json.dumps(values, sort_keys=True).encode()
                         ).hexdigest(),
                     ),
+                    writer=DETAIL_WRITER if isinstance(value, Variant) else STOCK_WRITER,
                 )
                 inserted += added
                 unchanged += not added

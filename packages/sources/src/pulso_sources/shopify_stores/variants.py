@@ -10,7 +10,18 @@ from sqlalchemy.orm import Session
 
 from pulso_core.models import Listing, ListingVariant, RawPayload, Store, VariantSnapshot
 from pulso_core.money import CURRENCY_EXPONENTS, from_minor, to_minor
-from pulso_sources.framework import UpsertStats, append_observation
+from pulso_sources.framework import UpsertStats, Writer, append_observation
+
+# DEC-120: the catalog owns what it observes; .js owns only inventory, which the catalog lacks.
+CATALOG_WRITER = Writer(
+    RawPayload.request["path"].as_string().startswith("/products.json?", autoescape=True),
+    ("price_minor", "compare_at_minor", "available", "source_updated_at"),
+)
+JS_WRITER = Writer(
+    RawPayload.request["path"].as_string().like("/products/%.js"),
+    ("inventory_quantity", "inventory_management", "inventory_policy"),
+)
+VARIANT_WRITERS = (CATALOG_WRITER, JS_WRITER)
 
 
 class JSVariant(BaseModel):
@@ -82,6 +93,7 @@ def upsert_variants(
                 parser_version=parser_version,
                 values_hash=hashlib.sha256(json.dumps(fields, sort_keys=True).encode()).hexdigest(),
             ),
+            writer=JS_WRITER,
         )
         if all(
             payload.captured_at >= at.replace(tzinfo=UTC)
