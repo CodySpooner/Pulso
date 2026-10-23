@@ -339,14 +339,16 @@ def test_transport_redaction_redirect_and_retries(
     settings.collector_max_retries = 1
     http.request.side_effect = OSError("fixture secret in URL")
     run = collect(session, settings)
-    assert run.http_requests == 4
-    assert session.get_one(Source, 1).config["trends_quota"]["used"] == 4
+    assert run.http_requests == 2
+    assert session.get_one(Source, 1).config["trends_quota"]["used"] == 2
     assert "fixture secret" not in str(run.error_message) + caplog.text
+    adapter, request = live.GoogleTrendsAdapter(), list(trends.plan(session)[0].requests)[0]
     with pytest.raises(ConnectionError) as caught:
-        live.GoogleTrendsAdapter().fetch(
-            list(trends.plan(session)[0].requests)[0], user_agent="fixture"
-        )
+        adapter.fetch(request, user_agent="fixture")
     assert str(caught.value) == "SerpApi transport failed" and caught.value.__suppress_context__
+    with pytest.raises(trends.TrendsError) as stopped:
+        adapter.fetch(request, user_agent="fixture")
+    assert str(stopped.value) == "serpapi_unavailable" and stopped.value.__suppress_context__
     http.request.side_effect = None
     http.getresponse.return_value.status = 302
     http.getresponse.return_value.getheaders.return_value = [
@@ -365,6 +367,7 @@ def test_registered_csv_stays_disabled(session: Session, settings: Settings, htt
     registered = PLANS["google_trends"](session, source, "trends")
     assert isinstance(registered.adapter, live.GoogleTrendsAdapter)
     assert registered.wall_time_seconds == settings.trends_wall_time_seconds
+    assert registered.collector_max_retries == 1
     with pytest.raises(ValueError):
         PLANS["google_trends"](session, source, "catalog")
     csv = b"keyword,date,interest\nexample keyword,2026-10-19,50\n"
@@ -431,3 +434,68 @@ def test_three_capture_cutoff(
     clock.now.return_value = datetime(2026, 10, 23, 1, tzinfo=UTC)
     collect(session, settings)
     assert trends.series_as_of(session, "example keyword", date(2026, 10, 23)) == []
+
+
+@pytest.mark.parametrize(
+    "status,payload",
+    [(None, b""), (503, b'{"error":"upstream"}'), (502, b"<html>Bad gateway</html>")],
+)
+def test_outage_stops_after_two_reservations(
+    session: Session,
+    settings: Settings,
+    http: Mock,
+    monkeypatch: pytest.MonkeyPatch,
+    status: int | None,
+    payload: bytes,
+) -> None:
+    """P1-47 T-M1 (DEC-157): 50 keywords offline or at 5xx spend 2 reservations, not 59."""
+    source = session.get_one(Source, 1)
+    seed = json.loads(body("seed"))
+    seed["seed"]["entries"] = [
+        {"keyword": f"keyword {n}", "geo": "US", "tz": 0, "enabled": True} for n in range(50)
+    ]
+    source.config = seed
+    session.commit()
+    monkeypatch.setattr("time.sleep", Mock())
+    response = http.getresponse.return_value
+    if status is None:
+        http.request.side_effect = OSError("offline")
+    else:
+        response.status, response.read.side_effect = status, None
+        response.read.return_value = payload
+    run = collect(session, settings)
+    assert (run.status, run.error_code, run.error_message) == (
+        "partial",
+        "serpapi_unavailable",
+        "serpapi_unavailable",
+    )
+    assert run.http_requests == http.request.call_count == 2
+    assert run.rows_inserted == 0
+    session.expire_all()
+    source = session.get_one(Source, 1)
+    assert source.config["trends_quota"]["used"] == 2
+    assert source.enabled and source.status != "blocked" and source.consecutive_block_count == 0
+    assert source.retry_not_before is None
+    assert session.scalar(select(func.count()).select_from(SourceEvent)) == 0
+
+
+def test_one_failed_attempt_retries_and_later_keywords_run(
+    session: Session, settings: Settings, http: Mock, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr("time.sleep", Mock())
+    response, steps = http.getresponse.return_value, iter([OSError, 200, 503, 200])
+
+    def send(*_: object, **__: object) -> None:
+        step = next(steps)
+        if step is OSError:
+            raise OSError("blip")
+        response.status = step
+
+    http.request.side_effect = send
+    run = collect(session, settings)
+    assert (run.status, run.error_code, run.http_requests, run.rows_inserted) == (
+        "success",
+        None,
+        4,
+        4,
+    )

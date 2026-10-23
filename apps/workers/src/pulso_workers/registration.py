@@ -46,6 +46,7 @@ def trends_plan(session: Session, source: Source, job: str) -> Plan:
         google_trends.plan(session),
         get_settings().trends_wall_time_seconds,
         request_hook=adapter.request_hook,
+        collector_max_retries=1,  # DEC-157: an outage spends at most two reservations.
         finalize=adapter.finalize,
     )
 
