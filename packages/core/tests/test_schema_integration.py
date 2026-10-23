@@ -179,7 +179,7 @@ def test_phase1_downgrade_refuses_evidence(db_engine: Engine, evidence_sql: str)
             connection.begin_nested(),
         ):
             command.downgrade(config, "0001")
-        assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "0002"
+        assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "0003"
         assert connection.scalar(text("SELECT to_regclass('source_daily_coverage')")) is not None
 
 

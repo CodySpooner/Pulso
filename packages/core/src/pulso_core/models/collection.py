@@ -70,7 +70,7 @@ class CollectorRunTarget(Base):
 
 class HostHeartbeat(BigId, Base):
     __tablename__ = "host_heartbeats"
-    __table_args__ = (Index(None, "host", "at"),)
+    __table_args__ = (Index(None, "host", "at"), Index(None, "at"))
     host: Mapped[str] = mapped_column(String(255))
     at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
@@ -81,6 +81,11 @@ class CollectionGap(BigId, Base):
         UniqueConstraint("source_id", "slot_key"),
         CheckConstraint("slot_end > slot_start", name="slot_range"),
         Index(None, "source_id", "slot_start"),
+        Index(
+            "ix_collection_gaps_open_slot_start",
+            "slot_start",
+            postgresql_where=text("filled_by_run_id IS NULL"),
+        ),
     )
     source_id: Mapped[int] = mapped_column(ForeignKey("sources.id"))
     slot_key: Mapped[str] = mapped_column(String(30))
