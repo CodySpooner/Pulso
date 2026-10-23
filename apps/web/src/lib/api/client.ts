@@ -30,5 +30,13 @@ export type Problem = paths["/v1/me"]["get"]["responses"][401]["content"]["appli
  * fetch failed, or the /api rewrite couldn't connect and Next answered with its own non-JSON 500.
  */
 export function isProblem(error: unknown): error is Problem {
-  return typeof error === "object" && error !== null && "request_id" in error && "code" in error;
+  if (typeof error !== "object" || error === null) return false;
+  // Checks every field the type promises, so callers can render them as they are.
+  const { type, title, status, code, detail, request_id, errors } = error as Record<string, unknown>;
+  return (
+    [type, title, code, detail, request_id].every((field) => typeof field === "string") &&
+    Number.isInteger(status) &&
+    (errors === undefined ||
+      (Array.isArray(errors) && errors.every((item) => typeof item === "object" && item !== null && !Array.isArray(item))))
+  );
 }

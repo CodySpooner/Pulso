@@ -12,6 +12,17 @@ async function getMe(response: Response, token: string | null) {
   return { result, request: fetch.mock.calls[0][0] };
 }
 
+// The body apps/api errors.py sends for every error.
+const problem = {
+  type: "about:blank",
+  title: "Forbidden",
+  status: 403,
+  code: "not_allowlisted",
+  detail: "This Pulso is private.",
+  request_id: "r-1",
+  errors: [],
+};
+
 describe("typed API client", () => {
   it("calls /api/v1/me with the Clerk session token", async () => {
     const me = { user_id: "u", workspace_id: "w", is_admin: true };
@@ -27,7 +38,6 @@ describe("typed API client", () => {
   });
 
   it("tells an API error from an API that isn't reachable", async () => {
-    const problem = { title: "Forbidden", status: 403, code: "not_allowlisted", detail: "This Pulso is private.", request_id: "r-1" };
     const api = await getMe(Response.json(problem, { status: 403, headers: { "content-type": "application/problem+json" } }), "t");
     expect(isProblem(api.result.error)).toBe(true);
 
@@ -36,4 +46,33 @@ describe("typed API client", () => {
     expect(isProblem(down.result.error)).toBe(false);
     expect(isProblem(new TypeError("fetch failed"))).toBe(false);
   });
+});
+
+describe("isProblem", () => {
+  it.each([
+    ["the API's body", problem],
+    ["validation errors", { ...problem, status: 422, errors: [{ loc: ["query", "limit"], msg: "too big" }] }],
+    ["no errors key", { ...problem, errors: undefined }],
+  ])("accepts %s", (_, body) => expect(isProblem(body)).toBe(true));
+
+  it.each([null, undefined, "Forbidden", 403, true, [], [problem]])("rejects %j", (body) => expect(isProblem(body)).toBe(false));
+
+  it.each(Object.keys(problem).filter((k) => k !== "errors"))("rejects a body without %s", (key) => {
+    expect(isProblem({ ...problem, [key]: undefined })).toBe(false);
+  });
+
+  it.each([
+    { request_id: 42, code: null },
+    { ...problem, request_id: 42 },
+    { ...problem, code: null },
+    { ...problem, type: null },
+    { ...problem, title: 403 },
+    { ...problem, detail: { message: "x" } },
+    { ...problem, status: "403" },
+    { ...problem, status: 403.5 },
+    { ...problem, errors: "invalid" },
+    { ...problem, errors: [null] },
+    { ...problem, errors: ["invalid"] },
+    { ...problem, errors: [["loc"]] },
+  ])("rejects malformed %j", (body) => expect(isProblem(body)).toBe(false));
 });
