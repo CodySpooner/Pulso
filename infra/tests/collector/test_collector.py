@@ -15,10 +15,14 @@ import backup
 from collector import __main__ as host
 
 MERGES = "merge: P1-03b block accounting\nmerge: P1-38 and P1-39 fixes\nmerge: P1-09c trends"
+OWNER_PATTERN = r"fixture-owner-status \d{4}-\d{2}-\d{2}"
+OWNER_STATUS = "fixture-owner-status 2026-10-22"
+LATER_OWNER_STATUS = "fixture-owner-status 2026-10-23"
 
 
 @pytest.fixture
 def checkout(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    monkeypatch.setattr(host, "OWNER_STATUS_PATTERN", OWNER_PATTERN)
     repo = tmp_path / "repo"
     (repo / ".git").mkdir(parents=True)
     is_file = Path.is_file
@@ -99,7 +103,7 @@ def invoke(checkout: Path, runner: Runner, op: str) -> None:
     )
 
 
-SOURCE_OPS = ["seeds", "enable fx_frankfurter", "disable cj"]
+SOURCE_OPS = ["seeds", "enable fx_frankfurter", "enable cj", "disable cj"]
 
 
 @pytest.mark.parametrize("op", ["start", "update", "migrate", "status", *SOURCE_OPS])
@@ -300,12 +304,18 @@ SHIPPED_SEED = Path(__file__).resolve().parents[2] / "seeds/seed_v1.yaml"
 
 
 def docs(
-    checkout: Path, *, dec073: str = "approved", dec090: str = "approved", spk2: bool = True
+    checkout: Path,
+    *,
+    dec073: str = OWNER_STATUS,
+    dec090: str = OWNER_STATUS,
+    dec136: str = LATER_OWNER_STATUS,
+    spk2: bool = True,
 ) -> None:
     (checkout / "docs").mkdir(exist_ok=True)
     (checkout / "docs/DECISIONS.md").write_text(
-        f"### DEC-073 · Seeds\n**2026-10-22 · {dec073} (fixture)** · x\n\n"
-        f"### DEC-090 · SPK-3\n**2026-10-22 · {dec090} (fixture)** · x\n",
+        f"### DEC-073 · Seeds\n**2026-10-22 · {dec073}** · x\n\n"
+        f"### DEC-090 · SPK-3\n**2026-10-22 · {dec090}** · x\n\n"
+        f"### DEC-136 · CJ\n**2026-10-23 · {dec136}** · x\n",
         encoding="utf-8",
     )
     spk = "### SPK-2 results (fixture)" if spk2 else "### SPK-2 command"
@@ -330,6 +340,19 @@ def owner_store(domain: str = PRIVATE) -> dict[str, object]:
     return {"domain": domain, "name": "Owner", "enabled": True}
 
 
+def env_text(checkout: Path, monkeypatch: pytest.MonkeyPatch, text: str | None) -> None:
+    read_text = Path.read_text
+
+    def read(path: Path, *args: Any, **kwargs: Any) -> str:
+        if path == checkout / ".env.collector":
+            if text is None:
+                raise FileNotFoundError("fixture-missing-env")
+            return text
+        return read_text(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", read)
+
+
 def messages(checkout: Path) -> list[str]:
     state = json.loads((checkout / ".git/pulso-collector-op.json").read_text())
     log = Path(state["log"]).read_text(encoding="utf-8")
@@ -345,6 +368,113 @@ def container_calls(runner: Runner) -> list[list[str]]:
     return [c for c in runner.calls if host.CONTAINER[-1] in c]
 
 
+@pytest.mark.parametrize("dec", ["DEC-073", "DEC-090", "DEC-136"])
+@pytest.mark.parametrize("pattern", [OWNER_PATTERN, ""])
+@pytest.mark.parametrize(
+    "status",
+    [
+        OWNER_STATUS,
+        LATER_OWNER_STATUS,
+        "approved (worker proposal)",
+        "approved pending owner review",
+        "proposed (P1-45)",
+        "fixture-owner-status",
+        "fixture-owner-status 2026-1-22",
+        f"prefix {OWNER_STATUS}",
+        f"{OWNER_STATUS} suffix",
+        f" {OWNER_STATUS}",
+        f"{OWNER_STATUS} ",
+        "",
+    ],
+)
+def test_owner_status_requires_exact_nonempty_grammar(
+    checkout: Path, monkeypatch: pytest.MonkeyPatch, dec: str, pattern: str, status: str
+) -> None:
+    monkeypatch.setattr(host, "OWNER_STATUS_PATTERN", pattern)
+    docs(checkout, dec073=status, dec090=status, dec136=status)
+    runner = Runner()
+    expected = bool(pattern) and status in (OWNER_STATUS, LATER_OWNER_STATUS)
+    assert host.passes(checkout, runner, "approved", (dec,)) is expected
+    if dec == "DEC-073":
+        seed_files(checkout)
+        if expected:
+            assert host.approved_seeds(checkout)
+        else:
+            with pytest.raises(RuntimeError, match="DEC-073"):
+                host.approved_seeds(checkout)
+    assert runner.calls == []
+
+
+@pytest.mark.parametrize(
+    ("text", "names"),
+    [
+        ("", set()),
+        (
+            "CJ_API_KEY=fixture-cj\nSERPAPI_API_KEY=fixture-trends",
+            {"CJ_API_KEY", "SERPAPI_API_KEY"},
+        ),
+        ("CJ_API_KEY= \tfixture-cj # comment\r\nOTHER_2=x", {"CJ_API_KEY", "OTHER_2"}),
+        ("CJ_API_KEY=\nSERPAPI_API_KEY=fixture-trends", {"SERPAPI_API_KEY"}),
+        ("CJ_API_KEY= \t\r\nSERPAPI_API_KEY=fixture-trends", {"SERPAPI_API_KEY"}),
+        ("CJ_API_KEY= # comment\nSERPAPI_API_KEY=\t# comment", set()),
+        ("# CJ_API_KEY=x\n CJ_API_KEY=x\nexport CJ_API_KEY=x\ncj_api_key=x", set()),
+    ],
+)
+def test_nonempty_env_names(text: str, names: set[str]) -> None:
+    assert host.nonempty_env_names(text) == names
+
+
+@pytest.mark.parametrize("source", ["cj", "google_trends"])
+@pytest.mark.parametrize("text", [None, "", "CJ_API_KEY=\nSERPAPI_API_KEY= # comment", "present"])
+def test_key_gates_use_names_only_and_never_emit_values(
+    checkout: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    source: str,
+    text: str | None,
+) -> None:
+    docs(checkout)
+    runner = Runner()
+    runner.running = ["postgres"]
+    env_text(
+        checkout,
+        monkeypatch,
+        "CJ_API_KEY=fixture-cj\nSERPAPI_API_KEY=fixture-trends" if text == "present" else text,
+    )
+    closed = set() if source == "cj" else {"owner-run OPEN-1/2 evidence"}
+    if text != "present":
+        closed.add("CJ_API_KEY" if source == "cj" else "SERPAPI_API_KEY")
+    if closed:
+        with pytest.raises(RuntimeError, match="step-4 gate"):
+            invoke(checkout, runner, f"enable {source}")
+        assert container_calls(runner) == []
+    else:
+        invoke(checkout, runner, f"enable {source}")
+        assert container_calls(runner) == [[*host.COMPOSE, *host.CONTAINER, "enable", "cj"]]
+    assert closed_gates(checkout) == closed
+    output = capsys.readouterr()
+    emitted = output.out + output.err + "\n".join(messages(checkout)) + repr(runner.calls)
+    assert "fixture-cj" not in emitted and "fixture-trends" not in emitted
+
+
+@pytest.mark.parametrize("evidence", ["missing", "empty owner grammar"])
+def test_cj_agreement_refuses_missing_evidence(
+    checkout: Path, monkeypatch: pytest.MonkeyPatch, evidence: str
+) -> None:
+    docs(checkout)
+    if evidence == "missing":
+        path = checkout / "docs/DECISIONS.md"
+        path.write_text(path.read_text("utf-8").split("### DEC-136")[0], encoding="utf-8")
+    if evidence == "empty owner grammar":
+        monkeypatch.setattr(host, "OWNER_STATUS_PATTERN", "")
+    env_text(checkout, monkeypatch, "CJ_API_KEY=fixture-cj")
+    runner = Runner()
+    with pytest.raises(RuntimeError, match="1 step-4 gate"):
+        invoke(checkout, runner, "enable cj")
+    assert closed_gates(checkout) == {"owner review of CJ's user agreement"}
+    assert not any(c[0] == "docker" for c in runner.calls)
+
+
 def break_gate(checkout: Path, runner: Runner, kind: str, args: tuple[str, ...]) -> None:
     if kind == "tests":
         runner.failing.add(args[-1])
@@ -357,11 +487,11 @@ def break_gate(checkout: Path, runner: Runner, kind: str, args: tuple[str, ...])
 
 
 def test_fx_enable_runs_in_container_after_fixture_evidence(
-    checkout: Path, capsys: pytest.CaptureFixture[str]
+    checkout: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     runner = Runner()
     runner.running = ["postgres"]
-    (checkout / ".env.collector").write_text("PG_PASSWORD=fixture-secret\n", encoding="utf-8")
+    env_text(checkout, monkeypatch, "PG_PASSWORD=fixture-secret\n")
     invoke(checkout, runner, "enable fx_frankfurter")
     runner.container = {"changed": False, "targets": None}
     invoke(checkout, runner, "enable fx_frankfurter")  # repeat is a no-op in the container
@@ -432,16 +562,16 @@ def test_shopify_gates_fail_individually(
     ("source", "closed"),
     [
         ("shopify_stores", {CONDITION_E}),
-        ("cj", {"owner review of CJ's user agreement", "CJ_API_KEY"}),
-        ("google_trends", {"owner-run OPEN-1/2 evidence", "SERPAPI_API_KEY"}),
+        ("google_trends", {"owner-run OPEN-1/2 evidence"}),
     ],
 )
 def test_unverifiable_gates_stay_closed_with_all_other_evidence(
-    checkout: Path, source: str, closed: set[str]
+    checkout: Path, source: str, closed: set[str], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     runner = Runner()
     runner.running = ["postgres"]
     docs(checkout)
+    env_text(checkout, monkeypatch, "CJ_API_KEY=fixture-cj\nSERPAPI_API_KEY=fixture-trends\n")
     with pytest.raises(RuntimeError, match="step-4 gate"):
         invoke(checkout, runner, f"enable {source}")
     assert closed_gates(checkout) == closed
@@ -477,10 +607,13 @@ def test_invalid_or_unknown_source_refused(checkout: Path, argv: list[str]) -> N
 
 
 @pytest.mark.parametrize("op", SOURCE_OPS)
-def test_source_ops_need_running_collector_postgres(checkout: Path, op: str) -> None:
+def test_source_ops_need_running_collector_postgres(
+    checkout: Path, op: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
     runner = Runner()
     runner.running = ["redis", "worker"]
     docs(checkout)
+    env_text(checkout, monkeypatch, "CJ_API_KEY=fixture-cj\n")
     seed_files(checkout)
     with pytest.raises(RuntimeError, match="Postgres is not running"):
         invoke(checkout, runner, op)
@@ -540,7 +673,7 @@ def test_seeds_refuse_unapproved_or_invalid_files_before_docker(
 ) -> None:
     runner = Runner()
     runner.running = ["postgres"]
-    docs(checkout, dec073=setup.get("dec073", "approved"))
+    docs(checkout, dec073=setup.get("dec073", OWNER_STATUS))
     seed_files(checkout, status=setup.get("status", "approved"), private=setup.get("private", []))
     with pytest.raises(RuntimeError, match=message):
         invoke(checkout, runner, "seeds")

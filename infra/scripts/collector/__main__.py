@@ -17,6 +17,8 @@ from seeds import _unique_object, read_seed  # noqa: E402
 COMPOSE = [*backup.COMPOSE, "--profile", "collector"]
 INFRA = ["postgres", "redis", "s3"]
 CONSUMERS = ["beat", "worker", "worker-ops"]
+# The owner sets the full status grammar at merge time; empty means no approval matches.
+OWNER_STATUS_PATTERN = ""
 # One-shot container from the stack's worker image; its env file selects the collector DB.
 CONTAINER = [
     "run",
@@ -31,7 +33,7 @@ CONTAINER = [
 
 # Lead Playbook §6 step 4 evidence (DEC-131). Kinds: tests (pass at this clean main checkout),
 # merged (a "merge: <task>" commit in HEAD), approved (DEC status line), doc (marker in a repo
-# file), closed (evidence this command cannot verify). Seed sources also need approved targets,
+# file), key (non-empty env names only), closed (missing evidence). Seed sources need targets,
 # checked in the container. No flag skips a gate.
 Gate = tuple[str, str, tuple[str, ...]]
 TESTS = "packages/sources/tests/"
@@ -54,7 +56,6 @@ COMMON: list[Gate] = [
     ),
 ]
 REVIEW_FIXES: Gate = ("P1-37 M1/M2 fixes merged (P1-38, P1-39)", "merged", ("P1-38", "P1-39"))
-NO_KEY = ("never inspected here; the Playbook key-name check does not list it",)
 GATES: dict[str, list[Gate]] = {
     "fx_frankfurter": [
         *COMMON,
@@ -107,6 +108,7 @@ GATES: dict[str, list[Gate]] = {
                 f"{SHOPIFY}test_five_429_runs_disable_and_same_slot_delivery_is_noop",
             ),
         ),
+        # TODO: open (e) only with a fixture test proving Grade A inventory-label ineligibility.
         (
             "DEC-090 (e) no inventory-based labels",
             "closed",
@@ -125,8 +127,8 @@ GATES: dict[str, list[Gate]] = {
             ),
         ),
         REVIEW_FIXES,
-        ("owner review of CJ's user agreement", "closed", ("no approved DEC yet",)),
-        ("CJ_API_KEY", "closed", NO_KEY),
+        ("owner review of CJ's user agreement", "approved", ("DEC-136",)),
+        ("CJ_API_KEY", "key", ("CJ_API_KEY",)),
     ],
     "google_trends": [
         *COMMON,
@@ -139,8 +141,9 @@ GATES: dict[str, list[Gate]] = {
             ),
         ),
         ("P1-09c live transport merged", "merged", ("P1-09c",)),
+        # TODO: require owner-run evidence of partial-flag spelling and empty/no-results behavior.
         ("owner-run OPEN-1/2 evidence", "closed", ("not recorded",)),
-        ("SERPAPI_API_KEY", "closed", NO_KEY),
+        ("SERPAPI_API_KEY", "key", ("SERPAPI_API_KEY",)),
     ],
 }
 SOURCES = tuple(GATES)
@@ -167,6 +170,22 @@ def dec_status(checkout: Path, dec: str) -> str:
     return match[1] if match else ""
 
 
+def owner_approved(checkout: Path, dec: str) -> bool:
+    return (
+        bool(OWNER_STATUS_PATTERN)
+        and re.fullmatch(OWNER_STATUS_PATTERN, dec_status(checkout, dec)) is not None
+    )
+
+
+def nonempty_env_names(text: str) -> set[str]:
+    # Match one line at a time so whitespace after an empty assignment cannot cross a newline.
+    return {
+        match[1]
+        for line in text.splitlines()
+        if (match := re.match(r"^([A-Z0-9_]+)=\s*[^\s#]", line))
+    }
+
+
 def passes(checkout: Path, run: backup.Runner, kind: str, args: tuple[str, ...]) -> bool:
     if kind == "tests":
         pytest = [sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider", *args]
@@ -176,15 +195,17 @@ def passes(checkout: Path, run: backup.Runner, kind: str, args: tuple[str, ...])
         subjects = run(["git", "log", "--merges", "--format=%s", "HEAD"], checkout, None)
         return all(re.search(rf"^merge: .*\b{re.escape(t)}\b", subjects, re.M) for t in args)
     if kind == "approved":
-        return dec_status(checkout, args[0]).startswith("approved ")
+        return owner_approved(checkout, args[0])
     if kind == "doc":
         return args[1] in (checkout / args[0]).read_text(encoding="utf-8")
+    if kind == "key":
+        return args[0] in nonempty_env_names((checkout / ".env.collector").read_text("utf-8"))
     return False
 
 
 def approved_seeds(checkout: Path) -> dict[str, dict[str, Any]]:
     """DEC-073 seed_v1 plus the owner's gitignored private store list, validated on the host."""
-    if not dec_status(checkout, "DEC-073").startswith("approved "):
+    if not owner_approved(checkout, "DEC-073"):
         raise RuntimeError("DEC-073 seed approval is not recorded in docs/DECISIONS.md")
     seeds = read_seed(checkout / "infra/seeds/seed_v1.yaml")
     if any(s["version"] != "seed_v1" or s["status"] != "approved" for s in seeds.values()):
