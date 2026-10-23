@@ -10,7 +10,6 @@ from sqlalchemy.orm import Session
 from pulso_core.models import CollectorRun, Source, SourceEvent
 from pulso_core.settings import get_settings
 from pulso_sources.framework import Request, Response
-from pulso_sources.framework.lifecycle import RETRY_STATUSES
 from pulso_sources.google_trends import (
     ACCOUNT_ERRORS,
     PARAMS,
@@ -24,6 +23,15 @@ from pulso_sources.google_trends import (
 class GoogleTrendsAdapter(GoogleTrendsParser):
     error: str | None = None
     exhausted_until: datetime | None = None
+    failures = 0
+
+    def outage(self) -> TrendsError | None:
+        """The second consecutive attempt with no response or a 5xx stops the run (DEC-157)."""
+        self.failures += 1
+        if self.failures < 2:
+            return None
+        self.error = "serpapi_unavailable"
+        return TrendsError(self.error)
 
     def fetch(self, request: Request, *, user_agent: str) -> Response:
         settings = get_settings()
@@ -58,7 +66,7 @@ class GoogleTrendsAdapter(GoogleTrendsParser):
                         headers=dict(response.getheaders()),
                     )
         except OSError, HTTPException:
-            raise ConnectionError("SerpApi transport failed") from None
+            raise self.outage() or ConnectionError("SerpApi transport failed") from None
 
     def request_hook(
         self,
@@ -73,9 +81,12 @@ class GoogleTrendsAdapter(GoogleTrendsParser):
                 request_hook(session, source, run, request, None)
             else:
                 code = error_code(response.body or b"", response.status_code)
-                if code is None or (
-                    code == "serpapi_error" and response.status_code in RETRY_STATUSES
-                ):
+                if response.status_code in range(500, 600) and code in {None, "serpapi_error"}:
+                    if stop := self.outage():
+                        raise stop
+                    return
+                self.failures = 0
+                if code is None:
                     return
                 self.error = code
                 if code == "serpapi_searches_exhausted":
