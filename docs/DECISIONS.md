@@ -1091,7 +1091,7 @@ Superseded review defaults, not given entries: default #0 (move the repo) is don
   - **Plan:** Hobby. Pro is chosen at full go-live, when snapshot tables outgrow Hobby's 5 GB volume cap.
   - **Object storage:** the Railway Bucket `raw` (region sjc) replaces R2 for this deploy, amending DEC-014's alternatives. The R2 backup target with 35-day lifecycle (DEC-015) is unchanged for go-live.
   - **Dockerfiles:** no BuildKit cache mounts. Railway's builder rejects a cache mount unless its id is `s/<service id>-<path>`, which would bind the images to one Railway project and break compose and CI.
-  - **Wait for CI:** off while GitHub Actions is refused for billing (PROGRESS.md); turn it on once CI runs.
+  - **Wait for CI:** on for web and api, as DEC-014 says (GitHub Actions runs again since the repo went public).
   - **Config:** service settings are dashboard state, applied through `railway environment edit` (no `railway.json` or `railway.toml`). Connection values are Railway variable references, the Postgres password comes from a Railway `secret()` generator, and the owner enters the Clerk keys.
 - **Alternatives:** service-id cache mounts per Railway service; R2 now; Pro now; full go-live.
 - **Why:** the owner wants the site viewable before the collector cutover, with one vendor and no new account for storage. Removing the cache mounts is the only builder fix that keeps one Dockerfile per image across Railway, compose and CI.
