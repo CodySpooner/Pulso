@@ -639,7 +639,7 @@ def test_import_template_and_preview_write_nothing(admin: TestClient, engine: En
     assert admin.get("/v1/admin/sources/backup/import/template").status_code == 404
     keys = {s["key"]: s["csv_import"] for s in admin.get("/v1/admin/sources").json()}
     assert keys == {
-        "shopify_stores": "preview_only",
+        "shopify_stores": "ready",
         "cj": "ready",
         "google_trends": "ready",
         "fx_frankfurter": "ready",
@@ -822,6 +822,14 @@ def test_exact_import_cap_accepts_original_bytes(
         monkeypatch.setitem(ADAPTERS, key, ImportAdapter)
     if "mode=json" in path:
         body = b'{"products": []}'.ljust(MAX_BYTES)
+        context = {"store_domain": "example.com", "shop_id": "1", "currency": "USD"}
+        with Session(engine) as session:  # Shopify imports need a saved context (DEC-152)
+            session.execute(
+                update(Source)
+                .where(Source.key == "shopify_stores")
+                .values(config={"shopify_import": context})
+            )
+            session.commit()
     else:
         body = TRENDS_CSV.replace(
             b"keyword,", b"keyword" + b" " * (MAX_BYTES - len(TRENDS_CSV)) + b",", 1

@@ -110,9 +110,10 @@ def _entity_errors(source_key: str, rows: dict[int, Row], as_of: date) -> list[R
                 row["store_domain"],
                 row["product_url"],
             )
+            variant = row.get("variant_id") or row.get("sku") or row.get("variant_title")
             checks = [
                 (product, (row["title"], row["currency"], day)),
-                (("sku", *product, row.get("sku") or row.get("variant_title")), None),
+                (("sku", *product, variant), None),
             ]
         elif source_key == "cj":
             sku = row.get("sku")
@@ -186,6 +187,7 @@ def parse_csv(
             for name, col in template.columns.items()
             if col.required and not col.default and name not in headers
         ]
+        missing += [name for name in template.required_headers if name not in headers]
         if template.one_of and not any(name in headers for name in template.one_of):
             missing.append(" or ".join(template.one_of))
         if missing:

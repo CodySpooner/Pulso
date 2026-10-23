@@ -28,7 +28,7 @@ from pulso_sources import storage
 from pulso_sources.framework import Request, Response, RunDeferred, Target, execute_run
 from pulso_sources.seed_approval import approved_targets
 from pulso_sources.shopify_stores.records import Catalog, Meta, parse, upsert
-from pulso_sources.shopify_stores.variants import JSProduct
+from pulso_sources.shopify_stores.variants import LIVE_CATALOG, JSProduct
 
 STORE_SPACING_SECONDS = 10
 _next_global = 0.0
@@ -287,7 +287,8 @@ def plan(
             if job == "variants_js":
                 latest = (
                     select(ListingSnapshot.source_updated_at)
-                    .where(ListingSnapshot.listing_id == Listing.id)
+                    .join(RawPayload, RawPayload.id == ListingSnapshot.raw_payload_id)
+                    .where(ListingSnapshot.listing_id == Listing.id, LIVE_CATALOG)
                     .order_by(ListingSnapshot.captured_at.desc(), ListingSnapshot.id.desc())
                     .limit(1)
                     .scalar_subquery()

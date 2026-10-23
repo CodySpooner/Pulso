@@ -6,7 +6,7 @@ from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
-from sqlalchemy import JSON, Integer, MetaData, create_engine, text
+from sqlalchemy import JSON, Integer, MetaData, create_engine, select, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Session
 from sqlalchemy.schema import DefaultClause
@@ -17,6 +17,8 @@ from pulso_core.settings import Settings
 from pulso_sources import storage
 from pulso_sources.framework import Request, Response, UpsertStats, append_observation
 from pulso_sources.imports import ADAPTERS, TEMPLATES, ImportData, Row
+
+SHOPIFY_CONTEXT = {"store_domain": "example.com", "shop_id": "1", "currency": "USD"}
 
 # Test-only valid rows covering every template column; downloads are header-only (DEC-191).
 SAMPLE_ROWS = {
@@ -30,6 +32,8 @@ SAMPLE_ROWS = {
         "available": "true",
         "variant_title": "Example variant",
         "sku": "EXAMPLE",
+        "product_id": "1",
+        "variant_id": "1",
         "observed_for": "2026-01-01",
     },
     "cj": {
@@ -79,6 +83,9 @@ def settings(monkeypatch: pytest.MonkeyPatch) -> Settings:
 def session(request: pytest.FixtureRequest) -> Iterator[Session]:
     if request.param == "postgres":
         with Session(request.getfixturevalue("db_engine"), expire_on_commit=False) as connected:
+            shopify = connected.scalars(select(Source).filter_by(key="shopify_stores")).one()
+            shopify.config = {"shopify_import": SHOPIFY_CONTEXT}
+            connected.commit()
             yield connected
         return
     # SQLite runs the real lifecycle offline; Postgres owns locking/FKs/UTC guarantees.
@@ -105,7 +112,9 @@ def session(request: pytest.FixtureRequest) -> Iterator[Session]:
     try:
         with Session(engine, expire_on_commit=False) as offline:
             for i, key in enumerate(TEMPLATES, 1):
-                offline.add(Source(id=i, key=key, name=key, type="csv", phase=1))
+                source = Source(id=i, key=key, name=key, type="csv", phase=1)
+                source.config = {"shopify_import": SHOPIFY_CONTEXT}
+                offline.add(source)
             offline.commit()
             yield offline
     finally:
