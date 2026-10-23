@@ -102,7 +102,7 @@ export function DataHealth() {
 function ImportPanel() {
   return (
     <Panel id="import" title="CSV import" note="Every source has a CSV fallback (§4.2)">
-      <div className="m-4 flex flex-col items-center gap-2 rounded-lg border border-dashed border-border-strong px-6 py-8 text-center">
+      <div className="m-4 flex flex-col items-center gap-2 rounded-lg border border-dashed border-border-strong px-6 py-6 text-center">
         <div className="mb-1 grid size-10 place-items-center rounded-lg border border-border bg-secondary text-muted-foreground">
           <Upload className="size-5" aria-hidden />
         </div>

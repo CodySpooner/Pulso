@@ -69,11 +69,11 @@ test("toggle and Run now call patch_source and run_source", async ({ page }) => 
   const table = page.getByRole("region", { name: "Sources table" });
   const writes = () => calls.filter((c) => c.method !== "GET");
 
-  // Turning a source off asks for an optional reason.
+  // Disabling a source asks for an optional reason.
   await table.getByRole("switch", { name: "CJ Dropshipping enabled" }).click();
-  await page.getByRole("dialog", { name: "Turn off CJ Dropshipping?" }).getByRole("textbox").fill("seed review");
-  await page.getByRole("button", { name: "Turn off" }).click();
-  await expect(page.getByRole("status").filter({ hasText: "CJ Dropshipping turned off." })).toBeVisible();
+  await page.getByRole("dialog", { name: "Disable CJ Dropshipping?" }).getByRole("textbox").fill("seed review");
+  await page.getByRole("button", { name: "Disable", exact: true }).click();
+  await expect(page.getByRole("status").filter({ hasText: "CJ Dropshipping disabled." })).toBeVisible();
 
   // Re-enabling a blocked source needs a typed reason (§4.2): an empty reason can't be submitted.
   await table.getByRole("switch", { name: "Shopify stores enabled" }).click();

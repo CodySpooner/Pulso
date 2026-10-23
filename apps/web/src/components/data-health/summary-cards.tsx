@@ -7,7 +7,7 @@ import { formatDuration, formatUtc } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 import { BACKUP_RUNS, useBackupRuns, useHost, useSources } from "./api";
-import { Ago, Missing, Panel, PanelError, Pill, type Tone } from "./atoms";
+import { Ago, Missing, Panel, PanelError, Pill, runStatus, type Tone } from "./atoms";
 import { backupState, hostState, mergeGaps, type BackupState, type HostState } from "./model";
 
 const HOST_API = "GET /v1/admin/host";
@@ -147,7 +147,7 @@ export function BackupCard({ now }: { now: number }) {
           </Fact>
           <Fact label="Latest run">
             <span title={`${formatUtc(backup.latest.queued_at)} · ${RUNS_API}`}>
-              {backup.latest.status}
+              {runStatus(backup.latest.status)}
               {backup.latest.error_message && <span className="text-negative"> · {backup.latest.error_message}</span>}
             </span>
           </Fact>
@@ -175,13 +175,13 @@ export function BackupCard({ now }: { now: number }) {
 /** Oldest → newest run cells; each cell's status and time are on hover, and the list reads as text. */
 function RunStrip({ runs }: { runs: { id: number; status: string; queued_at: string }[] }) {
   const tone = (status: string) =>
-    status === "success" ? "bg-positive/60" : status === "failed" || status === "blocked" ? "bg-negative" : status === "partial" ? "bg-warning" : "bg-border-strong";
+    status === "success" ? "bg-subtle-foreground" : status === "failed" || status === "blocked" ? "bg-negative" : status === "partial" ? "bg-warning" : "bg-border-strong";
   const failed = runs.filter((r) => r.status === "failed" || r.status === "blocked").length;
   return (
     <span className="flex items-center gap-2">
       <span aria-hidden className="flex h-4 items-stretch gap-0.5">
         {[...runs].reverse().map((r) => (
-          <span key={r.id} title={`${formatUtc(r.queued_at)} · ${r.status}`} className={cn("w-1.5", tone(r.status))} />
+          <span key={r.id} title={`${formatUtc(r.queued_at)} · ${runStatus(r.status)}`} className={cn("w-1.5 rounded-xs", tone(r.status))} />
         ))}
       </span>
       <span className="text-label text-muted-foreground">

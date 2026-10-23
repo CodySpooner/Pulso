@@ -63,7 +63,7 @@ export function SourcesPanel({ now, onOpen }: { now: number; onOpen: (key: strin
       {
         onSuccess: () => {
           setConfirm(null);
-          setNotice({ tone: "ok", text: `${source.name} turned ${enabled ? "on" : "off"}.` });
+          setNotice({ tone: "ok", text: `${source.name} ${enabled ? "enabled" : "disabled"}.` });
           void refresh();
         },
         onError: (error) => setNotice({ tone: "error", text: `Couldn't change ${source.name}: ${problemText(error, "the API didn't answer.")}` }),
@@ -164,7 +164,7 @@ export function SourcesPanel({ now, onOpen }: { now: number; onOpen: (key: strin
                   <div className="flex items-center justify-between gap-2">
                     <label className="flex items-center gap-2 text-data text-muted-foreground">
                       {c.toggle}
-                      {s.enabled ? "On" : "Off"}
+                      {s.enabled ? "Enabled" : "Disabled"}
                     </label>
                     {c.run}
                   </div>
@@ -181,7 +181,7 @@ export function SourcesPanel({ now, onOpen }: { now: number; onOpen: (key: strin
             ))}
           </ul>
 
-          <div role="region" aria-label="Sources table" tabIndex={-1} className="relative overflow-x-auto max-md:hidden">
+          <div role="region" aria-label="Sources table" tabIndex={0} className="relative overflow-x-auto max-md:hidden">
             <table className="zone-data w-full min-w-240">
               <thead>
                 <tr>
@@ -376,11 +376,11 @@ function ReasonDialog({
             }}
           >
             <div className="flex flex-col gap-1.5">
-              <DialogTitle>{reenable ? `Re-enable ${confirm.source.name}?` : `Turn off ${confirm.source.name}?`}</DialogTitle>
+              <DialogTitle>{reenable ? `Re-enable ${confirm.source.name}?` : `Disable ${confirm.source.name}?`}</DialogTitle>
               <DialogDescription>
                 {reenable
                   ? "The block rule turned this source off. Say why it is safe to try again; the reason goes to the source's audit log (§4.2)."
-                  : "Scheduled runs stop until you turn it back on, and the days it is off show as gaps."}
+                  : "Scheduled runs stop until you enable it again, and the days it is disabled show as gaps."}
               </DialogDescription>
             </div>
             <label className="flex flex-col gap-1.5 text-label font-medium text-muted-foreground">
@@ -400,7 +400,7 @@ function ReasonDialog({
                 </Button>
               </DialogClose>
               <Button type="submit" variant="primary" aria-disabled={pending} className="aria-disabled:pointer-events-auto">
-                {pending ? "Saving…" : reenable ? "Re-enable" : "Turn off"}
+                {pending ? "Saving…" : reenable ? "Re-enable" : "Disable"}
               </Button>
             </div>
           </form>

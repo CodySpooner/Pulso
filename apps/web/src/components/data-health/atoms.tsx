@@ -28,7 +28,7 @@ export type Tone = "neutral" | "muted" | "info" | "warning" | "negative";
 const toneClass: Record<Tone, string> = {
   neutral: "border border-border text-muted-foreground",
   muted: "border border-dashed border-border-strong text-subtle-foreground",
-  info: "bg-positive-muted text-positive",
+  info: "bg-info/12 text-info",
   warning: "bg-warning-muted text-warning",
   negative: "bg-negative-muted text-negative",
 };
@@ -48,7 +48,7 @@ export const sourceStates: Record<SourceState, { label: string; icon: LucideIcon
   overdue: { label: "Overdue", icon: Clock, tone: "warning", hint: "A scheduled run in the last 24 h was missed and not caught up." },
   partial: { label: "Partial", icon: CircleAlert, tone: "warning", hint: "The last run collected only some targets." },
   running: { label: "Running", icon: LoaderCircle, tone: "info", hint: "A run is queued or running." },
-  disabled: { label: "Disabled", icon: CirclePause, tone: "muted", hint: "Turned off. Nothing is collected." },
+  disabled: { label: "Disabled", icon: CirclePause, tone: "muted", hint: "Disabled by the owner. Nothing is collected." },
   never: { label: "Never run", icon: CircleDashed, tone: "muted", hint: "No run recorded yet." },
   healthy: { label: "Healthy", icon: CircleCheck, tone: "neutral", hint: "The last run succeeded." },
 };
@@ -63,6 +63,20 @@ export function StatePill({ state }: { state: SourceState }) {
     </span>
   );
 }
+
+const runStatusLabel: Record<string, string> = {
+  success: "Succeeded",
+  partial: "Partial",
+  failed: "Failed",
+  blocked: "Blocked",
+  queued: "Queued",
+  running: "Running",
+  skipped: "Skipped",
+  pending: "Pending",
+};
+
+/** A run or target status in words; unknown values pass through. */
+export const runStatus = (status: string) => runStatusLabel[status] ?? status;
 
 /** A value the API doesn't serve yet: "—", never 0 (DEC-040). The reason is on hover and for screen readers. */
 export function Missing({ reason = "No source yet", className }: { reason?: string; className?: string }) {
@@ -135,7 +149,7 @@ export function Panel({
         <h2 id={`${id}-title`} className="text-title-3 font-semibold text-foreground">
           {title}
         </h2>
-        {note && <span className="text-label text-subtle-foreground">{note}</span>}
+        {note && <span className="text-label text-subtle-foreground max-sm:hidden">{note}</span>}
         {actions && <div className="ml-auto flex items-center gap-2">{actions}</div>}
       </header>
       {children}

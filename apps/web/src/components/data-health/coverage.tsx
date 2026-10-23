@@ -18,14 +18,15 @@ const COVERAGE_API = "GET /v1/admin/coverage?days=90";
 
 type CellStatus = CoverageDay["status"] | "none";
 
-// Status colours only on this view (vault Design/Charts & Data Viz, Status). Missed days are hatched, so a
-// gap never reads as a colour alone; each cell names its status on hover and each row reads as text.
+// Status colours only on this view (vault Design/Charts & Data Viz, Status), and only for the days that need
+// attention: a collected day is neutral. Missed days are hatched, so a gap never reads as a colour alone;
+// each cell names its status on hover and each row reads as text.
 const cellStyle: Record<CellStatus, { label: string; className: string }> = {
-  success: { label: "Collected", className: "bg-positive/55" },
+  success: { label: "Collected", className: "bg-subtle-foreground" },
   partial: { label: "Partial", className: "bg-warning/70" },
   failed: { label: "Failed", className: "bg-negative" },
   gap: { label: "Missed (gap)", className: "bg-[repeating-linear-gradient(135deg,var(--negative)_0_2px,transparent_2px_4px)] ring-1 ring-negative/60 ring-inset" },
-  filled: { label: "Gap filled later", className: "bg-[repeating-linear-gradient(135deg,var(--positive)_0_2px,transparent_2px_4px)] opacity-70" },
+  filled: { label: "Gap filled later", className: "bg-[repeating-linear-gradient(135deg,var(--subtle-foreground)_0_2px,transparent_2px_4px)]" },
   running: { label: "Running", className: "bg-info/60" },
   queued: { label: "Queued", className: "bg-info/30" },
   unknown: { label: "Unknown", className: "ring-1 ring-border-strong ring-inset" },
@@ -136,7 +137,7 @@ function OpenGaps({ names, host }: { names: Map<string, string>; host: ReturnTyp
       <h3 className="text-data font-medium text-foreground">
         Open gaps <span className="font-normal text-subtle-foreground">· {ranges.length} ranges, newest first · feature dates touching them carry gap flags</span>
       </h3>
-      <div role="region" aria-label="Open gaps" tabIndex={-1} className="relative overflow-x-auto">
+      <div role="region" aria-label="Open gaps" tabIndex={0} className="relative overflow-x-auto">
         <table className="zone-data w-full min-w-150">
           <thead>
             <tr className="text-left text-label text-muted-foreground">

@@ -11,7 +11,7 @@ import { formatUtc } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 import { useHost, useRunDetail, useSourceRuns } from "./api";
-import { Ago, Missing, PanelError, StatePill } from "./atoms";
+import { Ago, Missing, PanelError, runStatus, StatePill } from "./atoms";
 import { sourceState, type Run, type SourceHealth } from "./model";
 
 const RUNS_API = "GET /v1/admin/runs";
@@ -71,7 +71,7 @@ function DrawerBody({ source, now }: { source: SourceHealth; now: number }) {
           </Fact>
           <Fact label="Status">
             {source.status}
-            {source.enabled ? " · enabled" : " · off"}
+            {source.enabled ? " · enabled" : " · disabled"}
             {source.disabled_at && <span className="text-muted-foreground"> since {formatUtc(source.disabled_at)}</span>}
           </Fact>
           {source.disabled_reason && <Fact label="Reason">{source.disabled_reason}</Fact>}
@@ -147,7 +147,7 @@ function RunItem({ run, now, defaultOpen }: { run: Run; now: number; defaultOpen
       >
         <ChevronRight className={cn("size-4 shrink-0 text-subtle-foreground transition-transform duration-(--duration-fast)", open && "rotate-90")} aria-hidden />
         <span className="font-mono text-subtle-foreground">#{run.id}</span>
-        <span className={cn("font-medium", runTone(run.status))}>{run.status}</span>
+        <span className={cn("font-medium", runTone(run.status))}>{runStatus(run.status)}</span>
         <span className="text-subtle-foreground">· {run.trigger}</span>
         <span className="ml-auto text-muted-foreground">
           <Ago iso={run.finished_at ?? run.started_at ?? run.queued_at} now={now} source={RUNS_API} />
@@ -198,7 +198,7 @@ function RunDetailView({ run }: { run: Run }) {
       ) : detail.data.targets.length === 0 ? (
         <p className="text-label text-muted-foreground">No targets recorded for this run.</p>
       ) : (
-        <div role="region" aria-label={`Run ${run.id} targets`} tabIndex={-1} className="relative overflow-x-auto">
+        <div role="region" aria-label={`Run ${run.id} targets`} tabIndex={0} className="relative overflow-x-auto">
           <table className="zone-data w-full">
             <thead>
               <tr className="text-left text-label text-muted-foreground">
@@ -214,7 +214,7 @@ function RunDetailView({ run }: { run: Run }) {
                     <span className="text-subtle-foreground">{t.scope} · </span>
                     {t.target_id}
                   </td>
-                  <td className={cn("pr-3", runTone(t.status))}>{t.status}</td>
+                  <td className={cn("pr-3", runTone(t.status))}>{runStatus(t.status)}</td>
                   <td className="num font-mono">
                     {t.raw_payload_id != null ? (
                       <span title="Raw payload id. Signed download links aren't served by the API yet.">#{t.raw_payload_id}</span>
