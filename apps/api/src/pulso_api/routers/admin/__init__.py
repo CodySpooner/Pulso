@@ -1,5 +1,6 @@
 """Data Health admin API (DH-1). Never returns or logs source config beyond seed approval."""
 
+import json
 import logging
 from collections.abc import Callable
 from datetime import UTC, date, datetime, timedelta
@@ -7,7 +8,8 @@ from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, Query, Request
 from fastapi.exceptions import RequestValidationError
-from sqlalchemy import Date, Integer, String, case, column, func, select, table
+from pydantic import AwareDatetime, Field, TypeAdapter, ValidationError
+from sqlalchemy import Date, Integer, String, case, column, func, select, table, tuple_
 from sqlalchemy.orm import Session
 from sqlalchemy.sql import ColumnElement
 from starlette.responses import Response
@@ -48,6 +50,8 @@ from pulso_sources.seed_approval import SEED_SOURCES, approved_targets, is_appro
 logger = logging.getLogger("pulso.api")
 router = APIRouter(prefix="/v1/admin", dependencies=[Depends(current_principal)])
 MAX_ERRORS = 100  # first row errors returned; counts stay complete (P1-22 finding 4)
+TARGET_CURSOR = TypeAdapter(tuple[str, str])
+GAP_CURSOR = TypeAdapter(tuple[AwareDatetime, Annotated[int, Field(ge=1, strict=True)]])
 DB = Annotated[Session, Depends(get_db)]
 UPLOAD_BODY = {
     "requestBody": {
@@ -243,50 +247,97 @@ def list_runs(
 
 
 @router.get("/runs/{run_id}", response_model=RunDetail)
-def get_run(run_id: int, session: DB) -> RunDetail:
+def get_run(
+    run_id: int,
+    session: DB,
+    cursor: str | None = None,
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
+) -> RunDetail:
     found = runs(session, CollectorRun.id == run_id)
     if not found:
         raise APIError(404, "not_found", "Run not found.")
-    # ponytail: unpaginated; Phase 1 seed lists keep targets per run in the tens.
+    where = [CollectorRunTarget.run_id == run_id]
+    if cursor is not None:
+        try:
+            after = TARGET_CURSOR.validate_json(cursor)
+        except ValidationError:
+            raise APIError(422, "invalid_cursor", "Invalid target cursor.") from None
+        where.append(tuple_(CollectorRunTarget.scope, CollectorRunTarget.target_id) > after)
     targets = session.scalars(
         select(CollectorRunTarget)
-        .where(CollectorRunTarget.run_id == run_id)
+        .where(*where)
         .order_by(CollectorRunTarget.scope, CollectorRunTarget.target_id)
-    )
+        .limit(limit + 1)
+    ).all()
     return RunDetail(
-        **found[0].model_dump(), targets=[RunTarget.model_validate(t) for t in targets]
+        **found[0].model_dump(),
+        targets=[RunTarget.model_validate(t) for t in targets[:limit]],
+        next_cursor=json.dumps([targets[limit - 1].scope, targets[limit - 1].target_id])
+        if len(targets) > limit
+        else None,
     )
 
 
 @router.get("/coverage", response_model=list[CoverageDay])
 def get_coverage(session: DB, days: Annotated[int, Query(ge=1, le=366)] = 90) -> list[CoverageDay]:
-    start = datetime.now(UTC).date() - timedelta(days=days - 1)
+    today = datetime.now(UTC).date()
+    start = today - timedelta(days=days - 1)
     rows = session.execute(
         select(Source.key.label("source_key"), *(c for c in COVERAGE.c if c.key != "source_id"))
         .join(Source, Source.id == COVERAGE.c.source_id)
         # The backup pseudo-source has its own card (DEC-060).
-        .where(COVERAGE.c.day >= start, Source.type != "internal")
+        .where(COVERAGE.c.day.between(start, today), Source.type != "internal")
         .order_by(Source.key, COVERAGE.c.day)
     )
     return [CoverageDay.model_validate(dict(row._mapping)) for row in rows]
 
 
 @router.get("/host", response_model=HostHealth)
-def get_host(session: DB, settings: Annotated[Settings, Depends(get_settings)]) -> HostHealth:
+def get_host(
+    session: DB,
+    settings: Annotated[Settings, Depends(get_settings)],
+    cursor: str | None = None,
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
+) -> HostHealth:
+    where = [
+        CollectionGap.filled_by_run_id.is_(None),
+        CollectionGap.slot_start >= datetime.now(UTC) - timedelta(days=90),
+    ]
+    # Source status must still see gaps outside this page (DEC-096).
+    latest_gap_ends = dict(
+        session.execute(
+            select(Source.key, func.max(CollectionGap.slot_end))
+            .join(CollectionGap, CollectionGap.source_id == Source.id)
+            .where(*where)
+            .group_by(Source.key)
+        )
+        .tuples()
+        .all()
+    )
+    if cursor is not None:
+        try:
+            before = GAP_CURSOR.validate_json(cursor)
+        except ValidationError:
+            raise APIError(422, "invalid_cursor", "Invalid gap cursor.") from None
+        where.append(tuple_(CollectionGap.slot_start, CollectionGap.id) < before)
     heartbeat = session.scalar(select(HostHeartbeat).order_by(HostHeartbeat.at.desc()).limit(1))
     gaps = session.execute(
         select(CollectionGap.__table__, Source.key.label("source_key"))
         .join(Source, Source.id == CollectionGap.source_id)
-        .where(
-            CollectionGap.filled_by_run_id.is_(None),
-            CollectionGap.slot_start >= datetime.now(UTC) - timedelta(days=90),
-        )
-        .order_by(CollectionGap.slot_start.desc())
-    )
+        .where(*where)
+        .order_by(CollectionGap.slot_start.desc(), CollectionGap.id.desc())
+        .limit(limit + 1)
+    ).all()
     return HostHealth(
         live_runs_allowed=live_runs_allowed(settings),
         latest_heartbeat=Heartbeat.model_validate(heartbeat) if heartbeat else None,
-        open_gaps=[Gap.model_validate(dict(row._mapping)) for row in gaps],
+        open_gaps=[Gap.model_validate(dict(row._mapping)) for row in gaps[:limit]],
+        next_cursor=json.dumps(
+            [gaps[limit - 1].slot_start.replace(tzinfo=UTC).isoformat(), gaps[limit - 1].id]
+        )
+        if len(gaps) > limit
+        else None,
+        latest_gap_ends=latest_gap_ends,
     )
 
 

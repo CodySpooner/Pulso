@@ -70,22 +70,35 @@ def test_host_indexes_bound_reads_and_preserve_rows_on_downgrade(
                 expected = get_host(session, settings)
         finally:
             event.remove(connection, "before_cursor_execute", capture)
-        assert len(queries) == 2
+        assert len(queries) == 3
         assert expected.latest_heartbeat is not None
-        assert len(expected.open_gaps) == 2160
-        for (sql, params), index, rows in zip(
+        assert len(expected.open_gaps) == 50 and expected.next_cursor is not None
+        assert len(expected.latest_gap_ends) == 4
+        # imp-029 (DEC-133): the per-source summary reads the whole window; the gap page reads
+        # limit + 1 rows plus one tie probe and sorts only rows sharing a slot_start (DEC-163).
+        for (sql, params), index, direction, rows in zip(
             queries,
-            ("ix_host_heartbeats_at", "ix_collection_gaps_open_slot_start"),
-            (1, 2160),
+            (
+                "ix_collection_gaps_open_slot_start",
+                "ix_host_heartbeats_at",
+                "ix_collection_gaps_open_slot_start",
+            ),
+            ("Forward", "Backward", "Backward"),
+            (2160, 1, 52),
             strict=True,
         ):
             plan = connection.exec_driver_sql(
                 "EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON) " + sql, params
             ).scalar_one()[0]["Plan"]
             steps = list(nodes(plan))
-            assert not any(step["Node Type"] in ("Sort", "Incremental Sort") for step in steps)
+            assert not any(step["Node Type"] == "Sort" for step in steps)
+            assert all(
+                step["Presorted Key"] == ["collection_gaps.slot_start"]
+                for step in steps
+                if step["Node Type"] == "Incremental Sort"
+            )
             scan = next(step for step in steps if step.get("Index Name") == index)
-            assert scan["Scan Direction"] == "Backward"
+            assert scan["Scan Direction"] == direction
             assert scan["Actual Rows"] == rows
             assert scan.get("Rows Removed by Filter", 0) == 0
 

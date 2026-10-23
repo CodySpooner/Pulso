@@ -53,9 +53,9 @@ export function SourcesPanel({ now, onOpen }: { now: number; onOpen: (key: strin
   const [confirm, setConfirm] = useState<Confirm | null>(null);
   const toggled = useRef<HTMLElement | null>(null); // the dialog has no Radix trigger, so focus returns here
 
-  const gaps = host.data?.open_gaps ?? [];
+  const latestGapEnds = host.data?.latest_gap_ends ?? {};
   const rows = sources.data?.filter((s) => s.type !== "internal") ?? [];
-  const attention = sources.data ? attentionCount(rows, gaps, now) : 0;
+  const attention = sources.data ? attentionCount(rows, latestGapEnds, now) : 0;
 
   function setEnabled(source: SourceHealth, enabled: boolean, reason?: string) {
     patch.mutate(
@@ -145,7 +145,7 @@ export function SourcesPanel({ now, onOpen }: { now: number; onOpen: (key: strin
           <ul className="flex flex-col divide-y divide-border-subtle md:hidden">
             {rows.map((s) => {
               const c = controls(s);
-              const state = sourceState(s, gaps, now);
+              const state = sourceState(s, latestGapEnds, now);
               return (
                 <li key={s.key} className="flex flex-col gap-2 px-4 py-3">
                   <div className="flex items-center justify-between gap-2">
@@ -206,7 +206,7 @@ export function SourcesPanel({ now, onOpen }: { now: number; onOpen: (key: strin
                 {rows.map((s) => {
                   const c = controls(s);
                   const lr = s.last_run;
-                  const state = sourceState(s, gaps, now);
+                  const state = sourceState(s, latestGapEnds, now);
                   return (
                     <tr key={s.key} className="row-h-comfortable border-b border-border-subtle hover:bg-(--table-row-hover)">
                       <td className="px-3 py-1.5">

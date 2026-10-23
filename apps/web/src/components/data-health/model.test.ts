@@ -55,25 +55,25 @@ describe("sourceState", () => {
     ["no run yet", source({ last_run: null }), "never"],
     ["last run fine", source(), "healthy"],
   ])("%s", (_, s, expected) => {
-    expect(sourceState(s, [], NOW)).toBe(expected);
+    expect(sourceState(s, {}, NOW)).toBe(expected);
   });
 
   test("an unfilled gap that ended in the last 24 h makes an enabled source overdue", () => {
-    expect(sourceState(source(), [gap()], NOW)).toBe("overdue");
-    expect(sourceState(source(), [gap({ slot_end: ago(25) })], NOW)).toBe("healthy");
-    expect(sourceState(source(), [gap({ source_key: "fx_frankfurter" })], NOW)).toBe("healthy");
-    expect(sourceState(source({ enabled: false, status: "disabled" }), [gap()], NOW)).toBe("disabled");
+    expect(sourceState(source(), { cj: ago(7) }, NOW)).toBe("overdue");
+    expect(sourceState(source(), { cj: ago(25) }, NOW)).toBe("healthy");
+    expect(sourceState(source(), { fx_frankfurter: ago(7) }, NOW)).toBe("healthy");
+    expect(sourceState(source({ enabled: false, status: "disabled" }), { cj: ago(7) }, NOW)).toBe("disabled");
   });
 
   // imp-042: a suppressed slot (DEC-108) collected nothing, so it never reads as healthy.
   test("a latest slot_suppressed skip is skipped, below blocked, disabled and overdue", () => {
     const suppressed = run({ id: 419, status: "skipped", complete: false, error_code: "slot_suppressed", blocked_by: 418, http_requests: 0 });
-    expect(sourceState(source({ last_run: suppressed }), [], NOW)).toBe("skipped");
-    expect(sourceState(source({ last_run: suppressed }), [gap()], NOW)).toBe("overdue");
-    expect(sourceState(source({ last_run: suppressed, status: "blocked", enabled: false }), [], NOW)).toBe("blocked");
-    expect(sourceState(source({ last_run: suppressed, status: "disabled", enabled: false }), [], NOW)).toBe("disabled");
+    expect(sourceState(source({ last_run: suppressed }), {}, NOW)).toBe("skipped");
+    expect(sourceState(source({ last_run: suppressed }), { cj: ago(7) }, NOW)).toBe("overdue");
+    expect(sourceState(source({ last_run: suppressed, status: "blocked", enabled: false }), {}, NOW)).toBe("blocked");
+    expect(sourceState(source({ last_run: suppressed, status: "disabled", enabled: false }), {}, NOW)).toBe("disabled");
     // A slot another run already collected keeps that run's success (DEC-108 deduplication).
-    expect(sourceState(source({ last_run: run({ status: "skipped" }) }), [], NOW)).toBe("healthy");
+    expect(sourceState(source({ last_run: run({ status: "skipped" }) }), {}, NOW)).toBe("healthy");
   });
 
   test("skipNote names the blocking run only when the API supplies it", () => {
@@ -90,12 +90,12 @@ test("attentionCount counts blocked, failing and overdue sources only", () => {
     source({ key: "d", last_run: run({ status: "partial" }) }),
     source({ key: "e", enabled: false, status: "disabled" }),
   ];
-  expect(attentionCount(sources, [gap({ source_key: "c" })], NOW)).toBe(3);
-  expect(attentionCount(sources.slice(2), [], NOW)).toBe(0);
+  expect(attentionCount(sources, { c: ago(7) }, NOW)).toBe(3);
+  expect(attentionCount(sources.slice(2), {}, NOW)).toBe(0);
 });
 
 test("hostState follows the 15 min / 2 h heartbeat rule", () => {
-  const host = (at: string | null) => ({ live_runs_allowed: true, open_gaps: [], latest_heartbeat: at ? { host: "pc", at } : null });
+  const host = (at: string | null) => ({ live_runs_allowed: true, open_gaps: [], next_cursor: null, latest_gap_ends: {}, latest_heartbeat: at ? { host: "pc", at } : null });
   expect(hostState(host(null), NOW)).toBe("none");
   expect(hostState(host(ago(0.2)), NOW)).toBe("online");
   expect(hostState(host(ago(1)), NOW)).toBe("late");

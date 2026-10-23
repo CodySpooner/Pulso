@@ -260,6 +260,90 @@ def test_blocked_by_comes_only_from_slot_suppressed_evidence(
     assert admin.get(f"/v1/admin/runs/{ids[2]}").json()["blocked_by"] == blocker
 
 
+@pytest.mark.parametrize("surface", ["runs", "targets", "gaps"])
+@pytest.mark.parametrize("limit", [1, 50, 200])
+def test_collection_traversal(admin: TestClient, engine: Engine, surface: str, limit: int) -> None:
+    run_id = record(engine, 2, NOW)
+    with Session(engine) as session:
+        if surface == "runs":
+            session.add_all(
+                CollectorRun(source_id=2, trigger="csv", queued_at=NOW) for _ in range(240)
+            )
+        elif surface == "targets":
+            session.add_all(
+                CollectorRunTarget(
+                    run_id=run_id,
+                    scope=f"scope-{i // 120}",
+                    target_id=f"target:{i % 120:03}",
+                    captured_at=NOW,
+                )
+                for i in range(241)
+            )
+        else:
+            session.add_all(
+                CollectionGap(
+                    source_id=2 if i < 240 else 3,
+                    slot_key=f"fixture-{i:03}",
+                    slot_start=NOW - timedelta(minutes=i // 120),
+                    slot_end=NOW + timedelta(hours=1),
+                    reason="host_offline",
+                )
+                for i in range(241)
+            )
+        session.commit()
+        if surface == "runs":
+            path, field = "/v1/admin/runs", "items"
+            expected: list[Any] = list(
+                session.scalars(select(CollectorRun.id).order_by(CollectorRun.id.desc()))
+            )
+        elif surface == "targets":
+            path, field = f"/v1/admin/runs/{run_id}", "targets"
+            expected = [(f"scope-{i // 120}", f"target:{i % 120:03}") for i in range(241)]
+        else:
+            path, field = "/v1/admin/host", "open_gaps"
+            expected = [f"fixture-{i:03}" for i in sorted(range(241), key=lambda i: (i // 120, -i))]
+    first = admin.get(path).json()
+    assert len(first[field]) == 50 and first["next_cursor"] is not None
+    if surface == "gaps":
+        assert all(g["source_key"] == "cj" for g in first[field])
+        assert set(first["latest_gap_ends"]) == {"cj", "google_trends"}
+    seen: list[Any] = []
+    params: dict[str, Any] = {"limit": limit}
+    for _ in range(242):
+        response = admin.get(path, params=params)
+        assert response.status_code == 200
+        page = response.json()
+        assert 0 < len(page[field]) <= limit
+        seen.extend(
+            row["id"]
+            if surface == "runs"
+            else (row["scope"], row["target_id"])
+            if surface == "targets"
+            else row["slot_key"]
+            for row in page[field]
+        )
+        if page["next_cursor"] is None:
+            break
+        params["cursor"] = page["next_cursor"]
+    else:
+        pytest.fail("cursor did not terminate")
+    assert seen == expected
+    assert len(set(seen)) == 241
+
+
+@pytest.mark.parametrize("path", ["/v1/admin/runs", "/v1/admin/runs/1", "/v1/admin/host"])
+@pytest.mark.parametrize(
+    "query",
+    [{"limit": 0}, {"limit": 201}, {"cursor": ""}, {"cursor": "{}"}, {"cursor": "[true,0]"}],
+)
+def test_collection_rejects_invalid_paging(
+    admin: TestClient, engine: Engine, path: str, query: dict[str, Any]
+) -> None:
+    run_id = record(engine, 2, NOW)
+    response = admin.get(path.replace("/runs/1", f"/runs/{run_id}"), params=query)
+    assert response.status_code == 422
+
+
 @pytest.mark.parametrize(
     "live,worktree,enabled,status,code",
     [
@@ -443,6 +527,7 @@ def test_coverage_excludes_internal_sources(admin: TestClient, engine: Engine) -
     for source_id in (2, 5):
         record(engine, source_id, NOW, a="success")
         record(engine, source_id, old, a="success")
+        record(engine, source_id, NOW + timedelta(days=400), a="success")
     if engine.dialect.name == "sqlite":  # mirror what the Postgres view derives from evidence
         with engine.begin() as connection:
             connection.execute(
@@ -451,7 +536,7 @@ def test_coverage_excludes_internal_sources(admin: TestClient, engine: Engine) -
                     dict(source_id=s, day=d.date(), status="success", runs=1, rows=0, targets=1)
                     | {"successful_targets": 1}
                     for s in (2, 5)
-                    for d in (NOW, old)
+                    for d in (NOW, old, NOW + timedelta(days=400))
                 ],
             )
     days = admin.get("/v1/admin/coverage", params={"days": 7}).json()
@@ -474,6 +559,8 @@ def test_host_reports_latest_heartbeat_and_open_gaps(admin: TestClient, engine: 
         "live_runs_allowed": False,
         "latest_heartbeat": None,
         "open_gaps": [],
+        "next_cursor": None,
+        "latest_gap_ends": {},
     }
     run = record(engine, 2, NOW, a="success")
     with Session(engine) as session:
@@ -510,6 +597,7 @@ def test_host_reports_latest_heartbeat_and_open_gaps(admin: TestClient, engine: 
         ("shopify_stores", "catalog:newer"),
         ("cj", "catalog:open"),
     ]
+    assert naive(host["latest_gap_ends"]["cj"]) == NOW.replace(tzinfo=None)
 
 
 class ImportAdapter:

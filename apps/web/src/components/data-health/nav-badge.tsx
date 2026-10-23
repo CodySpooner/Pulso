@@ -11,7 +11,7 @@ export function DataHealthNavBadge({ expandedClass, railClass }: { expandedClass
   const sources = useSources();
   const host = useHost();
   if (!sources.data) return null;
-  const count = attentionCount(sources.data, host.data?.open_gaps ?? [], sources.dataUpdatedAt);
+  const count = attentionCount(sources.data, host.data?.latest_gap_ends ?? {}, sources.dataUpdatedAt);
   if (count === 0) return null;
   return (
     <>
