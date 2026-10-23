@@ -147,12 +147,21 @@ export const OPEN_GAPS_ID = "open-gaps";
 
 /**
  * An Overdue source's missed slot, then its reason on a line of its own, as an in-page link to the Open gaps table
- * (imp-124). Following it focuses the table's heading.
+ * (imp-124). Following it focuses the table's heading, or calls `onFollow` instead (the run drawer closes first).
  */
-export function GapsLink({ missed, onClick }: { missed: MissedSlot; onClick?: (e: React.MouseEvent<HTMLAnchorElement>) => void }) {
+export function GapsLink({ missed, onFollow }: { missed: MissedSlot; onFollow?: () => void }) {
   const lines = missed.reason ? [missed.slot, missed.reason] : [missed.slot];
   return (
-    <a href={`#${OPEN_GAPS_ID}`} onClick={onClick} className="relative hit-area flex w-fit flex-col rounded-sm underline decoration-border-strong underline-offset-2 hover:decoration-current">
+    <a
+      href={`#${OPEN_GAPS_ID}`}
+      onClick={(e) => {
+        // Focus scrolls only as far as needed. A fragment jump also scrolls the document, which at lg sits behind
+        // the shell's own scroller (escaped absolute boxes make it taller), so the whole shell would shift up.
+        e.preventDefault();
+        if (onFollow) onFollow();
+        else document.getElementById(OPEN_GAPS_ID)?.focus();
+      }}
+      className="relative hit-area flex w-fit flex-col rounded-sm underline decoration-border-strong underline-offset-2 hover:decoration-current">
       {lines.map((line, i) => (
         <span key={i}>
           {line}

@@ -26,6 +26,8 @@ function row(page: Page, width: number, name: string): Locator {
 }
 
 const pageScroll = (page: Page) => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+/** From lg the shell scrolls inside `main`; the document scrolling too would shift the whole shell up. */
+const shellShift = (page: Page) => page.evaluate(() => (innerWidth >= 1024 ? document.scrollingElement!.scrollTop : 0));
 
 for (const theme of ["dark", "light"] as const) {
   for (const width of [1440, 375]) {
@@ -50,6 +52,7 @@ for (const theme of ["dark", "light"] as const) {
       await expect(gaps).toBeFocused();
       await expect(gaps).toHaveText(/^Open gaps/);
       await expect(gaps).toBeInViewport();
+      expect(await shellShift(page)).toBe(0);
       await expect(page.getByRole("region", { name: "Open gaps" })).toContainText("Google Trends");
     });
 
@@ -62,6 +65,7 @@ for (const theme of ["dark", "light"] as const) {
       await expect(drawer).toBeHidden();
       await expect(page.locator("#open-gaps")).toBeFocused();
       await expect(page.locator("#open-gaps")).toBeInViewport();
+      expect(await shellShift(page)).toBe(0);
     });
 
     test(`every row and card shows its runs cue at rest at ${width}px ${theme}`, async ({ page }) => {
@@ -122,4 +126,33 @@ test("a missed slot off the loaded gap page reads its end from the gap summary",
   await expect(link).toBeVisible();
   await page.getByRole("button", { name: "Google Trends: open runs" }).locator("visible=true").click();
   await expect(page.getByRole("dialog", { name: "Google Trends" })).toContainText("Missed a slot ending Oct 22, 12:00 UTC");
+});
+
+/** Whether the element owns the 44×44 px square around its centre, as e2e/touch-targets.spec.ts probes it (A11Y-02). */
+const ownsSquare = (el: Locator) =>
+  el.evaluate((node) => {
+    const r = node.getBoundingClientRect();
+    const [cx, cy] = [r.left + r.width / 2, r.top + r.height / 2];
+    return [-21, 0, 21].every((dx) => [-21, 0, 21].every((dy) => node.contains(document.elementFromPoint(cx + dx, cy + dy))));
+  });
+
+test.describe("touch", () => {
+  test.use({ hasTouch: true });
+
+  test("the Overdue pill, its note link and its neighbours keep their 44 px hit squares", async ({ page }) => {
+    for (const width of [1024, 375]) {
+      await load(page, width, "dark");
+      const name = page.getByRole("button", { name: "Google Trends: open runs" }).locator("visible=true");
+      const scope = row(page, width, "Google Trends");
+      const pills = page.getByRole("button", { name: /^(Healthy|Overdue)$/ }).locator("visible=true");
+      for (const el of [scope.getByRole("link", { name: LINK }), name, pills.first(), pills.last()]) {
+        await el.scrollIntoViewIfNeeded();
+        expect(await ownsSquare(el)).toBe(true);
+      }
+      await name.click();
+      const drawer = page.getByRole("dialog", { name: "Google Trends" });
+      // Polled: the drawer's enter animation moves both until it settles.
+      for (const el of [drawer.getByRole("link", { name: LINK }), drawer.getByRole("button", { name: "Overdue" })]) await expect.poll(() => ownsSquare(el)).toBe(true);
+    }
+  });
 });

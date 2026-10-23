@@ -82,16 +82,11 @@ function DrawerBody({ source, now, onGaps }: { source: SourceHealth; now: number
           <SheetTitle className="truncate text-title-2 font-semibold text-foreground">{source.name}</SheetTitle>
           <StatePill state={state} />
         </div>
-        {/* Why it is Overdue while its newest run may read Succeeded (imp-124). The link closes the drawer first. */}
+        {/* Why it is Overdue while its newest run may read Succeeded (imp-124). The link closes the drawer first.
+            Under a coarse pointer 6 px more keeps the pill's and the link's 44 px hit squares apart (A11Y-02). */}
         {missed && (
-          <p className="text-data text-foreground">
-            <GapsLink
-              missed={missed}
-              onClick={(e) => {
-                e.preventDefault();
-                onGaps();
-              }}
-            />
+          <p className="text-data text-foreground pointer-coarse:mt-1.5">
+            <GapsLink missed={missed} onFollow={onGaps} />
           </p>
         )}
         <SheetDescription className="text-data text-muted-foreground">Source settings and runs, newest first. All times UTC.</SheetDescription>

@@ -278,7 +278,8 @@ export function SourcesPanel({ now, onOpen, onImport }: { now: number; onOpen: (
                       <td className="px-3 py-1.5">
                         <SourceName source={s} onOpen={onOpen} />
                       </td>
-                      <td className="px-3">
+                      {/* Under a coarse pointer the pill's 44 px hit square stays inside its row (A11Y-02). */}
+                      <td className="px-3 pointer-coarse:py-3">
                         <div className="flex flex-col items-start gap-0.5">
                           {waiting(state) ? pillSkeleton : <StatePill state={state} />}
                           {!waiting(state) && <StatusNote source={s} state={state} missed={missed(s, state)} />}
@@ -396,9 +397,10 @@ function StatusNote({ source, state, missed, className }: { source: SourceHealth
       )}
       {source.retry_not_before && <span className="whitespace-nowrap">Retry after {formatUtc(source.retry_not_before)}</span>}
       {/* Never truncated: the slot and reason are the why (imp-124). 180 px holds "Missed Oct 22, 10:00–12:00 UTC"
-          on one line and still fits the table at 1440 px; a longer slot wraps. */}
+          on one line and still fits the table at 1440 px; a longer slot wraps. Under a coarse pointer the table
+          puts 18 px between the pill and the link, so their 44 px hit squares don't overlap (A11Y-02). */}
       {missed && (
-        <span className="md:w-45">
+        <span className="md:w-45 md:pointer-coarse:mt-4">
           <GapsLink missed={missed} />
         </span>
       )}
