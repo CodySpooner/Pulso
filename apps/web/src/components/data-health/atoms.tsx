@@ -7,6 +7,7 @@ import {
   Clock,
   LoaderCircle,
   ShieldX,
+  SkipForward,
   TriangleAlert,
   type LucideIcon,
 } from "lucide-react";
@@ -46,6 +47,12 @@ export const sourceStates: Record<SourceState, { label: string; icon: LucideIcon
   blocked: { label: "Blocked", icon: ShieldX, tone: "negative", hint: "The block rule tripped and the adapter turned itself off (§4.2)." },
   failing: { label: "Failing", icon: CircleX, tone: "negative", hint: "The last run failed." },
   overdue: { label: "Overdue", icon: Clock, tone: "warning", hint: "A scheduled run in the last 24 h was missed and not caught up." },
+  skipped: {
+    label: "Skipped",
+    icon: SkipForward,
+    tone: "warning",
+    hint: "The latest slot was skipped while an earlier run of the same job was active, so it collected nothing. It counts as missed until a run collects it.",
+  },
   partial: { label: "Partial", icon: CircleAlert, tone: "warning", hint: "The last run collected only some targets." },
   running: { label: "Running", icon: LoaderCircle, tone: "info", hint: "A run is queued or running." },
   disabled: { label: "Disabled", icon: CirclePause, tone: "muted", hint: "Disabled by the owner. Nothing is collected." },

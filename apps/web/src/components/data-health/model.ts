@@ -17,7 +17,7 @@ export const OVERDUE_WINDOW_MS = 24 * HOUR;
 /** No successful backup for longer than this raises the missing-backup state (DEC-060). */
 export const BACKUP_MAX_AGE_MS = 26 * HOUR;
 
-export type SourceState = "blocked" | "disabled" | "running" | "failing" | "overdue" | "partial" | "never" | "healthy";
+export type SourceState = "blocked" | "disabled" | "running" | "failing" | "overdue" | "skipped" | "partial" | "never" | "healthy";
 
 /** States that put a count on the Data Health nav badge (DH-3). */
 export const ATTENTION: ReadonlySet<SourceState> = new Set(["blocked", "failing", "overdue"]);
@@ -29,8 +29,15 @@ export function sourceState(source: SourceHealth, openGaps: Gap[], now: number):
   if (run?.status === "queued" || run?.status === "running") return "running";
   if (run?.status === "failed" || run?.status === "blocked") return "failing";
   if (openGaps.some((g) => g.source_key === source.key && now - Date.parse(g.slot_end) < OVERDUE_WINDOW_MS)) return "overdue";
+  // A suppressed slot collected nothing (DEC-108); the gap audit counts it as missed (imp-042, DEC-123).
+  if (run?.status === "skipped" && run.error_code === "slot_suppressed") return "skipped";
   if (run?.status === "partial" || (run?.status === "success" && !run.complete)) return "partial";
   return run ? "healthy" : "never";
+}
+
+/** Why the latest slot was skipped, naming the blocking run when the API supplies it. */
+export function skipNote(run: Run): string {
+  return run.blocked_by != null ? `Run #${run.blocked_by} was still active` : "An earlier run was still active";
 }
 
 export function attentionCount(sources: SourceHealth[], openGaps: Gap[], now: number): number {

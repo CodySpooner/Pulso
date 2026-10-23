@@ -17,7 +17,7 @@ function run(over: Partial<S["Run"]> & Pick<S["Run"], "id" | "source_key">): S["
     trigger: "schedule", slot_key: null, status: "success", complete: true, host: "pulso-pc",
     queued_at: at(2), started_at: at(2), finished_at: at(1.95), rows_fetched: 0, rows_inserted: 0, rows_updated: 0,
     rows_unchanged: 0, http_requests: 1, last_status_code: 200, error_code: null, error_message: null,
-    target_count: 1, successful_target_count: 1, ...over,
+    blocked_by: null, target_count: 1, successful_target_count: 1, ...over,
   };
 }
 
@@ -64,6 +64,23 @@ export const healthySources: S["SourceHealth"][] = sources.map((s) => ({
   ...s, enabled: true, status: "active", disabled_reason: null, disabled_at: null, retry_not_before: null,
   last_run: s.last_run && { ...s.last_run, status: "success", complete: true },
 }));
+
+/**
+ * imp-042: CJ's latest slot was suppressed (DEC-108) while run #419 was still running; #418's success is the
+ * freshness. No open gap within 24 h, so only the skip itself says the slot collected nothing.
+ */
+export const suppressedSources: S["SourceHealth"][] = sources.map((s) =>
+  s.key !== "cj"
+    ? s
+    : {
+        ...s,
+        last_run: run({
+          id: 420, source_key: "cj", slot_key: "2026-10-22T13", status: "skipped", complete: false, queued_at: at(0.5), started_at: null,
+          finished_at: at(0.5), http_requests: 0, last_status_code: null, error_code: "slot_suppressed", blocked_by: 419, target_count: 0,
+          successful_target_count: 0,
+        }),
+      },
+);
 
 const gap = (source_key: string, slot_key: string, startHoursAgo: number, reason = "host_offline"): S["Gap"] => ({
   source_key, slot_key, slot_start: at(startHoursAgo), slot_end: at(startHoursAgo - 1), reason, detected_at: at(startHoursAgo - 1.5),
@@ -112,7 +129,7 @@ const shopifyRuns: S["Run"][] = [
 ];
 
 export function runDetail(id: number): S["RunDetail"] | undefined {
-  const r = [...shopifyRuns, ...sources.flatMap((s) => (s.last_run ? [s.last_run] : []))].find((x) => x.id === id);
+  const r = [...shopifyRuns, ...[...sources, ...suppressedSources].flatMap((s) => (s.last_run ? [s.last_run] : []))].find((x) => x.id === id);
   if (!r) return undefined;
   const stores = ["bleame.com", "meowingtons.com", "pawz.com", "northwind-home.example"];
   return {

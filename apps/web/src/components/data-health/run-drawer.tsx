@@ -12,7 +12,7 @@ import { cn } from "@/lib/utils";
 
 import { useHost, useRunDetail, useSourceRuns } from "./api";
 import { Ago, Missing, PanelError, runStatus, StatePill } from "./atoms";
-import { sourceState, type Run, type SourceHealth } from "./model";
+import { skipNote, sourceState, type Run, type SourceHealth } from "./model";
 
 const RUNS_API = "GET /v1/admin/runs";
 
@@ -160,12 +160,13 @@ function RunItem({ run, now, defaultOpen }: { run: Run; now: number; defaultOpen
 
 function RunDetailView({ run }: { run: Run }) {
   const detail = useRunDetail(run.id);
+  const skipped = run.error_code === "slot_suppressed"; // a skip, not a failure (imp-042)
   return (
     <div className="flex flex-col gap-3 border-t border-border-subtle px-3 py-3">
       {run.error_message || run.error_code ? (
-        <div className="rounded-md bg-negative-muted px-3 py-2 text-data text-foreground">
-          {run.error_code && <span className="font-mono text-negative">{run.error_code} </span>}
-          {run.error_message}
+        <div className={cn("rounded-md px-3 py-2 text-data text-foreground", skipped ? "bg-warning-muted" : "bg-negative-muted")}>
+          {run.error_code && <span className={cn("font-mono", skipped ? "text-warning" : "text-negative")}>{run.error_code} </span>}
+          {skipped ? `${skipNote(run)}.` : run.error_message}
         </div>
       ) : null}
       <dl className="zone-data grid grid-cols-[auto_1fr] gap-x-4 gap-y-1">

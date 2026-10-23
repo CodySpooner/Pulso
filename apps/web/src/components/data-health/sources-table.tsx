@@ -15,7 +15,7 @@ import { cn } from "@/lib/utils";
 
 import { useHost, useRefreshAdmin, useSources } from "./api";
 import { Ago, Missing, Panel, PanelError, StatePill } from "./atoms";
-import { attentionCount, sourceState, type SourceHealth } from "./model";
+import { attentionCount, skipNote, sourceState, type SourceHealth, type SourceState } from "./model";
 
 const SOURCES_API = "GET /v1/admin/sources";
 
@@ -145,12 +145,14 @@ export function SourcesPanel({ now, onOpen }: { now: number; onOpen: (key: strin
           <ul className="flex flex-col divide-y divide-border-subtle md:hidden">
             {rows.map((s) => {
               const c = controls(s);
+              const state = sourceState(s, gaps, now);
               return (
                 <li key={s.key} className="flex flex-col gap-2 px-4 py-3">
                   <div className="flex items-center justify-between gap-2">
                     <SourceName source={s} onOpen={onOpen} />
-                    <StatePill state={sourceState(s, gaps, now)} />
+                    <StatePill state={state} />
                   </div>
+                  <StatusNote source={s} state={state} className="-mt-1 max-w-none whitespace-normal" />
                   <dl className="zone-data grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-muted-foreground">
                     <dt>Last run</dt>
                     <dd className="text-foreground">
@@ -204,6 +206,7 @@ export function SourcesPanel({ now, onOpen }: { now: number; onOpen: (key: strin
                 {rows.map((s) => {
                   const c = controls(s);
                   const lr = s.last_run;
+                  const state = sourceState(s, gaps, now);
                   return (
                     <tr key={s.key} className="row-h-comfortable border-b border-border-subtle hover:bg-(--table-row-hover)">
                       <td className="px-3 py-1.5">
@@ -211,8 +214,8 @@ export function SourcesPanel({ now, onOpen }: { now: number; onOpen: (key: strin
                       </td>
                       <td className="px-3">
                         <div className="flex flex-col items-start gap-0.5">
-                          <StatePill state={sourceState(s, gaps, now)} />
-                          <StatusNote source={s} />
+                          <StatePill state={state} />
+                          <StatusNote source={s} state={state} />
                         </div>
                       </td>
                       <td className="px-3">
@@ -290,11 +293,17 @@ function SourceName({ source, onOpen }: { source: SourceHealth; onOpen: (key: st
   );
 }
 
-function StatusNote({ source }: { source: SourceHealth }) {
-  const note = [source.disabled_reason, source.retry_not_before && `retry after ${formatUtc(source.retry_not_before)}`].filter(Boolean).join(" · ");
+function StatusNote({ source, state, className }: { source: SourceHealth; state: SourceState; className?: string }) {
+  const note = [
+    source.disabled_reason,
+    source.retry_not_before && `retry after ${formatUtc(source.retry_not_before)}`,
+    state === "skipped" && source.last_run && skipNote(source.last_run),
+  ]
+    .filter(Boolean)
+    .join(" · ");
   if (!note) return null;
   return (
-    <span title={note} className="max-w-48 truncate text-micro text-muted-foreground">
+    <span title={note} className={cn("max-w-48 truncate text-micro text-muted-foreground", className)}>
       {note}
     </span>
   );

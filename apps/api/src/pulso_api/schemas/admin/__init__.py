@@ -26,6 +26,9 @@ class Run(BaseModel):
     error_code: str | None
     error_message: str | None
     host: str | None
+    blocked_by: int | None = Field(
+        description="The active run that suppressed this skipped slot (DEC-108); null otherwise."
+    )
     target_count: int
     successful_target_count: int
 

@@ -10,6 +10,7 @@ import {
   importOutcome,
   mergeGaps,
   previewSummary,
+  skipNote,
   sourceState,
   utcDays,
   type Gap,
@@ -27,7 +28,7 @@ function run(over: Partial<Run> = {}): Run {
     id: 1, source_key: "cj", trigger: "schedule", slot_key: null, status: "success", complete: true, host: "pc",
     queued_at: ago(2), started_at: ago(2), finished_at: ago(1.9), rows_fetched: 10, rows_inserted: 2, rows_updated: 1,
     rows_unchanged: 7, http_requests: 3, last_status_code: 200, error_code: null, error_message: null,
-    target_count: 3, successful_target_count: 3, ...over,
+    target_count: 3, successful_target_count: 3, blocked_by: null, ...over,
   };
 }
 
@@ -62,6 +63,22 @@ describe("sourceState", () => {
     expect(sourceState(source(), [gap({ slot_end: ago(25) })], NOW)).toBe("healthy");
     expect(sourceState(source(), [gap({ source_key: "fx_frankfurter" })], NOW)).toBe("healthy");
     expect(sourceState(source({ enabled: false, status: "disabled" }), [gap()], NOW)).toBe("disabled");
+  });
+
+  // imp-042: a suppressed slot (DEC-108) collected nothing, so it never reads as healthy.
+  test("a latest slot_suppressed skip is skipped, below blocked, disabled and overdue", () => {
+    const suppressed = run({ id: 419, status: "skipped", complete: false, error_code: "slot_suppressed", blocked_by: 418, http_requests: 0 });
+    expect(sourceState(source({ last_run: suppressed }), [], NOW)).toBe("skipped");
+    expect(sourceState(source({ last_run: suppressed }), [gap()], NOW)).toBe("overdue");
+    expect(sourceState(source({ last_run: suppressed, status: "blocked", enabled: false }), [], NOW)).toBe("blocked");
+    expect(sourceState(source({ last_run: suppressed, status: "disabled", enabled: false }), [], NOW)).toBe("disabled");
+    // A slot another run already collected keeps that run's success (DEC-108 deduplication).
+    expect(sourceState(source({ last_run: run({ status: "skipped" }) }), [], NOW)).toBe("healthy");
+  });
+
+  test("skipNote names the blocking run only when the API supplies it", () => {
+    expect(skipNote(run({ status: "skipped", error_code: "slot_suppressed", blocked_by: 41 }))).toBe("Run #41 was still active");
+    expect(skipNote(run({ status: "skipped", error_code: "slot_suppressed", blocked_by: null }))).toBe("An earlier run was still active");
   });
 });
 

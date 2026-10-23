@@ -7,7 +7,7 @@ from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, Query, Request
 from fastapi.exceptions import RequestValidationError
-from sqlalchemy import Date, Integer, String, column, func, select, table
+from sqlalchemy import Date, Integer, String, case, column, func, select, table
 from sqlalchemy.orm import Session
 from sqlalchemy.sql import ColumnElement
 from starlette.responses import Response
@@ -95,6 +95,12 @@ def runs(session: Session, *where: ColumnElement[bool], limit: int | None = None
             # params can hold an import's row errors (megabytes); no response returns it.
             *(c for c in CollectorRun.__table__.c if c.key != "params"),
             Source.key.label("source_key"),
+            case(
+                (
+                    CollectorRun.error_code == "slot_suppressed",
+                    CollectorRun.params["blocked_by"].as_integer(),
+                )
+            ).label("blocked_by"),
             count().label("target_count"),
             count(CollectorRunTarget.status == "success").label("successful_target_count"),
         )
