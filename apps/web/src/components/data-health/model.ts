@@ -149,6 +149,15 @@ export function defaultImportSource(sources: SourceHealth[]): SourceHealth | und
   return sources.find((s) => s.csv_import === "ready") ?? sources.find((s) => s.csv_import != null);
 }
 
+/** A sources-table row's way into the import panel (imp-081): what it opens, and why it can't import. */
+export function importEntry(source: SourceHealth): { label: string; hint: string | null; available: boolean } {
+  if (source.csv_import == null) return { label: "Import CSV", hint: `No CSV template for ${source.name} yet.`, available: false };
+  if (source.csv_import === "preview_only") {
+    return { label: "Check CSV", hint: `No import adapter yet: check a file against the ${source.name} template now.`, available: true };
+  }
+  return { label: "Import CSV", hint: null, available: true };
+}
+
 /** Why the previewed file can't be imported, or null when it can. */
 export function commitBlocker(source: SourceHealth, preview: ImportPreview): string | null {
   if (source.csv_import !== "ready") return `Importing into ${source.name} arrives with its import adapter. You can check files now.`;

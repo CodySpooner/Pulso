@@ -11,7 +11,7 @@ import { cn } from "@/lib/utils";
 import { useHost, useRefreshAdmin, useSources } from "./api";
 import { PanelError } from "./atoms";
 import { CoveragePanel } from "./coverage";
-import { ImportPanel } from "./import-panel";
+import { ImportPanel, type ImportPanelHandle } from "./import-panel";
 import { hostState } from "./model";
 import { RunDrawer } from "./run-drawer";
 import { SourcesPanel } from "./sources-table";
@@ -29,6 +29,7 @@ export function DataHealth() {
     opener.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     setOpenKey(key);
   };
+  const importPanel = useRef<ImportPanelHandle>(null);
   const now = Math.max(sources.dataUpdatedAt, host.dataUpdatedAt);
   const fetching = sources.isFetching || host.isFetching;
 
@@ -93,9 +94,9 @@ export function DataHealth() {
         <BackupCard now={now} />
       </div>
 
-      <SourcesPanel now={now} onOpen={openRuns} />
+      <SourcesPanel now={now} onOpen={openRuns} onImport={(key) => importPanel.current?.open(key)} />
       <CoveragePanel now={now} />
-      <ImportPanel onOpen={openRuns} />
+      <ImportPanel ref={importPanel} onOpen={openRuns} />
 
       <RunDrawer source={sources.data?.find((s) => s.key === openKey) ?? null} now={now} onClose={() => setOpenKey(null)} returnFocusRef={opener} />
     </div>
