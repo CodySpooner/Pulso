@@ -639,7 +639,7 @@ def test_import_template_and_preview_write_nothing(admin: TestClient, engine: En
     assert admin.get("/v1/admin/sources/backup/import/template").status_code == 404
     keys = {s["key"]: s["csv_import"] for s in admin.get("/v1/admin/sources").json()}
     assert keys == {
-        "shopify_stores": "preview_only",
+        "shopify_stores": "ready",
         "cj": "ready",
         "google_trends": "ready",
         "fx_frankfurter": "ready",

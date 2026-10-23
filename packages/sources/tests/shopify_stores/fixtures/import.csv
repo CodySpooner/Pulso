@@ -1,0 +1,4 @@
+store_domain,product_url,title,price,currency,compare_at_price,available,variant_title,sku,observed_for
+first.test,https://first.test/products/product-1,Fixture product 1,19.99,USD,,,Default,SKU-1,2020-01-01
+first.test,https://first.test/products/product-1,Fixture product 1,29.99,USD,,,Large,SKU-2,2020-01-01
+first.test,https://first.test/products/bad,Malformed price,wrong,USD,,,Default,BAD,2020-01-01

@@ -110,9 +110,10 @@ def _entity_errors(source_key: str, rows: dict[int, Row], as_of: date) -> list[R
                 row["store_domain"],
                 row["product_url"],
             )
+            variant = row.get("variant_id") or row.get("sku") or row.get("variant_title")
             checks = [
                 (product, (row["title"], row["currency"], day)),
-                (("sku", *product, row.get("sku") or row.get("variant_title")), None),
+                (("sku", *product, variant), None),
             ]
         elif source_key == "cj":
             sku = row.get("sku")

@@ -3,7 +3,7 @@
 import hashlib
 import json
 from collections.abc import Sequence
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from typing import Any
 
 from pydantic import AwareDatetime, BaseModel, Field, StrictBool, StrictInt
@@ -26,10 +26,10 @@ from pulso_sources.shopify_stores.variants import CATALOG_WRITER, JSProduct, ups
 
 class Variant(BaseModel):
     id: StrictInt = Field(gt=0)
-    title: str
+    title: str | None
     price: str = Field(pattern=r"^[0-9]+(?:\.[0-9]+)?$")
     compare_at_price: str | None = Field(default=None, pattern=r"^[0-9]+(?:\.[0-9]+)?$")
-    available: StrictBool
+    available: StrictBool | None
     sku: str | None = None
     option1: str | None = None
     option2: str | None = None
@@ -107,8 +107,12 @@ def upsert(
     payload: RawPayload,
     *,
     parser_version: str,
+    store: Store | None = None,
+    currency: str | None = None,
+    observed_for: date | None = None,
 ) -> UpsertStats:
-    path = payload.request["path"]
+    imported = store is not None
+    path = "/products.json?import" if imported else payload.request["path"]
     if str(path).endswith(".js"):
         if len(records) != 1 or not isinstance(records[0], JSProduct):
             raise ValueError("Payload does not match requested endpoint")
@@ -119,7 +123,8 @@ def upsert(
         or (str(path).startswith("/products.json?") and any(isinstance(r, Meta) for r in records))
     ):
         raise ValueError("Payload does not match requested endpoint")
-    store = session.get_one(Store, payload.request["store_id"])
+    store = store or session.get_one(Store, payload.request["store_id"])
+    currency = currency or store.currency
     inserted = unchanged = 0
     for record in records:
         if isinstance(record, JSProduct):
@@ -129,7 +134,7 @@ def upsert(
             store.shop_id, store.currency = str(record.id), record.currency
             store.myshopify_domain, store.country = record.myshopify_domain, record.country
             continue
-        if not store.shop_id or not store.currency:
+        if not store.shop_id or not currency:
             raise ValueError("Store qualification required")
         listing = session.scalar(
             select(Listing).filter_by(
@@ -148,12 +153,11 @@ def upsert(
             raise ValueError("Catalog identity belongs to another store")
         if current(listing, payload.captured_at):
             for name in ("title", "handle", "vendor", "product_type"):
-                setattr(listing, name, getattr(record, name))
-            listing.source_tags = record.tags
-            listing.source_created_at, listing.source_published_at = (
-                record.created_at,
-                record.published_at,
-            )
+                if not imported or name in record.model_fields_set:
+                    setattr(listing, name, getattr(record, name))
+            for name in ("tags", "created_at", "published_at"):
+                if not imported or name in record.model_fields_set:
+                    setattr(listing, f"source_{name}", getattr(record, name))
             listing.url = f"https://{store.domain}/products/{record.handle}"
             listing.last_seen_at, listing.delisted_at = payload.captured_at, None
         session.flush()
@@ -171,14 +175,15 @@ def upsert(
                 session.add(variant)
             if current(variant, payload.captured_at):
                 for name in ("title", "sku", "option1", "option2", "option3"):
-                    setattr(variant, name, getattr(item, name))
+                    if not imported or name in item.model_fields_set:
+                        setattr(variant, name, getattr(item, name))
                 variant.last_seen_at, variant.delisted_at = payload.captured_at, None
             session.flush()
             values.append(
                 dict(
                     variant_id=variant.id,
-                    price_minor=to_minor(item.price, store.currency),
-                    compare_at_minor=to_minor(item.compare_at_price, store.currency)
+                    price_minor=to_minor(item.price, currency),
+                    compare_at_minor=to_minor(item.compare_at_price, currency)
                     if item.compare_at_price
                     else None,
                     available=item.available,
@@ -191,7 +196,9 @@ def upsert(
             price_min_minor=min(v["price_minor"] for v in values),
             price_max_minor=max(v["price_minor"] for v in values),
             compare_at_min_minor=min(compare) if compare else None,
-            available=any(v["available"] for v in values),
+            available=True
+            if any(v["available"] for v in values)
+            else (False if all(v["available"] is False for v in values) else None),
             source_updated_at=record.updated_at,
         )
         snapshots: list[tuple[type[ListingSnapshot] | type[VariantSnapshot], dict[str, Any]]] = [
@@ -199,13 +206,13 @@ def upsert(
             *[(VariantSnapshot, v) for v in values],
         ]
         for model, fields in snapshots:
-            fields["currency"] = store.currency
+            fields["currency"] = currency
             changed = append_observation(
                 session,
                 model(
                     **fields,
                     captured_at=payload.captured_at,
-                    observed_for=payload.captured_at.date(),
+                    observed_for=observed_for or payload.captured_at.date(),
                     raw_payload_id=payload.id,
                     parser_version=parser_version,
                     values_hash=hashlib.sha256(

@@ -32,6 +32,8 @@ TEMPLATES = {
             "available": Column("bool"),
             "variant_title": Column("text"),
             "sku": Column("text"),
+            "product_id": Column("text"),
+            "variant_id": Column("text"),
             "observed_for": Column("date"),
         }
     ),

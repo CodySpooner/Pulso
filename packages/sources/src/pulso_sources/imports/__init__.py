@@ -29,6 +29,7 @@ from pulso_sources.imports.csv import (
 )
 from pulso_sources.imports.csv import decode_upload as _decode_upload
 from pulso_sources.imports.templates import TEMPLATES, template_csv
+from pulso_sources.shopify_stores.imports import Context, ShopifyImportAdapter
 
 
 @dataclass(frozen=True)
@@ -48,6 +49,7 @@ class ImportData:
 
 # Source modules register factories at startup, e.g. ADAPTERS["cj"] = make_import_adapter.
 ADAPTERS: dict[str, Callable[[ImportData], Adapter[Any]]] = {
+    "shopify_stores": ShopifyImportAdapter,
     "fx_frankfurter": FrankfurterAdapter,
     "google_trends": GoogleTrendsAdapter,
     "cj": CJImportAdapter,
@@ -237,6 +239,12 @@ def commit_import(
                 "mapping": dict(mapping or {}),
                 "observed_for": observed_for.isoformat() if observed_for else None,
                 "parser_version": adapter.parser_version,
+                "import_source": source_key,
+                "shopify_import": Context.model_validate(
+                    source.config.get("shopify_import")
+                ).model_dump()
+                if source_key == "shopify_stores"
+                else None,
             },
         )
         payload.template_version = version

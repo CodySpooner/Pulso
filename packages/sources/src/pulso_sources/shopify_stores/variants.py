@@ -14,7 +14,8 @@ from pulso_sources.framework import UpsertStats, Writer, append_observation
 
 # DEC-120: the catalog owns what it observes; .js owns only inventory, which the catalog lacks.
 CATALOG_WRITER = Writer(
-    RawPayload.request["path"].as_string().startswith("/products.json?", autoescape=True),
+    RawPayload.request["path"].as_string().startswith("/products.json?", autoescape=True)
+    | (RawPayload.request["import_source"].as_string() == "shopify_stores"),
     ("price_minor", "compare_at_minor", "available", "source_updated_at"),
 )
 JS_WRITER = Writer(
