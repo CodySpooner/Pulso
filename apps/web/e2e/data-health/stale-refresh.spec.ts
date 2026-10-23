@@ -48,8 +48,12 @@ for (const [width, height] of [
       await expect(page.getByRole("heading", { name: "Can't reach the API" })).toHaveCount(0);
       expect(await noHScroll(page)).toBe(true);
 
+      // Keyboard: Retry is the next stop after Refresh, and Enter recovers once the API answers.
+      await page.getByRole("button", { name: "Refresh" }).focus();
+      await page.keyboard.press("Tab");
+      await expect(line.getByRole("button", { name: "Retry" })).toBeFocused();
       await page.unroute(ADMIN, apiDown);
-      await line.getByRole("button", { name: "Retry" }).click();
+      await page.keyboard.press("Enter");
       await expect(staleLines(page)).toHaveCount(0);
       await expect(sourceRows(page)).toHaveCount(4);
       await expect(coverageRows(page)).toHaveCount(4);
