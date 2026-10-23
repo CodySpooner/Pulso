@@ -2,11 +2,13 @@
 
 import json
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from contextlib import closing
 from http.client import HTTPException, HTTPSConnection
+from typing import Annotated, Literal
 from urllib.parse import urlencode
 
+from pydantic import BaseModel, ConfigDict, Field, StrictInt
 from redis import Redis
 
 from pulso_core.settings import Settings
@@ -14,9 +16,32 @@ from pulso_core.worktree import is_linked_worktree
 from pulso_sources.cj.auth import Auth
 from pulso_sources.cj.errors import CJError, classify_error
 from pulso_sources.framework import CollectorsLiveDisabled, Request, Response
+from pulso_sources.storage import JsonValue
 
 _next_request = 0.0
-ENDPOINTS = {"/product/listV2", "/product/getCategory"}
+ENDPOINTS = {
+    "/product/listV2",
+    "/product/getCategory",
+    "/product/query",
+    "/product/stock/getInventoryByPid",
+    "/logistic/freightCalculate",
+}
+
+
+class FreightProduct(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    vid: Annotated[str, Field(min_length=1, max_length=200)]
+    quantity: Annotated[StrictInt, Field(ge=1, le=1)]
+
+
+class FreightRequest(BaseModel):
+    startCountryCode: Literal["CN", "US"]
+    endCountryCode: Literal["US"]
+    products: Annotated[list[FreightProduct], Field(min_length=1, max_length=1)]
+
+
+class ProductRequest(BaseModel):
+    pid: Annotated[str, Field(min_length=1, max_length=200)]
 
 
 class Transport:
@@ -47,9 +72,15 @@ class Transport:
             )
         if request.params.get("endpoint") not in ENDPOINTS:
             raise ValueError("Unsupported CJ read endpoint")
+        if request.params["endpoint"] == "/logistic/freightCalculate":
+            FreightRequest.model_validate(request.params)
+        if request.params["endpoint"] in {"/product/query", "/product/stock/getInventoryByPid"}:
+            ProductRequest.model_validate(request.params)
         _ = self.settings.collector_user_agent  # Validate contact before auth or reservations.
 
-    def send(self, endpoint: str, params: dict[str, str], *, token: str | None = None) -> Response:
+    def send(
+        self, endpoint: str, params: Mapping[str, JsonValue], *, token: str | None = None
+    ) -> Response:
         global _next_request
         wait = max(0, _next_request - time.monotonic())
         if time.monotonic() + wait >= self.deadline:
@@ -64,7 +95,9 @@ class Transport:
             self.auth_failure = Response(None, response.status_code, headers=response.headers)
         return response
 
-    def http(self, endpoint: str, params: dict[str, str], *, token: str | None) -> Response:
+    def http(
+        self, endpoint: str, params: Mapping[str, JsonValue], *, token: str | None
+    ) -> Response:
         headers = {
             "User-Agent": self.settings.collector_user_agent,
             "Content-Type": "application/json",
@@ -72,6 +105,7 @@ class Transport:
         if token is not None:
             headers["CJ-Access-Token"] = token
         path = "/api2.0/v1" + endpoint
+        post = token is None or endpoint == "/logistic/freightCalculate"
         try:
             with closing(
                 HTTPSConnection(
@@ -80,9 +114,9 @@ class Transport:
                 )
             ) as connection:
                 connection.request(
-                    "GET" if token else "POST",
-                    path + ("?" + urlencode(params) if token and params else ""),
-                    body=None if token else json.dumps(params),
+                    "POST" if post else "GET",
+                    path + ("?" + urlencode(params) if not post and params else ""),
+                    body=json.dumps(params) if post else None,
                     headers=headers,
                 )
                 with closing(connection.getresponse()) as response:
@@ -98,7 +132,7 @@ class Transport:
     def fetch(self, request: Request) -> Response:
         self.guard(request)
         endpoint = str(request.params["endpoint"])
-        params = {k: str(v) for k, v in request.params.items() if k != "endpoint"}
+        params = {k: v for k, v in request.params.items() if k != "endpoint"}
         try:
             token = self.auth.token(self.send)
             response = self.send(endpoint, params, token=token)
