@@ -1,5 +1,6 @@
 from collections.abc import Callable
 from contextlib import nullcontext
+from importlib import import_module
 from typing import Any
 from unittest.mock import Mock
 from urllib.error import URLError
@@ -22,10 +23,17 @@ from pulso_core.settings import Settings
 from pulso_sources import framework, shopify_stores
 from pulso_sources.framework import Response, enqueue_run
 from pulso_workers import celery_app, registration, tasks
-from pulso_workers.celery_app import app
 
 from .conftest import fixture
 from .test_catalog import CATALOG
+
+
+def import_configured_modules() -> None:
+    # Not app.loader.import_default_modules(): a first app.conf read pins the broker (imp-103).
+    imports = celery_app.configuration()["imports"]
+    assert isinstance(imports, tuple)
+    for name in imports:
+        import_module(name)
 
 
 @pytest.fixture
@@ -33,7 +41,7 @@ def registered(
     session: Session, settings: Settings, io_mock: Any, monkeypatch: pytest.MonkeyPatch
 ) -> Callable[[], CollectorRun]:
     monkeypatch.setattr(celery_app, "get_settings", lambda: settings)
-    app.loader.import_default_modules()
+    import_configured_modules()
     monkeypatch.setattr(registration, "get_settings", lambda: settings)
     monkeypatch.setattr(tasks, "get_settings", lambda: settings)
     monkeypatch.setattr(tasks, "get_session", lambda: nullcontext(session))
@@ -173,7 +181,7 @@ def test_registration_enables_nothing_and_live_guards_hold(
     source = session.get_one(Source, 1)
     source.enabled = False
     session.commit()
-    app.loader.import_default_modules()
+    import_configured_modules()
     plan = tasks.PLANS[source.key](session, source, "catalog")
     assert not source.enabled and io_mock.calls == []
     assert plan.collector_max_retries == 0 and plan.finalize is not None

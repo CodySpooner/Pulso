@@ -296,14 +296,29 @@ def test_live_capture_contract(
         (429, "rate_limited", "serpapi_rate_limited"),
     ],
 )
+@pytest.mark.parametrize(
+    "now,deadline",
+    [
+        (datetime(2026, 10, 23, 12, tzinfo=UTC), datetime(2026, 11, 1, tzinfo=UTC)),
+        (datetime(2026, 12, 31, 23, tzinfo=UTC), datetime(2027, 1, 1, tzinfo=UTC)),
+    ],
+    ids=["mid-month", "dec-31-rollover"],
+)
 def test_response_failure(
     session: Session,
     settings: Settings,
     http: Mock,
+    clock: Mock,
+    monkeypatch: pytest.MonkeyPatch,
     status: int,
     fixture: str,
     code: str,
+    now: datetime,
+    deadline: datetime,
 ) -> None:
+    clock.now.return_value = now  # One instant for the adapter, the runner and the asserts.
+    monkeypatch.setattr(live, "datetime", clock)
+    monkeypatch.setattr(lifecycle, "datetime", clock)
     response = http.getresponse.return_value
     response.status, response.read.return_value = status, body(fixture)
     response.getheaders.return_value = [
@@ -323,14 +338,13 @@ def test_response_failure(
     assert source.enabled == (not blocked and code != "serpapi_invalid_key")
     if blocked:
         assert source.retry_not_before is not None
-        assert source.retry_not_before >= datetime.now(UTC) + timedelta(minutes=59)
+        assert source.retry_not_before >= now + timedelta(minutes=59)
     if fixture == "exhausted":
-        deadline = (datetime.now(UTC).replace(day=28) + timedelta(days=4)).replace(
-            day=1, hour=0, minute=0, second=0, microsecond=0
-        )
         assert source.retry_not_before is not None and source.retry_not_before >= deadline
         if status == 429:
-            assert source.retry_not_before >= datetime.now(UTC) + timedelta(days=44)
+            assert source.retry_not_before >= now + timedelta(days=44)
+        else:
+            assert source.retry_not_before == deadline  # Set only by the adapter's clock.
     if not source.enabled or fixture == "exhausted":
         collect(session, settings)
         assert http.request.call_count == 1
