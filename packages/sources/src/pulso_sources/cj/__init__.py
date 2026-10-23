@@ -265,6 +265,8 @@ def collect(
         session.commit()
 
     def received(response: Response) -> None:
+        # Re-read under the row lock so a config write committed mid-request survives.
+        session.refresh(source, with_for_update=True)
         record_points(source, response.body, datetime.now(UTC))
         session.commit()
 
