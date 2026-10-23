@@ -1,0 +1,6 @@
+{
+  "status": 404,
+  "content_type": "text/html",
+  "body": "<html>Not found</html>",
+  "parse_error": true
+}

@@ -1,0 +1,14 @@
+{
+  "status": 200,
+  "body": {
+    "products": [
+      {
+        "id": 1
+      }
+    ]
+  },
+  "headers": {
+    "ETag": "\"invalid\""
+  },
+  "parse_error": true
+}

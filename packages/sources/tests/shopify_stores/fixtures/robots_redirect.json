@@ -1,0 +1,8 @@
+{
+  "status": 301,
+  "body": "<html>Moved permanently</html>",
+  "headers": {
+    "Location": "https://different.example.test/robots.txt"
+  },
+  "parse_error": true
+}

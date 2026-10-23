@@ -1,0 +1,41 @@
+{
+  "status": 200,
+  "body": {
+    "products": [
+      {
+        "id": 251,
+        "title": "Fixture product 251",
+        "handle": "product-251",
+        "tags": [
+          "fixture"
+        ],
+        "vendor": "Fixture",
+        "product_type": "Home",
+        "created_at": "2026-10-01T00:00:00Z",
+        "published_at": "2026-10-02T00:00:00Z",
+        "updated_at": "2026-10-22T00:00:00Z",
+        "variants": [
+          {
+            "id": 251,
+            "title": "Default",
+            "sku": "SKU-251",
+            "price": "24.99",
+            "compare_at_price": "29.99",
+            "available": true,
+            "updated_at": "2026-10-22T00:00:00Z"
+          }
+        ],
+        "images": [
+          {
+            "src": "https://cdn.example.test/251.png",
+            "position": 1
+          }
+        ]
+      }
+    ]
+  },
+  "records": 1,
+  "headers": {
+    "ETag": "\"catalog-v1\""
+  }
+}
