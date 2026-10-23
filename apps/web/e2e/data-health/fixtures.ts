@@ -88,6 +88,8 @@ const gap = (source_key: string, slot_key: string, startHoursAgo: number, reason
 
 export const host: S["HostHealth"] = {
   live_runs_allowed: false,
+  next_cursor: null,
+  latest_gap_ends: { google_trends: at(2), cj: at(79) },
   latest_heartbeat: { host: "pulso-pc", at: at(4 / 60) },
   open_gaps: [gap("google_trends", "2026-10-22T10", 4), gap("google_trends", "2026-10-22T11", 3), gap("cj", "2026-10-19T06", 80, "run_failed")],
 };
@@ -134,6 +136,7 @@ export function runDetail(id: number): S["RunDetail"] | undefined {
   const stores = ["bleame.com", "meowingtons.com", "pawz.com", "northwind-home.example"];
   return {
     ...r,
+    next_cursor: null,
     targets: stores.slice(0, r.target_count).map((store, i) => ({
       scope: "store", target_id: store, captured_at: r.finished_at ?? r.queued_at,
       status: i < r.successful_target_count ? "success" : "failed", raw_payload_id: i < r.successful_target_count ? 9001 + i : null,

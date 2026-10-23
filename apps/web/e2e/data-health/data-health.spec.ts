@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 
-import { healthySources, host, mockAdminApi, operationId, sources, suppressedSources } from "./fixtures";
+import { healthySources, host, mockAdminApi, operationId, runDetail, sources, suppressedSources } from "./fixtures";
 
 // DH-2 / DH-3 (P1-12): the Data Health page and nav badge against fixture DH-1 responses (E2E auth bypass).
 
@@ -10,6 +10,20 @@ async function open(page: Page) {
   await page.goto(PAGE);
   await expect(page.getByRole("heading", { level: 1, name: "Data Health" })).toBeVisible();
 }
+
+test("bounded pages disclose omitted rows and preserve overdue sources beyond the page", async ({ page }) => {
+  const calls = await mockAdminApi(page, { host: { open_gaps: [host.open_gaps[2]], next_cursor: "fixture-next" } });
+  await page.route("**/api/v1/admin/runs/412", (route) => route.fulfill({ json: { ...runDetail(412), next_cursor: "fixture-next" } }));
+  await open(page);
+  await expect(page.getByRole("region", { name: "Collector host" })).toContainText("At least 1 missed slots");
+  await expect(page.getByText("More missed slots are not shown; ranges may continue on later pages.")).toBeVisible();
+  const table = page.getByRole("region", { name: "Sources table" });
+  await expect(table.getByRole("row", { name: /Google Trends/ })).toContainText("Overdue");
+  await expect(page.getByRole("link", { name: /Data Health.*2 sources need attention/ }).first()).toBeVisible();
+  await table.getByRole("button", { name: "Shopify stores: open runs" }).click();
+  await expect(page.getByRole("dialog", { name: "Shopify stores" })).toContainText("Showing the first 4 targets. More targets are not shown.");
+  expect(calls.filter((c) => c.path === "/v1/admin/host")).toHaveLength(1);
+});
 
 test("renders every DH-1 field from fixtures", async ({ page }) => {
   await mockAdminApi(page);
@@ -196,7 +210,7 @@ test.describe("DH-3 nav badge", () => {
   });
 
   test("clears when no source needs attention", async ({ page }) => {
-    await mockAdminApi(page, { sources: healthySources, host: { open_gaps: [] } });
+    await mockAdminApi(page, { sources: healthySources, host: { open_gaps: [], latest_gap_ends: {} } });
     await page.goto("/");
     const link = page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: /Data Health/ });
     await expect(page.getByText("Online · 4m ago").first()).toBeVisible(); // data has loaded

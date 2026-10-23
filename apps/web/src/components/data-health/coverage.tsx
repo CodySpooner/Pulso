@@ -135,7 +135,7 @@ function OpenGaps({ names, host }: { names: Map<string, string>; host: ReturnTyp
   return (
     <div className="flex flex-col gap-2 border-t border-border-subtle pt-3">
       <h3 className="text-data font-medium text-foreground">
-        Open gaps <span className="font-normal text-subtle-foreground">· {ranges.length} ranges, newest first · feature dates touching them carry gap flags</span>
+        Open gaps <span className="font-normal text-subtle-foreground">· {ranges.length} ranges{host.data.next_cursor ? " in this page" : ""}, newest first · feature dates touching them carry gap flags</span>
       </h3>
       <div role="region" aria-label="Open gaps" tabIndex={0} className="relative overflow-x-auto">
         <table className="zone-data w-full min-w-150">
@@ -162,6 +162,7 @@ function OpenGaps({ names, host }: { names: Map<string, string>; host: ReturnTyp
         </table>
       </div>
       {ranges.length > SHOWN_GAPS && <p className="text-label text-subtle-foreground">{ranges.length - SHOWN_GAPS} older ranges not shown.</p>}
+      {host.data.next_cursor && <p className="text-label text-subtle-foreground">More missed slots are not shown; ranges may continue on later pages.</p>}
     </div>
   );
 }

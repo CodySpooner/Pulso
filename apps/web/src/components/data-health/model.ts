@@ -22,13 +22,14 @@ export type SourceState = "blocked" | "disabled" | "running" | "failing" | "over
 /** States that put a count on the Data Health nav badge (DH-3). */
 export const ATTENTION: ReadonlySet<SourceState> = new Set(["blocked", "failing", "overdue"]);
 
-export function sourceState(source: SourceHealth, openGaps: Gap[], now: number): SourceState {
+export function sourceState(source: SourceHealth, latestGapEnds: HostHealth["latest_gap_ends"], now: number): SourceState {
   if (source.status === "blocked") return "blocked";
   if (!source.enabled) return "disabled";
   const run = source.last_run;
   if (run?.status === "queued" || run?.status === "running") return "running";
   if (run?.status === "failed" || run?.status === "blocked") return "failing";
-  if (openGaps.some((g) => g.source_key === source.key && now - Date.parse(g.slot_end) < OVERDUE_WINDOW_MS)) return "overdue";
+  const gapEnd = latestGapEnds[source.key];
+  if (gapEnd && now - Date.parse(gapEnd) < OVERDUE_WINDOW_MS) return "overdue";
   // A suppressed slot collected nothing (DEC-108); the gap audit counts it as missed (imp-042, DEC-123).
   if (run?.status === "skipped" && run.error_code === "slot_suppressed") return "skipped";
   if (run?.status === "partial" || (run?.status === "success" && !run.complete)) return "partial";
@@ -40,8 +41,8 @@ export function skipNote(run: Run): string {
   return run.blocked_by != null ? `Run #${run.blocked_by} was still active` : "An earlier run was still active";
 }
 
-export function attentionCount(sources: SourceHealth[], openGaps: Gap[], now: number): number {
-  return sources.filter((s) => ATTENTION.has(sourceState(s, openGaps, now))).length;
+export function attentionCount(sources: SourceHealth[], latestGapEnds: HostHealth["latest_gap_ends"], now: number): number {
+  return sources.filter((s) => ATTENTION.has(sourceState(s, latestGapEnds, now))).length;
 }
 
 export type HostState = "none" | "online" | "late" | "offline";
