@@ -110,7 +110,7 @@ export function ImportPanel({ onOpen }: { onOpen: (key: string) => void }) {
                   commit.reset();
                   if (file) check(file, e.target.value);
                 }}
-                className="peer h-(--input-h) w-full appearance-none rounded-md border border-border bg-secondary pr-8 pl-3 text-data text-foreground hover:border-border-strong aria-disabled:pointer-events-none aria-disabled:opacity-50"
+                className="peer h-(--input-h) w-full appearance-none rounded-md border border-border bg-secondary pr-8 pl-3 text-data text-foreground hover:border-border-strong aria-disabled:pointer-events-none aria-disabled:text-subtle-foreground"
               >
                 {importable.map((s) => (
                   <option key={s.key} value={s.key}>
@@ -118,7 +118,7 @@ export function ImportPanel({ onOpen }: { onOpen: (key: string) => void }) {
                   </option>
                 ))}
               </select>
-              <ChevronDown className="pointer-events-none absolute top-1/2 right-2.5 size-4 -translate-y-1/2 text-muted-foreground peer-aria-disabled:opacity-50" aria-hidden />
+              <ChevronDown className="pointer-events-none absolute top-1/2 right-2.5 size-4 -translate-y-1/2 text-muted-foreground peer-aria-disabled:text-subtle-foreground" aria-hidden />
             </div>
           </div>
           <Button asChild variant="ghost">
