@@ -42,13 +42,15 @@ P1-27's fixed-text error wrapper and keeping worker/ML packages out of the API i
 
 Adapter lanes register `tasks.PLANS[source_key] = factory`. A factory receives
 `(session, source, job)` and returns `Plan(adapter, targets, wall_time_seconds,
-request_hook=None)`. Jobs are `catalog`, `variants_js`, `freight`, `trends`, `fx`;
+request_hook=None, collector_max_retries=None, finalize=None)`. Jobs are `catalog`, `variants_js`, `freight`, `trends`, `fx`;
 manual runs default to catalog (Trends/FX use their own job). Registration must be
 imported at worker startup. Missing adapters fail the queued run without fetching.
-Frankfurter is registered. Shopify registration remains P1-04c under the permitted
-size split: its existing `collect()` needs a reusable plan/finalization extraction
-that preserves cache eligibility, retry suppression and successful-target delisting.
-The consumer holds the source advisory lock across `execute_run`, passes
+Frankfurter and Shopify catalog are registered. Shopify's factory preloads successful
+captures and pacing evidence; both its `collect()` wrapper and worker plan use zero
+request retries and the same successful-store delisting/freshness finalizer (DEC-110).
+Shopify `variants_js` remains unsupported until P1-07b. Unset retry overrides preserve
+the configured retries, and plans without a finalizer keep their existing lifecycle.
+The consumer holds the source advisory lock across planning, `execute_run` and finalization, passes
 `SoftTimeLimitExceeded` as a stop exception, and applies 60/75-minute soft/hard
 limits from settings. Settings require every source budget below soft below hard,
 and backoff base no greater than cap. Windows solo relies on cooperative budgets;

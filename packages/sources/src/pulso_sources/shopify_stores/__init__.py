@@ -1,7 +1,7 @@
 """Sequential, guarded Shopify catalogs; call collect under the worker's source lock."""
 
 import time
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from datetime import UTC, datetime, timedelta
 from typing import Any
 from urllib.error import HTTPError, URLError
@@ -196,14 +196,12 @@ class ShopifyAdapter:
             page += 1
 
 
-def collect(session: Session, run_id: int, *, settings: Settings) -> CollectorRun:
-    """Own the lifecycle transaction; source enablement remains external and off by default."""
+def plan(
+    session: Session, source: Source, *, settings: Settings
+) -> tuple[ShopifyAdapter, list[Target], Callable[[Session, CollectorRun], None]]:
+    """Preload the catalog plan under the source lock; return its successful-store finalizer."""
     global _next_global
     session.expire_on_commit = False
-    run = session.get_one(CollectorRun, run_id)
-    if run.status != "queued":
-        return run
-    source = session.get_one(Source, run.source_id)
     if source.key != "shopify_stores":
         raise ValueError("Wrong source")
     domains = {row["domain"] for row in approved_targets(session, source.key)}
@@ -266,6 +264,39 @@ def collect(session: Session, run_id: int, *, settings: Settings) -> CollectorRu
         else:
             targets.append(Target("shopify_catalog", store.domain, adapter.catalog(store)))
     session.commit()
+
+    def finalize(session: Session, run: CollectorRun) -> None:
+        for store in stores:
+            target = session.get(CollectorRunTarget, (run.id, "shopify_catalog", store.domain))
+            if target is None or target.status != "success":
+                continue
+            seen = [f"{store.shop_id}:{pid}" for pid in adapter.seen[store.domain]]
+            scope = (Listing.store_id == store.id, Listing.source_id == source.id)
+            session.execute(
+                update(Listing)
+                .where(*scope, Listing.external_id.in_(seen))
+                .values(last_seen_at=target.captured_at, delisted_at=None)
+            )
+            session.execute(
+                update(Listing)
+                .where(*scope, Listing.external_id.not_in(seen), Listing.delisted_at.is_(None))
+                .values(delisted_at=target.captured_at)
+            )
+            store.last_crawled_at = target.captured_at
+        session.commit()
+
+    return adapter, targets, finalize
+
+
+def collect(session: Session, run_id: int, *, settings: Settings) -> CollectorRun:
+    """Own the lifecycle transaction; source enablement remains external and off by default."""
+    session.expire_on_commit = False
+    run = session.get_one(CollectorRun, run_id)
+    if run.status != "queued":
+        return run
+    adapter, targets, finalize = plan(
+        session, session.get_one(Source, run.source_id), settings=settings
+    )
     run = execute_run(
         session,
         run_id,
@@ -275,22 +306,5 @@ def collect(session: Session, run_id: int, *, settings: Settings) -> CollectorRu
         wall_time_seconds=settings.shopify_wall_time_seconds,
         request_hook=adapter.request_hook,
     )
-    for store in stores:
-        target = session.get(CollectorRunTarget, (run_id, "shopify_catalog", store.domain))
-        if target is None or target.status != "success":
-            continue
-        seen = [f"{store.shop_id}:{pid}" for pid in adapter.seen[store.domain]]
-        scope = (Listing.store_id == store.id, Listing.source_id == source.id)
-        session.execute(
-            update(Listing)
-            .where(*scope, Listing.external_id.in_(seen))
-            .values(last_seen_at=target.captured_at, delisted_at=None)
-        )
-        session.execute(
-            update(Listing)
-            .where(*scope, Listing.external_id.not_in(seen), Listing.delisted_at.is_(None))
-            .values(delisted_at=target.captured_at)
-        )
-        store.last_crawled_at = target.captured_at
-    session.commit()
+    finalize(session, run)
     return run
