@@ -3,6 +3,7 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { ChevronDown, CircleCheck, CircleDashed, CircleX, Download, FileSpreadsheet, History, TriangleAlert, Upload } from "lucide-react";
 
+import { CopyButton } from "@/components/pulso/copy-button";
 import { EmptyState } from "@/components/pulso/empty-state";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -346,17 +347,25 @@ function ErrorLine({ error, retry, fallback }: { error: unknown; retry: () => vo
   useTakeLostFocus(retryButton); // a Retry that failed again comes back focused
   return (
     // Spoken by the panel's alert region, with the Retry hint; this line has no live role of its own.
+    // One row when it fits. Narrower, the message keeps 12rem beside the icon and the ID, then the actions,
+    // wrap below it at full width: beside the icon a uuid4 ID doesn't fit at 375px.
     <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border border-negative/40 bg-negative-muted px-4 py-3 text-data">
       <TriangleAlert className="size-4 text-negative" aria-hidden />
-      <p className="min-w-0 flex-1 text-foreground">
-        {text}
-        {problem && <span className="ml-2 font-mono text-label text-subtle-foreground">Error ID {problem.request_id}</span>}
-      </p>
-      {retryable && (
-        <Button ref={retryButton} size="sm" variant="secondary" onClick={retry}>
-          Retry
-        </Button>
+      <p className="min-w-0 flex-[1_1_12rem] text-foreground">{text}</p>
+      {problem && (
+        <p className="font-mono text-label text-subtle-foreground">
+          {/* inline-block: the ID moves to its own line whole instead of breaking at a hyphen. */}
+          Error ID <span className="inline-block max-w-full select-all break-all selection:text-foreground">{problem.request_id}</span>
+        </p>
       )}
+      <div className="ml-auto flex gap-2">
+        {retryable && (
+          <Button ref={retryButton} size="sm" variant="secondary" onClick={retry}>
+            Retry
+          </Button>
+        )}
+        {problem && <CopyButton value={problem.request_id} label="Copy error ID" />}
+      </div>
     </div>
   );
 }
