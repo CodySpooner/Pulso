@@ -1,0 +1,1 @@
+{"code":200,"result":true,"data":{"pageSize":100,"pageNumber":1,"totalRecords":2,"totalPages":1,"content":[{"productList":[{"id":"fixture-product-1","nameEn":"Fixture pet brush","sellPrice":"1.25-2.50","listedNum":17},{"id":"fixture-product-2","nameEn":"Fixture bowl","sellPrice":"3.10"}]}]}}

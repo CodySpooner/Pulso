@@ -1,0 +1,7 @@
+[
+  {"status":200,"body":{"code":1600014,"result":false,"message":"Your API access has been disabled"},"expected":"cj_api_disabled_inactivity"},
+  {"status":429,"body":{"result":false,"message":"one ip limit 3 users, Your Ip is fixture"},"expected":"cj_ip_user_limit"},
+  {"status":429,"body":{"code":429,"result":false,"message":"Insufficient API points. Used today: 50000, Remaining: 0, Required: 10","pointsInfo":{"usedToday":50000,"remaining":0,"total":50000}},"expected":"cj_points_exhausted"},
+  {"status":429,"body":{"code":1600200,"result":false,"message":"Too much request"},"expected":"cj_rate_limited"},
+  {"status":200,"body":{"code":1600001,"result":false,"message":"Invalid API key or access token"},"expected":"cj_token_expired"}
+]
