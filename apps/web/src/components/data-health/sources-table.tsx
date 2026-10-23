@@ -53,9 +53,9 @@ export function SourcesPanel({ now, onOpen }: { now: number; onOpen: (key: strin
   const [confirm, setConfirm] = useState<Confirm | null>(null);
   const toggled = useRef<HTMLElement | null>(null); // the dialog has no Radix trigger, so focus returns here
 
-  const gaps = host.data?.open_gaps ?? [];
+  const latestGapEnds = host.data?.latest_gap_ends ?? {};
   const rows = sources.data?.filter((s) => s.type !== "internal") ?? [];
-  const attention = sources.data ? attentionCount(rows, gaps, now) : 0;
+  const attention = sources.data ? attentionCount(rows, latestGapEnds, now) : 0;
 
   function setEnabled(source: SourceHealth, enabled: boolean, reason?: string) {
     patch.mutate(
@@ -149,7 +149,7 @@ export function SourcesPanel({ now, onOpen }: { now: number; onOpen: (key: strin
                 <li key={s.key} className="flex flex-col gap-2 px-4 py-3">
                   <div className="flex items-center justify-between gap-2">
                     <SourceName source={s} onOpen={onOpen} />
-                    <StatePill state={sourceState(s, gaps, now)} />
+                    <StatePill state={sourceState(s, latestGapEnds, now)} />
                   </div>
                   <dl className="zone-data grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-muted-foreground">
                     <dt>Last run</dt>
@@ -211,7 +211,7 @@ export function SourcesPanel({ now, onOpen }: { now: number; onOpen: (key: strin
                       </td>
                       <td className="px-3">
                         <div className="flex flex-col items-start gap-0.5">
-                          <StatePill state={sourceState(s, gaps, now)} />
+                          <StatePill state={sourceState(s, latestGapEnds, now)} />
                           <StatusNote source={s} />
                         </div>
                       </td>

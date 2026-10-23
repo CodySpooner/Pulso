@@ -59,7 +59,7 @@ function DrawerBody({ source, now }: { source: SourceHealth; now: number }) {
       <div className="flex flex-col gap-2 border-b border-border-subtle px-5 pt-4 pb-4">
         <div className="flex items-center gap-2 pr-10">
           <SheetTitle className="truncate text-title-2 font-semibold text-foreground">{source.name}</SheetTitle>
-          <StatePill state={sourceState(source, host.data?.open_gaps ?? [], now)} />
+          <StatePill state={sourceState(source, host.data?.latest_gap_ends ?? {}, now)} />
         </div>
         <SheetDescription className="text-data text-muted-foreground">Source settings and runs, newest first. All times UTC.</SheetDescription>
         <dl className="zone-data mt-1 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1">
@@ -226,6 +226,7 @@ function RunDetailView({ run }: { run: Run }) {
               ))}
             </tbody>
           </table>
+          {detail.data.next_cursor && <p className="text-label text-subtle-foreground">Showing the first {detail.data.targets.length} targets. More targets are not shown.</p>}
         </div>
       )}
     </div>

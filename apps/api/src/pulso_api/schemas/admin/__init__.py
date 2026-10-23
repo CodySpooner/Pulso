@@ -41,6 +41,7 @@ class RunTarget(BaseModel):
 
 class RunDetail(Run):
     targets: list[RunTarget]
+    next_cursor: str | None = Field(description="Pass as `cursor` for the next target page.")
 
 
 class RunPage(BaseModel):
@@ -107,6 +108,10 @@ class HostHealth(BaseModel):
     live_runs_allowed: bool = Field(description="False: Run now answers 409 (D2).")
     latest_heartbeat: Heartbeat | None
     open_gaps: list[Gap] = Field(description="Unfilled gaps starting in the last 90 days.")
+    next_cursor: str | None = Field(description="Pass as `cursor` for the next (older) gap page.")
+    latest_gap_ends: dict[str, datetime] = Field(
+        description="Latest unfilled gap end per source across the entire 90-day window."
+    )
 
 
 class RowError(BaseModel):

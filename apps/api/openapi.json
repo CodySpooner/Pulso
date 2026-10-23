@@ -129,6 +129,15 @@
       },
       "HostHealth": {
         "properties": {
+          "latest_gap_ends": {
+            "additionalProperties": {
+              "format": "date-time",
+              "type": "string"
+            },
+            "description": "Latest unfilled gap end per source across the entire 90-day window.",
+            "title": "Latest Gap Ends",
+            "type": "object"
+          },
           "latest_heartbeat": {
             "anyOf": [
               {
@@ -144,6 +153,18 @@
             "title": "Live Runs Allowed",
             "type": "boolean"
           },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Pass as `cursor` for the next (older) gap page.",
+            "title": "Next Cursor"
+          },
           "open_gaps": {
             "description": "Unfilled gaps starting in the last 90 days.",
             "items": {
@@ -156,7 +177,9 @@
         "required": [
           "live_runs_allowed",
           "latest_heartbeat",
-          "open_gaps"
+          "open_gaps",
+          "next_cursor",
+          "latest_gap_ends"
         ],
         "title": "HostHealth",
         "type": "object"
@@ -560,6 +583,18 @@
             ],
             "title": "Last Status Code"
           },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Pass as `cursor` for the next target page.",
+            "title": "Next Cursor"
+          },
           "queued_at": {
             "format": "date-time",
             "title": "Queued At",
@@ -653,7 +688,8 @@
           "host",
           "target_count",
           "successful_target_count",
-          "targets"
+          "targets",
+          "next_cursor"
         ],
         "title": "RunDetail",
         "type": "object"
@@ -2314,6 +2350,34 @@
         "operationId": "get_host",
         "parameters": [
           {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
             "in": "cookie",
             "name": "__session",
             "required": false,
@@ -3188,6 +3252,34 @@
             "required": true,
             "schema": {
               "title": "Run Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
               "type": "integer"
             }
           },

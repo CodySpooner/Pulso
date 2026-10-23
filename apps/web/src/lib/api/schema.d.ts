@@ -315,12 +315,24 @@ export interface components {
         };
         /** HostHealth */
         HostHealth: {
+            /**
+             * Latest Gap Ends
+             * @description Latest unfilled gap end per source across the entire 90-day window.
+             */
+            latest_gap_ends: {
+                [key: string]: string;
+            };
             latest_heartbeat: components["schemas"]["Heartbeat"] | null;
             /**
              * Live Runs Allowed
              * @description False: Run now answers 409 (D2).
              */
             live_runs_allowed: boolean;
+            /**
+             * Next Cursor
+             * @description Pass as `cursor` for the next (older) gap page.
+             */
+            next_cursor: string | null;
             /**
              * Open Gaps
              * @description Unfilled gaps starting in the last 90 days.
@@ -464,6 +476,11 @@ export interface components {
             id: number;
             /** Last Status Code */
             last_status_code: number | null;
+            /**
+             * Next Cursor
+             * @description Pass as `cursor` for the next target page.
+             */
+            next_cursor: string | null;
             /**
              * Queued At
              * Format: date-time
@@ -1304,7 +1321,10 @@ export interface operations {
     };
     get_host: {
         parameters: {
-            query?: never;
+            query?: {
+                cursor?: string | null;
+                limit?: number;
+            };
             header?: never;
             path?: never;
             cookie?: {
@@ -1758,7 +1778,10 @@ export interface operations {
     };
     get_run: {
         parameters: {
-            query?: never;
+            query?: {
+                cursor?: string | null;
+                limit?: number;
+            };
             header?: never;
             path: {
                 run_id: number;
