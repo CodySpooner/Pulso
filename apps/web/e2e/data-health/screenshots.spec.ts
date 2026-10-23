@@ -39,5 +39,18 @@ for (const theme of ["dark", "light"] as const) {
       await page.waitForTimeout(500);
       await page.screenshot({ path: `${OUT}/run-drawer-${width}-${theme}.png` });
     });
+
+    // imp-057: the API-down page, its error an h2 under the page h1. Output goes to docs/screenshots/imp-057/.
+    test(`api down ${width}px ${theme}`, async ({ page }) => {
+      await mockAdminApi(page, { down: true });
+      await page.setViewportSize({ width, height });
+      await page.emulateMedia({ colorScheme: theme });
+      await page.addInitScript((t) => localStorage.setItem("theme", t), theme);
+      await page.goto("/admin/data-health");
+      await expect(page.getByRole("heading", { level: 2, name: "Can't reach the API" })).toBeVisible({ timeout: 15_000 });
+      await page.evaluate(() => document.fonts.ready);
+      await page.waitForTimeout(500);
+      await page.screenshot({ path: `../../docs/screenshots/imp-057/api-down-${width}-${theme}.png` });
+    });
   }
 }
