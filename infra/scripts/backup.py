@@ -352,7 +352,10 @@ def arguments(description: str) -> argparse.ArgumentParser:
 
 def detach(checkout: Path, child_args: list[str] | None = None) -> None:
     preflight(checkout)
-    flags = subprocess.DETACHED_PROCESS | subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
+    flags = 0
+    # mypy only narrows sys.platform in if-statements; these flags exist only on Windows.
+    if sys.platform == "win32":
+        flags = subprocess.DETACHED_PROCESS | subprocess.CREATE_NO_WINDOW
     subprocess.Popen(
         child_args
         or [

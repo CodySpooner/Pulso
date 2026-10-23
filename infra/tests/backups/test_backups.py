@@ -360,9 +360,11 @@ def test_detached_launch_is_hidden_and_rechecks_in_child(
     backup.detach(checkout)
     assert calls[0]["stdin"] == subprocess.DEVNULL
     if os.name == "nt":
-        assert calls[0]["creationflags"] & subprocess.CREATE_NO_WINDOW
+        flags = subprocess.DETACHED_PROCESS | subprocess.CREATE_NO_WINDOW
+        assert calls[0]["creationflags"] == flags
     else:
         assert calls[0]["start_new_session"] is True
+        assert calls[0]["creationflags"] == 0
 
 
 def test_forbidden_script_strings() -> None:
