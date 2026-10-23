@@ -354,7 +354,8 @@ function ErrorLine({ error, retry, fallback }: { error: unknown; retry: () => vo
       <p className="min-w-0 flex-[1_1_12rem] text-foreground">{text}</p>
       {problem && (
         <p className="font-mono text-label text-subtle-foreground">
-          {/* inline-block: the ID moves to its own line whole instead of breaking at a hyphen. */}
+          {/* inline-block: the ID moves to its own line whole instead of breaking at a hyphen. Only an ID wider
+              than the line (a caller's X-Request-ID, up to 128 chars) breaks, anywhere, rather than overflow. */}
           Error ID <span className="inline-block max-w-full select-all break-all selection:text-foreground">{problem.request_id}</span>
         </p>
       )}
