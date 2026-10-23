@@ -432,15 +432,17 @@ function ActionError({ failure }: { failure: Failure }) {
     box.current?.scrollIntoView({ block: "nearest" }); // a block: scrollIntoView may return a Promise, never a cleanup
   }, []);
   return (
-    <div ref={box} className="flex flex-col gap-1 rounded-lg border border-negative/40 bg-negative-muted px-3 py-2 text-data">
-      <p role="alert" className="flex gap-2 text-foreground">
-        <TriangleAlert aria-hidden className="mt-0.5 size-3.5 shrink-0 text-negative" />
+    // The scroll margin clears the phone's bottom bar (h-14).
+    <div ref={box} className="flex scroll-mb-[calc(4.5rem+env(safe-area-inset-bottom))] flex-col gap-1 rounded-lg border border-negative/40 bg-negative-muted px-3 py-2 text-data">
+      <p role="alert" className="text-foreground">
+        <TriangleAlert aria-hidden className="mr-1.5 inline size-3.5 align-[-2px] text-negative" />
         {failure.text}
       </p>
       {problem && (
-        <div className="flex flex-wrap items-center justify-between gap-x-3 pl-5.5">
+        <div className="flex flex-wrap items-center justify-between gap-x-3">
           <span className="font-mono text-label text-subtle-foreground">
-            Error ID <SelectableId value={problem.request_id} label="Error ID" />
+            {/* inline-block: on a phone the ID moves to its own line whole instead of breaking at a hyphen. */}
+            Error ID <SelectableId value={problem.request_id} label="Error ID" className="inline-block max-w-full break-all" />
           </span>
           <CopyButton value={problem.request_id} label="Copy error ID" />
         </div>
