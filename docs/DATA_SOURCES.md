@@ -320,7 +320,7 @@ Same method and meaning of **Verified** / **Unknown** as above: public documenta
 - **CSV fallback:** an owner-supplied recall CSV.
 
 #### Merchant API price competitiveness (part of `merchant_bestsellers`)
-- **Signal / metric:** Google's `benchmark_price` beside the owner's own price for products in his Merchant Center. Metric: pushed products with a benchmark price; baseline 0.
+- **Signal / metric:** Google's `benchmark_price` beside the owner's own price for products in the owner's Merchant Center. Metric: pushed products with a benchmark price; baseline 0.
 - **Verified:** the [market guide](https://developers.google.com/merchant/api/guides/reports/understand-the-market) shows `price_competitiveness_product_view` (id, title, brand, price, report country, `benchmark_price`) covering "the same products that you sell". It has the same eligibility wording and the same Merchant Center terms as Best Sellers.
 - **Unknown:** coverage for products without GTINs (likely low).
 
