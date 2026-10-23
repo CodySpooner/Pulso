@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { ChevronRight, History } from "lucide-react";
 
 import { EmptyState } from "@/components/pulso/empty-state";
@@ -12,8 +12,9 @@ import { cn } from "@/lib/utils";
 
 import { useHost, useMoreTargets, useRunDetail, useSourceRuns } from "./api";
 import { Ago, Missing, PanelError, runStatus, StatePill } from "./atoms";
+import { GapsLink, OPEN_GAPS_ID } from "./coverage";
 import { LoadMore } from "./load-more";
-import { skipNote, sourceState, targetsNote, type Run, type SourceHealth } from "./model";
+import { missedNote, skipNote, sourceState, targetsNote, type Run, type SourceHealth } from "./model";
 
 const RUNS_API = "GET /v1/admin/runs";
 
@@ -33,6 +34,7 @@ export function RunDrawer({
   onClose: () => void;
   returnFocusRef: React.RefObject<HTMLElement | null>;
 }) {
+  const toGaps = useRef(false); // closed by the missed-slot link: focus goes to Open gaps, not back to the opener
   return (
     <Sheet open={source != null} onOpenChange={(open) => !open && onClose()}>
       <SheetContent
@@ -45,19 +47,32 @@ export function RunDrawer({
         }}
         onCloseAutoFocus={(e) => {
           e.preventDefault();
-          returnFocusRef.current?.focus();
+          const gaps = toGaps.current && document.getElementById(OPEN_GAPS_ID);
+          toGaps.current = false;
+          (gaps || returnFocusRef.current)?.focus();
         }}
       >
-        {source && <DrawerBody source={source} now={now} />}
+        {source && (
+          <DrawerBody
+            source={source}
+            now={now}
+            onGaps={() => {
+              toGaps.current = true;
+              onClose();
+            }}
+          />
+        )}
       </SheetContent>
     </Sheet>
   );
 }
 
-function DrawerBody({ source, now }: { source: SourceHealth; now: number }) {
+function DrawerBody({ source, now, onGaps }: { source: SourceHealth; now: number; onGaps: () => void }) {
   const host = useHost();
   const runs = useSourceRuns(source.key);
   const items = runs.data?.pages.flatMap((p) => p.items) ?? [];
+  const state = sourceState(source, host.data?.latest_gap_ends, now);
+  const missed = state === "overdue" && host.data ? missedNote(source.key, host.data.latest_gap_ends, host.data.open_gaps) : null;
   const quota = source.quota_limit != null ? `${source.quota_used?.toLocaleString("en-US") ?? "—"} / ${source.quota_limit.toLocaleString("en-US")}` : null;
 
   return (
@@ -65,8 +80,15 @@ function DrawerBody({ source, now }: { source: SourceHealth; now: number }) {
       <div className="flex flex-col gap-2 border-b border-border-subtle px-5 pt-4 pb-4">
         <div className="flex items-center gap-2 pr-10">
           <SheetTitle className="truncate text-title-2 font-semibold text-foreground">{source.name}</SheetTitle>
-          <StatePill state={sourceState(source, host.data?.latest_gap_ends, now)} />
+          <StatePill state={state} />
         </div>
+        {/* Why it is Overdue while its newest run may read Succeeded (imp-124). The link closes the drawer first.
+            Under a coarse pointer 6 px more keeps the pill's and the link's 44 px hit squares apart (A11Y-02). */}
+        {missed && (
+          <p className="text-data text-foreground pointer-coarse:mt-1.5">
+            <GapsLink missed={missed} onFollow={onGaps} />
+          </p>
+        )}
         <SheetDescription className="text-data text-muted-foreground">Source settings and runs, newest first. All times UTC.</SheetDescription>
         <dl className="zone-data mt-1 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1">
           <Fact label="Key">

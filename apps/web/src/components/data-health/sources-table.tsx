@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Clock, Database, Play, TriangleAlert, Upload } from "lucide-react";
+import { ChevronRight, Clock, Database, Play, TriangleAlert, Upload } from "lucide-react";
 
 import { CopyButton, SelectableId } from "@/components/pulso/copy-button";
 import { EmptyState } from "@/components/pulso/empty-state";
@@ -16,7 +16,8 @@ import { cn } from "@/lib/utils";
 
 import { useHost, useRefreshAdmin, useSources } from "./api";
 import { Ago, Missing, Panel, PanelError, StatePill, TapTooltip } from "./atoms";
-import { attentionCount, importEntry, skipNote, sourceState, type SourceHealth, type SourceState } from "./model";
+import { GapsLink } from "./coverage";
+import { attentionCount, importEntry, missedNote, skipNote, sourceState, type MissedSlot, type SourceHealth, type SourceState } from "./model";
 
 const SOURCES_API = "GET /v1/admin/sources";
 
@@ -103,6 +104,8 @@ export function SourcesPanel({ now, onOpen, onImport }: { now: number; onOpen: (
 
   /** A new attempt drops the last failure, so a repeat is announced again; a success notice stays until replaced. */
   const clearFailure = () => setNotice((n) => (n?.tone === "error" ? null : n));
+  /** An Overdue source's latest missed slot, for its status note (imp-124). */
+  const missed = (s: SourceHealth, state: SourceState) => (state === "overdue" && host.data ? missedNote(s.key, host.data.latest_gap_ends, host.data.open_gaps) : null);
 
   function setEnabled(source: SourceHealth, enabled: boolean, reason?: string) {
     clearFailure();
@@ -210,7 +213,7 @@ export function SourcesPanel({ now, onOpen, onImport }: { now: number; onOpen: (
                     <SourceName source={s} onOpen={onOpen} />
                     {waiting(state) ? pillSkeleton : <StatePill state={state} />}
                   </div>
-                  {!waiting(state) && <StatusNote source={s} state={state} className="-mt-1" />}
+                  {!waiting(state) && <StatusNote source={s} state={state} missed={missed(s, state)} className="-mt-1" />}
                   <dl className="zone-data grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-muted-foreground">
                     <dt>Last run</dt>
                     <dd className="text-foreground">
@@ -275,10 +278,11 @@ export function SourcesPanel({ now, onOpen, onImport }: { now: number; onOpen: (
                       <td className="px-3 py-1.5">
                         <SourceName source={s} onOpen={onOpen} />
                       </td>
-                      <td className="px-3">
+                      {/* Under a coarse pointer the pill's 44 px hit square stays inside its row (A11Y-02). */}
+                      <td className="px-3 pointer-coarse:py-3">
                         <div className="flex flex-col items-start gap-0.5">
                           {waiting(state) ? pillSkeleton : <StatePill state={state} />}
-                          {!waiting(state) && <StatusNote source={s} state={state} />}
+                          {!waiting(state) && <StatusNote source={s} state={state} missed={missed(s, state)} />}
                         </div>
                       </td>
                       <td className="px-3">
@@ -359,20 +363,22 @@ export function SourcesPanel({ now, onOpen, onImport }: { now: number; onOpen: (
 function SourceName({ source, onOpen }: { source: SourceHealth; onOpen: (key: string) => void }) {
   return (
     <div className="flex min-w-0 flex-col">
+      {/* Styled as a link with a chevron at rest, so touch sees the way into the run drawer too (imp-125). */}
       <button
         type="button"
         onClick={() => onOpen(source.key)}
         aria-label={`${source.name}: open runs`}
-        className="relative hit-area max-w-full self-start rounded-sm text-left font-medium text-foreground underline-offset-4 hover:underline"
+        className="group relative hit-area flex max-w-full items-center gap-0.5 self-start rounded-sm text-left font-medium text-foreground"
       >
-        <span className="block truncate">{source.name}</span>
+        <span className="truncate underline decoration-border-strong underline-offset-4 group-hover:decoration-current">{source.name}</span>
+        <ChevronRight aria-hidden className="size-3.5 shrink-0 text-muted-foreground group-hover:text-foreground" />
       </button>
       <span className="text-label text-subtle-foreground">{typeLabel[source.type] ?? source.type}</span>
     </div>
   );
 }
 
-function StatusNote({ source, state, className }: { source: SourceHealth; state: SourceState; className?: string }) {
+function StatusNote({ source, state, missed, className }: { source: SourceHealth; state: SourceState; missed: MissedSlot | null; className?: string }) {
   const reason = [
     source.disabled_reason,
     state === "skipped" && source.last_run && skipNote(source.last_run),
@@ -380,7 +386,7 @@ function StatusNote({ source, state, className }: { source: SourceHealth; state:
   ]
     .filter(Boolean)
     .join(" · ");
-  if (!reason && !source.retry_not_before) return null;
+  if (!reason && !source.retry_not_before && !missed) return null;
   // The table (md and up) truncates the reason; the phone card wraps it. The deadline line is never cut (imp-094).
   return (
     <span className={cn("flex flex-col text-label text-muted-foreground", className)}>
@@ -390,6 +396,14 @@ function StatusNote({ source, state, className }: { source: SourceHealth; state:
         </span>
       )}
       {source.retry_not_before && <span className="whitespace-nowrap">Retry after {formatUtc(source.retry_not_before)}</span>}
+      {/* Never truncated: the slot and reason are the why (imp-124). 180 px holds "Missed Oct 22, 10:00–12:00 UTC"
+          on one line and still fits the table at 1440 px; a longer slot wraps. Under a coarse pointer the table
+          puts 18 px between the pill and the link, so their 44 px hit squares don't overlap (A11Y-02). */}
+      {missed && (
+        <span className="md:w-45 md:pointer-coarse:mt-4">
+          <GapsLink missed={missed} />
+        </span>
+      )}
     </span>
   );
 }
