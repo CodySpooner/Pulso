@@ -1,13 +1,17 @@
+import asyncio
+import gzip
 import io
+import json
 import logging
 import time
-from collections.abc import Callable, Iterator, Sequence
+from collections.abc import AsyncIterator, Callable, Iterator, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
 from typing import Any
 from unittest.mock import Mock, patch
 from uuid import uuid4
 
+import httpx
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -57,6 +61,7 @@ from pulso_sources.framework import (
     execute_run,
 )
 from pulso_sources.imports import ADAPTERS, ImportData, Row, template_csv
+from pulso_sources.imports.csv import MAX_BYTES
 
 NOW = datetime.now(UTC).replace(microsecond=0)
 PRINCIPAL = Principal(uuid4(), uuid4())
@@ -459,7 +464,9 @@ class ImportAdapter:
         raise AssertionError("imports never fetch")
 
     def parse(self, body: bytes) -> list[Row]:
-        assert self.data.csv is not None
+        if self.data.csv is None:
+            assert json.loads(body) == {"products": []}
+            return []
         return self.data.csv.rows
 
     def upsert(
@@ -548,3 +555,148 @@ def test_import_commit_then_repeat_skips(
     assert json_cj.json()["code"] == "invalid_import"
     unbuilt = admin.post("/v1/admin/sources/cj/import", content=template_csv("cj"), **upload)
     assert (unbuilt.status_code, unbuilt.json()["code"]) == (409, "import_unavailable")
+
+
+IMPORT_PATHS = [
+    "/v1/admin/sources/google_trends/import/preview",
+    "/v1/admin/sources/google_trends/import",
+    "/v1/admin/sources/shopify_stores/import?mode=json&observed_for=2026-10-22",
+]
+
+
+def stream_upload(
+    client: TestClient, path: str, chunks: list[bytes], headers: dict[str, str]
+) -> tuple[httpx.Response, int]:
+    """ASGITransport preserves chunk boundaries; TestClient joins the request stream."""
+    received = 0
+
+    async def body() -> AsyncIterator[bytes]:
+        nonlocal received
+        for chunk in chunks:
+            received += len(chunk)
+            yield chunk
+
+    async def send() -> httpx.Response:
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=client.app), base_url="http://testserver"
+        ) as transport:
+            request = transport.build_request(
+                "POST", path, content=body(), headers={"Content-Type": "application/octet-stream"}
+            )
+            del request.headers["Transfer-Encoding"]  # distinguish missing length from chunked
+            request.headers.update(headers)
+            return await transport.send(request)
+
+    return asyncio.run(send()), received
+
+
+@pytest.mark.parametrize("path", IMPORT_PATHS)
+@pytest.mark.parametrize(
+    "headers,expected_received",
+    [
+        ({"Content-Length": str(MAX_BYTES + 1)}, 0),
+        ({}, MAX_BYTES + 1),
+        ({"Transfer-Encoding": "chunked"}, MAX_BYTES + 1),
+        ({"Content-Length": str(MAX_BYTES)}, MAX_BYTES + 1),
+        ({"Content-Length": "0"}, MAX_BYTES + 1),
+        ({"Content-Length": "invalid"}, MAX_BYTES + 1),
+    ],
+)
+def test_oversized_import_stops_before_tail_and_writes_nothing(
+    admin: TestClient, engine: Engine, path: str, headers: dict[str, str], expected_received: int
+) -> None:
+    with (
+        patch("pulso_api.routers.admin.parse_csv") as parse,
+        patch("pulso_api.routers.admin.commit_import") as commit,
+        patch.object(storage, "make_client") as s3,
+    ):
+        response, received = stream_upload(
+            admin, path, [b"x" * MAX_BYTES, b"x", b"unread tail"], headers
+        )
+    assert received == expected_received
+    assert response.status_code == 422
+    assert response.headers["content-type"] == "application/problem+json"
+    assert response.json() == {
+        "type": "about:blank",
+        "title": "Unprocessable Content",
+        "status": 422,
+        "code": "invalid_file",
+        "detail": "File exceeds 20 MiB",
+        "request_id": response.headers["x-request-id"],
+        "errors": [],
+    }
+    parse.assert_not_called()
+    commit.assert_not_called()
+    s3.assert_not_called()
+    with Session(engine) as session:
+        for model in (CollectorRun, RawPayload, CollectorRunTarget):
+            assert session.scalar(select(func.count()).select_from(model)) == 0
+
+
+@pytest.mark.parametrize("path", IMPORT_PATHS)
+@pytest.mark.parametrize("declared", [False, True])
+def test_exact_import_cap_accepts_original_bytes(
+    admin: TestClient,
+    engine: Engine,
+    settings: Settings,
+    monkeypatch: pytest.MonkeyPatch,
+    path: str,
+    declared: bool,
+) -> None:
+    objects: dict[str, bytes] = {}
+    s3 = Mock()
+    s3.put_object.side_effect = lambda **kw: objects.__setitem__(kw["Key"], kw["Body"])
+    s3.get_object.side_effect = lambda **kw: {"Body": io.BytesIO(objects[kw["Key"]])}
+    monkeypatch.setattr(storage, "make_client", lambda _: s3)
+    monkeypatch.setattr(storage, "get_settings", lambda: settings)
+    for key in ("google_trends", "shopify_stores"):
+        monkeypatch.setitem(ADAPTERS, key, ImportAdapter)
+    if "mode=json" in path:
+        body = b'{"products": []}'.ljust(MAX_BYTES)
+    else:
+        template = template_csv("google_trends")
+        body = template.replace(
+            b"keyword,", b"keyword" + b" " * (MAX_BYTES - len(template)) + b",", 1
+        )
+    assert len(body) == MAX_BYTES
+    headers = {"Content-Length": str(MAX_BYTES)} if declared else {}
+    response, received = stream_upload(admin, path, [body[:-1], body[-1:]], headers)
+    assert (response.status_code, received) == (200, MAX_BYTES)
+    if path.endswith("preview"):
+        assert response.json()["valid"] == 1
+        s3.put_object.assert_not_called()
+        with Session(engine) as session:
+            assert session.scalar(select(func.count()).select_from(CollectorRun)) == 0
+    else:
+        first = response.json()
+        assert first["run"]["status"] == "success"
+        assert [gzip.decompress(value) for value in objects.values()] == [body]
+        repeat, received = stream_upload(admin, path, [body], headers)
+        assert (repeat.status_code, received) == (200, MAX_BYTES)
+        assert repeat.json()["run"]["status"] == "skipped"
+        assert repeat.json()["original_run_id"] == first["run"]["id"]
+        assert s3.put_object.call_count == 1
+
+
+@pytest.mark.parametrize("path", IMPORT_PATHS)
+def test_oversized_import_non_admin_is_403_without_reading_body(
+    client: TestClient, signed_token: Callable[[dict[str, Any]], str], path: str
+) -> None:
+    token = signed_token({"sub": "user_other"})
+    response, received = stream_upload(
+        client,
+        path,
+        [b"unread"],
+        {"Authorization": "Bearer " + token, "Content-Length": str(MAX_BYTES + 1)},
+    )
+    assert received == 0
+    assert (response.status_code, response.json()["code"]) == (403, "not_allowlisted")
+
+
+@pytest.mark.parametrize("path", IMPORT_PATHS)
+def test_import_body_is_required(admin: TestClient, path: str) -> None:
+    response = admin.post(path, content=b"", headers={"Content-Type": "application/octet-stream"})
+    assert (response.status_code, response.json()["code"]) == (422, "validation_error")
+    assert response.json()["errors"] == [
+        {"loc": ["body"], "msg": "Field required", "type": "missing"}
+    ]
