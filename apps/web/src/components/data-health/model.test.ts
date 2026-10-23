@@ -77,7 +77,7 @@ describe("sourceState", () => {
   });
 
   test("skipNote names the blocking run only when the API supplies it", () => {
-    expect(skipNote(run({ status: "skipped", error_code: "slot_suppressed", blocked_by: 418 }))).toBe("Run #418 was still active");
+    expect(skipNote(run({ status: "skipped", error_code: "slot_suppressed", blocked_by: 41 }))).toBe("Run #41 was still active");
     expect(skipNote(run({ status: "skipped", error_code: "slot_suppressed", blocked_by: null }))).toBe("An earlier run was still active");
   });
 });

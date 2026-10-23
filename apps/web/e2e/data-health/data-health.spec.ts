@@ -87,7 +87,10 @@ test("a suppressed latest slot reads Skipped with its blocker, never Healthy (im
   await table.getByRole("button", { name: "CJ Dropshipping: open runs" }).click();
   const drawer = page.getByRole("dialog", { name: "CJ Dropshipping" });
   await expect(drawer).toContainText("Skipped");
-  await expect(drawer).toContainText("slot_suppressed");
+  // The newest run explains the skip as a warning, not as a failure.
+  const reason = drawer.getByText("slot_suppressed").locator("..");
+  await expect(reason).toContainText("slot_suppressed Run #419 was still active.");
+  await expect(reason).toHaveClass(/bg-warning-muted/);
 });
 
 test("toggle and Run now call patch_source and run_source", async ({ page }) => {

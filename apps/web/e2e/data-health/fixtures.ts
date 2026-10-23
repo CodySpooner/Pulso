@@ -129,7 +129,7 @@ const shopifyRuns: S["Run"][] = [
 ];
 
 export function runDetail(id: number): S["RunDetail"] | undefined {
-  const r = [...shopifyRuns, ...sources.flatMap((s) => (s.last_run ? [s.last_run] : []))].find((x) => x.id === id);
+  const r = [...shopifyRuns, ...[...sources, ...suppressedSources].flatMap((s) => (s.last_run ? [s.last_run] : []))].find((x) => x.id === id);
   if (!r) return undefined;
   const stores = ["bleame.com", "meowingtons.com", "pawz.com", "northwind-home.example"];
   return {
