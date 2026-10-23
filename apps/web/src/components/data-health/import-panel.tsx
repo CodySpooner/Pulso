@@ -11,8 +11,8 @@ import { $api, isProblem } from "@/lib/api/client";
 import { cn } from "@/lib/utils";
 
 import { fileUpload, useRefreshAdmin, useSources } from "./api";
-import { Panel, PanelError, Pill } from "./atoms";
-import { IMPORT_MAX_BYTES, commitBlocker, defaultImportSource, importOutcome, previewSummary, type ImportPreview } from "./model";
+import { Missing, Panel, PanelError, Pill } from "./atoms";
+import { IMPORT_MAX_BYTES, commitBlocker, defaultImportSource, importOutcome, previewSummary, sampleColumns, sampleNote, type ImportPreview } from "./model";
 
 // CSV import (P1-11b, vault Features/CSV Export & Import): choose or drop a file, it is checked at once
 // (validation only, nothing written), then one click imports it as a `csv` collector run. A preview always
@@ -284,6 +284,7 @@ function PreviewResult({
           {blocker}
         </p>
       )}
+      {preview.rows.length > 0 && <RowSample preview={preview} />}
       {preview.errors.length > 0 && (
         <div tabIndex={0} role="region" aria-label="Row errors" className="max-h-64 overflow-auto rounded-lg border border-border">
           <table className="w-full border-collapse text-data">
@@ -312,6 +313,51 @@ function PreviewResult({
         </p>
       )}
     </>
+  );
+}
+
+/** The API's parsed sample (first 20 valid rows), shown as parsed; a blank cell is "—", never empty (imp-080). */
+function RowSample({ preview }: { preview: ImportPreview }) {
+  const heading = useId();
+  const columns = sampleColumns(preview.rows);
+  // Money, rates, counts and dates arrive as numbers or digit strings: right-aligned like every number column.
+  const numeric = new Set(columns.filter((c) => preview.rows.every((r) => r[c] == null || /^\d[\d.-]*$/.test(String(r[c])))));
+  return (
+    <div className="flex flex-col gap-2">
+      <h3 id={heading} className="text-data font-medium text-foreground">
+        Valid rows <span className="font-normal text-subtle-foreground">· {sampleNote(preview)}</span>
+      </h3>
+      <div tabIndex={0} role="region" aria-labelledby={heading} className="relative max-h-80 w-fit max-w-full overflow-auto rounded-lg border border-border">
+        <table className="border-collapse text-data">
+          <thead className="sticky top-0 bg-card">
+            <tr className="text-left text-label text-muted-foreground">
+              {columns.map((c) => (
+                <th key={c} scope="col" className={cn("h-8 border-b border-border px-3 font-mono font-medium whitespace-nowrap", numeric.has(c) && "text-right")}>
+                  {c}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {preview.rows.map((row, i) => (
+              <tr key={i} className="border-b border-border-subtle last:border-0">
+                {columns.map((c) => (
+                  <td key={c} className={cn("px-3 py-1.5 whitespace-nowrap text-foreground", numeric.has(c) && "num")}>
+                    {row[c] == null ? (
+                      <Missing reason="Blank in this row" />
+                    ) : (
+                      <span title={String(row[c])} className="inline-block max-w-64 truncate align-top">
+                        {String(row[c])}
+                      </span>
+                    )}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
   );
 }
 
