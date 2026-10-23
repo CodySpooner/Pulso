@@ -15,6 +15,7 @@ async function tabTo(page: Page, target: Locator, max = 80) {
 
 test("the UI gallery renders every section and is keyboard-navigable", async ({ page }) => {
   await page.goto("/admin/ui");
+  await expect(page.locator("html")).toHaveAttribute("data-app-ready", "true");
   await expect(page.getByRole("heading", { level: 1, name: "UI gallery" })).toBeVisible();
   for (const name of ["Colour tokens", "Type scale", "Buttons", "Table density", "States", "Motion"]) {
     await expect(page.getByRole("heading", { level: 2, name })).toBeVisible();
@@ -41,6 +42,7 @@ test("the UI gallery renders every section and is keyboard-navigable", async ({ 
 
 test("the palette reaches the gallery", async ({ page }) => {
   await page.goto("/");
+  await expect(page.locator("html")).toHaveAttribute("data-app-ready", "true");
   await page.keyboard.press("Control+K");
   await page.getByRole("combobox").fill("gallery");
   await page.keyboard.press("Enter");

@@ -67,7 +67,12 @@ export function AppShell({ children, defaultCollapsed }: { children: React.React
       }
     }
     window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
+    // Server-rendered content is visible before shortcuts are listening; keyboard tests wait for this.
+    document.documentElement.dataset.appReady = "true";
+    return () => {
+      delete document.documentElement.dataset.appReady;
+      window.removeEventListener("keydown", onKeyDown);
+    };
   }, [toggleCollapsed, togglePalette]);
 
   const shell: Shell = {
