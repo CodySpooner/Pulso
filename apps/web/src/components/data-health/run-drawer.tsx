@@ -52,7 +52,7 @@ function DrawerBody({ source, now }: { source: SourceHealth; now: number }) {
   const host = useHost();
   const runs = useSourceRuns(source.key);
   const items = runs.data?.pages.flatMap((p) => p.items) ?? [];
-  const quota = source.quota_limit != null ? `${source.quota_used ?? "—"} / ${source.quota_limit}` : null;
+  const quota = source.quota_limit != null ? `${source.quota_used?.toLocaleString("en-US") ?? "—"} / ${source.quota_limit.toLocaleString("en-US")}` : null;
 
   return (
     <>
@@ -72,7 +72,12 @@ function DrawerBody({ source, now }: { source: SourceHealth; now: number }) {
           <Fact label="Status">
             {source.status}
             {source.enabled ? " · enabled" : " · disabled"}
-            {source.disabled_at && <span className="text-muted-foreground"> since {formatUtc(source.disabled_at)}</span>}
+            {source.disabled_at && (
+              <span className="text-muted-foreground">
+                {" "}
+                since <span className="whitespace-nowrap">{formatUtc(source.disabled_at)}</span>
+              </span>
+            )}
           </Fact>
           {source.disabled_reason && <Fact label="Reason">{source.disabled_reason}</Fact>}
           <Fact label="Retry not before">{source.retry_not_before ? formatUtc(source.retry_not_before) : <Missing reason="No retry deadline" />}</Fact>
@@ -88,7 +93,7 @@ function DrawerBody({ source, now }: { source: SourceHealth; now: number }) {
             ) : (
               <>
                 {source.seed_approved ? "Approved" : "Not approved"}
-                {source.approved_targets != null && <span className="text-muted-foreground"> · {source.approved_targets} approved targets</span>}
+                {source.approved_targets != null && <span className="text-muted-foreground"> · {source.approved_targets.toLocaleString("en-US")} approved targets</span>}
               </>
             )}
           </Fact>
@@ -130,7 +135,8 @@ function Fact({ label, children }: { label: string; children: React.ReactNode })
   return (
     <>
       <dt className="text-muted-foreground">{label}</dt>
-      <dd className="min-w-0 truncate text-foreground">{children}</dd>
+      {/* Wrap, never truncate: touch has no hover to read a clipped value (imp-098). */}
+      <dd className="min-w-0 wrap-break-word text-foreground">{children}</dd>
     </>
   );
 }
@@ -172,16 +178,18 @@ function RunDetailView({ run }: { run: Run }) {
       <dl className="zone-data grid grid-cols-[auto_1fr] gap-x-4 gap-y-1">
         <Fact label="Rows">
           <span className="tabular-nums">
-            {run.rows_fetched} fetched · {run.rows_inserted} inserted · {run.rows_updated} updated · {run.rows_unchanged} unchanged
+            {/* Non-breaking spaces keep each count with its unit; lines break only after a "·". */}
+            {run.rows_fetched.toLocaleString("en-US")}&nbsp;fetched&nbsp;· {run.rows_inserted.toLocaleString("en-US")}&nbsp;inserted&nbsp;·{" "}
+            {run.rows_updated.toLocaleString("en-US")}&nbsp;updated&nbsp;· {run.rows_unchanged.toLocaleString("en-US")}&nbsp;unchanged
           </span>
         </Fact>
         <Fact label="Targets">
           <span className="tabular-nums">
-            {run.successful_target_count} of {run.target_count} succeeded{run.complete ? "" : " · incomplete"}
+            {run.successful_target_count.toLocaleString("en-US")} of {run.target_count.toLocaleString("en-US")} succeeded{run.complete ? "" : " · incomplete"}
           </span>
         </Fact>
         <Fact label="Requests">
-          <span className="tabular-nums">{run.http_requests}</span>
+          <span className="tabular-nums">{run.http_requests.toLocaleString("en-US")}</span>
           {run.last_status_code != null && <span className="text-muted-foreground"> · last code {run.last_status_code}</span>}
         </Fact>
         <Fact label="Queued">{formatUtc(run.queued_at)}</Fact>
