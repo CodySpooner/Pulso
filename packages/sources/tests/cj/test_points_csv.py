@@ -156,9 +156,14 @@ def test_registered_csv_disabled_source_dates_variants_freight_and_replay(sessio
     offer = session.scalars(select(SupplierOffer).order_by(SupplierOffer.listing_id)).first()
     assert offer is not None and offer.moq == 2 and offer.warehouse_country is None
     payload = session.scalars(select(RawPayload)).one()
+    observations: list[ListingSnapshot | VariantSnapshot | ShippingOption] = [
+        *listings,
+        *variants,
+        *quotes,
+    ]
     assert all(
         r.raw_payload_id == payload.id and r.captured_at == payload.captured_at
-        for r in [*listings, *variants, *quotes]
+        for r in observations
     )
     adapter = ImportAdapter(imports.ImportData("csv", imports.parse_csv("cj", body), None))
     assert (
