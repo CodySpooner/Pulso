@@ -1,0 +1,9 @@
+{
+  "status": 200,
+  "records": 1,
+  "body": {
+    "id": 1,
+    "handle": "product-1",
+    "variants": [{"id": 1, "price": 2499, "compare_at_price": null, "available": true}]
+  }
+}

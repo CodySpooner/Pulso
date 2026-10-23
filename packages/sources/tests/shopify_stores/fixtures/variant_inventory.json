@@ -1,0 +1,22 @@
+{
+  "status": 200,
+  "records": 1,
+  "headers": {"ETag": "\"js-v1\""},
+  "body": {
+    "id": 1,
+    "title": "Fixture product 1",
+    "handle": "product-1",
+    "images": ["//cdn.example.test/1.png"],
+    "variants": [{
+      "id": 1,
+      "title": "Default",
+      "price": 2499,
+      "compare_at_price": 2999,
+      "available": true,
+      "inventory_quantity": 7,
+      "inventory_management": "shopify",
+      "inventory_policy": "deny",
+      "barcode": "0012345678905"
+    }]
+  }
+}
