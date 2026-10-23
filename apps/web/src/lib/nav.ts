@@ -27,7 +27,7 @@ import {
 // the "coming in Phase N" pages (vault Design/App Shell & Navigation). A route is built once its phase
 // is reached; `CURRENT_PHASE` is the feature flag that moves with the build.
 
-export const CURRENT_PHASE = 0;
+export const CURRENT_PHASE = 1;
 
 export const PHASES = [
   "Foundation",
