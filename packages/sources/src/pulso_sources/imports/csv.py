@@ -56,6 +56,13 @@ def _cell(value: str, column: Column, currency: str) -> Cell:
     if "\x00" in value:
         raise ValueError("NUL characters are not allowed")
     match column.kind:
+        case "rate":
+            rate = Decimal(value)
+            if not rate.is_finite() or not 0 < rate < Decimal("1e10"):
+                raise ValueError("Rate must be finite, positive and fit NUMERIC(18,8)")
+            if rate != rate.quantize(Decimal("0.00000001")):
+                raise ValueError("Rate exceeds eight decimal places")
+            return rate
         case "money":
             amount = Decimal(value)
             if to_minor(amount, currency) < 0:
