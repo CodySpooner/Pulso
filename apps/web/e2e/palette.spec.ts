@@ -61,6 +61,44 @@ test.describe("command palette", () => {
   });
 });
 
+// A11Y-01 (imp-025): the focused palette input shows the token focus ring (2px solid --ring, globals.css),
+// and the ring sits inside the dialog, so overflow-hidden can't clip it.
+const ringCases = [
+  ...(["dark", "light"] as const).flatMap((theme) => [1440, 375].map((width) => ({ theme, width, forced: false }))),
+  { theme: "dark" as const, width: 1440, forced: true }, // forced colors repaint the ring in a system colour
+];
+for (const { theme, width, forced } of ringCases) {
+  test(`the focused palette input shows the focus ring: ${theme} ${width}px${forced ? " forced colors" : ""}`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await page.emulateMedia({ colorScheme: theme, reducedMotion: "reduce", forcedColors: forced ? "active" : "none" });
+    await page.addInitScript((t) => localStorage.setItem("theme", t), theme);
+    await page.goto("/");
+    await expect(page.getByRole("heading", { level: 1, name: "Daily Pulse" })).toBeVisible();
+    await page.keyboard.press("Control+K");
+    const input = page.getByRole("combobox");
+    await expect(input).toBeFocused();
+
+    const ring = () =>
+      input.evaluate((el, forced) => {
+        const probe = document.body.appendChild(document.createElement("i"));
+        probe.style.color = "var(--ring)";
+        const token = getComputedStyle(probe).color;
+        probe.remove();
+        const s = getComputedStyle(el);
+        const reach = parseFloat(s.outlineOffset) + parseFloat(s.outlineWidth);
+        const r = el.getBoundingClientRect();
+        const box = el.closest('[role="dialog"]')!.getBoundingClientRect();
+        return {
+          style: s.outlineStyle,
+          thick: parseFloat(s.outlineWidth) >= 2,
+          token: forced || s.outlineColor === token,
+          inside: r.top - reach >= box.top && r.bottom + reach <= box.bottom && r.left - reach >= box.left && r.right + reach <= box.right,
+        };
+      }, forced);
+    await expect.poll(ring).toEqual({ style: "solid", thick: true, token: true, inside: true });
+  });
+}
+
 test("the whole shell is reachable by keyboard: skip link first", async ({ page }) => {
   await page.goto("/");
   await page.keyboard.press("Tab");
