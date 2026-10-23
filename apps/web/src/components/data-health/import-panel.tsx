@@ -173,7 +173,7 @@ export function ImportPanel({ onOpen, ref }: { onOpen: (key: string) => void; re
           // Never switch silently: the open file would be checked against another template (or lose its import).
           <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border border-border bg-secondary px-4 py-3 text-data">
             <FileSpreadsheet className="size-4 text-muted-foreground" aria-hidden />
-            <p ref={askNote} id={`${ids}-ask`} tabIndex={-1} className="min-w-0 flex-1 rounded-sm break-words text-foreground">
+            <p ref={askNote} id={`${ids}-ask`} tabIndex={-1} className="min-w-0 flex-[1_1_12rem] rounded-sm wrap-break-word text-foreground">
               {commit.isPending
                 ? `${file.name} is importing into ${source.name}. Choose ${target.name} once it finishes.`
                 : `${file.name} is still open for ${source.name}. Switching checks it against ${target.name} instead.`}
