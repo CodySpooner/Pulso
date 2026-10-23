@@ -139,6 +139,7 @@ class CJAdapter:
     parse = staticmethod(parse)
 
     def fetch(self, request: Request, *, user_agent: str) -> Response:
+        # shortcut: transport is refused; complete P1-08b before live enablement.
         raise CollectorsLiveDisabled("CJ live transport is not enabled in the fixture slice")
 
     def upsert(

@@ -30,6 +30,7 @@ class Auth:
         self, settings: Settings, *, now: Callable[[], datetime] = lambda: datetime.now(UTC)
     ) -> None:
         self.settings, self.now = settings, now
+        # shortcut: in-process tokens only; add Redis caching in P1-08b before enablement.
         self.tokens: Tokens | None = None
 
     def token(
