@@ -7,6 +7,9 @@ import { mockAdminApi } from "./fixtures";
 const file = { name: "rates.csv", mimeType: "text/csv", buffer: Buffer.from("date,base,quote,rate\n2026-01-01,USD,JPY,150\n") };
 const COMMIT = /\/api\/v1\/admin\/sources\/[^/]+\/import$/;
 const PREVIEW = /\/api\/v1\/admin\/sources\/[^/]+\/import\/preview$/;
+// imp-078: a transport failure says what happened and the PC/API next step (as the API-down page error does).
+const CHECK_DOWN = "The API didn't answer while checking the file. When it runs on your PC, check that the PC is on.";
+const IMPORT_DOWN = "The API didn't answer while importing. When it runs on your PC, check that the PC is on; a retry never imports the same file twice.";
 
 async function openPanel(page: Page) {
   await page.goto("/admin/data-health");
@@ -36,8 +39,8 @@ test("a preview transport error is announced once, assertively, and Retry keeps 
 
   await panel.getByRole("button", { name: "Choose CSV…" }).focus();
   await chooseByKeyboard(page, panel.getByRole("button", { name: "Choose CSV…" }));
-  await expect(panel).toContainText("The API didn't answer while checking the file.");
-  await expect(panel.getByRole("alert")).toHaveText("The API didn't answer while checking the file. Select Retry to try again.");
+  await expect(panel).toContainText(CHECK_DOWN);
+  await expect(panel.getByRole("alert")).toHaveText(`${CHECK_DOWN} Select Retry to try again.`);
   await expect(panel.getByRole("status")).toHaveText("");
 
   // Tab reaches Retry with a ring; a retry that fails again brings focus back to the new Retry, not the page.
@@ -80,6 +83,34 @@ test("a commit 503 replaces the stale preview summary with an assertive error", 
   await expect(panel.getByRole("alert")).toHaveText("The API is restarting. Try again in a minute. Select Retry to try again.");
   await expect(panel.getByRole("status")).toHaveText(""); // no stale "3 valid rows", no second copy of the error
   await expectRing(importButton); // the preview is still accurate, so Import stays and keeps focus
+});
+
+test("an import transport error is announced once with its next step, and Retry imports at phone width", async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  await mockAdminApi(page);
+  let down = true;
+  await page.route(COMMIT, (route) => (down ? route.abort("connectionrefused") : route.fallback()));
+  const panel = await openPanel(page);
+  await panel.locator('input[type="file"]').setInputFiles(file);
+  const importButton = panel.getByRole("button", { name: "Import 3 rows" });
+  await importButton.focus();
+  await page.keyboard.press("Enter");
+
+  await expect(panel).toContainText(IMPORT_DOWN);
+  await expect(panel.getByRole("alert")).toHaveText(`${IMPORT_DOWN} Select Retry to try again.`);
+  await expect(panel.getByRole("status")).toHaveText("");
+  await expectRing(importButton); // the preview is still accurate, so Import keeps focus
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(375);
+
+  // Tab past the row errors to Retry; the API is back, so the retry imports and Open runs takes focus.
+  down = false;
+  await page.keyboard.press("Tab");
+  await page.keyboard.press("Tab");
+  await expectRing(panel.getByRole("button", { name: "Retry" }));
+  await page.keyboard.press("Enter");
+  await expect(panel.getByRole("status")).toHaveText(/^Imported into Frankfurter FX as run #501/);
+  await expect(panel.getByRole("alert")).toHaveText("");
+  await expectRing(panel.getByRole("button", { name: "Open runs" }));
 });
 
 test("success and repeat move focus to Open runs and announce the outcome politely", async ({ page }) => {
