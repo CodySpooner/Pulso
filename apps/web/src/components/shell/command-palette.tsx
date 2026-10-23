@@ -141,7 +141,7 @@ export function CommandPalette({
               }}
             >
               <m.div
-                className="fixed inset-x-4 top-[12vh] z-60 mx-auto max-w-160 origin-top overflow-hidden rounded-xl border border-border bg-popover text-popover-foreground shadow-dialog outline-none max-md:inset-x-0 max-md:top-0 max-md:h-dvh max-md:max-w-none max-md:rounded-none"
+                className="fixed inset-x-4 top-[12vh] z-60 mx-auto max-w-160 origin-top overflow-hidden rounded-xl border border-border bg-popover text-popover-foreground shadow-dialog outline-none max-md:inset-x-0 max-md:top-0 max-md:h-dvh max-md:max-w-none max-md:rounded-none max-md:pt-[env(safe-area-inset-top)] max-md:pb-[env(safe-area-inset-bottom)]"
                 initial={{ opacity: 0, scale: 0.98, y: -8 }}
                 animate={{ opacity: 1, scale: 1, y: 0, transition: { duration: duration.base, ease: ease.out } }}
                 exit={{ opacity: 0, transition: { duration: duration.fast, ease: ease.in } }}
