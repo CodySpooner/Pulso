@@ -161,6 +161,211 @@ def test_before_daily_slot_keeps_overdue_without_historical_catchup(
     assert not session.scalars(select(CollectionGap)).all()
 
 
+@pytest.mark.parametrize("audit_first", [True, False])
+def test_slot_grace_leaves_scheduled_failure_one_catchup(
+    session: Session, recovery: Mock, audit_first: bool
+) -> None:
+    due = NOW.replace(hour=17)
+    recovery.now.return_value = due
+    if audit_first:
+        ops.heartbeat()
+        assert not session.scalars(select(CollectorRun)).all()
+        session.expire_all()
+        assert session.get_one(Source, 1).status == "active"
+    tasks.enqueue_scheduled("fx_frankfurter", "fx", "daily")
+    scheduled = session.scalars(select(CollectorRun)).one()
+    assert (scheduled.trigger, scheduled.status) == ("schedule", "queued")
+    scheduled.status = "failed"
+    session.commit()
+    recovery.now.return_value = due + ops.OFFLINE_AFTER - timedelta(seconds=1)
+    ops.heartbeat()
+    assert len(session.scalars(select(CollectorRun)).all()) == 1
+    session.expire_all()
+    assert session.get_one(Source, 1).status == "active"
+    for minutes in (15, 30, 45, 60):
+        recovery.now.return_value = due + timedelta(minutes=minutes)
+        ops.heartbeat()
+        session.expire_all()
+        catchup = session.scalars(
+            select(CollectorRun).where(CollectorRun.trigger == "catchup")
+        ).one()
+        assert catchup.slot_key == scheduled.slot_key == "fx:2026-10-22"
+        assert catchup.status == ("queued" if minutes == 15 else "failed")
+        catchup.status = "failed"
+        session.commit()
+    assert len(session.scalars(select(CollectorRun)).all()) == 2
+
+
+@pytest.mark.parametrize(
+    "freight_catchup,today",
+    [
+        (None, False),
+        ("failed", False),
+        ("skipped", False),
+        ("partial", False),
+        ("success", False),
+        ("failed", True),
+    ],
+)
+def test_spent_weekly_catchup_does_not_block_daily_slot(
+    session: Session, recovery: Mock, freight_catchup: str | None, today: bool
+) -> None:
+    session.get_one(Source, 1).key = "cj"
+    monday = NOW.replace(day=19, hour=4, minute=30)
+    session.add(
+        CollectorRun(
+            source_id=1,
+            trigger="schedule",
+            slot_key="freight:2026-W43",
+            status="success" if freight_catchup is None else "failed",
+            complete=freight_catchup is None,
+            queued_at=monday,
+        )
+    )
+    if freight_catchup is not None:
+        session.add(
+            CollectorRun(
+                source_id=1,
+                trigger="catchup",
+                slot_key="freight:2026-W43",
+                status=freight_catchup,
+                queued_at=(NOW.replace(hour=4) if today else monday) + timedelta(minutes=15),
+            )
+        )
+    session.add(
+        CollectorRun(
+            source_id=1,
+            trigger="schedule",
+            slot_key="catalog:2026-10-22",
+            status="failed",
+            queued_at=NOW.replace(hour=4),
+        )
+    )
+    session.commit()
+    for hour in (5, 6, 12, 23):
+        recovery.now.return_value = NOW.replace(hour=hour)
+        ops.heartbeat()
+        session.expire_all()
+        catchup = session.scalars(
+            select(CollectorRun).where(
+                CollectorRun.trigger == "catchup", CollectorRun.slot_key == "catalog:2026-10-22"
+            )
+        ).one_or_none()
+        if today:
+            assert catchup is None
+            continue
+        assert catchup is not None
+        assert catchup.status == ("queued" if hour == 5 else "failed")
+        catchup.status = "failed"
+        session.commit()
+
+
+@pytest.mark.parametrize(
+    "earlier,latest,caught_up",
+    [
+        (None, "partial", False),
+        ("failed", "partial", False),
+        ("partial", "failed", True),
+        ("partial", "skipped", True),
+        ("success", "failed", False),
+    ],
+)
+def test_latest_partial_slot_is_not_replanned(
+    session: Session, recovery: Mock, earlier: str | None, latest: str, caught_up: bool
+) -> None:
+    session.get_one(Source, 1).key = "google_trends"
+    recovery.now.return_value = datetime(2026, 11, 2, 6, tzinfo=UTC)
+    for status in (earlier, latest):
+        if status is not None:
+            session.add(
+                CollectorRun(
+                    source_id=1,
+                    trigger="schedule",
+                    slot_key="trends:2026-W45",
+                    status=status,
+                    complete=status == "success",
+                    queued_at=recovery.now.return_value - timedelta(hours=1),
+                )
+            )
+            session.commit()
+    ops.heartbeat()
+    session.expire_all()
+    scheduled = session.scalars(
+        select(CollectorRun).where(CollectorRun.trigger == "schedule").order_by(CollectorRun.id)
+    ).all()
+    assert [run.status for run in scheduled] == [s for s in (earlier, latest) if s is not None]
+    assert (
+        bool(session.scalar(select(CollectorRun.id).where(CollectorRun.trigger == "catchup")))
+        == caught_up
+    )
+
+
+def test_catchup_delivery_starts_after_audit_releases_source_lock(
+    session: Session, recovery: Mock, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    held: set[int] = set()
+
+    class Lock:
+        def __init__(self, key: int) -> None:
+            self.key, self.mine = key, False
+
+        def acquire(self) -> bool:
+            if self.key in held:
+                return False
+            held.add(self.key)
+            self.mine = True
+            return True
+
+        def close(self) -> None:
+            if self.mine:
+                held.remove(self.key)
+                self.mine = False
+
+    def deliver(name: str, *, args: list[int], **kwargs: object) -> None:
+        if "countdown" not in kwargs:
+            session.expire_all()
+            assert session.get_one(CollectorRun, args[0]).status == "queued"
+            tasks.collect_run(args[0])
+
+    monkeypatch.setattr(ops, "AdvisoryLock", Lock)
+    monkeypatch.setattr(tasks, "AdvisoryLock", Lock)
+    monkeypatch.setitem(tasks.PLANS, "fx_frankfurter", lambda *_: tasks.Plan(Mock(), [], 10))
+    publisher = Mock(side_effect=deliver)
+    monkeypatch.setattr(app, "send_task", publisher)
+    session.add(
+        CollectorRun(
+            source_id=1,
+            trigger="schedule",
+            slot_key="fx:2026-10-22",
+            status="failed",
+            queued_at=NOW.replace(hour=17),
+        )
+    )
+    session.commit()
+    recovery.now.return_value = NOW.replace(hour=17, minute=15)
+    ops.heartbeat()
+    run = session.scalars(select(CollectorRun).where(CollectorRun.trigger == "catchup")).one()
+    publisher.assert_called_once_with("collect.run", args=[run.id], queue="collect", retry=False)
+    assert run.started_at is not None and "lock_retries" not in run.params
+    assert not held
+
+
+def test_catchup_publish_error_does_not_overwrite_started_delivery(
+    session: Session, recovery: Mock, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def publish(run_id: int) -> None:
+        run = session.get_one(CollectorRun, run_id)
+        run.status, run.started_at = "running", NOW
+        session.commit()
+        raise ConnectionError("fixture-broker-secret")
+
+    monkeypatch.setattr(ops, "publish_run", publish)
+    ops.heartbeat()
+    session.expire_all()
+    run = session.scalars(select(CollectorRun)).one()
+    assert (run.status, run.error_code, run.finished_at) == ("running", None, None)
+
+
 def test_disabled_source_reconciles_but_cannot_catch_up(session: Session, recovery: Mock) -> None:
     source = session.get_one(Source, 1)
     source.enabled, source.status = False, "blocked"
