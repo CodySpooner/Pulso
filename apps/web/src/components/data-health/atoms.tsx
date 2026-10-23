@@ -220,13 +220,15 @@ export function StaleLine({
         className,
       )}
     >
-      <TriangleAlert className="size-4 shrink-0 text-warning" aria-hidden />
+      {/* What, then how old the shown data is (UI States' offline copy), then why. The icon sits in the text, so
+          it stays on the first line when the line wraps on a phone. */}
       <p className="min-w-0 flex-[1_1_12rem] text-foreground">
-        <span className="font-medium">{what}.</span> {problem ? problem.detail : API_DOWN} Showing data as of{" "}
+        <TriangleAlert className="mr-1.5 inline size-3.5 align-[-2px] text-warning" aria-hidden />
+        <span className="font-medium">{what}.</span> Showing data as of{" "}
         <time dateTime={iso} className="whitespace-nowrap">
           {formatUtc(iso)}
         </time>
-        .
+        . {problem ? problem.detail : API_DOWN}
       </p>
       {problem && (
         <p className="font-mono text-label text-muted-foreground">
