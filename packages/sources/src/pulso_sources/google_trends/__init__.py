@@ -34,6 +34,7 @@ PARAMS: dict[str, JsonValue] = {
     "data_type": "TIMESERIES",
     "date": "today 3-m",
 }
+ACCOUNT_ERRORS = {"serpapi_invalid_key", "serpapi_searches_exhausted"}
 
 
 class TrendsError(RunDeferred):
@@ -150,11 +151,13 @@ class GoogleTrendsParser:
                 for row in self.data.csv.rows
             ]
         if code := error_code(body):
-            raise TrendsError(code)
+            if code in ACCOUNT_ERRORS:
+                raise TrendsError(code)
+            raise ValueError(code)
         data = json.loads(body)
         params = data["search_parameters"]
         if (
-            any(params.get(k) != v for k, v in PARAMS.items())
+            any(str(params.get(k)) != str(v) for k, v in PARAMS.items())
             or not isinstance(params["q"], str)
             or not params["q"].strip()
             or "," in params["q"]

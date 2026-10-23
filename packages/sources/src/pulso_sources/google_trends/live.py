@@ -12,6 +12,7 @@ from pulso_core.settings import get_settings
 from pulso_sources.framework import Request, Response
 from pulso_sources.framework.lifecycle import RETRY_STATUSES
 from pulso_sources.google_trends import (
+    ACCOUNT_ERRORS,
     PARAMS,
     GoogleTrendsParser,
     TrendsError,
@@ -76,11 +77,13 @@ class GoogleTrendsAdapter(GoogleTrendsParser):
                     code == "serpapi_error" and response.status_code in RETRY_STATUSES
                 ):
                     return
+                self.error = code
                 if code == "serpapi_searches_exhausted":
                     self.exhausted_until = (
                         datetime.now(UTC).replace(day=28) + timedelta(days=4)
                     ).replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-                raise TrendsError(code)
+                if code in ACCOUNT_ERRORS:
+                    raise TrendsError(code)
         except TrendsError as exc:
             self.error = str(exc)
             raise

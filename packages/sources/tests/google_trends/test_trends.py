@@ -43,6 +43,7 @@ def body(name: str) -> bytes:
 
 @pytest.fixture(autouse=True)
 def setup(session: Session, settings: Settings, monkeypatch: pytest.MonkeyPatch) -> None:
+    session.expire_on_commit = False  # SQLite reloads lose timestamptz's UTC information.
     metadata = MetaData()
     for table in Base.metadata.tables.values():
         table.to_metadata(metadata)
@@ -63,7 +64,8 @@ def setup(session: Session, settings: Settings, monkeypatch: pytest.MonkeyPatch)
 
 
 @pytest.mark.parametrize(
-    "name,count,partial", [("normal", 2, False), ("partial", 2, True), ("no_data", 0, False)]
+    "name,count,partial",
+    [("normal", 2, False), ("string_echo", 2, False), ("partial", 2, True), ("no_data", 0, False)],
 )
 def test_parse(name: str, count: int, partial: bool) -> None:
     rows = trends.GoogleTrendsParser().parse(body(name))
@@ -107,7 +109,10 @@ def test_captures_replay_and_csv(session: Session) -> None:
 )
 def test_errors(name: str, status: int, code: str) -> None:
     assert trends.error_code(body(name), status) == code
-    with pytest.raises(trends.TrendsError, match=trends.error_code(body(name))):
+    parse_code = trends.error_code(body(name))
+    with pytest.raises(
+        trends.TrendsError if parse_code in trends.ACCOUNT_ERRORS else ValueError, match=parse_code
+    ):
         trends.GoogleTrendsParser().parse(body(name))
 
 
@@ -161,6 +166,7 @@ def test_plan_guard_and_missing_key(session: Session, settings: Settings, networ
     assert network[1].call_count == 0
     source = session.get_one(Source, 1)
     assert "trends_quota" not in source.config
+    assert collect(session, settings).error_code == "serpapi_missing_key"
     source.config = json.loads(body("seed").replace(b"example keyword", b"one,two"))
     with pytest.raises(ValueError, match="one keyword"):
         trends.plan(session)
@@ -297,12 +303,12 @@ def test_response_failure(
     settings.collector_block_threshold = 1
     run = collect(session, settings)
     assert run.status == "partial" and run.error_code == run.error_message == code
-    assert (
-        run.http_requests == 1 and session.scalar(select(func.count()).select_from(RawPayload)) == 1
-    )
+    attempts = 2 if code == "serpapi_error" else 1
+    assert run.http_requests == attempts
+    assert session.scalar(select(func.count()).select_from(RawPayload)) == attempts
     session.expire_all()
     source = session.get_one(Source, 1)
-    assert source.config["trends_quota"]["used"] == 1
+    assert source.config["trends_quota"]["used"] == attempts
     blocked = status in {403, 429}
     assert source.consecutive_block_count == int(blocked)
     assert source.enabled == (not blocked and code != "serpapi_invalid_key")
@@ -366,6 +372,21 @@ def test_registered_csv_stays_disabled(session: Session, settings: Settings, htt
     assert run.status == "success" and run.rows_inserted == 1 and not source.enabled
     assert commit_import(session, "google_trends", csv, settings=settings).status == "skipped"
     http.request.assert_not_called()
+
+
+def test_keyword_error_does_not_stop_later_keywords(
+    session: Session,
+    settings: Settings,
+    http: Mock,
+) -> None:
+    http.getresponse.return_value.read.side_effect = [body("error"), body("string_echo")]
+    run = collect(session, settings)
+    assert (run.status, run.error_code, run.http_requests, run.rows_inserted) == (
+        "partial",
+        "serpapi_error",
+        2,
+        2,
+    )
 
 
 def test_exhaustion_resumes_at_next_utc_month(
