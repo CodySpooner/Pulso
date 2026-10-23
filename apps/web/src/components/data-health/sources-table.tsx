@@ -1,8 +1,9 @@
 "use client";
 
-import { useRef, useState } from "react";
-import { Clock, Database, Play, Upload } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { Clock, Database, Play, TriangleAlert, Upload } from "lucide-react";
 
+import { CopyButton, SelectableId } from "@/components/pulso/copy-button";
 import { EmptyState } from "@/components/pulso/empty-state";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
@@ -14,7 +15,7 @@ import { formatAgo, formatUtc } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 import { useHost, useRefreshAdmin, useSources } from "./api";
-import { Ago, Missing, Panel, PanelError, StatePill } from "./atoms";
+import { Ago, Missing, Panel, PanelError, StatePill, TapTooltip } from "./atoms";
 import { attentionCount, importEntry, skipNote, sourceState, type SourceHealth, type SourceState } from "./model";
 
 const SOURCES_API = "GET /v1/admin/sources";
@@ -65,13 +66,16 @@ const skeletonCards = loadingRows.map((i) => (
   </li>
 ));
 
-type Notice = { tone: "ok" | "error"; text: string };
+type Failure = { tone: "error"; text: string; key: string; error: unknown };
+type Notice = { tone: "ok"; text: string } | Failure;
 type Confirm = { source: SourceHealth; mode: "disable" | "reenable" };
 
 const th = "h-8 border-b border-border px-3 text-label font-medium whitespace-nowrap text-muted-foreground";
 
-function problemText(error: unknown, fallback: string): string {
-  return isProblem(error) ? `${error.detail} (error ID ${error.request_id})` : fallback;
+/** A failed action on `source`: what failed, then why and what next. The transport copy is imp-078's next step. */
+function actionFailure(source: SourceHealth, action: string, error: unknown): Failure {
+  const cause = isProblem(error) ? error.detail : "the API didn't answer. When it runs on your PC, check that the PC is on.";
+  return { tone: "error", text: `Couldn't ${action} ${source.name}: ${cause}`, key: source.key, error };
 }
 
 export function SourcesPanel({ now, onOpen, onImport }: { now: number; onOpen: (key: string) => void; onImport: (key: string) => void }) {
@@ -87,8 +91,17 @@ export function SourcesPanel({ now, onOpen, onImport }: { now: number; onOpen: (
   const latestGapEnds = host.data?.latest_gap_ends ?? {};
   const rows = sources.data?.filter((s) => s.type !== "internal") ?? [];
   const attention = sources.data ? attentionCount(rows, latestGapEnds, now) : 0;
+  // A failure shows next to what started it (imp-123): inside its dialog while that is open; otherwise in the
+  // source's phone card, and from md up in the status line as before. Each place is the only one showing it.
+  const failed = notice?.tone === "error" ? notice : null;
+  const inDialog = failed != null && failed.key === confirm?.source.key;
+  const status = inDialog ? null : notice;
+
+  /** A new attempt drops the last failure, so a repeat is announced again; a success notice stays until replaced. */
+  const clearFailure = () => setNotice((n) => (n?.tone === "error" ? null : n));
 
   function setEnabled(source: SourceHealth, enabled: boolean, reason?: string) {
+    clearFailure();
     patch.mutate(
       { params: { path: { key: source.key } }, body: { enabled, reason: reason || null } },
       {
@@ -97,19 +110,21 @@ export function SourcesPanel({ now, onOpen, onImport }: { now: number; onOpen: (
           setNotice({ tone: "ok", text: `${source.name} ${enabled ? "enabled" : "disabled"}.` });
           void refresh();
         },
-        onError: (error) => setNotice({ tone: "error", text: `Couldn't change ${source.name}: ${problemText(error, "the API didn't answer.")}` }),
+        onError: (error) => setNotice(actionFailure(source, enabled ? "enable" : "disable", error)),
       },
     );
   }
 
   function toggle(source: SourceHealth, enabled: boolean) {
     toggled.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    clearFailure();
     if (!enabled) setConfirm({ source, mode: "disable" });
     else if (source.status === "blocked") setConfirm({ source, mode: "reenable" });
     else setEnabled(source, true);
   }
 
   function runNow(source: SourceHealth) {
+    clearFailure();
     run.mutate(
       { params: { path: { key: source.key } } },
       {
@@ -117,7 +132,7 @@ export function SourcesPanel({ now, onOpen, onImport }: { now: number; onOpen: (
           setNotice({ tone: "ok", text: `Run #${r.id} queued for ${source.name}.` });
           void refresh();
         },
-        onError: (error) => setNotice({ tone: "error", text: `Couldn't start ${source.name}: ${problemText(error, "the API didn't answer.")}` }),
+        onError: (error) => setNotice(actionFailure(source, "start", error)),
       },
     );
   }
@@ -129,12 +144,14 @@ export function SourcesPanel({ now, onOpen, onImport }: { now: number; onOpen: (
     return null;
   }
 
+  const saving = (s: SourceHealth) => patch.isPending && patch.variables?.params.path.key === s.key;
   const controls = (s: SourceHealth) => ({
     toggle: (
       <Switch
         checked={s.enabled}
-        onCheckedChange={(on) => toggle(s, on)}
-        disabled={patch.isPending && patch.variables?.params.path.key === s.key}
+        onCheckedChange={(on) => !saving(s) && toggle(s, on)}
+        // aria-disabled (not disabled) while saving keeps keyboard focus on the switch when its change fails.
+        aria-disabled={saving(s)}
         aria-label={`${s.name} enabled`}
       />
     ),
@@ -155,8 +172,12 @@ export function SourcesPanel({ now, onOpen, onImport }: { now: number; onOpen: (
         )
       }
     >
-      <p role="status" className={cn("px-4 text-data empty:hidden", notice && "border-b border-border-subtle py-2", notice?.tone === "error" ? "text-negative" : "text-muted-foreground")}>
-        {notice?.text}
+      <p
+        role="status"
+        className={cn("px-4 text-data empty:hidden", status && "border-b border-border-subtle py-2", status?.tone === "error" ? "text-negative max-md:hidden" : "text-muted-foreground")}
+      >
+        {status?.text}
+        {status?.tone === "error" && isProblem(status.error) && ` (error ID ${status.error.request_id})`}
       </p>
 
       {sources.isError ? (
@@ -200,6 +221,7 @@ export function SourcesPanel({ now, onOpen, onImport }: { now: number; onOpen: (
                       {c.run}
                     </div>
                   </div>
+                  {failed?.key === s.key && !inDialog && <ActionError failure={failed} />}
                 </li>
               );
             })}
@@ -308,7 +330,18 @@ export function SourcesPanel({ now, onOpen, onImport }: { now: number; onOpen: (
         </>
       )}
 
-      <ReasonDialog now={now} returnFocusRef={toggled} confirm={confirm} pending={patch.isPending} onCancel={() => setConfirm(null)} onSubmit={(reason) => confirm && setEnabled(confirm.source, confirm.mode === "reenable", reason)} />
+      <ReasonDialog
+        now={now}
+        returnFocusRef={toggled}
+        confirm={confirm}
+        pending={patch.isPending}
+        failure={inDialog ? failed : null}
+        onCancel={() => {
+          setConfirm(null);
+          clearFailure();
+        }}
+        onSubmit={(reason) => confirm && setEnabled(confirm.source, confirm.mode === "reenable", reason)}
+      />
     </Panel>
   );
 }
@@ -382,11 +415,37 @@ function RunButton({ name, blocker, pending, onRun }: { name: string; blocker: s
     </Button>
   );
   if (!blocker) return button;
+  // A tap shows the reason too (imp-126): a phone has no hover, and a tap's focus isn't focus-visible.
   return (
-    <Tooltip>
-      <TooltipTrigger asChild>{button}</TooltipTrigger>
-      <TooltipContent>{blocker}</TooltipContent>
-    </Tooltip>
+    <TapTooltip hint={blocker} asChild>
+      {button}
+    </TapTooltip>
+  );
+}
+
+/** A failed action beside the control that started it (imp-123): what and why, announced once, then the error
+ *  ID to copy (PanelError's parts), which the announcement leaves out. It scrolls into view if it lands below. */
+function ActionError({ failure }: { failure: Failure }) {
+  const problem = isProblem(failure.error) ? failure.error : null;
+  const box = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    box.current?.scrollIntoView({ block: "nearest" }); // a block: scrollIntoView may return a Promise, never a cleanup
+  }, []);
+  return (
+    <div ref={box} className="flex flex-col gap-1 rounded-lg border border-negative/40 bg-negative-muted px-3 py-2 text-data">
+      <p role="alert" className="flex gap-2 text-foreground">
+        <TriangleAlert aria-hidden className="mt-0.5 size-3.5 shrink-0 text-negative" />
+        {failure.text}
+      </p>
+      {problem && (
+        <div className="flex flex-wrap items-center justify-between gap-x-3 pl-5.5">
+          <span className="font-mono text-label text-subtle-foreground">
+            Error ID <SelectableId value={problem.request_id} label="Error ID" />
+          </span>
+          <CopyButton value={problem.request_id} label="Copy error ID" />
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -408,6 +467,14 @@ function ImportButton({ source, onImport }: { source: SourceHealth; onImport: (k
     </Button>
   );
   if (!hint) return button;
+  // A tap on a locked entry says why too (imp-126). "Check CSV" acts on a tap, and the panel then says why.
+  if (!available) {
+    return (
+      <TapTooltip hint={hint} asChild>
+        {button}
+      </TapTooltip>
+    );
+  }
   return (
     <Tooltip>
       <TooltipTrigger asChild>{button}</TooltipTrigger>
@@ -421,6 +488,7 @@ function ReasonDialog({
   returnFocusRef,
   confirm,
   pending,
+  failure,
   onCancel,
   onSubmit,
 }: {
@@ -428,6 +496,8 @@ function ReasonDialog({
   returnFocusRef: React.RefObject<HTMLElement | null>;
   confirm: Confirm | null;
   pending: boolean;
+  /** The last Submit failed: the dialog stays open and says why, and Submit tries again. */
+  failure: Failure | null;
   onCancel: () => void;
   onSubmit: (reason: string) => void;
 }) {
@@ -484,6 +554,7 @@ function ReasonDialog({
                 }
               />
             </label>
+            {failure && <ActionError failure={failure} />}
             <div className="flex justify-end gap-2">
               <DialogClose asChild>
                 <Button type="button" variant="ghost">

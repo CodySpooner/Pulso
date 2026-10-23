@@ -63,16 +63,15 @@ export const sourceStates: Record<SourceState, { label: string; icon: LucideIcon
   healthy: { label: "Healthy", icon: CircleCheck, tone: "neutral", hint: "The last run succeeded." },
 };
 
-/** A source's state with its hint on hover, keyboard focus and tap (imp-073). The hint is click-through, so an
- * open one never covers a control. */
-export function StatePill({ state }: { state: SourceState }) {
-  const s = sourceStates[state];
+/** A hint on hover, keyboard focus and tap (imp-073); the other props go to its trigger. The hint is
+ * click-through, so an open one never covers a control. */
+export function TapTooltip({ hint, ...trigger }: React.ComponentProps<typeof TooltipTrigger> & { hint: React.ReactNode }) {
   const [open, setOpen] = useState(false);
   const pressedOpen = useRef<boolean | null>(null); // Radix closes on pointerdown, so the click needs the state before it
   return (
     <Tooltip open={open} onOpenChange={setOpen}>
       <TooltipTrigger
-        className="relative hit-area inline-flex rounded-sm"
+        {...trigger}
         onPointerDown={() => {
           pressedOpen.current = open;
         }}
@@ -81,13 +80,21 @@ export function StatePill({ state }: { state: SourceState }) {
           setOpen(!(pressedOpen.current ?? open));
           pressedOpen.current = null;
         }}
-      >
-        <Pill tone={s.tone} icon={s.icon}>
-          {s.label}
-        </Pill>
-      </TooltipTrigger>
-      <TooltipContent className="pointer-events-none">{s.hint}</TooltipContent>
+      />
+      <TooltipContent className="pointer-events-none">{hint}</TooltipContent>
     </Tooltip>
+  );
+}
+
+/** A source's state with its hint on hover, keyboard focus and tap. */
+export function StatePill({ state }: { state: SourceState }) {
+  const s = sourceStates[state];
+  return (
+    <TapTooltip hint={s.hint} className="relative hit-area inline-flex rounded-sm">
+      <Pill tone={s.tone} icon={s.icon}>
+        {s.label}
+      </Pill>
+    </TapTooltip>
   );
 }
 
