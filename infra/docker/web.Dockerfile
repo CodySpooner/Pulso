@@ -4,8 +4,8 @@ WORKDIR /app
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 RUN npm install --global pnpm@11.9.0
 COPY apps/web ./apps/web
-RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
-    pnpm install --frozen-lockfile --store-dir=/pnpm/store
+# No cache mount: Railway rejects ids without its per-service key (DEC-096).
+RUN pnpm install --frozen-lockfile --store-dir=/pnpm/store
 ARG NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
 ARG API_URL=http://localhost:8000
 ENV NEXT_TELEMETRY_DISABLED=1

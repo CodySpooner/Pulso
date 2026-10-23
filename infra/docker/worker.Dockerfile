@@ -6,8 +6,8 @@ WORKDIR /app
 COPY pyproject.toml uv.lock .python-version ./
 COPY apps ./apps
 COPY packages ./packages
-RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --locked --no-dev --no-editable --package pulso-workers
+# No cache mount: Railway rejects ids without its per-service key (DEC-096).
+RUN uv sync --locked --no-dev --no-editable --package pulso-workers
 
 FROM python:3.14-slim-trixie AS runtime
 ENV PATH="/app/.venv/bin:$PATH" PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1 \
