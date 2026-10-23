@@ -1,9 +1,10 @@
 import { expect, test, type Locator, type Page, type Route } from "@playwright/test";
 
-import { mockAdminApi, problem, type MockOptions } from "./fixtures";
+import { mockAdminApi, problem, sources, type MockOptions } from "./fixtures";
 
 // imp-123 (aud-010 A10-01, aud-014 D1): a failed source action shows its cause and error ID next to the control
-// that started it, announced once, at 1440 and 375. imp-126 (A10-05): a tap on an unavailable Run now says why.
+// that started it, announced once, at 1440 and 375. imp-126 (A10-05): a tap on an unavailable Run now (or on
+// imp-081's Import CSV without a template) says why.
 
 const ID = "3f2b8c1e-7d4a-4e9b-9c5f-1a2b3c4d5e6f";
 const CAUSE = "The API is restarting. Try again."; // the fixture problem's detail
@@ -161,23 +162,28 @@ test.describe("375px transport error", () => {
 test.describe("375px touch", () => {
   test.use({ viewport: { width: 375, height: 812 }, hasTouch: true });
 
-  for (const [name, host, reason] of [
-    ["CJ Dropshipping", {}, "Live collectors run only on the collector host."],
-    ["Frankfurter FX", { live_runs_allowed: true }, "Enable the source before running it."],
+  const noTemplate = sources.map((s) => (s.key === "google_trends" ? { ...s, csv_import: null } : s));
+  for (const [name, options, reason] of [
+    ["Run CJ Dropshipping now", { host: {} }, "Live collectors run only on the collector host."],
+    ["Run Frankfurter FX now", { host: { live_runs_allowed: true } }, "Enable the source before running it."],
+    ["Import CSV for Google Trends", { sources: noTemplate }, "No CSV template for Google Trends yet."],
   ] as const) {
-    test(`a tap on an unavailable Run now shows why, beside it, and sends nothing: ${name} (imp-126)`, async ({ page }) => {
-      const calls = await mockAdminApi(page, { host });
+    test(`a tap on an unavailable control shows why, beside it, and sends nothing: ${name} (imp-126)`, async ({ page }) => {
+      const calls = await mockAdminApi(page, options);
       await page.goto("/admin/data-health");
-      const run = page.getByRole("button", { name: `Run ${name} now` });
+      const control = page.getByRole("button", { name });
       const hint = page.getByRole("tooltip");
-      await expect(run).toHaveAttribute("aria-disabled", "true");
+      await expect(control).toHaveAttribute("aria-disabled", "true");
 
-      await run.tap({ force: true }); // 1 tap; force: aria-disabled, so Playwright would wait for it to enable
+      await control.tap({ force: true }); // 1 tap; force: aria-disabled, so Playwright would wait for it to enable
       await expect(hint).toHaveText(reason);
-      const [button, box] = [(await run.boundingBox())!, (await page.locator("[data-radix-popper-content-wrapper]").boundingBox())!];
+      // Still open after the tap's click: a plain tooltip opens on the tap's focus, then closes on its click, and
+      // its fade-out alone would pass the text check above.
+      await expect(control).toHaveAttribute("data-state", /-open$/);
+      const [button, box] = [(await control.boundingBox())!, (await page.locator("[data-radix-popper-content-wrapper]").boundingBox())!];
       expect(box.y).toBeGreaterThanOrEqual(0);
       expect(Math.min(Math.abs(box.y + box.height - button.y), Math.abs(box.y - (button.y + button.height)))).toBeLessThan(16);
-      await run.tap({ force: true });
+      await control.tap({ force: true });
       await expect(hint).toBeHidden();
       expect(calls.filter((c) => c.method !== "GET")).toEqual([]);
     });
