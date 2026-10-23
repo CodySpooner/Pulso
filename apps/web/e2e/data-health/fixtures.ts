@@ -187,7 +187,7 @@ export async function mockAdminApi(page: Page, options: MockOptions = {}): Promi
     if (source && method === "POST" && sourceMatch[2]) {
       return json(run({ id: 500, source_key: source.key, trigger: "manual", status: "queued", started_at: null, finished_at: null, queued_at: NOW.toISOString() }), 202);
     }
-    return json({ title: "Not Found", status: 404, code: "not_found", detail: "No fixture.", request_id: "e2e" }, 404);
+    return json({ type: "about:blank", title: "Not Found", status: 404, code: "not_found", detail: "No fixture.", request_id: "e2e", errors: [] }, 404);
   });
   return calls;
 }

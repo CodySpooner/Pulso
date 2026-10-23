@@ -10,9 +10,12 @@ import { LogoMark } from "@/components/pulso/logo";
 import { Button } from "@/components/ui/button";
 import { duration, ease, spring, stagger } from "@/lib/motion";
 
+// A specimen error id, so the gallery shows the full anatomy: Retry, Copy error ID and the id in mono.
+const specimenError = Object.assign(new Error("Specimen"), { digest: "2950841734" });
+
 /** Inline ErrorState specimen. Retry has nothing to reload in the gallery. */
 export function ErrorSample() {
-  return <ErrorState variant="inline" title="Couldn’t load suppliers" error={null} retry={() => {}} />;
+  return <ErrorState variant="inline" title="Couldn’t load suppliers" error={specimenError} retry={() => {}} />;
 }
 
 const durations = [
