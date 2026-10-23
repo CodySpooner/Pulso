@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Menu, Search } from "lucide-react";
 
+import { DataHealthNavBadge } from "@/components/data-health/nav-badge";
 import { Logo } from "@/components/pulso/logo";
 import { ModKey } from "@/components/pulso/mod-key";
 import { StatusDot } from "@/components/pulso/status-dot";
@@ -44,8 +45,12 @@ export function Topbar() {
 
   return (
     <header className="sticky top-0 z-30 flex h-14 shrink-0 items-center gap-2 border-b border-border-subtle bg-background px-4 pt-[env(safe-area-inset-top)] md:px-6 lg:static lg:h-12 lg:pt-0">
-      <Button variant="ghost" size="icon" className="-ml-2 hidden md:inline-flex lg:hidden" aria-label="Open menu" onClick={openNav}>
+      <Button variant="ghost" size="icon" className="-ml-2 hidden md:inline-flex lg:hidden" onClick={openNav}>
         <Menu strokeWidth={1.5} aria-hidden />
+        {/* imp-093: no sidebar or tab bar at 768–1023px, so the menu button carries the DH-3 count. Text, not
+            aria-label, so the badge's sr-only wording joins the name. */}
+        <span className="sr-only">Open menu</span>
+        <DataHealthNavBadge expandedClass="absolute -top-1.5 left-1/2 ml-1 flex" />
       </Button>
       <Link href="/" aria-label="Pulso, go to Daily Pulse" className="relative hit-area flex h-8 items-center rounded-md lg:hidden">
         <Logo />
