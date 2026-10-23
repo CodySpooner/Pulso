@@ -8,9 +8,10 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { formatUtc } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
-import { useCoverage, useHost, useSources } from "./api";
+import { useCoverage, useHost, useOlderGaps, useSources } from "./api";
 import { Panel, PanelError } from "./atoms";
-import { coverageRows, mergeGaps, utcDays, type CoverageDay } from "./model";
+import { LoadMore } from "./load-more";
+import { coverageRows, gapsNote, mergeGaps, plural, utcDays, type CoverageDay } from "./model";
 
 export const COVERAGE_DAYS = 90;
 /** Phones show the most recent month; the cells before it are hidden below md. */
@@ -128,15 +129,20 @@ export function CoveragePanel({ now }: { now: number }) {
 const SHOWN_GAPS = 8;
 
 function OpenGaps({ names, host }: { names: Map<string, string>; host: ReturnType<typeof useHost> }) {
+  const older = useOlderGaps(host.data?.next_cursor ?? null);
   if (host.isPending || host.isError) return null; // the host card shows its own loading and error state
-  const ranges = mergeGaps(host.data.open_gaps);
+  // Ranges merge across pages, so a range cut by a page boundary reads as one (DEC-166).
+  const gaps = [host.data.open_gaps, ...older.pages.map((p) => p.open_gaps)].flat();
+  const ranges = mergeGaps(gaps);
+  const shown = older.on ? ranges : ranges.slice(0, SHOWN_GAPS);
+  const hidden = ranges.length - shown.length;
   if (ranges.length === 0) {
     return <p className="border-t border-border-subtle pt-3 text-data text-muted-foreground">No open gaps in the last 90 days.</p>;
   }
   return (
     <div className="flex flex-col gap-2 border-t border-border-subtle pt-3">
       <h3 className="text-data font-medium text-foreground">
-        Open gaps <span className="font-normal text-subtle-foreground">· {ranges.length} ranges{host.data.next_cursor ? " in this page" : ""}, newest first · feature dates touching them carry gap flags</span>
+        Open gaps <span className="font-normal text-subtle-foreground">· {ranges.length} ranges{older.hasMore ? " loaded" : ""}, newest first · feature dates touching them carry gap flags</span>
       </h3>
       <ScrollCue label="Open gaps">
         <table className="zone-data w-full min-w-150">
@@ -149,7 +155,7 @@ function OpenGaps({ names, host }: { names: Map<string, string>; host: ReturnTyp
             </tr>
           </thead>
           <tbody>
-            {ranges.slice(0, SHOWN_GAPS).map((r) => (
+            {shown.map((r) => (
               <tr key={`${r.source_key} ${r.reason} ${r.start}`} className="row-h-compact border-t border-border-subtle">
                 <td className="pr-3 text-foreground">{names.get(r.source_key) ?? r.source_key}</td>
                 <td className="pr-3 whitespace-nowrap text-foreground" title="GET /v1/admin/host">
@@ -162,8 +168,17 @@ function OpenGaps({ names, host }: { names: Map<string, string>; host: ReturnTyp
           </tbody>
         </table>
       </ScrollCue>
-      {ranges.length > SHOWN_GAPS && <p className="text-label text-subtle-foreground">{ranges.length - SHOWN_GAPS} older ranges not shown.</p>}
-      {host.data.next_cursor && <p className="text-label text-subtle-foreground">More missed slots are not shown; ranges may continue on later pages.</p>}
+      {(ranges.length > SHOWN_GAPS || host.data.next_cursor) && (
+        <LoadMore
+          note={gapsNote(shown.length, ranges.length, gaps.length, older.hasMore)}
+          label={older.hasMore ? "Load older gaps" : `Show ${plural(hidden, "older range")}`}
+          more={hidden > 0 || older.hasMore}
+          pending={older.pending}
+          error={older.error}
+          errorTitle="Couldn't load older gaps"
+          onLoad={older.load}
+        />
+      )}
     </div>
   );
 }

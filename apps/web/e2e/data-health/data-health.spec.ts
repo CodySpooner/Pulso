@@ -21,12 +21,12 @@ test("bounded pages disclose omitted rows and preserve overdue sources beyond th
   await page.route("**/api/v1/admin/runs/412", (route) => route.fulfill({ json: { ...runDetail(412), next_cursor: "fixture-next" } }));
   await open(page);
   await expect(page.getByRole("region", { name: "Collector host" })).toContainText("At least 1 missed slots");
-  await expect(page.getByText("More missed slots are not shown; ranges may continue on later pages.")).toBeVisible();
+  await expect(page.getByText("Showing 1 range · 1 missed slot loaded, older gaps not loaded yet")).toBeVisible();
   const table = page.getByRole("region", { name: "Sources table" });
   await expect(table.getByRole("row", { name: /Google Trends/ })).toContainText("Overdue");
   await expect(page.getByRole("link", { name: /Data Health.*2 sources need attention/ }).first()).toBeVisible();
   await table.getByRole("button", { name: "Shopify stores: open runs" }).click();
-  await expect(page.getByRole("dialog", { name: "Shopify stores" })).toContainText("Showing the first 4 targets. More targets are not shown.");
+  await expect(page.getByRole("dialog", { name: "Shopify stores" })).toContainText("Showing 4 of at least 5 targets");
   expect(calls.filter((c) => c.path === "/v1/admin/host")).toHaveLength(1);
 });
 
