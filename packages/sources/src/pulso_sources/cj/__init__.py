@@ -1,4 +1,4 @@
-"""CJ catalog slice. Offline collection only until the live hook contract is complete."""
+"""CJ catalog collection; source enablement remains an external owner gate."""
 
 import hashlib
 import json
@@ -23,8 +23,11 @@ from pulso_core.models import (
 )
 from pulso_core.money import to_minor
 from pulso_core.settings import Settings
+from pulso_sources import storage
 from pulso_sources.cj.budget import reserve
+from pulso_sources.cj.categories import resolve
 from pulso_sources.cj.errors import CJError, classify_error
+from pulso_sources.cj.transport import Transport
 from pulso_sources.framework import (
     CollectorsLiveDisabled,
     Request,
@@ -34,6 +37,7 @@ from pulso_sources.framework import (
     append_observation,
     execute_run,
 )
+from pulso_sources.framework.lifecycle import BLOCK_STATUSES, _retry_after
 
 logger = logging.getLogger(__name__)
 Identifier = Annotated[str, Field(min_length=1, max_length=200)]
@@ -134,13 +138,23 @@ def dry_run(category_count: int, *, tracked_products: int = 300, freight_quotes:
     return points
 
 
+def category_plan(body: bytes, names: Sequence[str]) -> list[Target]:
+    ids = sorted({cid for group in resolve(body, names).values() for cid in group})
+    dry_run(len(ids))
+    return plan(ids)
+
+
 class CJAdapter:
     parser_version = "cj-catalog-v1"
     parse = staticmethod(parse)
 
+    def __init__(self, transport: Transport | None = None) -> None:
+        self.transport = transport
+
     def fetch(self, request: Request, *, user_agent: str) -> Response:
-        # shortcut: transport is refused; complete P1-08b before live enablement.
-        raise CollectorsLiveDisabled("CJ live transport is not enabled in the fixture slice")
+        if self.transport is None:
+            raise CollectorsLiveDisabled("CJ collection requires a guarded transport")
+        return self.transport.fetch(request)
 
     def upsert(
         self,
@@ -202,12 +216,40 @@ class CJAdapter:
 def collect(
     session: Session, run_id: int, targets: Sequence[Target], *, settings: Settings
 ) -> CollectorRun:
-    """Call under the scheduler's source lock; network transport remains disabled."""
+    """Call under the scheduler's source lock; own commits before actual HTTP attempts."""
     run = session.get_one(CollectorRun, run_id)
     source = session.get_one(Source, run.source_id)
     if source.key != "cj":
         raise ValueError("CJ collector requires the CJ source")
     error: CJError | None = None
+    attempted = False
+    before_count = run.http_requests
+    previous_blocks = source.consecutive_block_count
+    body_block = False
+    failure_response: Response | None = None
+
+    def before_send(endpoint: str) -> None:
+        if endpoint == "/product/listV2":
+            reserve(session, source, run, endpoint, settings=settings, now=datetime.now(UTC))
+        run.http_requests = before_count + transport.sent + 1
+        session.commit()
+
+    def rejected(request: Request, response: Response) -> None:
+        storage.store_capture(
+            session,
+            source_id=source.id,
+            source_key=source.key,
+            run_id=run.id,
+            body=response.body,
+            content_type=response.content_type,
+            status_code=response.status_code,
+            etag=response.etag,
+            request=request.params,
+            captured_at=datetime.now(UTC),
+        )
+        session.commit()
+
+    transport = Transport(settings, before_send, rejected)
 
     def hook(
         db: Session,
@@ -216,36 +258,61 @@ def collect(
         request: Request,
         response: Response | None,
     ) -> None:
-        nonlocal error
+        nonlocal error, attempted, before_count, previous_blocks, body_block
+        nonlocal failure_response
         try:
             if response is None:
-                reserve(
-                    db,
-                    source,
-                    run,
-                    str(request.params["endpoint"]),
-                    settings=settings,
-                    now=datetime.now(UTC),
-                )
+                if attempted:
+                    run.http_requests = before_count + transport.sent
+                transport.guard(request)
+                attempted, before_count = True, run.http_requests
+                transport.sent = 0
+                previous_blocks = source.consecutive_block_count
             elif failure := classify_error(response):
+                failure_response = response
+                body_block = response.status_code not in {403, 429, 430} and failure.code in {
+                    "cj_points_exhausted",
+                    "cj_rate_limited",
+                }
                 raise failure
         except CJError as failure:
             error = failure
             raise
 
-    result = execute_run(
-        session,
-        run_id,
-        CJAdapter(),
-        targets,
-        settings=settings,
-        wall_time_seconds=settings.cj_wall_time_seconds,
-        request_hook=hook,
-    )
+    try:
+        result = execute_run(
+            session,
+            run_id,
+            CJAdapter(transport),
+            targets,
+            settings=settings,
+            wall_time_seconds=settings.cj_wall_time_seconds,
+            request_hook=hook,
+        )
+    finally:
+        if transport.auth.cache is not None:
+            transport.auth.cache.close()
+    if attempted:
+        result.http_requests = before_count + transport.sent
+    error = error or transport.error
+    if auth_failure := transport.auth_failure:
+        result.last_status_code = source.last_status_code = auth_failure.status_code
+        body_block = auth_failure.status_code in BLOCK_STATUSES or (
+            error is not None and error.code in {"cj_points_exhausted", "cj_rate_limited"}
+        )
+        source.consecutive_block_count = previous_blocks if body_block else 0
+    if failure_response := transport.auth_failure or failure_response:
+        if retry_at := _retry_after(failure_response, datetime.now(UTC)):
+            source.retry_not_before = max(source.retry_not_before or retry_at, retry_at)
     if error is not None:
         # P1-30 preserves the generic HTTP block stop; record CJ's more specific code afterward.
         result.error_code, result.error_message = error.code, str(error)
-        if error.disable and source.enabled:
+        if body_block:
+            source.consecutive_block_count = previous_blocks + 1
+        if source.enabled and (
+            error.disable
+            or (body_block and source.consecutive_block_count >= settings.collector_block_threshold)
+        ):
             source.enabled, source.status = False, "blocked"
             source.disabled_at, source.disabled_reason = datetime.now(UTC), error.code
             session.add(
@@ -257,5 +324,5 @@ def collect(
                     at=source.disabled_at,
                 )
             )
-        session.commit()
+    session.commit()
     return result

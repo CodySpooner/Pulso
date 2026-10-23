@@ -1,4 +1,4 @@
-"""Reserve quota before an attempt; the framework owns the commit before HTTP."""
+"""Reserve quota before an attempt; the collector owns the commit before HTTP."""
 
 from datetime import UTC, datetime
 

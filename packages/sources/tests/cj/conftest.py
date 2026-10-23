@@ -1,4 +1,5 @@
 import io
+import time
 from collections.abc import Iterator
 from datetime import UTC
 from typing import Any
@@ -12,6 +13,16 @@ from sqlalchemy.schema import DefaultClause
 from pulso_core.db import Base
 from pulso_core.models import Listing, ListingSnapshot, RawPayload, Source
 from pulso_sources import storage
+from pulso_sources.cj import transport
+
+
+@pytest.fixture(autouse=True)
+def no_network(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        transport, "HTTPSConnection", Mock(side_effect=AssertionError("No live HTTP"))
+    )
+    monkeypatch.setattr(transport, "_next_request", 0.0)
+    monkeypatch.setattr(time, "sleep", lambda _: None)
 
 
 @pytest.fixture

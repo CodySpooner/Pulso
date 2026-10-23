@@ -18,9 +18,18 @@ from pulso_core.models import (
 from pulso_core.settings import Settings
 from pulso_sources import framework
 from pulso_sources.cj import CJAdapter, collect
+from pulso_sources.cj.auth import Auth
 from pulso_sources.cj.budget import reserve
 from pulso_sources.cj.errors import CJError
-from pulso_sources.framework import Request, Response, Target, enqueue_run, execute_run
+from pulso_sources.cj.transport import Transport
+from pulso_sources.framework import (
+    CollectorsLiveDisabled,
+    Request,
+    Response,
+    Target,
+    enqueue_run,
+    execute_run,
+)
 
 BODY = (Path(__file__).parent / "fixtures/list_v2.json").read_bytes()
 ERRORS = json.loads((Path(__file__).parent / "fixtures/errors.json").read_bytes())[:4]
@@ -120,13 +129,15 @@ def test_mock_http_reserves_before_send_and_persists_cj_error(
     source.enabled = True
     session.commit()
     monkeypatch.setattr(framework, "is_linked_worktree", lambda _: False)
+    monkeypatch.setattr("pulso_sources.cj.transport.is_linked_worktree", lambda _: False)
 
     def fake_fetch(*args: object, **kwargs: object) -> Response:
         assert not session.in_transaction()
         assert source.config["cj_points"]["reserved"] == 50
         return Response(json.dumps(case["body"]).encode(), int(str(case["status"])))
 
-    monkeypatch.setattr(CJAdapter, "fetch", fake_fetch)
+    monkeypatch.setattr(Auth, "token", lambda *a, **kw: "fixture-access")
+    monkeypatch.setattr(Transport, "http", fake_fetch)
     run = enqueue_run(session, source_id=2, trigger="manual", publish=lambda _: None)
     collect(
         session,
@@ -162,10 +173,76 @@ def test_budget_stops_before_next_request(
     source.enabled = True
     session.commit()
     monkeypatch.setattr(framework, "is_linked_worktree", lambda _: False)
-    monkeypatch.setattr(CJAdapter, "fetch", lambda *a, **kw: Response(BODY, 200))
+    monkeypatch.setattr("pulso_sources.cj.transport.is_linked_worktree", lambda _: False)
+    monkeypatch.setattr(Auth, "token", lambda *a, **kw: "fixture-access")
+    monkeypatch.setattr(Transport, "http", lambda *a, **kw: Response(BODY, 200))
     run = enqueue_run(session, source_id=2, trigger="manual", publish=lambda _: None)
     requests = [Request(params={"endpoint": "/product/listV2"})] * 2
     collect(session, run.id, [Target("cj_catalog_panel", "fixture", requests)], settings=cfg)
     assert run.status == "partial" and run.error_code == "cj_daily_budget"
     assert run.http_requests == 1 and run.rows_inserted == 2
     assert source.enabled and source.consecutive_block_count == 0
+
+
+@pytest.mark.parametrize("live,worktree", [(False, False), (True, True)])
+def test_refused_attempt_reserves_nothing(
+    session: Session, monkeypatch: pytest.MonkeyPatch, live: bool, worktree: bool
+) -> None:
+    cfg = settings()
+    cfg.collectors_live = live
+    source = session.get_one(Source, 2)
+    source.enabled = True
+    session.commit()
+    monkeypatch.setattr(framework, "is_linked_worktree", lambda _: worktree)
+    monkeypatch.setattr("pulso_sources.cj.transport.is_linked_worktree", lambda _: worktree)
+    run = enqueue_run(session, source_id=2, trigger="manual", publish=lambda _: None)
+    with pytest.raises(CollectorsLiveDisabled):
+        collect(
+            session,
+            run.id,
+            [
+                Target(
+                    "cj_catalog_panel", "fixture", [Request(params={"endpoint": "/product/listV2"})]
+                )
+            ],
+            settings=cfg,
+        )
+    assert run.http_requests == 0 and "cj_points" not in source.config
+
+
+@pytest.mark.parametrize("code", [1600200, 16900500])
+def test_body_block_codes_accumulate_without_changing_http_evidence(
+    session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+    code: int,
+) -> None:
+    cfg = settings()
+    cfg.collectors_live, cfg.collector_block_threshold = True, 2
+    cfg.pulso_bot_contact = "https://example.test/bot"  # type: ignore[assignment]
+    source = session.get_one(Source, 2)
+    source.enabled = True
+    session.commit()
+    monkeypatch.setattr(framework, "is_linked_worktree", lambda _: False)
+    monkeypatch.setattr("pulso_sources.cj.transport.is_linked_worktree", lambda _: False)
+    monkeypatch.setattr(Auth, "token", lambda *a, **kw: "fixture-access")
+    monkeypatch.setattr(
+        Transport,
+        "http",
+        lambda *a, **kw: Response(json.dumps({"code": code, "result": False}).encode(), 200),
+    )
+    for count in (1, 2):
+        run = enqueue_run(session, source_id=2, trigger="manual", publish=lambda _: None)
+        collect(
+            session,
+            run.id,
+            [
+                Target(
+                    "cj_catalog_panel", "fixture", [Request(params={"endpoint": "/product/listV2"})]
+                )
+            ],
+            settings=cfg,
+        )
+        assert source.consecutive_block_count == count and run.last_status_code == 200
+    assert not source.enabled
+    assert session.scalar(select(func.count()).select_from(SourceEvent)) == 1
+    assert all(p.status_code == 200 for p in session.scalars(select(RawPayload)))
