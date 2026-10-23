@@ -48,7 +48,7 @@ class Row(BaseModel):
     ship_cost_us: Decimal | None = None
     min_days: int | None = None
     max_days: int | None = None
-    moq: PositiveInt = 1
+    moq: PositiveInt | None = None
     observed_for: date | None = None
 
 
@@ -111,9 +111,14 @@ class ImportAdapter:
                 if offer is None:
                     offer = SupplierOffer(listing_id=listing.id)
                     session.add(offer)
-                countries = {row.warehouse_country for row in rows}
-                offer.moq = first.moq
-                offer.warehouse_country = first.warehouse_country if len(countries) == 1 else None
+                # DEC-186: an omitted column or blank cell is no evidence and keeps the stored
+                # value; a new offer keeps the schema defaults (moq 1, no warehouse).
+                moqs = {row.moq for row in rows if row.moq is not None}
+                if moqs:
+                    offer.moq = max(moqs)  # DEC-074 already rejects two stated MOQs
+                countries = {row.warehouse_country for row in rows if row.warehouse_country}
+                if countries:
+                    offer.warehouse_country = countries.pop() if len(countries) == 1 else None
             for row, cost in zip(rows, costs, strict=True):
                 variant = None
                 if row.sku:

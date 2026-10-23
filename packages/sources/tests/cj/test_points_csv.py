@@ -386,6 +386,58 @@ def test_csv_prices_are_their_own_variant_writer(session: Session) -> None:
     assert manual["price_minor"].id == csv_row.id and csv_row.currency == "USD"
 
 
+def test_omitted_offer_columns_preserve_existing_values(session: Session) -> None:
+    """aud-008 imp-070 lead probe: a later import without moq/warehouse_country columns."""
+    first = (
+        b"cj_product_id,sku,name,unit_cost,currency,moq,warehouse_country\n"
+        b"fixture-product,fixture-a,Fixture,2.50,USD,5,US\n"
+    )
+    second = (
+        b"cj_product_id,sku,name,unit_cost,currency\nfixture-product,fixture-a,Fixture,2.60,USD\n"
+    )
+    assert imports.commit_import(session, "cj", first, settings=settings()).status == "success"
+    run = imports.commit_import(session, "cj", second, settings=settings())
+    assert run.status == "success", run.error_message
+    offer = session.scalars(select(SupplierOffer)).one()
+    assert (offer.moq, offer.warehouse_country) == (5, "US")
+    key, _ = variant_rows(session, "csv-sku:fixture-a")
+    manual = current_fields(session, VariantSnapshot, key=key, writers=(CSV_WRITER,))["price_minor"]
+    assert (manual.price_minor, manual.raw_payload_id) == (260, run.params["raw_payload_id"])
+
+
+@pytest.mark.parametrize("new_cells", ["", ",moq,warehouse_country|,,"], ids=["absent", "blank"])
+def test_offer_fields_change_only_on_explicit_cells(session: Session, new_cells: str) -> None:
+    """DEC-186: an absent column or blank cell is no evidence and keeps the stored value."""
+    head = "cj_product_id,sku,name,unit_cost,currency"
+    row = "fixture-product,fixture-a,Fixture,{}.00,USD"
+    header, cells = new_cells.split("|") if new_cells else ("", "")
+    steps = [
+        # A new offer without MOQ evidence keeps the column's schema default of 1.
+        (f"{head}{header}\n{row}{cells}", (1, None)),
+        (f"{head},moq,warehouse_country\n{row},5,US", (5, "US")),
+        (f"{head},moq,warehouse_country\n{row},,", (5, "US")),
+        (f"{head}\n{row}", (5, "US")),
+        (f"{head},moq\n{row},7", (7, "US")),
+        # Only stated warehouses count: a blank row doesn't make the product multi-warehouse.
+        (
+            f"{head},warehouse_country\n{row},CN\nfixture-product,fixture-b,Fixture,1.00,USD,",
+            (7, "CN"),
+        ),
+    ]
+    bodies = [body.format(cost).encode() for cost, (body, _) in enumerate(steps, 1)]
+    for body, (_, expected) in zip(bodies, steps, strict=True):
+        run = imports.commit_import(session, "cj", body, settings=settings())
+        assert run.status == "success", run.error_message
+        offer = session.execute(select(SupplierOffer.moq, SupplierOffer.warehouse_country)).one()
+        assert tuple(offer) == expected, body
+    repeated = imports.commit_import(session, "cj", bodies[3], settings=settings())
+    assert repeated.status == "skipped"
+    offer = session.execute(select(SupplierOffer.moq, SupplierOffer.warehouse_country)).one()
+    assert tuple(offer) == (7, "CN")
+    _, history = variant_rows(session, "csv-sku:fixture-a")
+    assert [r.price_minor for r in history] == [100, 200, 300, 400, 500, 600]
+
+
 def test_renewal_inactivity_disables_once_without_paid_send(
     session: Session, monkeypatch: pytest.MonkeyPatch
 ) -> None:
