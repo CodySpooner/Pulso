@@ -1,10 +1,12 @@
-"""CJ authentication responses stay in memory, never in raw captures or logs."""
+"""CJ tokens live in memory/Redis, never in raw captures or logs."""
 
+import hashlib
 import json
 from collections.abc import Callable
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from pydantic import AwareDatetime, BaseModel, Field, SecretStr
+from redis import Redis
 
 from pulso_core.settings import Settings
 from pulso_sources.cj.errors import CJError, classify_error
@@ -27,10 +29,15 @@ def parse(body: bytes) -> Tokens:
 
 class Auth:
     def __init__(
-        self, settings: Settings, *, now: Callable[[], datetime] = lambda: datetime.now(UTC)
+        self,
+        settings: Settings,
+        *,
+        now: Callable[[], datetime] = lambda: datetime.now(UTC),
+        cache: Redis | None = None,
     ) -> None:
-        self.settings, self.now = settings, now
-        # shortcut: in-process tokens only; add Redis caching in P1-08b before enablement.
+        self.settings, self.now, self.cache = settings, now, cache
+        key = settings.cj_api_key.get_secret_value() if settings.cj_api_key else ""
+        self.cache_key = "pulso:cj:auth:" + hashlib.sha256(key.encode()).hexdigest()
         self.tokens: Tokens | None = None
 
     def token(
@@ -39,10 +46,15 @@ class Auth:
         now = self.now()
         if now.utcoffset() is None:
             raise ValueError("CJ auth requires an aware clock")
+        if self.tokens is None and self.cache is not None:
+            cached = self.cache.get(self.cache_key)
+            if isinstance(cached, (str, bytes)):
+                self.tokens = Tokens.model_validate_json(cached)
         tokens = self.tokens
-        if tokens and not refresh and now < tokens.access_expires:
+        safe_until = now + timedelta(minutes=5)
+        if tokens and not refresh and safe_until < tokens.access_expires:
             return tokens.access.get_secret_value()
-        if tokens and now < tokens.refresh_expires:
+        if tokens and safe_until < tokens.refresh_expires:
             endpoint, body = (
                 "refreshAccessToken",
                 {"refreshToken": tokens.refresh.get_secret_value()},
@@ -58,7 +70,19 @@ class Auth:
         if error := classify_error(response):
             raise error
         tokens = parse(response.body or b"")
-        if tokens.access_expires <= self.now() or tokens.refresh_expires <= self.now():
+        safe_until = self.now() + timedelta(minutes=5)
+        if tokens.access_expires <= safe_until or tokens.refresh_expires <= safe_until:
             raise CJError("cj_token_expired", "CJ returned an expired token; no retry")
         self.tokens = tokens
+        if self.cache is not None:
+            data = tokens.model_dump(mode="json", by_alias=True)
+            data.update(
+                accessToken=tokens.access.get_secret_value(),
+                refreshToken=tokens.refresh.get_secret_value(),
+            )
+            self.cache.set(
+                self.cache_key,
+                json.dumps(data),
+                ex=int((tokens.refresh_expires - safe_until).total_seconds()),
+            )
         return tokens.access.get_secret_value()
