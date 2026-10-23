@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { RotateCw, Upload } from "lucide-react";
+import { RotateCw } from "lucide-react";
 
 import { PageHeader } from "@/components/pulso/page-header";
 import { Button } from "@/components/ui/button";
@@ -9,8 +9,9 @@ import { formatAgo, formatUtc } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 import { useHost, useRefreshAdmin, useSources } from "./api";
-import { Panel, PanelError } from "./atoms";
+import { PanelError } from "./atoms";
 import { CoveragePanel } from "./coverage";
+import { ImportPanel } from "./import-panel";
 import { hostState } from "./model";
 import { RunDrawer } from "./run-drawer";
 import { SourcesPanel } from "./sources-table";
@@ -91,32 +92,9 @@ export function DataHealth() {
 
       <SourcesPanel now={now} onOpen={openRuns} />
       <CoveragePanel now={now} />
-      <ImportPanel />
+      <ImportPanel onOpen={openRuns} />
 
       <RunDrawer source={sources.data?.find((s) => s.key === openKey) ?? null} now={now} onClose={() => setOpenKey(null)} returnFocusRef={opener} />
     </div>
-  );
-}
-
-// The import endpoints are in the API (P1-11b, DEC-117); the upload flow lands with P1-11c: a designed disabled state.
-function ImportPanel() {
-  return (
-    <Panel id="import" title="CSV import" note="Every source has a CSV fallback (§4.2)">
-      <div className="m-4 flex flex-col items-center gap-3 rounded-lg border border-dashed border-border-strong px-5 py-4 text-center sm:flex-row sm:text-left">
-        <div className="grid size-10 shrink-0 place-items-center rounded-lg border border-border bg-secondary text-muted-foreground">
-          <Upload className="size-5" aria-hidden />
-        </div>
-        <div className="flex flex-col gap-0.5">
-          <h3 className="text-body font-medium text-foreground">Import arrives with P1-11c</h3>
-          <p className="max-w-[72ch] text-data text-muted-foreground">
-            The template, preview and commit endpoints are ready; the upload flow comes next. Then you drop a CSV here and see the
-            preview before anything is written.
-          </p>
-        </div>
-        <Button variant="secondary" size="sm" disabled className="sm:ml-auto">
-          Choose CSV…
-        </Button>
-      </div>
-    </Panel>
   );
 }

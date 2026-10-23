@@ -54,3 +54,11 @@ export function useRefreshAdmin(): () => Promise<void> {
   const queryClient = useQueryClient();
   return () => queryClient.invalidateQueries({ predicate: (q) => String(q.queryKey[1]).startsWith("/v1/admin/") });
 }
+
+/**
+ * An import request carrying the file's raw bytes (DEC-068: no multipart). The schema types a binary body as
+ * a string, so the serializer hands fetch the File itself.
+ */
+export function fileUpload(key: string, file: File) {
+  return { params: { path: { key } }, body: "", bodySerializer: () => file, headers: { "Content-Type": "application/octet-stream" } };
+}

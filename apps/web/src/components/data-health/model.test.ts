@@ -3,12 +3,18 @@ import { describe, expect, test } from "vitest";
 import {
   attentionCount,
   backupState,
+  commitBlocker,
   coverageRows,
+  defaultImportSource,
   hostState,
+  importOutcome,
   mergeGaps,
+  previewSummary,
   sourceState,
   utcDays,
   type Gap,
+  type ImportPreview,
+  type ImportResult,
   type Run,
   type SourceHealth,
 } from "./model";
@@ -119,4 +125,50 @@ test("coverageRows places days per source and skips internal sources", () => {
   );
   expect(rows).toHaveLength(1);
   expect(rows[0].cells.map((c) => c?.status ?? null)).toEqual([null, null, "success"]);
+});
+
+describe("CSV import flow", () => {
+  const preview = (over: Partial<ImportPreview> = {}): ImportPreview => ({
+    rows: [], valid: 3, invalid: 1, skipped: 0, error_count: 1, errors: [{ row: 5, column: "rate", message: "Invalid rate value" }], ...over,
+  });
+  const result = (over: Partial<ImportResult> = {}, runOver: Partial<Run> = {}): ImportResult => ({
+    run: run({ id: 42, trigger: "csv", rows_inserted: 3, rows_updated: 0, rows_unchanged: 0, ...runOver }),
+    raw_payload_id: 77, original_run_id: null, in_progress: false, error_count: 1, errors: [], ...over,
+  });
+  const fx = source({ key: "fx_frankfurter", name: "Frankfurter FX", csv_import: "ready" });
+  const cj = source({ csv_import: "preview_only" });
+
+  test("preselects the first source that can import, skipping sources without a template", () => {
+    expect(defaultImportSource([source({ key: "backup" }), cj, fx])?.key).toBe("fx_frankfurter");
+    expect(defaultImportSource([source({ key: "backup" }), cj])?.key).toBe("cj");
+    expect(defaultImportSource([source({ key: "backup" })])).toBeUndefined();
+  });
+
+  test("import is blocked without an adapter or without a valid row, never silently", () => {
+    expect(commitBlocker(fx, preview())).toBeNull();
+    expect(commitBlocker(cj, preview())).toMatch(/^Importing into CJ Dropshipping arrives with its import adapter/);
+    expect(commitBlocker(fx, preview({ valid: 0 }))).toMatch(/^No valid rows/);
+  });
+
+  test("the preview summary counts rows and blank lines", () => {
+    expect(previewSummary(preview())).toBe("3 valid rows · 1 invalid row");
+    expect(previewSummary(preview({ valid: 1, invalid: 0, skipped: 2 }))).toBe("1 valid row · 0 invalid rows · 2 blank lines skipped");
+  });
+
+  test("outcomes: imported, already imported, still importing, failed", () => {
+    expect(importOutcome(result(), "Frankfurter FX")).toEqual({
+      tone: "ok",
+      text: "Imported into Frankfurter FX as run #42: 3 new, 0 updated, 0 unchanged. Rows with errors were skipped (1 error).",
+    });
+    expect(importOutcome(result({ original_run_id: 42 }, { id: 43, status: "skipped" }), "FX").text).toBe(
+      "This exact file was already imported as run #42. Nothing new was written.",
+    );
+    expect(importOutcome(result({ original_run_id: 42, in_progress: true }, { id: 44, status: "skipped" }), "FX").text).toBe(
+      "This file is still importing as run #42.",
+    );
+    expect(importOutcome(result({}, { status: "failed", error_code: "no_valid_rows" }), "FX")).toEqual({
+      tone: "error",
+      text: "Import failed as run #42: the file has no valid rows.",
+    });
+  });
 });

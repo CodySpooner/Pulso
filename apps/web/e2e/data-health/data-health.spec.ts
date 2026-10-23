@@ -49,8 +49,7 @@ test("renders every DH-1 field from fixtures", async ({ page }) => {
   const gaps = page.getByRole("region", { name: "Open gaps" });
   await expect(gaps.getByRole("row", { name: /Google Trends/ })).toContainText("Host offline");
   await expect(gaps.getByRole("row", { name: /Google Trends/ })).toContainText("2");
-  await expect(page.getByRole("heading", { name: "Import arrives with P1-11c" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Choose CSV…" })).toBeDisabled();
+  await expect(page.getByRole("region", { name: "CSV import" }).getByLabel("Source")).toHaveValue("fx_frankfurter");
 
   // Run drawer: error text and raw-payload ids for the newest run, plus the source's remaining fields.
   await table.getByRole("button", { name: "Shopify stores: open runs" }).click();
@@ -104,6 +103,56 @@ test("Run now is unavailable off the collector host and says why", async ({ page
   await expect(page.getByRole("tooltip")).toContainText("Live collectors run only on the collector host.");
   await run.click({ force: true }); // aria-disabled: Playwright would wait for it to enable
   expect(calls.filter((c) => c.method === "POST")).toEqual([]);
+});
+
+test("CSV import: keyboard to a file, row errors, one-click import, and a repeat is skipped", async ({ page }) => {
+  const calls = await mockAdminApi(page);
+  await open(page);
+  const panel = page.getByRole("region", { name: "CSV import" });
+  // Preselected: the one source with an import adapter (fixtures: Frankfurter FX).
+  await expect(panel.getByLabel("Source")).toHaveValue("fx_frankfurter");
+  await expect(panel.getByRole("link", { name: "Download template" })).toHaveAttribute("href", "/api/v1/admin/sources/fx_frankfurter/import/template");
+  const file = { name: "rates.csv", mimeType: "text/csv", buffer: Buffer.from("date,base,quote,rate\n2026-01-01,USD,JPY,150\n") };
+
+  // Action 1 (Enter on the focused button) opens the file picker; choosing the file checks it at once.
+  await panel.getByRole("button", { name: "Choose CSV…" }).focus();
+  const chooser = page.waitForEvent("filechooser");
+  await page.keyboard.press("Enter");
+  await (await chooser).setFiles(file);
+  await expect(panel.getByRole("region", { name: "Row errors" }).getByRole("row", { name: "5 rate Invalid rate value" })).toBeVisible();
+  await expect(panel).toContainText("3 valid");
+
+  // Action 2 imports.
+  await panel.getByRole("button", { name: "Import 3 rows" }).click();
+  await expect(panel).toContainText("Imported into Frankfurter FX as run #501: 3 new, 0 updated, 0 unchanged.");
+
+  // The same bytes again: a skipped run pointing at the first.
+  await panel.locator('input[type="file"]').setInputFiles(file);
+  await panel.getByRole("button", { name: "Import 3 rows" }).click();
+  await expect(panel).toContainText("This exact file was already imported as run #501. Nothing new was written.");
+  await panel.getByRole("button", { name: "Open runs" }).click();
+  await expect(page.getByRole("dialog", { name: "Frankfurter FX" })).toBeVisible();
+  await page.keyboard.press("Escape");
+
+  // No import adapter yet: the file is checked again for the new source, and Import says why it's unavailable.
+  await panel.locator('input[type="file"]').setInputFiles(file);
+  await panel.getByLabel("Source").selectOption("cj");
+  await expect(panel).toContainText("No import adapter yet");
+  const blocked = panel.getByRole("button", { name: "Import 3 rows" });
+  await expect(blocked).toHaveAttribute("aria-disabled", "true");
+  await expect(blocked).toHaveAccessibleDescription(/importing into CJ Dropshipping arrives with its adapter/);
+
+  const posts = calls.filter((c) => c.method === "POST");
+  expect(posts.map((c) => operationId(c.method, c.path))).toEqual([
+    "preview_import",
+    "commit_source_import",
+    "preview_import",
+    "commit_source_import",
+    "preview_import",
+    "preview_import",
+  ]);
+  expect(posts.at(-1)?.path).toBe("/v1/admin/sources/cj/import/preview");
+  expect(posts[0].body).toBe(file.buffer.toString()); // the raw bytes, not JSON or multipart
 });
 
 test.describe("DH-3 nav badge", () => {

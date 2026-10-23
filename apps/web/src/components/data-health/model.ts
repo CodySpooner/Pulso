@@ -113,3 +113,47 @@ export function coverageRows(coverage: CoverageDay[], sources: SourceHealth[], d
     .filter((s) => s.type !== "internal")
     .map((s) => ({ key: s.key, name: s.name, cells: days.map((d) => byKey.get(`${s.key} ${d}`) ?? null) }));
 }
+
+export type ImportPreview = components["schemas"]["ImportPreview"];
+export type ImportResult = components["schemas"]["ImportResult"];
+
+/** The API's upload cap (decode_upload): a bigger file is refused before it is sent. */
+export const IMPORT_MAX_BYTES = 20 * 1024 * 1024;
+
+const plural = (n: number, one: string, many = `${one}s`) => `${n.toLocaleString("en-US")} ${n === 1 ? one : many}`;
+
+/** The preselected import source: the first that can commit, so the common case needs no change. */
+export function defaultImportSource(sources: SourceHealth[]): SourceHealth | undefined {
+  return sources.find((s) => s.csv_import === "ready") ?? sources.find((s) => s.csv_import != null);
+}
+
+/** Why the previewed file can't be imported, or null when it can. */
+export function commitBlocker(source: SourceHealth, preview: ImportPreview): string | null {
+  if (source.csv_import !== "ready") return `Importing into ${source.name} arrives with its import adapter. You can check files now.`;
+  if (preview.valid === 0) return "No valid rows to import. Fix the rows below and choose the file again.";
+  return null;
+}
+
+export function previewSummary(p: ImportPreview): string {
+  const parts = [plural(p.valid, "valid row"), plural(p.invalid, "invalid row")];
+  if (p.skipped > 0) parts.push(`${plural(p.skipped, "blank line")} skipped`);
+  return parts.join(" · ");
+}
+
+/** The commit's outcome in words (vault Features/CSV Export & Import, Duplicate state). */
+export function importOutcome(result: ImportResult, sourceName: string): { tone: "ok" | "error"; text: string } {
+  const { run, original_run_id: original } = result;
+  if (run.status === "skipped") {
+    return result.in_progress
+      ? { tone: "ok", text: `This file is still importing as run #${original}.` }
+      : { tone: "ok", text: `This exact file was already imported as run #${original}. Nothing new was written.` };
+  }
+  if (run.status === "failed") {
+    const why = run.error_code === "no_valid_rows" ? "the file has no valid rows" : (run.error_code ?? "unknown error");
+    return { tone: "error", text: `Import failed as run #${run.id}: ${why}.` };
+  }
+  if (run.status !== "success" && run.status !== "partial") return { tone: "ok", text: `Import ${run.status} as run #${run.id}.` };
+  const counts = `${run.rows_inserted.toLocaleString("en-US")} new, ${run.rows_updated.toLocaleString("en-US")} updated, ${run.rows_unchanged.toLocaleString("en-US")} unchanged`;
+  const skipped = result.error_count > 0 ? ` Rows with errors were skipped (${plural(result.error_count, "error")}).` : "";
+  return { tone: "ok", text: `Imported into ${sourceName} as run #${run.id}: ${counts}.${skipped}` };
+}
