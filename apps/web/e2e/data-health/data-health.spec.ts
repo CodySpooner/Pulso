@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 
 import { healthySources, host, mockAdminApi, operationId, runDetail, sources, suppressedSources } from "./fixtures";
 
@@ -251,6 +251,39 @@ test.describe("states", () => {
     const levels = await headingLevels(page);
     expect(levels.every((level, i) => i === 0 || level - levels[i - 1] <= 1)).toBe(true);
   });
+
+  // imp-090 (aud-011 B11-05): the API-down h2 is set like the panel h2s it replaces (title-3, 600); an inline
+  // panel error's h3 keeps its body/500 title. Both tokens step up 1px under 640px.
+  for (const theme of ["dark", "light"] as const) {
+    for (const [width, title3, body] of [
+      [1440, "15px", "14px"],
+      [375, "16px", "15px"],
+    ] as const) {
+      test(`error titles at ${width}px ${theme}`, async ({ page }) => {
+        const font = (heading: Locator) => heading.evaluate((el) => `${getComputedStyle(el).fontSize}/${getComputedStyle(el).fontWeight}`);
+        const noHScroll = () => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth);
+        await page.setViewportSize({ width, height: 900 });
+        await page.emulateMedia({ colorScheme: theme });
+        await page.addInitScript((t) => localStorage.setItem("theme", t), theme);
+
+        await mockAdminApi(page, { down: true });
+        await open(page);
+        const apiDown = page.getByRole("heading", { level: 2, name: "Can't reach the API" });
+        await expect(apiDown).toBeVisible({ timeout: 15_000 });
+        expect(await font(apiDown)).toBe(`${title3}/600`);
+        expect(await noHScroll()).toBe(true);
+
+        await mockAdminApi(page); // newer routes win: the API is back, only coverage fails
+        await page.route((url) => url.pathname === "/api/v1/admin/coverage", (route) => route.abort("connectionrefused"));
+        await open(page);
+        const coverage = page.getByRole("region", { name: "Coverage" });
+        await expect(coverage.getByRole("heading", { level: 3, name: "Couldn't load coverage" })).toBeVisible({ timeout: 15_000 });
+        expect(await font(coverage.getByRole("heading", { level: 3 }))).toBe(`${body}/500`);
+        expect(await font(coverage.getByRole("heading", { level: 2 }))).toBe(`${title3}/600`);
+        expect(await noHScroll()).toBe(true);
+      });
+    }
+  }
 
   test("no sources configured", async ({ page }) => {
     await mockAdminApi(page, { sources: [], coverage: [] });

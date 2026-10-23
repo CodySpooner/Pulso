@@ -40,7 +40,8 @@ for (const theme of ["dark", "light"] as const) {
       await page.screenshot({ path: `${OUT}/run-drawer-${width}-${theme}.png` });
     });
 
-    // imp-057: the API-down page, its error an h2 under the page h1. Output goes to docs/screenshots/imp-057/.
+    // imp-057 / imp-090: the API-down page, its error an h2 under the page h1 set like the panel titles (title-3,
+    // 600). Output goes to docs/screenshots/imp-090/ (imp-057/ keeps the before shots).
     test(`api down ${width}px ${theme}`, async ({ page }) => {
       await mockAdminApi(page, { down: true });
       await page.setViewportSize({ width, height });
@@ -50,7 +51,7 @@ for (const theme of ["dark", "light"] as const) {
       await expect(page.getByRole("heading", { level: 2, name: "Can't reach the API" })).toBeVisible({ timeout: 15_000 });
       await page.evaluate(() => document.fonts.ready);
       await page.waitForTimeout(500);
-      await page.screenshot({ path: `../../docs/screenshots/imp-057/api-down-${width}-${theme}.png` });
+      await page.screenshot({ path: `../../docs/screenshots/imp-090/api-down-${width}-${theme}.png` });
     });
   }
 }

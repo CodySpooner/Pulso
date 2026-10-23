@@ -58,7 +58,7 @@ export function DataHealth() {
       <div className="flex flex-col gap-6">
         {header}
         <section className="rounded-xl border border-border bg-card shadow-card">
-          <PanelError title="Can't reach the API" error={sources.error} retry={() => void refresh()} headingLevel="h2" className="py-12" />
+          <PanelError title="Can't reach the API" error={sources.error} retry={() => void refresh()} headingLevel="h2" size="md" className="py-12" />
         </section>
       </div>
     );
