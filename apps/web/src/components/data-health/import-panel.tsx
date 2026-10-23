@@ -322,8 +322,9 @@ function fileSize(bytes: number): string {
 }
 
 const TOO_BIG = "This file is over 20 MB. Split it into smaller files and import each.";
-const CHECK_FAILED = "The API didn't answer while checking the file.";
-const IMPORT_FAILED = "The API didn't answer while importing.";
+// The next step matches PanelError's API-down copy; a retried import is safe because the same bytes are skipped.
+const CHECK_FAILED = "The API didn't answer while checking the file. When it runs on your PC, check that the PC is on.";
+const IMPORT_FAILED = "The API didn't answer while importing. When it runs on your PC, check that the PC is on; a retry never imports the same file twice.";
 
 /** A failed request in words. A 422 is about the file itself: retrying the same bytes can't help. */
 function failure(error: unknown, fallback: string) {
