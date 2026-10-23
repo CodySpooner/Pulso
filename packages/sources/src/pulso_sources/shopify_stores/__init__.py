@@ -150,7 +150,7 @@ class ShopifyAdapter:
         robots_url = origin + "/robots.txt"
         cached = self.cache.get(robots_url)
         if cached and cached[0].captured_at.replace(tzinfo=UTC) > datetime.now(UTC) - timedelta(
-            days=7
+            hours=24
         ):
             body = cached[1]
         else:
@@ -198,6 +198,7 @@ class ShopifyAdapter:
 
 def collect(session: Session, run_id: int, *, settings: Settings) -> CollectorRun:
     """Own the lifecycle transaction; source enablement remains external and off by default."""
+    global _next_global
     session.expire_on_commit = False
     run = session.get_one(CollectorRun, run_id)
     if run.status != "queued":
@@ -214,6 +215,19 @@ def collect(session: Session, run_id: int, *, settings: Settings) -> CollectorRu
         )
     )
     adapter = ShopifyAdapter(settings)
+    capture_domain = RawPayload.request["domain"].as_string()
+    last_captures = session.execute(
+        select(capture_domain, func.max(RawPayload.captured_at))
+        .where(RawPayload.source_id == source.id)
+        .group_by(capture_domain)
+    ).all()
+    now, monotonic = datetime.now(UTC), time.monotonic()
+    for domain, captured_at in last_captures:
+        # Restore spacing after a restart without shortening this process's deadlines.
+        captured = monotonic + (captured_at.replace(tzinfo=UTC) - now).total_seconds()
+        _next_global = max(_next_global, captured + 60 / settings.shopify_requests_per_minute)
+        if domain is not None:
+            _next_store[domain] = max(_next_store.get(domain, 0), captured + STORE_SPACING_SECONDS)
     # A failed tail invalidates cache eligibility for every page of that store's run.
     eligible = (
         select(

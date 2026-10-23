@@ -17,4 +17,4 @@ RUN useradd --create-home --uid 10001 pulso && mkdir /app && chown pulso:pulso /
 WORKDIR /app
 COPY --from=build /app/.venv ./.venv
 USER pulso
-CMD ["celery", "-A", "pulso_workers.celery_app:app", "worker", "-Q", "collect,default", "--concurrency=2", "--loglevel=INFO"]
+CMD ["celery", "-A", "pulso_workers.celery_app:app", "worker", "-Q", "collect,default", "--loglevel=INFO"]
