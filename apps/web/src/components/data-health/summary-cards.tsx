@@ -41,12 +41,13 @@ function Fact({ label, children }: { label: string; children: React.ReactNode })
   );
 }
 
-function CardSkeleton() {
+/** `phone`: by fact index, the bar height of a value that wraps on a phone, so the card keeps its loaded height there too. */
+function CardSkeleton({ phone = {} }: { phone?: Record<number, string> }) {
   return (
     // One bar per fact at the facts' row gap, so the card keeps its loaded height (imp-082).
     <div className="flex flex-col gap-2 px-4 py-3">
       {[0, 1, 2, 3, 4].map((i) => (
-        <Skeleton key={i} className="h-4.5 w-full" />
+        <Skeleton key={i} className={cn("h-4.5 w-full", phone[i])} />
       ))}
     </div>
   );
@@ -71,7 +72,9 @@ export function HostCard({ now }: { now: number }) {
         <StaleLine what="Couldn't refresh the collector host" error={host.error} asOf={host.dataUpdatedAt} retry={() => host.refetch()} />
       )}
       {host.isPending ? (
-        <CardSkeleton />
+        // Run now's "Off here: …" and the Open gaps line take two lines on a phone (p1-53).
+        // ponytail: sized to that copy below sm; other copy or widths shift a little, which the Skeleton keeps honest.
+        <CardSkeleton phone={{ 2: "max-sm:h-9", 3: "max-sm:h-9" }} />
       ) : host.isLoadingError ? (
         <PanelError title="Couldn't load the collector host" error={host.error} retry={() => host.refetch()} />
       ) : (
@@ -135,7 +138,8 @@ export function BackupCard({ now }: { now: number }) {
         <StaleLine what="Couldn't refresh backups" error={runs.error} asOf={runs.dataUpdatedAt} retry={() => runs.refetch()} />
       )}
       {runs.isPending ? (
-        <CardSkeleton />
+        // The run strip's count wraps beside its cells on a phone: two label lines (p1-53).
+        <CardSkeleton phone={{ 4: "max-sm:h-8" }} />
       ) : runs.isLoadingError ? (
         <PanelError title="Couldn't load backups" error={runs.error} retry={() => runs.refetch()} />
       ) : !backup?.latest ? (
