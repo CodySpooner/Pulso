@@ -104,6 +104,7 @@ New entries go at the bottom with the next number. Never renumber or delete; mar
 | DEC-129 | Owner merges the protected collector scripts (P1-13 + P1-14) and sets up the collector host | approved by owner 2026-10-23 |
 | DEC-136 | Use CJ now until the 30-day rule lapses it; Pulso is for the owner's own stores, not a paid app | approved by owner 2026-10-23 |
 | DEC-131 | Collector seeds and source controls: worker-container step, fail-closed evidence gates, private seed file | proposed (P1-42) |
+| DEC-202 | While Codex is off, a fresh Claude session does the owed cross-reviews | approved by owner 2026-10-23 |
 
 Superseded review defaults, not given entries: default #0 (move the repo) is done, see DEC-005. Default #2 (no local collection at all) is replaced by DEC-002. Default #15 (CSS-only motion) is replaced by DEC-007, and its remaining rules are in DEC-025. Review question D1 (Railway Pro from Phase 1) is answered by DEC-001, D2 by DEC-003, D3 by DEC-004, D5 by DEC-008 and D8 by DEC-006.
 
@@ -1595,3 +1596,11 @@ Superseded review defaults, not given entries: default #0 (move the repo) is don
 - **Decision:** `<main>` gets `relative` at every width (`shell/app-shell.tsx`). Every page's stray absolute boxes now belong to main's scroll area: at lg the document stays one viewport tall and a jump scrolls `main` only; below lg nothing moves (the document scrolls as before). `e2e/shell-scroll.spec.ts` asserts the document height at 1440 on `/admin/data-health` and `/`, and that a native `#open-gaps` jump and the Overdue note's link both leave the top bar where it was at 1440 and 375.
 - **Alternatives:** `overflow: clip` on the shell root (clipping skips boxes whose containing block is above the clipping element, so it changes nothing here); `relative` on the shell root (it contains them, but they stop scrolling with `main` and its `overflow-hidden` box becomes script-scrollable, so a jump could shift the shell inside itself); `contain: paint` on `main` (it also captures `position: fixed` descendants); `relative` on the CSV panel (fixes one page, not the cause).
 - **Why:** one class where every page's content passes, no paint or clipping change for anything already positioned, and the phone layout is untouched.
+
+### DEC-202 · While Codex is off, a fresh Claude session does the owed cross-reviews
+**2026-10-23 · approved by owner 2026-10-23** · amends how AGENTS.md §6 (DEC-072) review is staffed while Codex is off; DEC-073; DEC-136; Lead Playbook §6
+- **Owner's answer (2026-10-23, in the owner's session):** asked whether a fresh Claude session may do the owed cross-reviews while Codex is off: "Yes, let a fresh Claude session do the owed cross-reviews while Codex is off, so the lead can update the collector host and turn on FX and CJ."
+- **Decision:** while Codex is off, a fresh Claude session that did not write the merges does the batched cross-review AGENTS.md §6 asks of "the other agent". The first batch covers P1-38 `bc9a77e`, imp-068 `973ad0a`, imp-004 `6b4c03e`, imp-053 `8a4575f`, P1-52 `59e0a67` and P1-51 `b803124`. The report goes to `C:/Users/Xody2/orca/reports/cross-review-2026-10-23-claude.md`, and the verdict line goes in the vault `Agents/Lead State` Log. Once it reports no blocking findings, the collector-host update and the Lead Playbook §6 steps (seeds, `enable fx_frankfurter`, then `enable cj`) are unblocked. Blocking findings get fixed first, as fix tasks.
+- **Ends:** when the owner says Codex is back, Codex resumes cross-reviews of Claude's merges.
+- **Alternatives:** wait for Codex (keeps FX and CJ off for an unknown time, and CJ's 30-day window is running, DEC-136); let the authoring worker or the lead review its own merge (not independent).
+- **Why:** an independent reader still checks every risky merge before it runs on the collector host, without waiting on Codex usage.
