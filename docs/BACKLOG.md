@@ -104,7 +104,7 @@ This file holds deferred ideas and research extras that are **not** in the §11 
 
 | Deferred work | Evidence | When | Notes |
 |---|---|---|---|
-| P1-11b: admin import template, preview and commit endpoints | DEC-068; DH-1; DEC-064 | Next, before the P1-12 CSV upload | Ready on local branch `CodySpooner/p1-11b-admin-imports` (one commit on P1-11); review, rebase and regenerate the API client. Still open from P1-22's API notes: reject oversized uploads before buffering (the body is read in full before `decode_upload` checks 20 MiB), and the invalid-row download with the Phase 4 export neutraliser |
+| P1-11b: admin import template, preview and commit endpoints | DEC-068; DH-1; DEC-064; DEC-117 | Endpoints merged `1aea91a` (2026-10-23) | Template, validation-only preview and commit are shipped. Still open from P1-22: reject oversized uploads before buffering (the body is read in full before `decode_upload` checks 20 MiB; vault imp-051), and the invalid-row download with the Phase 4 export neutraliser |
 | Persist quota usage so `quota_used`/`quota_limit` can be filled (CJ points, SerpApi searches, Shopify rate) | DEC-068; Data Health extras row | With P1-08/P1-09 quota reservation | Needs a migration owner; the API returns null until then and the UI shows "no source yet" |
 | Import preview insert/update/skip counts through `preview_csv` | DEC-064, DEC-068 | When P1-07–09 register read-only classifiers | P1-11b preview is validation-only (valid/invalid/skipped) |
 | Per-upload and saved column mappings in the import API | DEC-064, DEC-068 | With the CSV wizard | FastAPI cannot take a JSON query param; use multipart (`python-multipart`) or a JSON field then |
@@ -125,7 +125,7 @@ This file holds deferred ideas and research extras that are **not** in the §11 
 | Backup size and target in the backup run response | DEC-060, DEC-096 | With `backup.py` | `Run` omits `params` on purpose (import errors can be megabytes); add a narrow field instead |
 | Signed admin download links for `RunTarget.raw_payload_id` | DEC-068, DEC-096 | With Object Storage signed URLs | The run drawer shows payload ids only |
 | 7-day error rate per source | vault Data Health sources table | With the next DH-1 change | Derive in the API; the UI has no column for it yet |
-| Wire the CSV upload area to the P1-11b import endpoints | P1-11b; DEC-064 | After P1-11b merges | Template download, validation-only preview, then commit |
+| Wire the CSV upload area to the P1-11b import endpoints | P1-11b/P1-11c; DEC-064/117b | Merged `81c2bed` (2026-10-23) | Template download, validation-only preview and commit shipped; 2 actions from the preselected source. Remaining: first-20-row table, invalid-row download, Shopify JSON panel and per-source entry (vault imp-052) |
 | Data Health keyboard shortcuts (J/K, Enter, R with confirm, G, /) | vault Data Health, Keyboard | UI polish pass | The page is fully Tab-operable today |
 | Feed the top-bar "Data as of" chip and the Daily Pulse host chip and copy from DH-1 | App Shell & Navigation; imp-001 | Next shell task | Both still show Phase 0 placeholders; outside P1-12's file ownership |
 | Default `/api/v1/admin/*` stub for e2e specs that don't mock it | P1-12 | CI hygiene | The shell's badge and host footer call the API on every page, so unmocked specs log proxy errors (tests still pass) |
