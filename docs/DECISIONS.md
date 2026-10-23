@@ -95,7 +95,7 @@ New entries go at the bottom with the next number. Never renumber or delete; mar
 | DEC-088 | Frankfurter gap recovery, first-rate evidence and explicit FX rounding | proposed (P1-09) |
 | DEC-089 | Queued publishing and guarded Beat | proposed (P1-04) |
 | DEC-092 | Import retry: a capture with no successful run is re-run on upload, not skipped | proposed (P1-29) |
-| DEC-096 | Railway site-only deploy: Hobby, Railway Bucket, no Docker cache mounts | proposed (railway-site) |
+| DEC-102 | Railway site-only deploy: Hobby, Railway Bucket, no Docker cache mounts | proposed (railway-site) |
 
 Superseded review defaults, not given entries: default #0 (move the repo) is done, see DEC-005. Default #2 (no local collection at all) is replaced by DEC-002. Default #15 (CSS-only motion) is replaced by DEC-007, and its remaining rules are in DEC-025. Review question D1 (Railway Pro from Phase 1) is answered by DEC-001, D2 by DEC-003, D3 by DEC-004, D5 by DEC-008 and D8 by DEC-006.
 
@@ -1084,7 +1084,7 @@ Superseded review defaults, not given entries: default #0 (move the repo) is don
 - **Split / alternatives:** full HTTP pacing, Redis auth cache, reactive token rejection retry, category-tree resolution of name-only seeds, tracked product/stock and US freight, provider-refill pacing, account countdown and CSV registration remain P1-08b. The existing CJ CSV template fits cost/freight but lacks stock; no second template or migration is introduced. Prefer this testable slice over speculative account behavior, fake category IDs or a framework fork. Public terms evidence is in DATA_SOURCES; owner review remains required before enablement.
 - **Verification:** handwritten auth/refresh/catalog/error fixtures, fake-clock refresh, exact USD ranges, null counts, raw/target/snapshot replay and parser correction, persisted cross-session quota/reset, mocked live-hook reservations and distinct Data Health errors. PostgreSQL locks/constraints and connected services remain unverified locally (no Docker); no CJ API, collector-host, scheduler, account, secret, deployment or migration operation was performed.
 
-### DEC-096 · Railway site-only deploy: Hobby, Railway Bucket, no Docker cache mounts
+### DEC-102 · Railway site-only deploy: Hobby, Railway Bucket, no Docker cache mounts
 **2026-10-22 · proposed (railway-site; the owner chose scope, plan and storage in chat on 2026-10-22, sign-off pending)** · DEC-001, DEC-002, DEC-014, DEC-015
 - **Decision:**
   - **Scope:** Railway project `pulso` runs web, api, Postgres (the pinned pgvector image, `dynamic_shared_memory_type=mmap` start command, volume at `/var/lib/postgresql`), Redis (Railway template) and one Railway Bucket. Worker, Beat and pg-backup are not deployed. `PULSO_SCHEDULER=off` and `COLLECTORS_LIVE=off` on Railway; the home PC stays the collector host, and the DEC-002 cutover has not started.
