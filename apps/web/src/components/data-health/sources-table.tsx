@@ -52,6 +52,8 @@ const skeletonRows = loadingRows.map((i) => (
   </tr>
 ));
 
+const pillSkeleton = <Skeleton className="h-5.5 w-18" />;
+
 const skeletonCards = loadingRows.map((i) => (
   <li key={i} aria-hidden className="flex flex-col gap-2 px-4 py-3">
     <div className="flex items-center justify-between gap-2">
@@ -88,9 +90,11 @@ export function SourcesPanel({ now, onOpen, onImport }: { now: number; onOpen: (
   const [confirm, setConfirm] = useState<Confirm | null>(null);
   const toggled = useRef<HTMLElement | null>(null); // the dialog has no Radix trigger, so focus returns here
 
-  const latestGapEnds = host.data?.latest_gap_ends ?? {};
+  const latestGapEnds = host.data?.latest_gap_ends; // undefined while the host call loads or failed (imp-133)
   const rows = sources.data?.filter((s) => s.type !== "internal") ?? [];
-  const attention = sources.data ? attentionCount(rows, latestGapEnds, now) : 0;
+  const attention = attentionCount(rows, latestGapEnds, now);
+  // A state that waits on the host's gap summary keeps the loading treatment until the host call settles.
+  const waiting = (state: SourceState) => state === "unknown" && host.isPending;
   // A failure shows next to what started it (imp-123): inside its dialog while that is open; otherwise in the
   // source's phone card, and from md up in the status line as before. Each place is the only one showing it.
   const failed = notice?.tone === "error" ? notice : null;
@@ -167,7 +171,13 @@ export function SourcesPanel({ now, onOpen, onImport }: { now: number; onOpen: (
         sources.data && (
           <>
             {rows.length} {rows.length === 1 ? "source" : "sources"}
-            {attention > 0 && <span className="text-negative"> · {attention} need attention</span>}
+            {attention.count > 0 && !host.isPending && (
+              <span className="text-negative">
+                {" "}
+                · {attention.atLeast && "at least "}
+                {attention.count} {attention.count === 1 ? "needs" : "need"} attention
+              </span>
+            )}
           </>
         )
       }
@@ -198,9 +208,9 @@ export function SourcesPanel({ now, onOpen, onImport }: { now: number; onOpen: (
                 <li key={s.key} className="flex flex-col gap-2 px-4 py-3">
                   <div className="flex items-center justify-between gap-2">
                     <SourceName source={s} onOpen={onOpen} />
-                    <StatePill state={state} />
+                    {waiting(state) ? pillSkeleton : <StatePill state={state} />}
                   </div>
-                  <StatusNote source={s} state={state} className="-mt-1" />
+                  {!waiting(state) && <StatusNote source={s} state={state} className="-mt-1" />}
                   <dl className="zone-data grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-muted-foreground">
                     <dt>Last run</dt>
                     <dd className="text-foreground">
@@ -267,8 +277,8 @@ export function SourcesPanel({ now, onOpen, onImport }: { now: number; onOpen: (
                       </td>
                       <td className="px-3">
                         <div className="flex flex-col items-start gap-0.5">
-                          <StatePill state={state} />
-                          <StatusNote source={s} state={state} />
+                          {waiting(state) ? pillSkeleton : <StatePill state={state} />}
+                          {!waiting(state) && <StatusNote source={s} state={state} />}
                         </div>
                       </td>
                       <td className="px-3">
@@ -363,7 +373,13 @@ function SourceName({ source, onOpen }: { source: SourceHealth; onOpen: (key: st
 }
 
 function StatusNote({ source, state, className }: { source: SourceHealth; state: SourceState; className?: string }) {
-  const reason = [source.disabled_reason, state === "skipped" && source.last_run && skipNote(source.last_run)].filter(Boolean).join(" · ");
+  const reason = [
+    source.disabled_reason,
+    state === "skipped" && source.last_run && skipNote(source.last_run),
+    state === "unknown" && "Gap check didn't load", // short enough for the table's truncated note; the hint says the rest
+  ]
+    .filter(Boolean)
+    .join(" · ");
   if (!reason && !source.retry_not_before) return null;
   // The table (md and up) truncates the reason; the phone card wraps it. The deadline line is never cut (imp-094).
   return (
