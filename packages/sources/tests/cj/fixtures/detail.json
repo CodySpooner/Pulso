@@ -1,6 +1,7 @@
 {
   "code": 200,
   "result": true,
+  "pointsInfo": {"usedToday": 0, "remaining": 50000, "total": 50000},
   "data": {
     "pid": "fixture-product",
     "productNameEn": "Synthetic CJ product",

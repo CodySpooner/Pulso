@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 from pulso_core.models import CollectorRun, CollectorRunTarget, RawPayload, Source
 from pulso_core.settings import Settings
 from pulso_sources import storage
+from pulso_sources.cj.csv import ImportAdapter as CJImportAdapter
 from pulso_sources.framework import Adapter, Request, Target, enqueue_run, execute_run
 from pulso_sources.fx_frankfurter import FrankfurterAdapter
 from pulso_sources.google_trends.live import GoogleTrendsAdapter
@@ -49,6 +50,7 @@ class ImportData:
 ADAPTERS: dict[str, Callable[[ImportData], Adapter[Any]]] = {
     "fx_frankfurter": FrankfurterAdapter,
     "google_trends": GoogleTrendsAdapter,
+    "cj": CJImportAdapter,
 }
 
 

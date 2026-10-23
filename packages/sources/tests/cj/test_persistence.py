@@ -19,7 +19,7 @@ from pulso_core.settings import Settings
 from pulso_sources import framework
 from pulso_sources.cj import CJAdapter, collect
 from pulso_sources.cj.auth import Auth
-from pulso_sources.cj.budget import reserve
+from pulso_sources.cj.budget import record_points, reserve
 from pulso_sources.cj.errors import CJError
 from pulso_sources.cj.transport import Transport
 from pulso_sources.framework import (
@@ -77,6 +77,8 @@ def test_budget_survives_new_session_and_rolls_over(session: Session) -> None:
     run = enqueue_run(session, source_id=2, trigger="fixture", publish=lambda _: None)
     cfg = settings()
     cfg.cj_daily_points_budget = 50
+    record_points(session.get_one(Source, 2), BODY, AT)
+    session.commit()
     reserve(session, session.get_one(Source, 2), run, "/product/listV2", settings=cfg, now=AT)
     session.commit()
     with Session(session.get_bind()) as later:
@@ -84,6 +86,8 @@ def test_budget_survives_new_session_and_rolls_over(session: Session) -> None:
         with pytest.raises(CJError):
             reserve(later, source, previous, "/product/listV2", settings=cfg, now=AT)
         later.rollback()
+        record_points(source, BODY, AT + timedelta(days=1))
+        later.commit()
         reserve(
             later, source, previous, "/product/listV2", settings=cfg, now=AT + timedelta(days=1)
         )
@@ -228,7 +232,16 @@ def test_body_block_codes_accumulate_without_changing_http_evidence(
     monkeypatch.setattr(
         Transport,
         "http",
-        lambda *a, **kw: Response(json.dumps({"code": code, "result": False}).encode(), 200),
+        lambda *a, **kw: Response(
+            json.dumps(
+                {
+                    "code": code,
+                    "result": False,
+                    "pointsInfo": json.loads(BODY)["pointsInfo"],
+                }
+            ).encode(),
+            200,
+        ),
     )
     for count in (1, 2):
         run = enqueue_run(session, source_id=2, trigger="manual", publish=lambda _: None)

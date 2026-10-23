@@ -640,7 +640,7 @@ def test_import_template_and_preview_write_nothing(admin: TestClient, engine: En
     keys = {s["key"]: s["csv_import"] for s in admin.get("/v1/admin/sources").json()}
     assert keys == {
         "shopify_stores": "preview_only",
-        "cj": "preview_only",
+        "cj": "ready",
         "google_trends": "ready",
         "fx_frankfurter": "ready",
         "backup": None,
@@ -713,6 +713,7 @@ def test_import_commit_then_repeat_skips(
         "/v1/admin/sources/cj/import", params={"mode": "json"}, content=b"{}", **upload
     )
     assert json_cj.json()["code"] == "invalid_import"
+    monkeypatch.delitem(ADAPTERS, "cj")
     unbuilt = admin.post("/v1/admin/sources/cj/import", content=CJ_CSV, **upload)
     assert (unbuilt.status_code, unbuilt.json()["code"]) == (409, "import_unavailable")
     for key in ("google_trends", "fx_frankfurter"):

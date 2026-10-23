@@ -13,7 +13,7 @@ from pulso_sources import framework
 from pulso_sources.cj import CJAdapter, dry_run, parse, plan
 from pulso_sources.cj.auth import Auth
 from pulso_sources.cj.auth import parse as parse_auth
-from pulso_sources.cj.budget import reserve
+from pulso_sources.cj.budget import record_points, reserve
 from pulso_sources.cj.errors import CJError, classify_error
 from pulso_sources.framework import CollectorsLiveDisabled, Request, Response, fetch
 
@@ -123,11 +123,13 @@ def test_quota_reservation_and_utc_reset(settings: Settings) -> None:
     source = Source(id=2, key="cj", config={"seed": {"preserved": True}})
     run = CollectorRun(source_id=2, params={})
     settings.cj_daily_points_budget = 50
+    record_points(source, fixture("list_v2"), AT)
     reserve(session, source, run, "/product/listV2", settings=settings, now=AT)
     assert source.config["cj_points"] == {"day": "2026-10-22", "reserved": 50}
     assert source.config["seed"] == {"preserved": True}
     with pytest.raises(CJError, match="budget reached"):
         reserve(session, source, run, "/product/listV2", settings=settings, now=AT)
+    record_points(source, fixture("list_v2"), AT + timedelta(days=1))
     reserve(session, source, run, "/product/listV2", settings=settings, now=AT + timedelta(days=1))
     assert run.params["cj_points_reserved"] == 100
     session.commit.assert_not_called()

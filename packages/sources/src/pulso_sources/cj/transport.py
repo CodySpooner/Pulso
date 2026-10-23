@@ -50,8 +50,10 @@ class Transport:
         settings: Settings,
         before_send: Callable[[str], None],
         rejected: Callable[[Request, Response], None],
+        received: Callable[[Response], None] | None = None,
     ) -> None:
         self.settings, self.before_send, self.rejected = settings, before_send, rejected
+        self.received = received
         self.auth = Auth(
             settings,
             cache=Redis.from_url(
@@ -62,6 +64,7 @@ class Transport:
         )
         self.deadline = time.monotonic() + settings.cj_wall_time_seconds
         self.sent = 0
+        self.renewed = False
         self.error: CJError | None = None
         self.auth_failure: Response | None = None
 
@@ -91,6 +94,8 @@ class Transport:
         self.sent += 1
         _next_request = time.monotonic() + 1 / self.settings.cj_requests_per_second
         response = self.http(endpoint, params, token=token)
+        if self.received is not None:
+            self.received(response)
         if token is None and classify_error(response):
             self.auth_failure = Response(None, response.status_code, headers=response.headers)
         return response
@@ -135,7 +140,19 @@ class Transport:
         params = {k: v for k, v in request.params.items() if k != "endpoint"}
         try:
             token = self.auth.token(self.send)
-            response = self.send(endpoint, params, token=token)
+            try:
+                response = self.send(endpoint, params, token=token)
+            except CJError as error:
+                if error.code != "cj_points_unknown" or self.renewed:
+                    raise
+                # DEC-156: one free getCategory per run may renew the balance; never assume it.
+                self.renewed = True
+                renewal = self.fetch(Request(params={"endpoint": "/product/getCategory"}))
+                if failure := classify_error(renewal):
+                    self.auth_failure = Response(None, renewal.status_code, headers=renewal.headers)
+                    raise failure from None
+                token = self.auth.token(self.send)
+                response = self.send(endpoint, params, token=token)
             failure = classify_error(response)
             if (
                 failure
