@@ -3,6 +3,7 @@
 import io
 import json
 import os
+import shutil
 import subprocess
 import sys
 from collections.abc import Iterator
@@ -17,10 +18,9 @@ import backup
 import restore
 
 
-@pytest.fixture
-def checkout(tmp_path: Path) -> Path:
-    repo = tmp_path / "repo"
-    repo.mkdir()
+@pytest.fixture(scope="module")
+def checkout_template(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    repo = tmp_path_factory.mktemp("repo-template")
     backup.command(["git", "init", "-b", "main"], repo)
     (repo / "tracked").write_text("original", encoding="utf-8")
     backup.command(["git", "add", "tracked"], repo)
@@ -39,6 +39,12 @@ def checkout(tmp_path: Path) -> Path:
     )
     backup.command(["git", "update-ref", "refs/remotes/origin/main", "HEAD"], repo)
     return repo
+
+
+@pytest.fixture
+def checkout(tmp_path: Path, checkout_template: Path) -> Path:
+    # Copy .git too so test mutations never reach the template or another checkout.
+    return shutil.copytree(checkout_template, tmp_path / "repo")
 
 
 class FakeRunner:
