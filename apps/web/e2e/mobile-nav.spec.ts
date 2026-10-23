@@ -4,6 +4,7 @@ import { expect, test, type Page } from "@playwright/test";
 // link to another page focuses that page's h1 instead.
 async function openSheet(page: Page, opener: string) {
   await page.goto("/");
+  await expect(page.locator("html")).toHaveAttribute("data-app-ready", "true");
   await expect(page.getByRole("heading", { level: 1, name: "Daily Pulse" })).toBeVisible();
   const button = page.getByRole("button", { name: opener, exact: true });
   await button.focus();

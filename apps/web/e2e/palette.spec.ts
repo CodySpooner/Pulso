@@ -4,6 +4,7 @@ import { expect, test } from "@playwright/test";
 test.describe("command palette", () => {
   test.beforeEach(async ({ page }) => {
     await page.goto("/");
+    await expect(page.locator("html")).toHaveAttribute("data-app-ready", "true");
     await expect(page.getByRole("heading", { level: 1, name: "Daily Pulse" })).toBeVisible();
   });
 
@@ -77,6 +78,7 @@ for (const { theme, width, forced, touch } of ringCases) {
       await page.emulateMedia({ colorScheme: theme, reducedMotion: "reduce", forcedColors: forced ? "active" : "none" });
       await page.addInitScript((t) => localStorage.setItem("theme", t), theme);
       await page.goto("/");
+      await expect(page.locator("html")).toHaveAttribute("data-app-ready", "true");
       await expect(page.getByRole("heading", { level: 1, name: "Daily Pulse" })).toBeVisible();
       await page.keyboard.press("Control+K");
       const input = page.getByRole("combobox");
@@ -116,6 +118,7 @@ for (const { theme, width, forced, touch } of ringCases) {
 
 test("the whole shell is reachable by keyboard: skip link first", async ({ page }) => {
   await page.goto("/");
+  await expect(page.locator("html")).toHaveAttribute("data-app-ready", "true");
   await page.keyboard.press("Tab");
   const skip = page.getByRole("link", { name: "Skip to content" });
   await expect(skip).toBeFocused();
