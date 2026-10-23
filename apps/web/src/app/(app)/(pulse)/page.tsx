@@ -36,7 +36,7 @@ export default function DailyPulsePage() {
         actions={
           <Link
             href="/admin/data-health"
-            className="inline-flex h-8 items-center gap-1.5 rounded-md border border-border-subtle px-2 text-label font-medium text-muted-foreground transition-colors duration-(--duration-fast) ease-standard hover:border-border-strong"
+            className="relative hit-area inline-flex h-8 items-center gap-1.5 rounded-md border border-border-subtle px-2 text-label font-medium text-muted-foreground transition-colors duration-(--duration-fast) ease-standard hover:border-border-strong"
           >
             <StatusDot state="disabled" />
             No collector host yet

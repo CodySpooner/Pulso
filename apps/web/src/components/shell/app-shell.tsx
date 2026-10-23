@@ -84,7 +84,7 @@ export function AppShell({ children, defaultCollapsed }: { children: React.React
     <ShellContext value={shell}>
       <a
         href="#main"
-        className="fixed top-2 left-2 z-80 -translate-y-16 rounded-md bg-primary px-3 py-2 text-data font-medium text-primary-foreground focus:translate-y-0"
+        className="fixed hit-area top-2 left-2 z-80 -translate-y-16 rounded-md bg-primary px-3 py-2 text-data font-medium text-primary-foreground focus:translate-y-0"
       >
         Skip to content
       </a>

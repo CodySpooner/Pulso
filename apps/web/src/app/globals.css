@@ -98,6 +98,18 @@
   font-variant-numeric: tabular-nums;
   text-align: right;
 }
+/* Touch targets (A11Y-02, vault Design/Accessibility): under a coarse pointer an invisible ::after grows the hit
+   area to --hit-target around the control's centre, so the dense visual box and the layout stay as they are.
+   The control must be positioned (add `relative`) and must not clip its overflow. */
+@utility hit-area {
+  @media (pointer: coarse) {
+    &::after {
+      content: "";
+      position: absolute;
+      inset: min(0px, (100% - var(--hit-target)) / 2);
+    }
+  }
+}
 
 @keyframes shimmer {
   to { transform: translateX(100%); }

@@ -143,7 +143,7 @@ function RunItem({ run, now, defaultOpen }: { run: Run; now: number; defaultOpen
         type="button"
         aria-expanded={open}
         onClick={() => setOpen(!open)}
-        className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-data hover:bg-accent"
+        className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-data hover:bg-accent pointer-coarse:min-h-11"
       >
         <ChevronRight className={cn("size-4 shrink-0 text-subtle-foreground transition-transform duration-(--duration-fast)", open && "rotate-90")} aria-hidden />
         <span className="font-mono text-subtle-foreground">#{run.id}</span>

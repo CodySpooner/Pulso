@@ -123,12 +123,12 @@ export default function UiGalleryPage() {
         description="Every design token, type style, control, state and Phase 0 motion in one place. Numbers here are specimens, not data."
       />
       <nav aria-label="Gallery sections">
-        <ul className="flex flex-wrap gap-2">
+        <ul className="flex flex-wrap gap-2 pointer-coarse:gap-y-3">
           {sections.map((s) => (
             <li key={s.id}>
               <a
                 href={`#${s.id}`}
-                className="inline-flex h-8 items-center rounded-md border border-border-subtle px-2.5 text-label font-medium text-muted-foreground transition-colors duration-(--duration-fast) ease-standard hover:border-border-strong hover:text-foreground"
+                className="relative hit-area inline-flex h-8 items-center rounded-md border border-border-subtle px-2.5 text-label font-medium text-muted-foreground transition-colors duration-(--duration-fast) ease-standard hover:border-border-strong hover:text-foreground"
               >
                 {s.title}
               </a>

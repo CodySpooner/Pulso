@@ -105,6 +105,7 @@
 :root {
   --button-h-sm: 1.75rem; --button-h-md: 2rem; --button-h-lg: 2.5rem;
   --input-h: 2rem; --nav-item-h: 2rem;
+  --hit-target: 2.75rem; /* minimum hit area under pointer: coarse (the hit-area utility, vault Design/Accessibility) */
   --table-row-h: 2rem; --table-row-h-compact: 1.75rem; --table-row-h-comfortable: 2.5rem;
   --card-padding: 1.5rem; --panel-padding: 1rem;
   --stat-value-size: 1.75rem; --sparkline-stroke: 1.5px;
@@ -114,4 +115,4 @@
 }
 .dark, :root { --button-brand-bg: var(--green-400); --button-brand-fg: var(--green-950); }
 .light       { --button-brand-bg: var(--green-500); --button-brand-fg: var(--green-950); }
-@media (pointer: coarse) { :root { --input-h: 2.5rem; --nav-item-h: 2.75rem; --table-row-h: 2.75rem; } }
+@media (pointer: coarse) { :root { --input-h: 2.75rem; --nav-item-h: 2.75rem; --table-row-h: 2.75rem; } }

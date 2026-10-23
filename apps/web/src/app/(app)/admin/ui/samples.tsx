@@ -110,7 +110,7 @@ export function MotionSamples() {
                   type="button"
                   aria-pressed={range === r}
                   onClick={() => setRange(r)}
-                  className="relative h-7 rounded-sm px-3 text-label font-medium text-muted-foreground transition-colors duration-(--duration-fast) ease-standard hover:text-foreground aria-pressed:text-foreground"
+                  className="relative hit-area h-7 rounded-sm px-3 text-label font-medium text-muted-foreground transition-colors duration-(--duration-fast) ease-standard hover:text-foreground aria-pressed:text-foreground"
                 >
                   {range === r && <m.span layoutId="range-pill" transition={spring.snappy} className="absolute inset-0 rounded-sm bg-card shadow-card" />}
                   <span className="relative">{r}</span>

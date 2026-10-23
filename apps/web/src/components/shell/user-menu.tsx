@@ -16,5 +16,5 @@ export function UserMenu() {
       </span>
     );
   }
-  return <UserButton appearance={{ elements: { avatarBox: "size-8" } }} />;
+  return <UserButton appearance={{ elements: { avatarBox: "size-8", userButtonTrigger: "relative hit-area" } }} />;
 }

@@ -22,7 +22,7 @@ interface Run {
 }
 
 const item =
-  "relative flex h-10 cursor-pointer items-center gap-3 rounded-lg px-2 text-body text-muted-foreground outline-none select-none data-[selected=true]:text-foreground data-[disabled=true]:cursor-default data-[disabled=true]:text-subtle-foreground";
+  "relative flex h-10 cursor-pointer items-center gap-3 rounded-lg px-2 pointer-coarse:h-11 text-body text-muted-foreground outline-none select-none data-[selected=true]:text-foreground data-[disabled=true]:cursor-default data-[disabled=true]:text-subtle-foreground";
 const group =
   "px-1.5 [&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:pt-2 [&_[cmdk-group-heading]]:pb-1.5 [&_[cmdk-group-heading]]:text-label [&_[cmdk-group-heading]]:font-medium [&_[cmdk-group-heading]]:text-subtle-foreground";
 
@@ -148,17 +148,17 @@ export function CommandPalette({
               >
                 <Dialog.Title className="sr-only">Command palette</Dialog.Title>
                 <Command label="Command palette" value={selected} onValueChange={setSelected} loop className="flex h-full flex-col">
-                  <div className="flex h-13 items-center gap-2 border-b border-border-subtle px-4 text-subtle-foreground">
+                  <div className="flex h-13 items-center gap-2 border-b border-border-subtle px-4 text-subtle-foreground pointer-coarse:h-14">
                     <Search className="size-4 shrink-0" strokeWidth={1.5} aria-hidden />
                     <Command.Input
                       value={query}
                       onValueChange={setQuery}
                       placeholder="Type a command or page…"
-                      // Keeps the global focus ring (A11Y-01); h-9 in the 52px bar leaves room for its 4px reach.
-                      className="h-9 min-w-0 flex-1 rounded-md bg-transparent px-2 text-title-3 text-foreground placeholder:text-subtle-foreground max-md:text-base"
+                      // Keeps the global focus ring (A11Y-01); h-9 in the 52px bar (h-11 in 56px on touch) leaves room for its 4px reach.
+                      className="h-9 min-w-0 flex-1 rounded-md bg-transparent px-2 pointer-coarse:h-11 text-title-3 text-foreground placeholder:text-subtle-foreground max-md:text-base"
                     />
                     <Kbd className="max-md:hidden">Esc</Kbd>
-                    <Dialog.Close className="text-data font-medium text-muted-foreground md:hidden">Close</Dialog.Close>
+                    <Dialog.Close className="relative hit-area text-data font-medium text-muted-foreground md:hidden">Close</Dialog.Close>
                   </div>
                   <LayoutGroup id="palette">
                     <Command.List className="max-h-105 flex-1 scroll-py-1.5 overflow-y-auto overscroll-contain py-1.5 max-md:max-h-none">

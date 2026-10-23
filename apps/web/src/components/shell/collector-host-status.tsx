@@ -39,7 +39,7 @@ export function CollectorHostStatus({
       href="/admin/data-health"
       onClick={onNavigate}
       className={cn(
-        "flex items-start gap-2 rounded-md px-2 py-2 text-label transition-colors duration-(--duration-fast) ease-standard hover:bg-accent",
+        "relative hit-area flex items-start gap-2 rounded-md px-2 py-2 text-label transition-colors duration-(--duration-fast) ease-standard hover:bg-accent",
         variant === "sidebar" && "max-xl:justify-center group-data-[collapsed=true]/sidebar:justify-center",
       )}
     >
