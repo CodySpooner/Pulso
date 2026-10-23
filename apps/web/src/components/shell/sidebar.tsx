@@ -47,7 +47,9 @@ export function Sidebar() {
         </Link>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-12 [scrollbar-width:thin] mask-b-from-[calc(100%-3rem)]">
+      {/* Focus never clips or fades (imp-083): 1 = the 4px focus ring (2px outline + 2px offset), so the first
+          link's ring fits; 13 = the 48px bottom fade + the ring, so a Tabbed-to link always stops above the fade. */}
+      <div className="min-h-0 flex-1 scroll-pt-1 scroll-pb-13 overflow-y-auto px-2 pt-1 pb-13 [scrollbar-width:thin] mask-b-from-[calc(100%-3rem)]">
         <NavList variant="sidebar" rail={rail} />
       </div>
 
