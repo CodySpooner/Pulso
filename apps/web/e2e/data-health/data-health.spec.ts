@@ -1,6 +1,6 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
 
-import { healthySources, host, mockAdminApi, operationId, runDetail, sources, suppressedSources } from "./fixtures";
+import { healthySources, host, manyGaps, mockAdminApi, operationId, runDetail, sources, suppressedSources } from "./fixtures";
 
 // DH-2 / DH-3 (P1-12): the Data Health page and nav badge against fixture DH-1 responses (E2E auth bypass).
 
@@ -20,7 +20,7 @@ test("bounded pages disclose omitted rows and preserve overdue sources beyond th
   const calls = await mockAdminApi(page, { host: { open_gaps: [host.open_gaps[2]], next_cursor: "fixture-next" } });
   await page.route("**/api/v1/admin/runs/412", (route) => route.fulfill({ json: { ...runDetail(412), next_cursor: "fixture-next" } }));
   await open(page);
-  await expect(page.getByRole("region", { name: "Collector host" })).toContainText("At least 1 missed slots");
+  await expect(page.getByRole("region", { name: "Collector host" })).toContainText("At least 1 missed slot · latest");
   await expect(page.getByText("Showing 1 range · 1 missed slot loaded, older gaps not loaded yet")).toBeVisible();
   const table = page.getByRole("region", { name: "Sources table" });
   await expect(table.getByRole("row", { name: /Google Trends/ })).toContainText("Overdue");
@@ -28,6 +28,27 @@ test("bounded pages disclose omitted rows and preserve overdue sources beyond th
   await table.getByRole("button", { name: "Shopify stores: open runs" }).click();
   await expect(page.getByRole("dialog", { name: "Shopify stores" })).toContainText("Showing 4 of at least 5 targets");
   expect(calls.filter((c) => c.path === "/v1/admin/host")).toHaveLength(1);
+});
+
+test("missed slots and gap ranges read in the singular, plural and zero (imp-076)", async ({ page }) => {
+  const hostCard = page.getByRole("region", { name: "Collector host" });
+  for (const [gaps, card, heading, older] of [
+    [[host.open_gaps[2]], "1 missed slot · latest CJ Dropshipping", "· 1 range, newest first", null],
+    [host.open_gaps, "3 missed slots · latest Google Trends", "· 2 ranges, newest first", null],
+    [manyGaps(9), "9 missed slots", "· 9 ranges, newest first", "Show 1 older range"],
+    [manyGaps(10), "10 missed slots", "· 10 ranges, newest first", "Show 2 older ranges"],
+  ] as const) {
+    await mockAdminApi(page, { host: { open_gaps: [...gaps] } });
+    await open(page);
+    await expect(hostCard).toContainText(card);
+    await expect(page.getByRole("heading", { level: 3, name: /^Open gaps/ })).toContainText(heading);
+    if (older) await expect(page.getByRole("button", { name: older, exact: true })).toBeVisible(); // imp-075's Load more footer
+    await page.unrouteAll();
+  }
+  await mockAdminApi(page, { host: { open_gaps: [] } });
+  await open(page);
+  await expect(hostCard.getByText("None", { exact: true })).toBeVisible();
+  await expect(page.getByText("No open gaps in the last 90 days.")).toBeVisible();
 });
 
 test("renders every DH-1 field from fixtures", async ({ page }) => {

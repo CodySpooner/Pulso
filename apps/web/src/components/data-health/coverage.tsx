@@ -142,7 +142,7 @@ function OpenGaps({ names, host }: { names: Map<string, string>; host: ReturnTyp
   return (
     <div className="flex flex-col gap-2 border-t border-border-subtle pt-3">
       <h3 className="text-data font-medium text-foreground">
-        Open gaps <span className="font-normal text-subtle-foreground">· {ranges.length} ranges{older.hasMore ? " loaded" : ""}, newest first · feature dates touching them carry gap flags</span>
+        Open gaps <span className="font-normal text-subtle-foreground">· {plural(ranges.length, "range")}{older.hasMore ? " loaded" : ""}, newest first · feature dates touching them carry gap flags</span>
       </h3>
       <ScrollCue label="Open gaps">
         <table className="zone-data w-full min-w-150">
