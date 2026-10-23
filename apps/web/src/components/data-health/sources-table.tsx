@@ -440,7 +440,8 @@ function ActionError({ failure }: { failure: Failure }) {
       </p>
       {problem && (
         <div className="flex flex-wrap items-center justify-between gap-x-3">
-          <span className="font-mono text-label text-subtle-foreground">
+          {/* muted, not subtle: subtle falls below 4.5:1 on this tint over the dialog's popover in dark. */}
+          <span className="font-mono text-label text-muted-foreground">
             {/* inline-block: on a phone the ID moves to its own line whole instead of breaking at a hyphen. */}
             Error ID <SelectableId value={problem.request_id} label="Error ID" className="inline-block max-w-full break-all" />
           </span>
