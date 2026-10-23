@@ -42,7 +42,7 @@ export function SelectableId({ value, label, className, ...props }: React.Compon
       aria-label={label}
       tabIndex={0}
       onFocus={(e) => getSelection()?.selectAllChildren(e.currentTarget)}
-      className={cn("relative hit-area rounded-sm select-all selection:text-foreground", className)}
+      className={cn("relative hit-area rounded-sm select-all", className)}
     >
       {value}
     </span>
