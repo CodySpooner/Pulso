@@ -115,4 +115,9 @@
 }
 .dark, :root { --button-brand-bg: var(--green-400); --button-brand-fg: var(--green-950); }
 .light       { --button-brand-bg: var(--green-500); --button-brand-fg: var(--green-950); }
-@media (pointer: coarse) { :root { --input-h: 2.75rem; --nav-item-h: 2.75rem; --table-row-h: 2.75rem; } }
+@media (pointer: coarse) {
+  :root {
+    --input-h: 2.75rem; --nav-item-h: 2.75rem;
+    --table-row-h: 2.75rem; --table-row-h-compact: 2.75rem; --table-row-h-comfortable: 2.75rem; /* 44px touch rows at every density (imp-045) */
+  }
+}
