@@ -57,7 +57,7 @@ export function Topbar() {
             <Menu strokeWidth={1.5} aria-hidden />
           </Button>
         </TooltipTrigger>
-        <TooltipContent>Open menu</TooltipContent>
+        <TooltipContent align="start">Open menu</TooltipContent>
       </Tooltip>
       <Link href="/" aria-label="Pulso, go to Daily Pulse" className="relative hit-area flex h-8 items-center rounded-md lg:hidden">
         <Logo />

@@ -75,8 +75,8 @@ for (const width of [768, 1023]) {
         const box = (await button.boundingBox())!;
         const bubble = (await page.locator("[data-radix-popper-content-wrapper]").boundingBox())!;
         expect(bubble.y).toBeGreaterThanOrEqual(box.y + box.height + 4); // below the button, clear of its 4px focus ring
-        expect(bubble.x).toBeGreaterThanOrEqual(0);
-        expect(bubble.x + bubble.width).toBeLessThanOrEqual(width);
+        expect(bubble.x).toBeGreaterThanOrEqual(8); // never flush with the screen edge
+        expect(bubble.x + bubble.width).toBeLessThanOrEqual(width - 8);
         await page.mouse.move(width / 2, 600, { steps: 4 }); // Radix closes on the first move outside its grace area
         await expect(page.getByRole("tooltip")).toHaveCount(0);
       });
