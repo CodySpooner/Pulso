@@ -1,4 +1,6 @@
 import json
+import random
+import time
 from contextlib import nullcontext
 from datetime import UTC, date, datetime, timedelta, timezone
 from pathlib import Path
@@ -12,7 +14,14 @@ from sqlalchemy import Integer, MetaData, func, select
 from sqlalchemy.orm import Session
 
 from pulso_core.db import Base
-from pulso_core.models import CollectorRun, RawPayload, SearchTrend, Source, SourceEvent
+from pulso_core.models import (
+    CollectorRun,
+    CollectorRunTarget,
+    RawPayload,
+    SearchTrend,
+    Source,
+    SourceEvent,
+)
 from pulso_core.settings import Settings
 from pulso_sources import google_trends as trends
 from pulso_sources import storage
@@ -407,6 +416,116 @@ def test_exhaustion_resumes_at_next_utc_month(
     http.getresponse.return_value.read.return_value = body("no_data")
     assert collect(session, settings).status == "success"
     assert session.get_one(Source, 1).config["trends_quota"] == {"month": "2027-01", "used": 2}
+
+
+@pytest.fixture
+def sleep(monkeypatch: pytest.MonkeyPatch) -> Mock:
+    sleep = Mock()  # Retry backoff only; the hourly guard never waits.
+    monkeypatch.setattr(time, "sleep", sleep)
+    return sleep
+
+
+@pytest.fixture
+def clock(monkeypatch: pytest.MonkeyPatch, sleep: Mock) -> Mock:
+    clock = Mock(wraps=datetime)
+    clock.now.return_value = datetime(2026, 10, 23, 12, tzinfo=UTC)
+    monkeypatch.setattr(trends, "datetime", clock)
+    return clock
+
+
+def test_no_rolling_hour_exceeds_hourly_limit(
+    session: Session, settings: Settings, http: Mock, clock: Mock
+) -> None:
+    settings.trends_hourly_search_limit, settings.collector_max_retries = 3, 1
+    response, rng, sent = http.getresponse.return_value, random.Random(68), []
+
+    def send(*_: object, **__: object) -> None:
+        sent.append(clock.now.return_value)
+        response.status = rng.choice([200, 503])
+        clock.now.return_value += timedelta(minutes=rng.randint(0, 25))
+
+    http.request.side_effect = send
+    runs = []
+    for _ in range(40):
+        runs.append(collect(session, settings))
+        clock.now.return_value += timedelta(minutes=rng.randint(0, 40))
+    windows = [sum(t <= s <= t + timedelta(hours=1) for s in sent) for t in sent]
+    assert max(windows) == 3  # Reached, never exceeded, in any closed 60-minute window.
+    assert any(run.error_code == "trends_hourly_budget_exhausted" for run in runs)
+    assert any(run.http_requests > 2 for run in runs)  # Retries reserved too.
+    assert sum(run.http_requests for run in runs) == len(sent)
+
+
+def test_hourly_cap_stops_partial_without_block(
+    session: Session, settings: Settings, http: Mock, clock: Mock, sleep: Mock
+) -> None:
+    source = session.get_one(Source, 1)
+    seed = json.loads(body("seed"))
+    seed["seed"]["entries"] = [
+        {"keyword": f"keyword {n}", "geo": "US", "tz": 0, "enabled": True} for n in range(50)
+    ]
+    source.config = seed
+    session.commit()
+    response, statuses = http.getresponse.return_value, iter([503])
+    http.request.side_effect = lambda *_, **__: setattr(response, "status", next(statuses, 200))
+    run = collect(session, settings)
+    assert (run.status, run.error_code, run.error_message) == (
+        "partial",
+        "trends_hourly_budget_exhausted",
+        "trends_hourly_budget_exhausted",
+    )
+    assert run.http_requests == http.request.call_count == 50
+    targets = list(
+        session.scalars(select(CollectorRunTarget).where(CollectorRunTarget.run_id == run.id))
+    )
+    assert [t.target_id for t in targets if t.raw_payload_id is None] == ["keyword 49"]
+    assert sum(t.status == "success" for t in targets) == 49
+    session.expire_all()
+    source = session.get_one(Source, 1)
+    assert source.enabled and source.status != "blocked" and source.consecutive_block_count == 0
+    assert source.retry_not_before is None and sleep.call_count == 1
+    assert session.scalar(select(func.count()).select_from(SourceEvent)) == 0
+    assert source.config["trends_quota"]["used"] == len(source.config["trends_hourly"]) == 50
+    with pytest.raises(ValueError):
+        trends.reserve_hourly(source, 51, clock.now.return_value)
+
+
+def test_previous_run_attempts_count_for_sixty_minutes(
+    session: Session, settings: Settings, http: Mock, clock: Mock
+) -> None:
+    settings.trends_hourly_search_limit = 2
+    start = clock.now.return_value
+    for offset, requests in [
+        (timedelta(), 2),
+        (timedelta(minutes=59), 0),
+        (timedelta(hours=1), 0),
+        (timedelta(hours=1, microseconds=1), 2),
+    ]:
+        clock.now.return_value = start + offset
+        run = collect(session, settings)
+        assert run.http_requests == requests
+        if not requests:
+            assert (run.status, run.error_code) == ("partial", "trends_hourly_budget_exhausted")
+    assert (
+        session.get_one(Source, 1).config["trends_hourly"]
+        == [clock.now.return_value.isoformat()] * 2
+    )
+
+
+def test_monthly_remainder_wins_over_hourly(
+    session: Session, settings: Settings, http: Mock, clock: Mock
+) -> None:
+    source = session.get_one(Source, 1)
+    source.config = {**source.config, "trends_quota": {"month": "2026-10", "used": 249}}
+    session.commit()
+    run = collect(session, settings)
+    assert (run.status, run.error_code, run.http_requests) == (
+        "partial",
+        "trends_monthly_budget_exhausted",
+        1,
+    )
+    session.expire_all()
+    assert len(session.get_one(Source, 1).config["trends_hourly"]) == 1
 
 
 def test_three_capture_cutoff(
