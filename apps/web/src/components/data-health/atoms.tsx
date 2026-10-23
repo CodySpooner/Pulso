@@ -149,7 +149,7 @@ export function Panel({
         <h2 id={`${id}-title`} className="text-title-3 font-semibold text-foreground">
           {title}
         </h2>
-        {note && <span className="text-label text-subtle-foreground max-sm:hidden">{note}</span>}
+        {note && <span className="text-label text-subtle-foreground">{note}</span>}
         {actions && <div className="ml-auto flex items-center gap-2">{actions}</div>}
       </header>
       {children}

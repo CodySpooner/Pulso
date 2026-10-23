@@ -124,7 +124,7 @@ export function BackupCard({ now }: { now: number }) {
   const shown = backup?.lastSuccess ?? backup?.latest;
 
   return (
-    <Panel id="backup" title="Backups" note="Nightly pg_dump on the collector host" actions={pill && <Pill tone={pill.tone} icon={pill.icon}>{pill.label}</Pill>}>
+    <Panel id="backup" title="Backups" note={<span className="max-sm:hidden">Nightly pg_dump on the collector host</span>} actions={pill && <Pill tone={pill.tone} icon={pill.icon}>{pill.label}</Pill>}>
       {runs.isPending ? (
         <CardSkeleton />
       ) : runs.isError ? (

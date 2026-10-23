@@ -115,3 +115,17 @@ This file holds deferred ideas and research extras that are **not** in the §11 
 | Deferred work | Evidence | When | Notes |
 |---|---|---|---|
 | Import multiple dates for the same listing, variant or freight entity in one file | P1-19 finding 3; lead decision 3c; DEC-071 | A separately scoped history-import task | `observed_for` stays outside these observation identities and `0002` is unchanged. Current templates reject repeated entities with row-level errors; single-date historical imports remain supported with observed-date current ordering. Search Trends multi-date imports remain supported. |
+
+## P1-12 Data Health UI follow-ups (2026-10-22)
+
+| Deferred work | Evidence | When | Notes |
+|---|---|---|---|
+| Expected interval and `next_due` per source in `SourceHealth` (from the Beat crontab) | DEC-096; DH-2 | With the P1-04 Beat schedule | Fills the Next due column and lets the UI show the vault's Stale and Degraded states |
+| Host uptime (7 d), offline windows and scheduler lock holder in `HostHealth` | DEC-096; vault Data Health top strip | With the collector-host heartbeat work | The host card shows "—" (no source yet) |
+| Backup size and target in the backup run response | DEC-060, DEC-096 | With `backup.py` | `Run` omits `params` on purpose (import errors can be megabytes); add a narrow field instead |
+| Signed admin download links for `RunTarget.raw_payload_id` | DEC-068, DEC-096 | With Object Storage signed URLs | The run drawer shows payload ids only |
+| 7-day error rate per source | vault Data Health sources table | With the next DH-1 change | Derive in the API; the UI has no column for it yet |
+| Wire the CSV upload area to the P1-11b import endpoints | P1-11b; DEC-064 | After P1-11b merges | Template download, validation-only preview, then commit |
+| Data Health keyboard shortcuts (J/K, Enter, R with confirm, G, /) | vault Data Health, Keyboard | UI polish pass | The page is fully Tab-operable today |
+| Feed the top-bar "Data as of" chip and the Daily Pulse host chip and copy from DH-1 | App Shell & Navigation; imp-001 | Next shell task | Both still show Phase 0 placeholders; outside P1-12's file ownership |
+| Default `/api/v1/admin/*` stub for e2e specs that don't mock it | P1-12 | CI hygiene | The shell's badge and host footer call the API on every page, so unmocked specs log proxy errors (tests still pass) |
