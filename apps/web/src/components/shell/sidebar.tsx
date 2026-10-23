@@ -39,7 +39,7 @@ export function Sidebar() {
       className="group/sidebar sticky top-0 hidden h-dvh w-14 shrink-0 flex-col bg-sidebar pt-1 pb-3 lg:flex xl:w-60 xl:data-[collapsed=true]:w-14"
     >
       <div className="flex h-12 shrink-0 items-center px-2">
-        <Link href="/" aria-label="Pulso, go to Daily Pulse" className="flex h-8 items-center rounded-md px-2 max-xl:mx-auto group-data-[collapsed=true]/sidebar:mx-auto">
+        <Link href="/" aria-label="Pulso, go to Daily Pulse" className="relative hit-area flex h-8 items-center rounded-md px-2 max-xl:mx-auto group-data-[collapsed=true]/sidebar:mx-auto">
           <span className={cn("items-center", whenExpanded)}>
             <Logo />
           </span>
@@ -51,7 +51,7 @@ export function Sidebar() {
         <NavList variant="sidebar" rail={rail} />
       </div>
 
-      <div className="flex flex-col gap-0.5 border-t border-sidebar-border px-2 pt-3">
+      <div className="flex flex-col gap-0.5 border-t border-sidebar-border px-2 pt-3 pointer-coarse:gap-1.5">
         <CollectorHostStatus rail={rail} />
         <NavLink item={settingsItem} active={activeHref === settingsItem.href} rail={rail} variant="sidebar" />
         <RailTooltip

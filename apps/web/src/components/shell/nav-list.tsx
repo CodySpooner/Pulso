@@ -54,7 +54,7 @@ export function NavLink({
       onClick={onNavigate}
       aria-current={active ? "page" : undefined}
       className={cn(
-        "relative flex h-(--nav-item-h) items-center gap-2 rounded-md px-2 text-body text-sidebar-foreground transition-colors duration-(--duration-fast) ease-standard",
+        "relative hit-area flex h-(--nav-item-h) items-center gap-2 rounded-md px-2 text-body text-sidebar-foreground transition-colors duration-(--duration-fast) ease-standard",
         "hover:bg-accent hover:text-foreground aria-[current=page]:font-medium aria-[current=page]:text-foreground aria-[current=page]:hover:bg-transparent",
         variant === "sidebar" && "max-xl:justify-center group-data-[collapsed=true]/sidebar:justify-center",
       )}

@@ -34,7 +34,7 @@ function SheetContent({
         {...props}
       >
         {children}
-        <SheetPrimitive.Close className="absolute top-3 right-3 inline-grid size-8 place-items-center rounded-md text-muted-foreground transition-colors duration-(--duration-fast) hover:bg-accent hover:text-foreground">
+        <SheetPrimitive.Close className="absolute hit-area top-3 right-3 inline-grid size-8 place-items-center rounded-md text-muted-foreground transition-colors duration-(--duration-fast) hover:bg-accent hover:text-foreground">
           <X className="size-4" aria-hidden />
           <span className="sr-only">{closeLabel}</span>
         </SheetPrimitive.Close>

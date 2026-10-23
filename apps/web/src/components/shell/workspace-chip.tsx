@@ -10,7 +10,7 @@ import { $api, isProblem } from "@/lib/api/client";
 import { authBypass } from "@/lib/auth";
 
 const chip =
-  "hidden h-8 items-center gap-1.5 rounded-md border border-border-subtle px-2 text-label font-medium whitespace-nowrap text-muted-foreground transition-colors duration-(--duration-fast) ease-standard hover:border-border-strong md:inline-flex";
+  "relative hit-area hidden h-8 items-center gap-1.5 rounded-md border border-border-subtle px-2 text-label font-medium whitespace-nowrap text-muted-foreground transition-colors duration-(--duration-fast) ease-standard hover:border-border-strong md:inline-flex";
 
 // Top-bar workspace chip: the signed-in user's workspace from GET /v1/me, the first call through the typed
 // client (WEB-7). States: loading skeleton, the workspace, "API not reachable" and an API error; the last
