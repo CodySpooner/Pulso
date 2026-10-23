@@ -99,8 +99,9 @@ def test_new_store_import_and_correction_keep_original_context(
     if mode == "csv":
         line = "import.test,https://import.test/products/product-1,Fixture product 1"
         body = f"{HEADER}\n{line},24.99,USD,,,1,1\n{line},3e1,USD,,,1,2\n".encode()
+    observed_for = date(2020, 1, 1) if mode == "json" else None  # CSV rows carry dates (DEC-160)
     result = commit_import(
-        session, source.key, body, settings=settings, mode=mode, observed_for=date(2020, 1, 1)
+        session, source.key, body, settings=settings, mode=mode, observed_for=observed_for
     )
     assert result.status == "success", result.error_message
     payload = session.get_one(RawPayload, result.params["raw_payload_id"])
@@ -120,7 +121,7 @@ def test_new_store_import_and_correction_keep_original_context(
     assert "inventory_quantity" not in fields
     assert (
         commit_import(
-            session, source.key, body, settings=settings, mode=mode, observed_for=date(2020, 1, 1)
+            session, source.key, body, settings=settings, mode=mode, observed_for=observed_for
         ).status
         == "skipped"
     )
