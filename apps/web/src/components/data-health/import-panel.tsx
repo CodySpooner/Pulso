@@ -207,6 +207,8 @@ export function ImportPanel({ onOpen }: { onOpen: (key: string) => void }) {
             />
           )}
           {commit.isError && <ErrorLine error={commit.error} retry={importFile} fallback={IMPORT_FAILED} />}
+          {/* Last, in reading and Tab order: row errors and a failed import's Retry are what to act on (DEC-174). */}
+          {preview.data && file && preview.data.rows.length > 0 && <RowSample preview={preview.data} />}
           {outcome && (
             <div
               className={cn(
@@ -284,7 +286,6 @@ function PreviewResult({
           {blocker}
         </p>
       )}
-      {preview.rows.length > 0 && <RowSample preview={preview} />}
       {preview.errors.length > 0 && (
         <div tabIndex={0} role="region" aria-label="Row errors" className="max-h-64 overflow-auto rounded-lg border border-border">
           <table className="w-full border-collapse text-data">

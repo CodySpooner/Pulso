@@ -7,7 +7,7 @@ import { cjPreview, mockAdminApi } from "./fixtures";
 type S = components["schemas"];
 
 // imp-080: the preview shows the API's parsed sample (first 20 valid rows) with no extra click, apart from
-// the row errors and the counts. Fixtures only.
+// the counts and after the row errors. Fixtures only.
 const file = { name: "cj.csv", mimeType: "text/csv", buffer: Buffer.from("name,unit_cost\nLamp,5.00\n") };
 const CJ_COLUMNS = ["cj_product_id", "sku", "name", "unit_cost", "currency", "warehouse_country", "ship_cost_us", "min_days", "max_days", "moq", "observed_for"];
 
@@ -20,7 +20,7 @@ async function checkCj(page: Page, preview: S["ImportPreview"] | (() => S["Impor
   return panel;
 }
 
-test("the first 20 of 1,284 valid rows show as parsed, in template order, apart from the row errors", async ({ page }) => {
+test("the first 20 of 1,284 valid rows show as parsed, in template order, after the row errors", async ({ page }) => {
   await mockAdminApi(page);
   const panel = await checkCj(page, cjPreview);
   const sample = panel.getByRole("region", { name: "Valid rows · first 20 of 1,284" });
@@ -50,8 +50,11 @@ test("the first 20 of 1,284 valid rows show as parsed, in template order, apart 
   await expect(sample.locator("[role=status], [role=alert], [aria-live]")).toHaveCount(0);
   await expect(panel.getByRole("status")).toHaveText(/^1,284 valid rows · 2 invalid rows · 1 blank line skipped\. Importing into CJ/);
 
-  // Keyboard: Tab from Import reaches the sample with a visible ring, and End scrolls to its last row.
+  // Keyboard: the row errors come first (they are what to act on), then the sample with a visible ring;
+  // End scrolls it to its last row.
   await panel.getByRole("button", { name: "Import 1,284 rows" }).focus();
+  await page.keyboard.press("Tab");
+  await expect(panel.getByRole("region", { name: "Row errors" })).toBeFocused();
   await page.keyboard.press("Tab");
   await expect(sample).toBeFocused();
   await expect(sample).toHaveCSS("outline-style", "solid");

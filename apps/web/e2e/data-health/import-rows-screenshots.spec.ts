@@ -3,7 +3,7 @@ import { expect, test } from "@playwright/test";
 import { cjPreview, mockAdminApi } from "./fixtures";
 
 // imp-080 owner review screenshots of the parsed row sample, from fixtures only: 1440px and 375px, dark and
-// light; Frankfurter FX with all 3 valid rows, and CJ (check only) with the first 20 of 1,284, keyboard-focused.
+// light; Frankfurter FX with all 3 valid rows (then a failed import), and CJ (check only) with the first 20 of 1,284, keyboard-focused.
 // Run with `pnpm --filter web e2e:screenshots e2e/data-health/import-rows`; output goes to docs/screenshots/imp-080/.
 const OUT = "../../docs/screenshots/imp-080";
 const file = { name: "rates.csv", mimeType: "text/csv", buffer: Buffer.from("date,base,quote,rate\n2026-10-20,USD,JPY,150.25\n") };
@@ -31,10 +31,17 @@ for (const theme of ["dark", "light"] as const) {
       await expect(panel.getByRole("region", { name: "Valid rows · all 3" })).toBeVisible();
       await shot("fx-all");
 
+      // A failed import: its error line and Retry sit above the sample (what to act on comes first).
+      await page.route(/\/import$/, (route) => route.abort("connectionrefused"));
+      await panel.getByRole("button", { name: "Import 3 rows" }).click();
+      await panel.getByRole("button", { name: "Retry" }).focus();
+      await shot("fx-import-failed");
+
       await page.route(/\/import\/preview$/, (route) => route.fulfill({ json: cjPreview }));
       await panel.getByLabel("Source").selectOption("cj");
       const sample = panel.getByRole("region", { name: "Valid rows · first 20 of 1,284" });
       await panel.getByRole("button", { name: "Import 1,284 rows" }).focus();
+      await page.keyboard.press("Tab"); // the row errors come first
       await page.keyboard.press("Tab");
       await expect(sample).toBeFocused();
       await shot("cj-first-20");
