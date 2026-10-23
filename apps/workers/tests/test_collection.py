@@ -69,6 +69,19 @@ def test_publish_failure_does_not_leak_into_json_logs(
     )
 
 
+def test_scheduled_enqueue_cannot_race_an_active_source_lock(
+    session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("PULSO_SCHEDULER", "on")
+    lock = Mock(acquire=Mock(return_value=False))
+    monkeypatch.setattr(tasks, "AdvisoryLock", lambda _: lock)
+    tasks.enqueue_scheduled("fixture", "catalog", "daily")
+    assert not session.scalars(select(CollectorRun)).all()
+    app.send_task.assert_not_called()
+    lock.close.assert_called_once()
+
+
 @pytest.mark.parametrize("locked", [False, True])
 def test_consumer_locks_then_runs_and_stops_on_soft_limit(
     session: Session,

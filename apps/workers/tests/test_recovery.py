@@ -149,6 +149,38 @@ def test_weekly_slot_catches_up_later_in_same_week_once(session: Session, recove
     assert len(session.scalars(select(CollectorRun)).all()) == 1
 
 
+def test_before_daily_slot_keeps_overdue_without_historical_catchup(
+    session: Session,
+    recovery: Mock,
+) -> None:
+    recovery.now.return_value = NOW.replace(hour=16)
+    ops.heartbeat()
+    session.expire_all()
+    assert session.get_one(Source, 1).status == "overdue"
+    assert not session.scalars(select(CollectorRun)).all()
+    assert not session.scalars(select(CollectionGap)).all()
+
+
+def test_disabled_source_reconciles_but_cannot_catch_up(session: Session, recovery: Mock) -> None:
+    source = session.get_one(Source, 1)
+    source.enabled, source.status = False, "blocked"
+    run = CollectorRun(
+        source_id=1,
+        trigger="manual",
+        status="running",
+        queued_at=NOW - timedelta(hours=3),
+        started_at=NOW - timedelta(hours=3),
+    )
+    session.add(run)
+    session.commit()
+    ops.heartbeat()
+    session.expire_all()
+    assert (run.status, run.error_code) == ("failed", "abandoned")
+    assert not source.enabled and source.status == "blocked"
+    assert len(session.scalars(select(CollectorRun)).all()) == 1
+    assert not session.scalars(select(CollectionGap)).all()
+
+
 @pytest.mark.parametrize("boundary", ["catchup", "retry", "ops"])
 def test_publish_boundaries_redact_exception_text(
     session: Session,
