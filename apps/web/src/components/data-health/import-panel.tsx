@@ -101,12 +101,16 @@ export function ImportPanel({ onOpen }: { onOpen: (key: string) => void }) {
               <select
                 id={`${ids}-source`}
                 value={source.key}
+                // A running import keeps its source (imp-089): switching would reset it and lose its outcome. Still
+                // focusable; a change is ignored, so React puts the value back.
+                aria-disabled={commit.isPending}
                 onChange={(e) => {
+                  if (commit.isPending) return;
                   setPicked(e.target.value);
                   commit.reset();
                   if (file) check(file, e.target.value);
                 }}
-                className="h-(--input-h) w-full appearance-none rounded-md border border-border bg-secondary pr-8 pl-3 text-data text-foreground hover:border-border-strong"
+                className="peer h-(--input-h) w-full appearance-none rounded-md border border-border bg-secondary pr-8 pl-3 text-data text-foreground hover:border-border-strong aria-disabled:pointer-events-none aria-disabled:opacity-50"
               >
                 {importable.map((s) => (
                   <option key={s.key} value={s.key}>
@@ -114,7 +118,7 @@ export function ImportPanel({ onOpen }: { onOpen: (key: string) => void }) {
                   </option>
                 ))}
               </select>
-              <ChevronDown className="pointer-events-none absolute top-1/2 right-2.5 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden />
+              <ChevronDown className="pointer-events-none absolute top-1/2 right-2.5 size-4 -translate-y-1/2 text-muted-foreground peer-aria-disabled:opacity-50" aria-hidden />
             </div>
           </div>
           <Button asChild variant="ghost">
