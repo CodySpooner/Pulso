@@ -1,4 +1,4 @@
-"""Versioned manual-import columns; example values are download instructions, not seeds."""
+"""Versioned manual-import columns; downloads carry headers only, never a data row (DEC-191)."""
 
 import csv
 import io
@@ -9,7 +9,6 @@ from typing import Literal
 @dataclass(frozen=True)
 class Column:
     kind: Literal["text", "money", "currency", "date", "bool", "int", "interest", "country", "rate"]
-    example: str
     required: bool = False
     default: str = ""
 
@@ -24,59 +23,56 @@ class Template:
 TEMPLATES = {
     "shopify_stores": Template(
         {
-            "store_domain": Column("text", "example.com", True),
-            "product_url": Column("text", "https://example.com/products/example", True),
-            "title": Column("text", "Example only", True),
-            "price": Column("money", "19.99", True),
-            "currency": Column("currency", "USD", default="USD"),
-            "compare_at_price": Column("money", "24.99"),
-            "available": Column("bool", "true"),
-            "variant_title": Column("text", "Example variant"),
-            "sku": Column("text", "EXAMPLE"),
-            "observed_for": Column("date", "2026-01-01"),
+            "store_domain": Column("text", True),
+            "product_url": Column("text", True),
+            "title": Column("text", True),
+            "price": Column("money", True),
+            "currency": Column("currency", default="USD"),
+            "compare_at_price": Column("money"),
+            "available": Column("bool"),
+            "variant_title": Column("text"),
+            "sku": Column("text"),
+            "observed_for": Column("date"),
         }
     ),
     "cj": Template(
         {
-            "cj_product_id": Column("text", "EXAMPLE-ID"),
-            "sku": Column("text", "EXAMPLE-SKU"),
-            "name": Column("text", "Example only", True),
-            "unit_cost": Column("money", "5.00", True),
-            "currency": Column("currency", "USD", default="USD"),
-            "warehouse_country": Column("country", "US"),
-            "ship_cost_us": Column("money", "3.00"),
-            "min_days": Column("int", "3"),
-            "max_days": Column("int", "7"),
-            "moq": Column("int", "1"),
-            "observed_for": Column("date", "2026-01-01"),
+            "cj_product_id": Column("text"),
+            "sku": Column("text"),
+            "name": Column("text", True),
+            "unit_cost": Column("money", True),
+            "currency": Column("currency", default="USD"),
+            "warehouse_country": Column("country"),
+            "ship_cost_us": Column("money"),
+            "min_days": Column("int"),
+            "max_days": Column("int"),
+            "moq": Column("int"),
+            "observed_for": Column("date"),
         },
         one_of=("cj_product_id", "sku"),
     ),
     "google_trends": Template(
         {
-            "keyword": Column("text", "example keyword", True),
-            "date": Column("date", "2026-01-01", True),
-            "interest": Column("interest", "50", True),
-            "geo": Column("country", "US", default="US"),
-            "source": Column("text", "manual"),
+            "keyword": Column("text", True),
+            "date": Column("date", True),
+            "interest": Column("interest", True),
+            "geo": Column("country", default="US"),
+            "source": Column("text"),
         }
     ),
     "fx_frankfurter": Template(
         {
-            "date": Column("date", "2026-01-01", True),
-            "base": Column("currency", "USD", True),
-            "quote": Column("currency", "JPY", True),
-            "rate": Column("rate", "150", True),
+            "date": Column("date", True),
+            "base": Column("currency", True),
+            "quote": Column("currency", True),
+            "rate": Column("rate", True),
         }
     ),
 }
 
 
 def template_csv(source_key: str) -> bytes:
-    """UTF-8 CSV containing headers and one explicitly illustrative row."""
-    columns = TEMPLATES[source_key].columns
+    """UTF-8 CSV containing only the header row, so an unchanged download imports nothing."""
     output = io.StringIO(newline="")
-    writer = csv.writer(output)
-    writer.writerow(columns)
-    writer.writerow(column.example for column in columns.values())
+    csv.writer(output).writerow(TEMPLATES[source_key].columns)
     return output.getvalue().encode("utf-8")

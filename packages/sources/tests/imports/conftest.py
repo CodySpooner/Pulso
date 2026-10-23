@@ -18,6 +18,50 @@ from pulso_sources import storage
 from pulso_sources.framework import Request, Response, UpsertStats, append_observation
 from pulso_sources.imports import ADAPTERS, TEMPLATES, ImportData, Row
 
+# Test-only valid rows covering every template column; downloads are header-only (DEC-191).
+SAMPLE_ROWS = {
+    "shopify_stores": {
+        "store_domain": "example.com",
+        "product_url": "https://example.com/products/example",
+        "title": "Example only",
+        "price": "19.99",
+        "currency": "USD",
+        "compare_at_price": "24.99",
+        "available": "true",
+        "variant_title": "Example variant",
+        "sku": "EXAMPLE",
+        "observed_for": "2026-01-01",
+    },
+    "cj": {
+        "cj_product_id": "EXAMPLE-ID",
+        "sku": "EXAMPLE-SKU",
+        "name": "Example only",
+        "unit_cost": "5.00",
+        "currency": "USD",
+        "warehouse_country": "US",
+        "ship_cost_us": "3.00",
+        "min_days": "3",
+        "max_days": "7",
+        "moq": "1",
+        "observed_for": "2026-01-01",
+    },
+    "google_trends": {
+        "keyword": "example keyword",
+        "date": "2026-01-01",
+        "interest": "50",
+        "geo": "US",
+        "source": "manual",
+    },
+    "fx_frankfurter": {"date": "2026-01-01", "base": "USD", "quote": "JPY", "rate": "150"},
+}
+
+
+def sample_csv(key: str) -> bytes:
+    """Template header plus one explicit valid test row."""
+    columns = list(TEMPLATES[key].columns)
+    values = [SAMPLE_ROWS[key][name] for name in columns]
+    return f"{','.join(columns)}\r\n{','.join(values)}\r\n".encode()
+
 
 @pytest.fixture
 def settings(monkeypatch: pytest.MonkeyPatch) -> Settings:
