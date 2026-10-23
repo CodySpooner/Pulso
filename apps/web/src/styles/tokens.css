@@ -94,6 +94,8 @@
   --model-muted:    color-mix(in oklab, var(--model) 12%, transparent);
   --table-row-hover:    color-mix(in oklab, var(--foreground) 4%, var(--card));   /* opaque for sticky cells */
   --table-row-selected: color-mix(in oklab, var(--brand) 10%, var(--card));
+  --selection:            color-mix(in oklab, var(--brand) 28%, var(--background));  /* opaque: AA on every surface */
+  --selection-foreground: var(--foreground);
   --chart-1: var(--series-1); --chart-2: var(--series-2); --chart-3: var(--series-3);
   --chart-4: var(--series-4); --chart-5: var(--series-5);
   --sidebar-primary: var(--brand); --sidebar-primary-foreground: var(--brand-foreground);

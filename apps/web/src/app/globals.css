@@ -139,7 +139,7 @@
   code, kbd, samp, [data-mono] { font-family: var(--font-mono); font-variant-numeric: slashed-zero tabular-nums; }
   /* One focus style everywhere: outline survives forced-colors mode (vault Design/Accessibility). */
   :focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
-  ::selection { background: color-mix(in oklab, var(--brand) 28%, transparent); }
+  ::selection { background: var(--selection); color: var(--selection-foreground); }
   button:not(:disabled), [role="button"]:not(:disabled) { cursor: pointer; }
   svg.lucide { stroke-width: 1.5; }
   @media (max-width: 639px) {
