@@ -83,3 +83,49 @@ test.describe("touch 375px dialogs", () => {
     });
   }
 });
+
+// imp-045 (vault Design/Tables & Data Density): every table density draws 44px rows under a coarse pointer, and
+// a fine pointer keeps the dense 28 / 32 / 40px. Data Health renders all three: open gaps (compact), planned
+// sources (default) and sources (comfortable); a bare probe per utility reads the token without cell content.
+const rowTouch = [
+  { pointer: "coarse", hasTouch: true, width: 1024, heights: { "row-h-compact": 44, "row-h": 44, "row-h-comfortable": 44 } },
+  { pointer: "fine", hasTouch: false, width: 1440, heights: { "row-h-compact": 28, "row-h": 32, "row-h-comfortable": 40 } },
+];
+
+for (const { pointer, hasTouch, width, heights } of rowTouch) {
+  test.describe(`table rows ${pointer} pointer`, () => {
+    test.use({ viewport: { width, height: 900 }, hasTouch });
+
+    test(`every density draws its ${pointer}-pointer row height`, async ({ page }) => {
+      await mockAdminApi(page);
+      await page.goto("/admin/data-health");
+      await expect(page.getByText("As of Oct 22, 14:00 UTC")).toBeVisible();
+      await expect(page.getByRole("region", { name: "Open gaps" })).toBeVisible();
+      const result = await page.evaluate((classes) => {
+        const probe = (cls: string) => {
+          const el = document.body.appendChild(document.createElement("div"));
+          el.className = cls;
+          const h = el.getBoundingClientRect().height;
+          el.remove();
+          return h;
+        };
+        const rows = (cls: string) =>
+          [...document.querySelectorAll(`tr.${cls}`)].filter((tr) => tr.checkVisibility()).map((tr) => tr.getBoundingClientRect().height);
+        return {
+          coarse: matchMedia("(pointer: coarse)").matches,
+          probes: Object.fromEntries(classes.map((c) => [c, probe(c)])),
+          rows: Object.fromEntries(classes.map((c) => [c, rows(c)])),
+          pageScroll: document.documentElement.scrollWidth - innerWidth,
+        };
+      }, Object.keys(heights));
+      console.log(`${pointer} ${width}px rows: ${JSON.stringify(result.probes)} ${JSON.stringify(result.rows)}`);
+      expect(result.coarse).toBe(hasTouch);
+      expect(result.probes).toEqual(heights);
+      for (const [cls, min] of Object.entries(heights)) {
+        expect(result.rows[cls].length, `${cls} rows rendered`).toBeGreaterThan(0);
+        for (const h of result.rows[cls]) expect(h, cls).toBeGreaterThanOrEqual(min);
+      }
+      expect(result.pageScroll).toBe(0);
+    });
+  });
+}
