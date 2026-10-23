@@ -46,7 +46,7 @@ const loadingCells = ["h-8 w-24", "h-4 w-48","h-4 w-28", "ml-auto h-4 w-24", "h-
 const skeletonRows = loadingRows.map((i) => (
   <tr key={i} aria-hidden className="row-h-comfortable border-b border-border-subtle">
     {loadingCells.map((bar, j) => (
-      <td key={j} className="px-3 py-1.5">
+      <td key={j} className="px-2 py-1.5">
         <Skeleton className={bar} />
       </td>
     ))}
@@ -73,7 +73,7 @@ type Failure = { tone: "error"; text: string; key: string; error: unknown };
 type Notice = { tone: "ok"; text: string } | Failure;
 type Confirm = { source: SourceHealth; mode: "disable" | "reenable" };
 
-const th = "h-8 border-b border-border px-3 text-label font-medium whitespace-nowrap text-muted-foreground";
+const th = "h-8 border-b border-border px-2 text-label font-medium whitespace-nowrap text-muted-foreground";
 
 /** A failed action on `source`: what failed, then why and what next. The transport copy is imp-078's next step. */
 function actionFailure(source: SourceHealth, action: string, error: unknown): Failure {
@@ -279,20 +279,20 @@ export function SourcesPanel({ now, onOpen, onImport }: { now: number; onOpen: (
                   const state = sourceState(s, latestGapEnds, now);
                   return (
                     <tr key={s.key} className="row-h-comfortable border-b border-border-subtle hover:bg-(--table-row-hover)">
-                      <td className="px-3 py-1.5">
+                      <td className="px-2 py-1.5">
                         <SourceName source={s} onOpen={onOpen} />
                       </td>
                       {/* Under a coarse pointer the pill's 44 px hit square stays inside its row (A11Y-02). */}
-                      <td className="px-3 pointer-coarse:py-3">
+                      <td className="px-2 pointer-coarse:py-3">
                         <div className="flex flex-col items-start gap-0.5">
                           {waiting(state) ? pillSkeleton : <StatePill state={state} />}
                           {!waiting(state) && <StatusNote source={s} state={state} missed={missed(s, state)} />}
                         </div>
                       </td>
-                      <td className="px-3">
+                      <td className="px-2">
                         <LastRun source={s} now={now} />
                       </td>
-                      <td className="num px-3 whitespace-nowrap">
+                      <td className="num px-2 whitespace-nowrap">
                         {lr ? (
                           <span title={`Fetched / inserted / updated · run #${lr.id} · ${SOURCES_API}`}>
                             {lr.rows_fetched.toLocaleString("en-US")} <span className="text-subtle-foreground">/</span> {lr.rows_inserted.toLocaleString("en-US")}{" "}
@@ -302,13 +302,13 @@ export function SourcesPanel({ now, onOpen, onImport }: { now: number; onOpen: (
                           <Missing reason="No run recorded yet" />
                         )}
                       </td>
-                      <td className="px-3">
+                      <td className="px-2">
                         <Freshness source={s} now={now} />
                       </td>
-                      <td className="px-3">
+                      <td className="px-2">
                         <Missing reason="No source yet: the API doesn't serve the Beat schedule" />
                       </td>
-                      <td className="num px-3 font-mono">
+                      <td className="num px-2 font-mono">
                         {s.last_status_code != null ? (
                           <span title={`Last HTTP or source code · ${SOURCES_API}`} className={cn(s.last_status_code >= 400 && "text-negative")}>
                             {s.last_status_code}
@@ -317,8 +317,8 @@ export function SourcesPanel({ now, onOpen, onImport }: { now: number; onOpen: (
                           <Missing reason="No response recorded yet" />
                         )}
                       </td>
-                      <td className="px-3">{c.toggle}</td>
-                      <td className="px-3">
+                      <td className="px-2">{c.toggle}</td>
+                      <td className="px-2">
                         <div className="flex justify-end gap-2">
                           {c.import}
                           {c.run}
@@ -330,14 +330,14 @@ export function SourcesPanel({ now, onOpen, onImport }: { now: number; onOpen: (
               </tbody>
               <tbody className="text-subtle-foreground">
                 <tr>
-                  <th scope="rowgroup" colSpan={9} className="h-8 px-3 text-left text-label font-medium">
+                  <th scope="rowgroup" colSpan={9} className="h-8 px-2 text-left text-label font-medium">
                     Planned
                   </th>
                 </tr>
                 {planned.map((p) => (
                   <tr key={p.name} className="row-h border-t border-border-subtle">
-                    <td className="px-3 font-medium">{p.name}</td>
-                    <td colSpan={8} className="px-3">
+                    <td className="px-2 font-medium">{p.name}</td>
+                    <td colSpan={8} className="px-2">
                       No source yet · arrives in Phase {p.phase}. {p.why}.
                     </td>
                   </tr>
@@ -400,11 +400,11 @@ function StatusNote({ source, state, missed, className }: { source: SourceHealth
         </span>
       )}
       {source.retry_not_before && <span className="whitespace-nowrap">Retry after {formatUtc(source.retry_not_before)}</span>}
-      {/* Never truncated: the slot and reason are the why (imp-124). 180 px holds "Missed Oct 22, 10:00–12:00 UTC"
-          on one line and still fits the table at 1440 px; a longer slot wraps. Under a coarse pointer the table
+      {/* Never truncated: the slot and reason are the why (imp-124). The slot sizes its column: a same-day slot is
+          one unbreakable phrase, a longer one breaks between phrases (p1-53). Under a coarse pointer the table
           puts 18 px between the pill and the link, so their 44 px hit squares don't overlap (A11Y-02). */}
       {missed && (
-        <span className="md:w-45 md:pointer-coarse:mt-4">
+        <span className="md:pointer-coarse:mt-4">
           <GapsLink missed={missed} />
         </span>
       )}
