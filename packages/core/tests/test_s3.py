@@ -5,6 +5,7 @@ from urllib.parse import parse_qs, urlsplit
 import boto3
 import pytest
 from botocore.config import Config
+from botocore.exceptions import ClientError
 from botocore.stub import Stubber
 from pydantic import SecretStr
 
@@ -19,9 +20,12 @@ def stubbed_client() -> tuple[Any, Stubber]:
     return client, Stubber(client)
 
 
-def test_creates_missing_bucket() -> None:
+@pytest.mark.parametrize("code", ["404", "NoSuchBucket"])
+def test_creates_missing_bucket(code: str) -> None:
     client, stub = stubbed_client()
-    stub.add_client_error("head_bucket", "404", http_status_code=404)
+    stub.add_client_error(
+        "head_bucket", code, http_status_code=404, expected_params={"Bucket": "pulso-raw"}
+    )
     stub.add_response("create_bucket", {}, {"Bucket": "pulso-raw"})
     with stub:
         assert ensure_bucket(client, "pulso-raw") is True
@@ -33,6 +37,37 @@ def test_leaves_existing_bucket() -> None:
     stub.add_response("head_bucket", {}, {"Bucket": "pulso-raw"})
     with stub:
         assert ensure_bucket(client, "pulso-raw") is False
+    stub.assert_no_pending_responses()
+
+
+@pytest.mark.parametrize("code,status", [("403", 403), ("500", 500)])
+def test_bucket_check_propagates_nonmissing_errors_without_creating(code: str, status: int) -> None:
+    client, stub = stubbed_client()
+    stub.add_client_error(
+        "head_bucket", code, http_status_code=status, expected_params={"Bucket": "pulso-raw"}
+    )
+    with stub, pytest.raises(ClientError) as error:
+        ensure_bucket(client, "pulso-raw")
+    assert error.value.operation_name == "HeadBucket"
+    assert error.value.response["Error"]["Code"] == code
+    assert error.value.response["ResponseMetadata"]["HTTPStatusCode"] == status
+    stub.assert_no_pending_responses()
+
+
+@pytest.mark.parametrize("code,status", [("AccessDenied", 403), ("InternalError", 500)])
+def test_bucket_creation_propagates_errors(code: str, status: int) -> None:
+    client, stub = stubbed_client()
+    stub.add_client_error(
+        "head_bucket", "404", http_status_code=404, expected_params={"Bucket": "pulso-raw"}
+    )
+    stub.add_client_error(
+        "create_bucket", code, http_status_code=status, expected_params={"Bucket": "pulso-raw"}
+    )
+    with stub, pytest.raises(ClientError) as error:
+        ensure_bucket(client, "pulso-raw")
+    assert error.value.operation_name == "CreateBucket"
+    assert error.value.response["Error"]["Code"] == code
+    assert error.value.response["ResponseMetadata"]["HTTPStatusCode"] == status
     stub.assert_no_pending_responses()
 
 
