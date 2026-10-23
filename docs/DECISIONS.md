@@ -95,6 +95,7 @@ New entries go at the bottom with the next number. Never renumber or delete; mar
 | DEC-088 | Frankfurter gap recovery, first-rate evidence and explicit FX rounding | proposed (P1-09) |
 | DEC-089 | Queued publishing and guarded Beat | proposed (P1-04) |
 | DEC-092 | Import retry: a capture with no successful run is re-run on upload, not skipped | proposed (P1-29) |
+| DEC-102 | Railway site-only deploy: Hobby, Railway Bucket, no Docker cache mounts | proposed (railway-site) |
 
 Superseded review defaults, not given entries: default #0 (move the repo) is done, see DEC-005. Default #2 (no local collection at all) is replaced by DEC-002. Default #15 (CSS-only motion) is replaced by DEC-007, and its remaining rules are in DEC-025. Review question D1 (Railway Pro from Phase 1) is answered by DEC-001, D2 by DEC-003, D3 by DEC-004, D5 by DEC-008 and D8 by DEC-006.
 
@@ -1082,3 +1083,17 @@ Superseded review defaults, not given entries: default #0 (move the repo) is don
 - **Errors / dependency:** this slice passes `request_hook`, requiring P1-30 (`0aee328`) before integration. The after-hook stores no DB state; it stops via `RunDeferred`, then the CJ entry point records the safe specific Data Health code/message and disables once for inactivity/IP-limit failures. Raw evidence and generic HTTP block accounting remain the framework's responsibility. The coordinator directed retention of generic points-429 block accounting for this slice. This is an implementation limitation against the intended quota exemption, not a compliance-policy change: the local cap does not prevent all provider quota errors, because refill timing/other account use are unknown. An explicit quota exemption needs separate framework work and review.
 - **Split / alternatives:** full HTTP pacing, Redis auth cache, reactive token rejection retry, category-tree resolution of name-only seeds, tracked product/stock and US freight, provider-refill pacing, account countdown and CSV registration remain P1-08b. The existing CJ CSV template fits cost/freight but lacks stock; no second template or migration is introduced. Prefer this testable slice over speculative account behavior, fake category IDs or a framework fork. Public terms evidence is in DATA_SOURCES; owner review remains required before enablement.
 - **Verification:** handwritten auth/refresh/catalog/error fixtures, fake-clock refresh, exact USD ranges, null counts, raw/target/snapshot replay and parser correction, persisted cross-session quota/reset, mocked live-hook reservations and distinct Data Health errors. PostgreSQL locks/constraints and connected services remain unverified locally (no Docker); no CJ API, collector-host, scheduler, account, secret, deployment or migration operation was performed.
+
+### DEC-102 · Railway site-only deploy: Hobby, Railway Bucket, no Docker cache mounts
+**2026-10-22 · proposed (railway-site; the owner chose scope, plan and storage in chat on 2026-10-22, sign-off pending)** · DEC-001, DEC-002, DEC-014, DEC-015
+- **Decision:**
+  - **Scope:** Railway project `pulso` runs web, api, Postgres (the pinned pgvector image, `dynamic_shared_memory_type=mmap` start command, volume at `/var/lib/postgresql`), Redis (Railway template) and one Railway Bucket. Worker, Beat and pg-backup are not deployed. `PULSO_SCHEDULER=off` and `COLLECTORS_LIVE=off` on Railway; the home PC stays the collector host, and the DEC-002 cutover has not started.
+  - **Plan:** Hobby. Pro is chosen at full go-live, when snapshot tables outgrow Hobby's 5 GB volume cap.
+  - **Object storage:** the Railway Bucket `raw` (region sjc) replaces R2 for this deploy, amending DEC-014's alternatives. The R2 backup target with 35-day lifecycle (DEC-015) is unchanged for go-live.
+  - **Dockerfiles:** no BuildKit cache mounts. Railway's builder rejects a cache mount unless its id is `s/<service id>-<path>`, which would bind the images to one Railway project and break compose and CI.
+  - **Wait for CI:** on for web and api, as DEC-014 says (GitHub Actions runs again since the repo went public).
+  - **Config:** service settings are dashboard state, applied through `railway environment edit` (no `railway.json` or `railway.toml`). Connection values are Railway variable references, the Postgres password comes from a Railway `secret()` generator, and the owner enters the Clerk keys.
+  - **Postgres start command:** `docker-entrypoint.sh postgres -c dynamic_shared_memory_type=mmap`. A Railway start command replaces the image entrypoint, so a bare `postgres` runs as root and refuses to start.
+- **Alternatives:** service-id cache mounts per Railway service; R2 now; Pro now; full go-live.
+- **Why:** the owner wants the site viewable before the collector cutover, with one vendor and no new account for storage. Removing the cache mounts is the only builder fix that keeps one Dockerfile per image across Railway, compose and CI.
+- **Consequences:** slower image rebuilds without the uv and pnpm caches. The bucket has no lifecycle rules. Hobby's included usage is shared with the owner's other Railway projects.
