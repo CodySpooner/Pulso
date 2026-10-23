@@ -1265,3 +1265,9 @@ Superseded review defaults, not given entries: default #0 (move the repo) is don
   - **CJ terms:** CJ data is used only inside Pulso for the owner's own product research, which the owner accepts under CJ's agreement. If Pulso were ever offered to others, CJ's written permission comes first.
   - **Product scope:** the owner currently intends Pulso for his own stores only, not as a paid app. SaaS-only work (Stripe billing, plans, team seats, public API, marketing site in SPEC §6.18/§11 Phase 8) is deprioritised to the end of the queue and not started without a new owner decision. The multi-tenant `workspace_id` model stays (already built, cheap to keep).
 - **Why:** free, real supplier data now beats waiting for the first sale; the auto-disable makes the lapse safe and visible.
+
+### DEC-140 · Import replay claims include preparation
+**2026-10-23 · proposed (imp-054)** · P1-31 L1/L2; DEC-064, DEC-092
+- **Decision:** retry and replay use the existing per-source row lock and shared active-capture lookup. Replay commits `params.raw_payload_id` before releasing the lock and reading S3; a competing upload or replay returns `skipped/in_progress` referencing the claimed run. Successful-upload dedupe keeps DEC-092's precedence; explicit replay still requires a changed parser version.
+- **Transactions:** import entry points use the framework's existing `expire_on_commit=False` convention for their dedicated Session. This keeps stored capture attributes loaded after the claim commit, so preparation and executor S3 GETs run outside database transactions. Capture bytes, mapping, timestamps and original run provenance remain unchanged.
+- **Alternatives / why:** extending the existing claim avoids a second executor during replay preparation without a schema change or holding a database lock over S3. Disabling expiry follows `execute_run` rather than detaching/copying capture models or changing storage interfaces.

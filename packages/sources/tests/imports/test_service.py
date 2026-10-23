@@ -5,7 +5,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from datetime import UTC, date, datetime
 from threading import Barrier
-from typing import Literal
+from typing import Any, Literal
 from unittest.mock import MagicMock
 
 import pytest
@@ -259,6 +259,104 @@ def test_reupload_does_not_duplicate_a_queued_or_running_run_on_the_capture(
     assert third.status == "skipped" and third.params["original_run_id"] == retry.id
     assert s3.put_object.call_count == 1
     assert session.scalar(select(func.count()).select_from(RawPayload)) == 1
+
+
+def test_retry_reads_outside_transactions_with_fresh_session(
+    session: Session, settings: Settings, s3: MagicMock, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    body = b"Term,date,interest\nexample,2020-01-01,1\n"
+    with monkeypatch.context() as failing:
+        failing.setattr(FakeAdapter, "parse", MagicMock(side_effect=ValueError("transient")))
+        first = commit_import(
+            session, "google_trends", body, settings=settings, mapping={"Term": "keyword"}
+        )
+    assert first.status == "partial"
+    payload = session.scalars(select(RawPayload)).one()
+    payload_id, original_run_id = payload.id, payload.run_id
+    captured_at, metadata = payload.captured_at.replace(tzinfo=UTC), payload.request
+    session.commit()
+    original_get = s3.get_object.side_effect
+    transactions = []
+    with Session(session.get_bind()) as fresh:
+
+        def get(**kwargs: Any) -> Any:
+            transactions.append(fresh.in_transaction())
+            return original_get(**kwargs)
+
+        s3.get_object.side_effect = get
+        retry = commit_import(
+            fresh, "google_trends", body, settings=settings, mapping={"Term": "invalid"}
+        )
+        assert retry.status == "success", retry.error_message
+        assert transactions == [False, False]
+        assert retry.params["raw_payload_id"] == payload_id
+        row = fresh.scalars(select(SearchTrend)).one()
+        assert row.keyword == "example" and row.observed_for == date(2020, 1, 1)
+        assert row.raw_payload_id == payload_id
+        assert row.captured_at.replace(tzinfo=UTC) == captured_at
+        stored = fresh.scalars(select(RawPayload)).one()
+        assert stored.run_id == original_run_id and stored.request == metadata
+        assert stored.captured_at.replace(tzinfo=UTC) == captured_at
+        duplicate = commit_import(fresh, "google_trends", body, settings=settings)
+        assert duplicate.status == "skipped" and duplicate.params["original_run_id"] == retry.id
+    assert s3.put_object.call_count == 1
+
+
+@pytest.mark.parametrize(
+    "preparing,contender", [("replay", "upload"), ("upload", "replay"), ("replay", "replay")]
+)
+def test_preparing_capture_excludes_another_executor(
+    session: Session,
+    settings: Settings,
+    s3: MagicMock,
+    monkeypatch: pytest.MonkeyPatch,
+    preparing: str,
+    contender: str,
+) -> None:
+    body = template_csv("cj")
+    with monkeypatch.context() as failing:
+        failing.setattr(FakeAdapter, "parse", MagicMock(side_effect=ValueError("transient")))
+        first = commit_import(session, "cj", body, settings=settings)
+    assert first.status == "partial"
+    payload_id = session.scalars(select(RawPayload.id)).one()
+    session.commit()
+    monkeypatch.setitem(ADAPTERS, "cj", lambda data: FakeAdapter(data, "2"))
+    original_get = s3.get_object.side_effect
+    transactions = []
+    overlaps = []
+    with Session(session.get_bind()) as fresh:
+
+        def get(**kwargs: Any) -> Any:
+            transactions.append(fresh.in_transaction())
+            if len(transactions) == 1:
+                with Session(session.get_bind()) as other:
+                    nested = (
+                        replay_import(other, payload_id, settings=settings)
+                        if contender == "replay"
+                        else commit_import(other, "cj", body, settings=settings)
+                    )
+                    overlaps.append((nested.status, nested.params))
+            return original_get(**kwargs)
+
+        s3.get_object.side_effect = get
+        run = (
+            replay_import(fresh, payload_id, settings=settings)
+            if preparing == "replay"
+            else commit_import(fresh, "cj", body, settings=settings)
+        )
+        assert run.status == "success", run.error_message
+        assert overlaps == [
+            (
+                "skipped",
+                {"raw_payload_id": payload_id, "original_run_id": run.id, "reason": "in_progress"},
+            )
+        ]
+        assert transactions == [False, False]
+        assert (run.rows_inserted, run.rows_unchanged) == (1, 0)
+        assert fresh.scalar(select(func.count()).select_from(RawPayload)) == 1
+        assert fresh.scalar(select(func.count()).select_from(SearchTrend)) == 1
+        assert fresh.scalar(select(func.count()).select_from(CollectorRunTarget)) == 2
+    assert s3.put_object.call_count == 1
 
 
 @pytest.mark.parametrize("mode", ["csv", "json"])

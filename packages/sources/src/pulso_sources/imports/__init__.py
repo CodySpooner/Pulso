@@ -137,6 +137,20 @@ def _failed(session: Session, run: CollectorRun, exc: Exception) -> CollectorRun
     return run
 
 
+def _active_run(session: Session, payload: RawPayload) -> int | None:
+    return session.scalar(
+        select(CollectorRun.id)
+        .where(
+            CollectorRun.status.in_(["queued", "running"]),
+            or_(
+                CollectorRun.id == payload.run_id,
+                CollectorRun.params["raw_payload_id"].as_integer() == payload.id,
+            ),
+        )
+        .limit(1)
+    )
+
+
 def commit_import(
     session: Session,
     source_key: str,
@@ -154,6 +168,8 @@ def commit_import(
     Pass mapping from the preview; otherwise use sources.config.csv_mapping. Returns
     terminal run evidence (including sanitized failures), with row errors in params.
     """
+    # As in execute_run, keep capture reads from reopening a transaction before S3.
+    session.expire_on_commit = False
     source = session.scalars(select(Source).where(Source.key == source_key)).one()
     run = enqueue_run(session, source_id=source.id, trigger="csv", publish=lambda _: None)
     try:
@@ -179,17 +195,7 @@ def commit_import(
                 .order_by(CollectorRunTarget.run_id)
                 .limit(1)
             )
-            active = session.scalar(
-                select(CollectorRun.id)
-                .where(
-                    CollectorRun.status.in_(["queued", "running"]),
-                    or_(
-                        CollectorRun.id == payload.run_id,
-                        CollectorRun.params["raw_payload_id"].as_integer() == payload.id,
-                    ),
-                )
-                .limit(1)
-            )
+            active = _active_run(session, payload)
             if done or active:
                 run.status, run.finished_at = "skipped", datetime.now(UTC)
                 reason = {} if done else {"reason": "in_progress"}
@@ -234,10 +240,20 @@ def commit_import(
 
 def replay_import(session: Session, raw_payload_id: int, *, settings: Settings) -> CollectorRun:
     """Explicit parser correction; preserve the original bytes, capture time and mapping."""
+    session.expire_on_commit = False
     payload = session.get_one(RawPayload, raw_payload_id)
     source = session.get_one(Source, payload.source_id)
     run = enqueue_run(session, source_id=source.id, trigger="csv", publish=lambda _: None)
     try:
+        session.execute(select(Source.id).where(Source.id == source.id).with_for_update())
+        active = _active_run(session, payload)
+        run.params = {"raw_payload_id": payload.id}
+        if active:
+            run.status, run.finished_at = "skipped", datetime.now(UTC)
+            run.params = {**run.params, "original_run_id": active, "reason": "in_progress"}
+            session.commit()
+            return run
+        session.commit()  # Claim the replay before preparation, just like an upload retry.
         data, adapter = _from_capture(payload, source.key)
         if adapter.parser_version == payload.request["parser_version"]:
             raise ValueError("Parser correction requires a new parser_version")
