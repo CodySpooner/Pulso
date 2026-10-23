@@ -5,14 +5,15 @@ import os
 import shutil
 import subprocess
 from pathlib import Path
+from typing import Any
 
 import pytest
 
 ROOT = Path(__file__).resolve().parents[3]
+COLLECTOR_SERVICES = ("worker", "worker-ops", "beat", "migrate")
 
 
-@pytest.mark.parametrize("profiles", [[], ["collector"], ["collector", "collector-tools"]])
-def test_profile_config_and_image_environment_contract(profiles: list[str]) -> None:
+def compose_services(profiles: list[str], *config_flags: str) -> dict[str, Any]:
     docker = shutil.which("docker")
     if docker is None:
         pytest.skip("Compose config unavailable (no Docker CLI)")
@@ -28,7 +29,7 @@ def test_profile_config_and_image_environment_contract(profiles: list[str]) -> N
             "config",
             "--format",
             "json",
-            "--no-env-resolution",
+            *config_flags,
         ],
         cwd=ROOT,
         env={
@@ -45,8 +46,28 @@ def test_profile_config_and_image_environment_contract(profiles: list[str]) -> N
         capture_output=True,
         check=True,
     )
-    config = json.loads(result.stdout)
-    services = config["services"]
+    services: dict[str, Any] = json.loads(result.stdout)["services"]
+    return services
+
+
+def test_collector_services_declare_only_raw_env_collector() -> None:
+    # Rendered config can't show this: Compose 2.x (CI runner) inlines env files into
+    # `environment` and drops `env_file`, even with --no-env-resolution. The un-interpolated
+    # model keeps the declaration on 2.x and 5.x, and needs no .env.collector (DEC-141).
+    services = compose_services([], "--no-interpolate")
+    for name in COLLECTOR_SERVICES:
+        service = services[name]
+        assert len(service["env_file"]) == 1
+        assert service["env_file"][0]["path"].endswith(".env.collector")
+        assert service["env_file"][0]["format"] == "raw"
+        assert service["env_file"][0]["required"] is False
+        assert "PULSO_SCHEDULER" not in service.get("environment", {})
+        assert "COLLECTORS_LIVE" not in service.get("environment", {})
+
+
+@pytest.mark.parametrize("profiles", [[], ["collector"], ["collector", "collector-tools"]])
+def test_profile_config_and_image_environment_contract(profiles: list[str]) -> None:
+    services = compose_services(profiles, "--no-env-resolution")
     expected = {"postgres", "redis", "s3"}
     if "collector" in profiles:
         expected |= {"worker", "worker-ops", "beat"}
@@ -60,9 +81,6 @@ def test_profile_config_and_image_environment_contract(profiles: list[str]) -> N
         assert services[name]["restart"] == "unless-stopped"
     for name in expected - {"postgres", "redis", "s3"}:
         service = services[name]
-        assert len(service["env_file"]) == 1
-        assert service["env_file"][0]["path"].endswith(".env.collector")
-        assert service["env_file"][0]["format"] == "raw"
         assert "PULSO_SCHEDULER" not in service.get("environment", {})
         assert "COLLECTORS_LIVE" not in service.get("environment", {})
         assert all(dep["condition"] == "service_healthy" for dep in service["depends_on"].values())
