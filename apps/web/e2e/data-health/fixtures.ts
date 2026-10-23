@@ -124,6 +124,11 @@ export function runDetail(id: number): S["RunDetail"] | undefined {
   };
 }
 
+/** A Frankfurter FX file with one bad rate (P1-11b): the preview names its row; nothing is written. */
+export const importPreview: S["ImportPreview"] = {
+  rows: [], valid: 3, invalid: 1, skipped: 0, error_count: 1, errors: [{ row: 5, column: "rate", message: "Invalid rate value" }],
+};
+
 // apps/api/openapi.json is the exported contract; tests resolve operation ids from it, not from memory.
 const openapi = JSON.parse(readFileSync(path.join(__dirname, "../../../api/openapi.json"), "utf8")) as {
   paths: Record<string, Record<string, { operationId: string }>>;
@@ -156,6 +161,7 @@ export interface MockOptions {
 /** Answers /api/v1/admin/* from the fixtures and records every call. Call before page.goto. */
 export async function mockAdminApi(page: Page, options: MockOptions = {}): Promise<Call[]> {
   const calls: Call[] = [];
+  const imported = new Map<string, number>(); // file bytes → the run that imported them
   const list = options.sources ?? sources;
   await page.clock.setFixedTime(NOW);
   await page.route("**/api/v1/admin/**", async (route) => {
@@ -163,7 +169,8 @@ export async function mockAdminApi(page: Page, options: MockOptions = {}): Promi
     const url = new URL(request.url());
     const apiPath = url.pathname.replace(/^\/api/, "");
     const method = request.method();
-    calls.push({ method, path: apiPath, body: request.postDataJSON() });
+    const upload = request.headers()["content-type"] === "application/octet-stream";
+    calls.push({ method, path: apiPath, body: upload ? request.postData() : request.postDataJSON() });
     if (options.down) return route.abort("connectionrefused");
     if (options.delayMs) await new Promise((resolve) => setTimeout(resolve, options.delayMs));
 
@@ -187,6 +194,21 @@ export async function mockAdminApi(page: Page, options: MockOptions = {}): Promi
     }
     if (source && method === "POST" && sourceMatch[2]) {
       return json(run({ id: 500, source_key: source.key, trigger: "manual", status: "queued", started_at: null, finished_at: null, queued_at: NOW.toISOString() }), 202);
+    }
+    const importMatch = apiPath.match(/^\/v1\/admin\/sources\/([^/]+)\/import(\/preview|\/template)?$/);
+    if (importMatch?.[2] === "/template") return route.fulfill({ contentType: "text/csv", body: "date,base,quote,rate\n2026-01-01,USD,JPY,150\n" });
+    if (importMatch?.[2] === "/preview") return json(importPreview);
+    if (importMatch && method === "POST") {
+      const bytes = request.postData() ?? "";
+      const original = imported.get(bytes) ?? null;
+      imported.set(bytes, original ?? 501);
+      return json({
+        run: run({
+          id: original ? 502 : 501, source_key: importMatch[1], trigger: "csv", status: original ? "skipped" : "success", queued_at: NOW.toISOString(),
+          rows_fetched: original ? 0 : 3, rows_inserted: original ? 0 : 3, target_count: original ? 0 : 1, successful_target_count: original ? 0 : 1,
+        }),
+        raw_payload_id: 77, original_run_id: original, in_progress: false, error_count: original ? 0 : 1, errors: original ? [] : importPreview.errors,
+      } satisfies S["ImportResult"]);
     }
     return json({ type: "about:blank", title: "Not Found", status: 404, code: "not_found", detail: "No fixture.", request_id: "e2e", errors: [] }, 404);
   });
