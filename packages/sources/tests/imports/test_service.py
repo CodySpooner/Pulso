@@ -26,14 +26,14 @@ from pulso_sources.imports import (
     template_csv,
 )
 
-from .conftest import FakeAdapter
+from .conftest import FakeAdapter, sample_csv
 
 
 @pytest.mark.parametrize("key", TEMPLATES)
 def test_every_template_commits_and_duplicate_skips_before_storage(
     session: Session, settings: Settings, s3: MagicMock, key: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    first = commit_import(session, key, template_csv(key), settings=settings)
+    first = commit_import(session, key, sample_csv(key), settings=settings)
     assert first.status == "success", first.error_message
     assert first.trigger == "csv" and first.rows_inserted == 1 and first.http_requests == 0
     payload = session.scalars(select(RawPayload)).one()
@@ -41,13 +41,22 @@ def test_every_template_commits_and_duplicate_skips_before_storage(
     target = session.get_one(CollectorRunTarget, (first.id, "import", str(payload.id)))
     assert target.status == "success"
     monkeypatch.delitem(ADAPTERS, key)
-    second = commit_import(session, key, template_csv(key), settings=settings)
+    second = commit_import(session, key, sample_csv(key), settings=settings)
     assert second.status == "skipped" and second.rows_inserted == 0
     assert second.params["original_run_id"] == first.id
     assert session.scalar(select(func.count()).select_from(RawPayload)) == 1
     assert session.scalar(select(func.count()).select_from(SearchTrend)) == 1
     assert session.scalar(select(func.count()).select_from(CollectorRun)) == 2
     assert s3.put_object.call_count == 1 and s3.get_object.call_count == 1
+
+
+@pytest.mark.parametrize("key", TEMPLATES)
+def test_unchanged_template_download_inserts_no_observations(
+    session: Session, settings: Settings, s3: MagicMock, key: str
+) -> None:
+    run = commit_import(session, key, template_csv(key), settings=settings)
+    assert (run.status, run.error_code, run.rows_inserted) == ("failed", "no_valid_rows", 0)
+    assert session.scalar(select(func.count()).select_from(SearchTrend)) == 0
 
 
 def test_multidate_file_valid_rows_only_and_saved_mapping(
@@ -71,7 +80,7 @@ def test_multidate_file_valid_rows_only_and_saved_mapping(
 def test_identity_includes_template_version(
     session: Session, settings: Settings, s3: MagicMock, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    body = template_csv("cj")
+    body = sample_csv("cj")
     assert commit_import(session, "cj", body, settings=settings).status == "success"
     monkeypatch.setitem(TEMPLATES, "cj", replace(TEMPLATES["cj"], template_version="csv-v2"))
     assert commit_import(session, "cj", body, settings=settings).status == "success"
@@ -83,7 +92,7 @@ def test_identity_includes_template_version(
 def test_multidate_entity_file_reports_duplicate_rows_before_storage(
     session: Session, settings: Settings, s3: MagicMock, key: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    example = next(csv.DictReader(io.StringIO(template_csv(key).decode())))
+    example = next(csv.DictReader(io.StringIO(sample_csv(key).decode())))
     output = io.StringIO()
     writer = csv.DictWriter(output, example.keys())
     writer.writeheader()
@@ -130,7 +139,7 @@ def test_upload_timestamp_and_parser_correction_reuse_original_capture(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     body = (
-        template_csv("shopify_stores") if mode == "csv" else b'{"products":[{"keyword":"example"}]}'
+        sample_csv("shopify_stores") if mode == "csv" else b'{"products":[{"keyword":"example"}]}'
     )
     before = datetime.now(UTC)
     run = commit_import(
@@ -175,7 +184,7 @@ def test_csv_rejects_an_unused_observed_for(
 ) -> None:
     # P1-22 #10: CSV rows use their own date column or the capture date, never this one.
     run = commit_import(
-        session, "cj", template_csv("cj"), settings=settings, observed_for=date(2020, 1, 1)
+        session, "cj", sample_csv("cj"), settings=settings, observed_for=date(2020, 1, 1)
     )
     assert (run.status, run.error_message) == ("failed", "ValueError")
     assert not s3.put_object.called
@@ -206,12 +215,12 @@ def test_storage_and_adapter_failures_are_durable_and_sanitized(
 ) -> None:
     original_put = s3.put_object.side_effect
     s3.put_object.side_effect = RuntimeError("fixture-secret")
-    run = commit_import(session, "cj", template_csv("cj"), settings=settings)
+    run = commit_import(session, "cj", sample_csv("cj"), settings=settings)
     assert run.status == "failed" and run.error_message == "RuntimeError"
     assert session.scalar(select(func.count()).select_from(RawPayload)) == 0
     s3.put_object.side_effect = original_put
     monkeypatch.setattr(FakeAdapter, "parse", MagicMock(side_effect=ValueError("fixture-secret")))
-    failed_parse = commit_import(session, "cj", template_csv("cj"), settings=settings)
+    failed_parse = commit_import(session, "cj", sample_csv("cj"), settings=settings)
     assert failed_parse.status == "partial" and failed_parse.error_message == "ValueError"
     assert session.scalar(select(func.count()).select_from(RawPayload)) == 1
     assert session.scalar(select(func.count()).select_from(SearchTrend)) == 0
@@ -220,7 +229,7 @@ def test_storage_and_adapter_failures_are_durable_and_sanitized(
 def test_reupload_after_failed_parse_retries_existing_capture_then_skips(
     session: Session, settings: Settings, s3: MagicMock, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    body = template_csv("cj")
+    body = sample_csv("cj")
     parse = FakeAdapter.parse
     failures = [ValueError("transient")]
 
@@ -253,7 +262,7 @@ def test_reupload_does_not_duplicate_a_queued_or_running_run_on_the_capture(
     monkeypatch.setattr(
         import_service, "execute_run", lambda s, run_id, *a, **k: s.get_one(CollectorRun, run_id)
     )
-    body = template_csv("cj")
+    body = sample_csv("cj")
     first = commit_import(session, "cj", body, settings=settings)
     assert first.status == "queued"
     payload_id = session.scalars(select(RawPayload.id)).one()
@@ -326,7 +335,7 @@ def test_preparing_capture_excludes_another_executor(
     preparing: str,
     contender: str,
 ) -> None:
-    body = template_csv("cj")
+    body = sample_csv("cj")
     with monkeypatch.context() as failing:
         failing.setattr(FakeAdapter, "parse", MagicMock(side_effect=ValueError("transient")))
         first = commit_import(session, "cj", body, settings=settings)
@@ -383,7 +392,7 @@ def test_future_dates_cannot_enter_observations(
     clock = MagicMock(wraps=datetime)
     clock.now.return_value = datetime(2026, 1, 1, 23, 59, tzinfo=UTC)
     monkeypatch.setattr(import_service, "datetime", clock)
-    body = template_csv("shopify_stores").replace(b"2026-01-01", b"2026-01-02")
+    body = sample_csv("shopify_stores").replace(b"2026-01-01", b"2026-01-02")
     if mode == "json":
         body = b'{"products":[{"keyword":"future"}]}'
     run = commit_import(
@@ -417,7 +426,7 @@ def test_replay_validates_dates_against_original_capture(
     original = CollectorRun(source_id=source.id, trigger="csv", status="failed")
     session.add(original)
     session.flush()
-    body = template_csv(source.key) if mode == "csv" else b'{"products":[{"keyword":"future"}]}'
+    body = sample_csv(source.key) if mode == "csv" else b'{"products":[{"keyword":"future"}]}'
     payload = storage.store_capture(
         session,
         source_id=source.id,
@@ -473,7 +482,7 @@ def test_concurrent_uploads_share_one_raw_capture(
     def upload() -> str:
         with Session(db_engine) as connection:
             start.wait(timeout=10)
-            return commit_import(connection, "cj", template_csv("cj"), settings=settings).status
+            return commit_import(connection, "cj", sample_csv("cj"), settings=settings).status
 
     with ThreadPoolExecutor(max_workers=2) as pool:
         futures = [pool.submit(upload) for _ in range(2)]

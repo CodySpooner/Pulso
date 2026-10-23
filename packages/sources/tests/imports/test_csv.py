@@ -11,12 +11,22 @@ from pulso_sources.imports import csv as imports_csv
 from pulso_sources.imports.csv import DuplicateEntityRows, parse_csv, preview_csv
 from pulso_sources.imports.templates import TEMPLATES, template_csv
 
+from .conftest import sample_csv
+
 
 @pytest.mark.parametrize("source", TEMPLATES)
-def test_every_template_validates_its_example(source: str) -> None:
-    parsed = parse_csv(source, template_csv(source))
-    assert len(parsed.rows) == 1 and parsed.errors == [] and parsed.skipped == 0
+def test_template_download_is_header_only(source: str) -> None:
+    body = template_csv(source)
+    assert list(csv.reader(io.StringIO(body.decode()))) == [list(TEMPLATES[source].columns)]
+    parsed = parse_csv(source, body)
+    assert parsed.rows == [] and parsed.errors == [] and parsed.skipped == 0
     assert TEMPLATES[source].template_version == "csv-v1"
+
+
+@pytest.mark.parametrize("source", TEMPLATES)
+def test_every_sample_fixture_is_one_valid_row(source: str) -> None:
+    parsed = parse_csv(source, sample_csv(source))
+    assert len(parsed.rows) == 1 and parsed.errors == [] and parsed.skipped == 0
 
 
 @pytest.mark.parametrize(
@@ -117,7 +127,7 @@ def test_preview_limits_rows_but_counts_the_entire_file() -> None:
     ],
 )
 def test_invalid_values_are_not_repaired(column: str, value: str) -> None:
-    rows = list(csv.DictReader(io.StringIO(template_csv("shopify_stores").decode())))
+    rows = list(csv.DictReader(io.StringIO(sample_csv("shopify_stores").decode())))
     rows[0][column] = value
     output = io.StringIO()
     writer = csv.DictWriter(output, rows[0].keys())
@@ -205,7 +215,7 @@ def test_distinct_variants_and_warehouses_are_valid(source: str, body: bytes) ->
     ],
 )
 def test_cj_warehouse_rows_cannot_conflict_on_shared_entities(changes: dict[str, str]) -> None:
-    example = next(csv.DictReader(io.StringIO(template_csv("cj").decode())))
+    example = next(csv.DictReader(io.StringIO(sample_csv("cj").decode())))
     output = io.StringIO()
     writer = csv.DictWriter(output, example.keys())
     writer.writeheader()
@@ -227,7 +237,7 @@ def test_implicit_and_explicit_capture_day_match_across_variants() -> None:
     "column,value", [("title", "Other"), ("currency", "EUR"), ("observed_for", "2026-01-02")]
 )
 def test_shopify_variants_require_consistent_listing_fields(column: str, value: str) -> None:
-    example = next(csv.DictReader(io.StringIO(template_csv("shopify_stores").decode())))
+    example = next(csv.DictReader(io.StringIO(sample_csv("shopify_stores").decode())))
     output = io.StringIO()
     writer = csv.DictWriter(output, example.keys())
     writer.writeheader()
@@ -258,7 +268,7 @@ def test_missing_headers_fail_before_reading_rows(
     [("google_trends", "date"), ("shopify_stores", "observed_for"), ("cj", "observed_for")],
 )
 def test_future_dates_are_row_errors(source: str, column: str) -> None:
-    body = template_csv(source)
+    body = sample_csv(source)
     parsed = parse_csv(source, body, as_of=date(2025, 12, 31))
     assert not parsed.rows and [(e.row, e.column) for e in parsed.errors] == [(2, column)]
     assert "capture" in parsed.errors[0].message
@@ -327,7 +337,7 @@ def test_trailing_unnamed_empty_column_is_ignored() -> None:
 
 
 def test_file_and_row_caps(monkeypatch: pytest.MonkeyPatch) -> None:
-    body = template_csv("google_trends")
+    body = sample_csv("google_trends")
     monkeypatch.setattr(imports_csv, "MAX_BYTES", len(body) - 1)
     with pytest.raises(ValueError, match="20 MiB"):
         parse_csv("google_trends", body)

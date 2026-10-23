@@ -13,6 +13,8 @@ from pulso_sources.framework import Request, Target, enqueue_run, execute_run
 from pulso_sources.fx_frankfurter import FrankfurterAdapter, plan
 from pulso_sources.imports import ADAPTERS, commit_import, template_csv
 
+from .conftest import sample_csv
+
 
 def test_fx_framework_fixture_capture_and_csv_replay(
     session: Session, s3: MagicMock, settings: Settings, monkeypatch: pytest.MonkeyPatch
@@ -55,11 +57,16 @@ def test_fx_framework_fixture_capture_and_csv_replay(
         assert run.status == "success" and run.rows_inserted == expected
         assert run.http_requests == 0
     assert session.scalar(select(func.count()).select_from(RawPayload)) == 3
-    body = template_csv("fx_frankfurter")
+    template = commit_import(
+        session, "fx_frankfurter", template_csv("fx_frankfurter"), settings=settings
+    )
+    assert (template.status, template.error_code) == ("failed", "no_valid_rows")
+    assert session.scalars(select(FxRate).where(FxRate.source == "manual")).all() == []
+    body = sample_csv("fx_frankfurter")
     first = commit_import(session, "fx_frankfurter", body, settings=settings)
     assert first.status == "success" and first.rows_inserted == 1
     assert commit_import(session, "fx_frankfurter", body, settings=settings).status == "skipped"
     row = session.get_one(FxRate, (date(2026, 1, 1), "USD", "JPY", "manual"))
     assert row.captured_at.date() > row.observed_for and not source.enabled
-    assert session.scalar(select(func.count()).select_from(RawPayload)) == 4
+    assert session.scalar(select(func.count()).select_from(RawPayload)) == 5
     fetch.assert_not_called()

@@ -33,7 +33,7 @@ from pulso_sources.framework import (
     lifecycle,
 )
 from pulso_sources.google_trends import live
-from pulso_sources.imports import ImportData, commit_import, parse_csv
+from pulso_sources.imports import ImportData, commit_import, parse_csv, template_csv
 from pulso_workers import registration, tasks
 
 if TYPE_CHECKING:
@@ -379,6 +379,10 @@ def test_registered_csv_stays_disabled(session: Session, settings: Settings, htt
     assert registered.collector_max_retries == 1
     with pytest.raises(ValueError):
         PLANS["google_trends"](session, source, "catalog")
+    template = template_csv("google_trends")
+    unchanged = commit_import(session, "google_trends", template, settings=settings)
+    assert (unchanged.status, unchanged.error_code) == ("failed", "no_valid_rows")
+    assert session.scalar(select(func.count()).select_from(SearchTrend)) == 0
     csv = b"keyword,date,interest\nexample keyword,2026-10-19,50\n"
     run = commit_import(session, "google_trends", csv, settings=settings)
     assert run.status == "success" and run.rows_inserted == 1 and not source.enabled

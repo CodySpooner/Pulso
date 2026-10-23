@@ -1,4 +1,5 @@
 import asyncio
+import csv
 import gzip
 import io
 import json
@@ -60,7 +61,7 @@ from pulso_sources.framework import (
     enqueue_run,
     execute_run,
 )
-from pulso_sources.imports import ADAPTERS, ImportData, Row, template_csv
+from pulso_sources.imports import ADAPTERS, TEMPLATES, ImportData, Row, template_csv
 from pulso_sources.imports.csv import MAX_BYTES
 
 NOW = datetime.now(UTC).replace(microsecond=0)
@@ -84,6 +85,9 @@ ROUTES = [
     ("POST", "/v1/admin/sources/cj/import/preview"),
     ("POST", "/v1/admin/sources/cj/import"),
 ]
+# Explicit valid test rows: downloaded templates are header-only (DEC-191).
+TRENDS_CSV = b"keyword,date,interest,geo,source\nexample keyword,2026-01-01,50,US,manual\n"
+CJ_CSV = b"sku,name,unit_cost\nEXAMPLE-SKU,Example only,5.00\n"
 
 
 @pytest.fixture(params=["sqlite", pytest.param("postgres", marks=pytest.mark.db)])
@@ -627,9 +631,11 @@ class ImportAdapter:
 
 
 def test_import_template_and_preview_write_nothing(admin: TestClient, engine: Engine) -> None:
-    template = admin.get("/v1/admin/sources/google_trends/import/template")
-    assert template.headers["content-type"].startswith("text/csv")
-    assert template.content == template_csv("google_trends")
+    for key, template in TEMPLATES.items():
+        download = admin.get(f"/v1/admin/sources/{key}/import/template")
+        assert download.headers["content-type"].startswith("text/csv")
+        assert list(csv.reader(io.StringIO(download.text))) == [list(template.columns)]
+        assert download.content == template_csv(key)
     assert admin.get("/v1/admin/sources/backup/import/template").status_code == 404
     keys = {s["key"]: s["csv_import"] for s in admin.get("/v1/admin/sources").json()}
     assert keys == {
@@ -649,7 +655,10 @@ def test_import_template_and_preview_write_nothing(admin: TestClient, engine: En
         result: dict[str, Any] = response.json()
         return result
 
-    body = template.content + b"other,2026-13-01,50,US,manual\n\n"
+    for key in TEMPLATES:
+        unchanged = preview(key, template_csv(key))
+        assert (unchanged["valid"], unchanged["invalid"], unchanged["rows"]) == (0, 0, [])
+    body = TRENDS_CSV + b"other,2026-13-01,50,US,manual\n\n"
     checked = preview("google_trends", body)
     assert {k: checked[k] for k in ("valid", "invalid", "skipped", "error_count")} == {
         "valid": 1,
@@ -663,7 +672,7 @@ def test_import_template_and_preview_write_nothing(admin: TestClient, engine: En
     many = template_csv("google_trends") + b"k,bad,50,US,x\n" * 150
     capped = preview("google_trends", many)
     assert (len(capped["errors"]), capped["error_count"], capped["invalid"]) == (100, 150, 150)
-    twice = template_csv("cj") + template_csv("cj").splitlines(keepends=True)[1]
+    twice = CJ_CSV + CJ_CSV.splitlines(keepends=True)[1]
     duplicate = preview("cj", twice)  # rejects the whole file, naming both rows
     assert (duplicate["valid"], duplicate["invalid"]) == (0, 2)
     assert preview("cj", b"nope\n1\n")["code"] == "invalid_file"
@@ -684,7 +693,7 @@ def test_import_commit_then_repeat_skips(
     monkeypatch.setattr(storage, "get_settings", lambda: settings)
     monkeypatch.setitem(ADAPTERS, "google_trends", ImportAdapter)
     upload = {"headers": {"Content-Type": "application/octet-stream"}}
-    body = template_csv("google_trends") + b"other,2026-13-01,50,US,manual\n"
+    body = TRENDS_CSV + b"other,2026-13-01,50,US,manual\n"
 
     first = admin.post("/v1/admin/sources/google_trends/import", content=body, **upload).json()
     assert (first["run"]["status"], first["run"]["trigger"]) == ("success", "csv")
@@ -704,8 +713,16 @@ def test_import_commit_then_repeat_skips(
         "/v1/admin/sources/cj/import", params={"mode": "json"}, content=b"{}", **upload
     )
     assert json_cj.json()["code"] == "invalid_import"
-    unbuilt = admin.post("/v1/admin/sources/cj/import", content=template_csv("cj"), **upload)
+    unbuilt = admin.post("/v1/admin/sources/cj/import", content=CJ_CSV, **upload)
     assert (unbuilt.status_code, unbuilt.json()["code"]) == (409, "import_unavailable")
+    for key in ("google_trends", "fx_frankfurter"):
+        path = f"/v1/admin/sources/{key}/import"
+        run = admin.post(path, content=template_csv(key), **upload).json()["run"]
+        assert (run["status"], run["error_code"], run["rows_inserted"]) == (
+            "failed",
+            "no_valid_rows",
+            0,
+        )
 
 
 IMPORT_PATHS = [
@@ -805,9 +822,8 @@ def test_exact_import_cap_accepts_original_bytes(
     if "mode=json" in path:
         body = b'{"products": []}'.ljust(MAX_BYTES)
     else:
-        template = template_csv("google_trends")
-        body = template.replace(
-            b"keyword,", b"keyword" + b" " * (MAX_BYTES - len(template)) + b",", 1
+        body = TRENDS_CSV.replace(
+            b"keyword,", b"keyword" + b" " * (MAX_BYTES - len(TRENDS_CSV)) + b",", 1
         )
     assert len(body) == MAX_BYTES
     headers = {"Content-Length": str(MAX_BYTES)} if declared else {}
