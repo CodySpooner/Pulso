@@ -1,6 +1,7 @@
 "use client";
 
-import { CalendarDays } from "lucide-react";
+import { CalendarDays, ChevronLeft, ChevronRight } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { EmptyState } from "@/components/pulso/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -137,7 +138,7 @@ function OpenGaps({ names, host }: { names: Map<string, string>; host: ReturnTyp
       <h3 className="text-data font-medium text-foreground">
         Open gaps <span className="font-normal text-subtle-foreground">· {ranges.length} ranges, newest first · feature dates touching them carry gap flags</span>
       </h3>
-      <div role="region" aria-label="Open gaps" tabIndex={0} className="relative overflow-x-auto">
+      <ScrollCue label="Open gaps">
         <table className="zone-data w-full min-w-150">
           <thead>
             <tr className="text-left text-label text-muted-foreground">
@@ -160,8 +161,49 @@ function OpenGaps({ names, host }: { names: Map<string, string>; host: ReturnTyp
             ))}
           </tbody>
         </table>
-      </div>
+      </ScrollCue>
       {ranges.length > SHOWN_GAPS && <p className="text-label text-subtle-foreground">{ranges.length - SHOWN_GAPS} older ranges not shown.</p>}
+    </div>
+  );
+}
+
+/**
+ * A keyboard-scrollable region that fades the edge hiding columns and points a chevron at them (imp-069).
+ * Nothing shows when the content fits; the cue is static, so there is no motion to reduce.
+ */
+function ScrollCue({ label, children }: { label: string; children: React.ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [left, setLeft] = useState(false);
+  const [right, setRight] = useState(false);
+  const update = useCallback(() => {
+    const el = ref.current!;
+    setLeft(el.scrollLeft > 1);
+    setRight(el.scrollWidth - el.clientWidth - el.scrollLeft > 1);
+  }, []);
+  useEffect(() => {
+    const el = ref.current!;
+    const resize = new ResizeObserver(update); // also fires once on observe, for the first paint
+    resize.observe(el);
+    resize.observe(el.firstElementChild!);
+    return () => resize.disconnect();
+  }, [update]);
+
+  const edge = "pointer-events-none absolute inset-y-0 flex w-10 pt-1.5 text-muted-foreground";
+  return (
+    <div className="relative">
+      <div ref={ref} role="region" aria-label={label} tabIndex={0} onScroll={update} className="overflow-x-auto">
+        {children}
+      </div>
+      {left && (
+        <span aria-hidden data-scroll-cue="left" className={cn(edge, "left-0 bg-linear-to-r from-card from-40%")}>
+          <ChevronLeft className="size-4" />
+        </span>
+      )}
+      {right && (
+        <span aria-hidden data-scroll-cue="right" className={cn(edge, "right-0 justify-end bg-linear-to-l from-card from-40%")}>
+          <ChevronRight className="size-4" />
+        </span>
+      )}
     </div>
   );
 }

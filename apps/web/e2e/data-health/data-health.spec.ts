@@ -49,6 +49,7 @@ test("renders every DH-1 field from fixtures", async ({ page }) => {
   const gaps = page.getByRole("region", { name: "Open gaps" });
   await expect(gaps.getByRole("row", { name: /Google Trends/ })).toContainText("Host offline");
   await expect(gaps.getByRole("row", { name: /Google Trends/ })).toContainText("2");
+  await expect(page.locator("[data-scroll-cue]")).toHaveCount(0); // imp-069: every column fits, so no scroll cue
   await expect(page.getByRole("region", { name: "CSV import" }).getByLabel("Source")).toHaveValue("fx_frankfurter");
 
   // Run drawer: error text and raw-payload ids for the newest run, plus the source's remaining fields.
@@ -257,6 +258,23 @@ test.describe("phone width", () => {
     await open(page);
     await expect(page.getByRole("switch", { name: "CJ Dropshipping enabled" })).toBeVisible();
     await expect(page.getByRole("region", { name: "Sources table" })).toBeHidden();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(375);
+  });
+
+  test("open gaps cue hidden columns and scroll to them by keyboard (imp-069)", async ({ page }) => {
+    await mockAdminApi(page);
+    await open(page);
+    const gaps = page.getByRole("region", { name: "Open gaps" });
+    const cue = (side: string) => page.locator(`[data-scroll-cue="${side}"]`);
+    await expect(cue("right")).toBeVisible();
+    await expect(cue("left")).toHaveCount(0);
+    await expect(gaps.getByRole("columnheader", { name: "Reason" })).not.toBeInViewport();
+
+    await gaps.focus();
+    for (let i = 0; i < 12; i++) await page.keyboard.press("ArrowRight");
+    await expect(gaps.getByRole("columnheader", { name: "Reason" })).toBeInViewport();
+    await expect(cue("right")).toHaveCount(0);
+    await expect(cue("left")).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(375);
   });
 
