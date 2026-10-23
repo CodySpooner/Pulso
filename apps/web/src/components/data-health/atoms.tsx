@@ -2,6 +2,7 @@ import {
   CircleAlert,
   CircleCheck,
   CircleDashed,
+  CircleHelp,
   CirclePause,
   CircleX,
   Clock,
@@ -61,6 +62,12 @@ export const sourceStates: Record<SourceState, { label: string; icon: LucideIcon
   disabled: { label: "Disabled", icon: CirclePause, tone: "muted", hint: "Disabled by the owner. Nothing is collected." },
   never: { label: "Never run", icon: CircleDashed, tone: "muted", hint: "No run recorded yet." },
   healthy: { label: "Healthy", icon: CircleCheck, tone: "neutral", hint: "The last run succeeded." },
+  unknown: {
+    label: "Unknown",
+    icon: CircleHelp,
+    tone: "muted",
+    hint: "Missed runs come from the collector host's gap check, which didn't load, so this source may be overdue. Retry on the Collector host card.",
+  },
 };
 
 /** A hint on hover, keyboard focus and tap (imp-073); the other props go to its trigger. The hint is

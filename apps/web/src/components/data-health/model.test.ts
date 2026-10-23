@@ -81,6 +81,26 @@ describe("sourceState", () => {
     expect(sourceState(source({ last_run: run({ status: "skipped" }) }), {}, NOW)).toBe("healthy");
   });
 
+  // imp-133 (aud-014 A14-02): while the host call is loading or failed there is no gap summary, so Overdue
+  // can't be ruled out. A missing input is never a good value (DEC-040): what Overdue outranks reads Unknown.
+  test.each([
+    ["blocked", source({ status: "blocked", enabled: false }), "blocked"],
+    ["disabled", source({ status: "disabled", enabled: false }), "disabled"],
+    ["running", source({ last_run: run({ status: "running" }) }), "running"],
+    ["failing", source({ last_run: run({ status: "failed" }) }), "failing"],
+    ["skipped", source({ last_run: run({ status: "skipped", complete: false, error_code: "slot_suppressed" }) }), "skipped"],
+    ["never run", source({ last_run: null }), "never"],
+    ["partial", source({ last_run: run({ status: "partial", complete: false }) }), "unknown"],
+    ["healthy", source(), "unknown"],
+  ])("without the host's gap summary, %s reads %s", (_, s, expected) => {
+    expect(sourceState(s, undefined, NOW)).toBe(expected);
+  });
+
+  test("a source the gap summary would mark overdue reads unknown without it, never healthy", () => {
+    expect(sourceState(source(), { cj: ago(7) }, NOW)).toBe("overdue");
+    expect(sourceState(source(), undefined, NOW)).toBe("unknown");
+  });
+
   test("skipNote names the blocking run only when the API supplies it", () => {
     expect(skipNote(run({ status: "skipped", error_code: "slot_suppressed", blocked_by: 41 }))).toBe("Run #41 was still active");
     expect(skipNote(run({ status: "skipped", error_code: "slot_suppressed", blocked_by: null }))).toBe("An earlier run was still active");
@@ -95,8 +115,20 @@ test("attentionCount counts blocked, failing and overdue sources only", () => {
     source({ key: "d", last_run: run({ status: "partial" }) }),
     source({ key: "e", enabled: false, status: "disabled" }),
   ];
-  expect(attentionCount(sources, { c: ago(7) }, NOW)).toBe(3);
-  expect(attentionCount(sources.slice(2), {}, NOW)).toBe(0);
+  expect(attentionCount(sources, { c: ago(7) }, NOW)).toEqual({ count: 3, atLeast: false });
+  expect(attentionCount(sources.slice(2), {}, NOW)).toEqual({ count: 0, atLeast: false });
+});
+
+// imp-133: without the host's gap summary the count is a floor, never an understatement read as exact.
+test("attentionCount is a floor while a source could still be overdue", () => {
+  const blocked = source({ key: "a", status: "blocked", enabled: false });
+  const failing = source({ key: "b", last_run: run({ status: "failed" }) });
+  const disabled = source({ key: "e", enabled: false, status: "disabled" });
+  const overdue = source({ key: "c" });
+  expect(attentionCount([blocked, failing, overdue, disabled], undefined, NOW)).toEqual({ count: 2, atLeast: true });
+  expect(attentionCount([disabled, source({ key: "n", last_run: null })], undefined, NOW)).toEqual({ count: 0, atLeast: true });
+  // Every state is settled before the gap check, so the host can't add to the count.
+  expect(attentionCount([blocked, failing, disabled], undefined, NOW)).toEqual({ count: 2, atLeast: false });
 });
 
 test("hostState follows the 15 min / 2 h heartbeat rule", () => {

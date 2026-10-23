@@ -17,23 +17,29 @@ export const OVERDUE_WINDOW_MS = 24 * HOUR;
 /** No successful backup for longer than this raises the missing-backup state (DEC-060). */
 export const BACKUP_MAX_AGE_MS = 26 * HOUR;
 
-export type SourceState = "blocked" | "disabled" | "running" | "failing" | "overdue" | "skipped" | "partial" | "never" | "healthy";
+export type SourceState = "blocked" | "disabled" | "running" | "failing" | "overdue" | "skipped" | "partial" | "never" | "healthy" | "unknown";
 
 /** States that put a count on the Data Health nav badge (DH-3). */
 export const ATTENTION: ReadonlySet<SourceState> = new Set(["blocked", "failing", "overdue"]);
 
-export function sourceState(source: SourceHealth, latestGapEnds: HostHealth["latest_gap_ends"], now: number): SourceState {
+/** States settled before the gap check, so the host's gap summary can't change them. */
+const BEFORE_GAP_CHECK: ReadonlySet<SourceState> = new Set(["blocked", "disabled", "running", "failing"]);
+
+/** `latestGapEnds` is undefined while the host call is loading or failed (imp-133). */
+export function sourceState(source: SourceHealth, latestGapEnds: HostHealth["latest_gap_ends"] | undefined, now: number): SourceState {
   if (source.status === "blocked") return "blocked";
   if (!source.enabled) return "disabled";
   const run = source.last_run;
   if (run?.status === "queued" || run?.status === "running") return "running";
   if (run?.status === "failed" || run?.status === "blocked") return "failing";
-  const gapEnd = latestGapEnds[source.key];
+  const gapEnd = latestGapEnds?.[source.key];
   if (gapEnd && now - Date.parse(gapEnd) < OVERDUE_WINDOW_MS) return "overdue";
   // A suppressed slot collected nothing (DEC-108); the gap audit counts it as missed (imp-042, DEC-123).
   if (run?.status === "skipped" && run.error_code === "slot_suppressed") return "skipped";
-  if (run?.status === "partial" || (run?.status === "success" && !run.complete)) return "partial";
-  return run ? "healthy" : "never";
+  if (!run) return "never";
+  // Without the gap summary Overdue can't be ruled out, and a missing input is never a good value (DEC-040).
+  if (!latestGapEnds) return "unknown";
+  return run.status === "partial" || (run.status === "success" && !run.complete) ? "partial" : "healthy";
 }
 
 /** Why the latest slot was skipped, naming the blocking run when the API supplies it. */
@@ -41,8 +47,15 @@ export function skipNote(run: Run): string {
   return run.blocked_by != null ? `Run #${run.blocked_by} was still active` : "An earlier run was still active";
 }
 
-export function attentionCount(sources: SourceHealth[], latestGapEnds: HostHealth["latest_gap_ends"], now: number): number {
-  return sources.filter((s) => ATTENTION.has(sourceState(s, latestGapEnds, now))).length;
+/** Sources needing attention. `atLeast` when the gap summary is missing and a source it could make Overdue is
+ *  left, so the count is a floor and must read as one (imp-133). */
+export function attentionCount(
+  sources: SourceHealth[],
+  latestGapEnds: HostHealth["latest_gap_ends"] | undefined,
+  now: number,
+): { count: number; atLeast: boolean } {
+  const states = sources.map((s) => sourceState(s, latestGapEnds, now));
+  return { count: states.filter((s) => ATTENTION.has(s)).length, atLeast: !latestGapEnds && states.some((s) => !BEFORE_GAP_CHECK.has(s)) };
 }
 
 export type HostState = "none" | "online" | "late" | "offline";
