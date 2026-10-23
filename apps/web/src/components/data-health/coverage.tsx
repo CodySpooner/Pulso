@@ -8,8 +8,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { formatUtc } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
-import { useCoverage, useHost, useOlderGaps, useSources } from "./api";
-import { Panel, PanelError } from "./atoms";
+import { useCoreDown, useCoverage, useHost, useOlderGaps, useSources } from "./api";
+import { Panel, PanelError, StaleLine } from "./atoms";
 import { LoadMore } from "./load-more";
 import { coverageRows, gapReasons, gapsNote, mergeGaps, plural, utcDays, type CoverageDay, type MissedSlot } from "./model";
 
@@ -62,11 +62,15 @@ export function CoveragePanel({ now }: { now: number }) {
   const coverage = useCoverage(COVERAGE_DAYS);
   const sources = useSources();
   const host = useHost();
+  const coreDown = useCoreDown();
   const days = utcDays(COVERAGE_DAYS, now);
   const firstPhoneDay = COVERAGE_DAYS - PHONE_DAYS;
 
   return (
     <Panel id="coverage" title="Coverage" note="One cell per UTC day · newest on the right">
+      {coverage.isRefetchError && !coreDown && (
+        <StaleLine what="Couldn't refresh coverage" error={coverage.error} asOf={coverage.dataUpdatedAt} retry={() => coverage.refetch()} />
+      )}
       {coverage.isPending || sources.isPending ? (
         // The loaded layout (imp-082): a row per Phase 1 source, the axis line, the legend and an open-gaps
         // block sized for a heading and two ranges, so nothing below moves when the data lands.
@@ -92,9 +96,9 @@ export function CoveragePanel({ now }: { now: number }) {
             </div>
           </div>
         </div>
-      ) : coverage.isError ? (
+      ) : coverage.isLoadingError ? (
         <PanelError title="Couldn't load coverage" error={coverage.error} retry={() => coverage.refetch()} />
-      ) : sources.isError ? (
+      ) : sources.isLoadingError ? (
         <PanelError title="Couldn't load sources" error={sources.error} retry={() => sources.refetch()} />
       ) : coverage.data.length === 0 ? (
         <EmptyState icon={CalendarDays} size="sm" title="No coverage yet">
@@ -175,7 +179,7 @@ export function GapsLink({ missed, onFollow }: { missed: MissedSlot; onFollow?: 
 
 function OpenGaps({ names, host }: { names: Map<string, string>; host: ReturnType<typeof useHost> }) {
   const older = useOlderGaps(host.data?.next_cursor ?? null);
-  if (host.isPending || host.isError) return null; // the host card shows its own loading and error state
+  if (!host.data) return null; // the host card shows its own loading, error and stale state (imp-132)
   // Ranges merge across pages, so a range cut by a page boundary reads as one (DEC-166).
   const gaps = [host.data.open_gaps, ...older.pages.map((p) => p.open_gaps)].flat();
   const ranges = mergeGaps(gaps);

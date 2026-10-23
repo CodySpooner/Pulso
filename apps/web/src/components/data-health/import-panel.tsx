@@ -97,7 +97,8 @@ export function ImportPanel({ onOpen, ref }: { onOpen: (key: string) => void; re
         <Skeleton className="h-24 w-full" />
       </div>
     );
-  } else if (sources.isError) {
+  } else if (sources.isLoadingError) {
+    // A failed refetch keeps the cached sources; the Sources panel's line reports that call (imp-132).
     body = <PanelError title="Couldn't load import sources" error={sources.error} retry={() => sources.refetch()} />;
   } else if (!source) {
     body = (

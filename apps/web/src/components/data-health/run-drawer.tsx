@@ -11,7 +11,7 @@ import { formatUtc } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 import { useHost, useMoreTargets, useRunDetail, useSourceRuns } from "./api";
-import { Ago, Missing, PanelError, runStatus, StatePill } from "./atoms";
+import { Ago, Missing, PanelError, runStatus, StaleLine, StatePill } from "./atoms";
 import { GapsLink, OPEN_GAPS_ID } from "./coverage";
 import { LoadMore } from "./load-more";
 import { missedNote, skipNote, sourceState, targetsNote, type Run, type SourceHealth } from "./model";
@@ -130,13 +130,25 @@ function DrawerBody({ source, now, onGaps }: { source: SourceHealth; now: number
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
+        {/* The drawer covers the page's line, so it says its own (imp-132). An older page's failure keeps the runs
+            already loaded too; its Retry asks for that page again. */}
+        {runs.isError && runs.data && (
+          <StaleLine
+            boxed
+            className="mb-3"
+            what={runs.isFetchNextPageError ? "Couldn't load older runs" : "Couldn't refresh runs"}
+            error={runs.error}
+            asOf={runs.dataUpdatedAt}
+            retry={() => void (runs.isFetchNextPageError ? runs.fetchNextPage() : runs.refetch())}
+          />
+        )}
         {runs.isPending ? (
           <div className="flex flex-col gap-2">
             {[0, 1, 2, 3, 4].map((i) => (
               <Skeleton key={i} className="h-10 w-full" />
             ))}
           </div>
-        ) : runs.isError ? (
+        ) : runs.isLoadingError ? (
           <PanelError title="Couldn't load runs" error={runs.error} retry={() => runs.refetch()} />
         ) : items.length === 0 ? (
           <EmptyState icon={History} size="sm" title="No runs yet">
@@ -230,9 +242,12 @@ function RunDetailView({ run }: { run: Run }) {
         </Fact>
       </dl>
 
+      {detail.isRefetchError && (
+        <StaleLine boxed what="Couldn't refresh targets" error={detail.error} asOf={detail.dataUpdatedAt} retry={() => detail.refetch()} />
+      )}
       {detail.isPending ? (
         <Skeleton className="h-16 w-full" />
-      ) : detail.isError ? (
+      ) : detail.isLoadingError ? (
         <PanelError title="Couldn't load targets" error={detail.error} retry={() => detail.refetch()} />
       ) : targets.length === 0 ? (
         <p className="text-label text-muted-foreground">No targets recorded for this run.</p>

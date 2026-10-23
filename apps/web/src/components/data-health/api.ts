@@ -104,6 +104,13 @@ function loadMore<P extends { next_cursor: string | null }>(
   };
 }
 
+/** Both core calls failed: one page-level line speaks for every panel's failed refetch (imp-132). */
+export function useCoreDown(): boolean {
+  const sources = useSources();
+  const host = useHost();
+  return sources.isError && host.isError;
+}
+
 /** Refetches every admin query after a toggle or a Run now. */
 export function useRefreshAdmin(): () => Promise<void> {
   const queryClient = useQueryClient();
