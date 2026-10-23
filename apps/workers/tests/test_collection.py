@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from unittest.mock import Mock
 
 import pytest
@@ -15,13 +15,30 @@ from pulso_workers import tasks
 from pulso_workers.beat import LockedScheduler
 from pulso_workers.celery_app import app
 
+NOW = datetime(2026, 10, 26, 4, 30, tzinfo=UTC)
 
-@pytest.mark.parametrize("existing", [None, "queued", "running", "success", "disabled", "off"])
+
+@pytest.mark.parametrize(
+    "existing,days_ago",
+    [
+        (None, 0),
+        ("queued", 0),
+        ("running", 0),
+        ("success", 0),
+        ("disabled", 0),
+        ("off", 0),
+        pytest.param("success", 1, id="yesterday-success-does-not-suppress-today"),
+    ],
+)
 def test_scheduled_enqueue_is_gated_and_commits_before_publish(
     session: Session,
     monkeypatch: pytest.MonkeyPatch,
     existing: str | None,
+    days_ago: int,
 ) -> None:
+    clock = Mock(wraps=datetime)
+    clock.now.return_value = NOW
+    monkeypatch.setattr(tasks, "datetime", clock)
     monkeypatch.setenv("PULSO_SCHEDULER", "off" if existing == "off" else "on")
     if existing == "disabled":
         session.get_one(Source, 1).enabled = False
@@ -31,7 +48,8 @@ def test_scheduled_enqueue_is_gated_and_commits_before_publish(
                 source_id=1,
                 trigger="schedule",
                 status=existing,
-                slot_key=f"catalog:{datetime.now(UTC).date()}",
+                slot_key=f"catalog:{(NOW - timedelta(days=days_ago)).date()}",
+                queued_at=NOW - timedelta(days=days_ago),
             )
         )
     session.commit()
@@ -40,12 +58,12 @@ def test_scheduled_enqueue_is_gated_and_commits_before_publish(
         session.expire_all()
         run = session.get_one(CollectorRun, run_id)
         assert run.status == "queued" and run.started_at is None
-        assert run.slot_key == f"catalog:{datetime.now(UTC).date()}"
+        assert run.slot_key == f"catalog:{NOW.date()}"
 
     publisher = Mock(side_effect=publish)
     monkeypatch.setattr(tasks, "publish_run", publisher)
     tasks.enqueue_scheduled("fixture", "catalog", "daily")
-    assert publisher.call_count == int(existing is None)
+    assert publisher.call_count == int(existing is None or days_ago == 1)
 
 
 def test_publish_failure_does_not_leak_into_json_logs(
