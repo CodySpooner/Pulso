@@ -162,6 +162,36 @@ export function previewSummary(p: ImportPreview): string {
   return parts.join(" · ");
 }
 
+/**
+ * The sample's columns in template order (imp-080). The API builds each row in template order and leaves out
+ * blank cells, so each row is an ordered subset of the template: a column goes after every column some row
+ * puts before it. ponytail: two columns no sampled row holds together keep first-seen order; reading the
+ * template's header would settle them.
+ */
+export function sampleColumns(rows: ImportPreview["rows"]): string[] {
+  const before = new Map<string, Set<string>>();
+  for (const row of rows) {
+    Object.keys(row).forEach((key, i, keys) => {
+      const earlier = before.get(key) ?? new Set();
+      keys.slice(0, i).forEach((k) => earlier.add(k));
+      before.set(key, earlier);
+    });
+  }
+  const left = [...before.keys()];
+  const order: string[] = [];
+  while (left.length) {
+    const next = left.findIndex((key) => [...before.get(key)!].every((k) => order.includes(k)));
+    order.push(...left.splice(Math.max(next, 0), 1));
+  }
+  return order;
+}
+
+/** How much of the valid rows the bounded sample shows: the API sends the first 20 (DEC-117). */
+export function sampleNote(p: ImportPreview): string {
+  if (p.valid === 1) return "1 row";
+  return p.rows.length === p.valid ? `all ${p.valid.toLocaleString("en-US")}` : `first ${p.rows.length} of ${p.valid.toLocaleString("en-US")}`;
+}
+
 /** The commit's outcome in words (vault Features/CSV Export & Import, Duplicate state). */
 export function importOutcome(result: ImportResult, sourceName: string): { tone: "ok" | "error"; text: string } {
   const { run, original_run_id: original } = result;

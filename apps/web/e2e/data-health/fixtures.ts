@@ -175,7 +175,35 @@ export function runDetail(id: number): S["RunDetail"] | undefined {
 
 /** A Frankfurter FX file with one bad rate (P1-11b): the preview names its row; nothing is written. */
 export const importPreview: S["ImportPreview"] = {
-  rows: [], valid: 3, invalid: 1, skipped: 0, error_count: 1, errors: [{ row: 5, column: "rate", message: "Invalid rate. Use a finite positive decimal number below 10,000,000,000 with up to 8 decimal places." }],
+  rows: [
+    { date: "2026-10-20", base: "USD", quote: "JPY", rate: "150.25" },
+    { date: "2026-10-20", base: "USD", quote: "EUR", rate: "0.92" },
+    { date: "2026-10-21", base: "USD", quote: "GBP", rate: "0.79" },
+  ],
+  valid: 3, invalid: 1, skipped: 0, error_count: 1, errors: [{ row: 5, column: "rate", message: "Invalid rate. Use a finite positive decimal number below 10,000,000,000 with up to 8 decimal places." }],
+};
+
+/** A CJ file checked before its adapter exists (imp-080): the API's first 20 of 1,284 valid rows, in template
+ *  order with blank optional cells left out, as `parse_csv` returns them, and one name that is markup as text. */
+export const cjPreview: S["ImportPreview"] = {
+  rows: Array.from({ length: 20 }, (_, i) => ({
+    ...(i % 3 !== 1 && { cj_product_id: `CJ-${1000 + i}` }),
+    ...(i % 3 !== 0 && { sku: `SKU-${i + 1}-BLK` }),
+    name: i === 2 ? '<img src=x onerror="window.__xss=1"> Desk lamp' : `Fixture product ${i + 1}`,
+    unit_cost: (4.5 + i).toFixed(2),
+    currency: i === 4 ? "EUR" : "USD",
+    ...(i % 2 === 0 && { warehouse_country: "US" }),
+    ...(i % 4 === 0 && { ship_cost_us: "3.10" }),
+    min_days: 3,
+    max_days: 7 + (i % 3),
+    ...(i % 5 !== 0 && { moq: i + 1 }),
+    observed_for: "2026-10-21",
+  })),
+  valid: 1284, invalid: 2, skipped: 1, error_count: 2,
+  errors: [
+    { row: 7, column: "unit_cost", message: "Invalid money value" },
+    { row: 19, column: "cj_product_id or sku", message: "One identifier required" },
+  ],
 };
 
 // apps/api/openapi.json is the exported contract; tests resolve operation ids from it, not from memory.
