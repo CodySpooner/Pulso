@@ -3,11 +3,11 @@
 import logging
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any, Literal
 
 from celery.exceptions import SoftTimeLimitExceeded  # type: ignore[import-untyped]
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
 from pulso_core.db import get_session
@@ -34,6 +34,25 @@ PLANS: dict[str, Callable[[Session, Source, str], Plan]] = {}
 
 def publish_run(run_id: int) -> None:
     app.send_task("collect.run", args=[run_id], queue="collect", retry=False)
+
+
+def stale_after(source_key: str) -> timedelta:
+    settings = get_settings()
+    budget = {
+        "shopify_stores": settings.shopify_wall_time_seconds,
+        "cj": settings.cj_wall_time_seconds,
+        "google_trends": settings.trends_wall_time_seconds,
+        "fx_frankfurter": settings.fx_wall_time_seconds,
+    }.get(source_key, settings.collector_wall_time_seconds)
+    return max(timedelta(hours=2), timedelta(seconds=2 * budget))
+
+
+def run_job(source_key: str, slot: str | None) -> str:
+    return (
+        slot.split(":", 1)[0]
+        if slot
+        else {"google_trends": "trends", "fx_frankfurter": "fx"}.get(source_key, "catalog")
+    )
 
 
 def defer_busy(session: Session, run_id: int) -> None:
@@ -81,39 +100,66 @@ def enqueue_scheduled(source_key: str, job: str, cadence: Literal["daily", "week
     if not get_settings().pulso_scheduler:
         return
     with get_session() as session:
-        source = session.scalar(select(Source).where(Source.key == source_key, Source.enabled))
+        # Serialize enqueue decisions with catch-up without taking the execution lock.
+        source = session.scalar(
+            select(Source).where(Source.key == source_key, Source.enabled).with_for_update()
+        )
         if source is None:
             return
-        lock = AdvisoryLock(source.id)
-        try:
-            if not lock.acquire():
-                return
-            session.refresh(source)
-            if not source.enabled:
-                return
-            slot = slot_key(job, datetime.now(UTC), cadence=cadence)
-            if session.scalar(
-                select(CollectorRun.id)
-                .where(
-                    CollectorRun.source_id == source.id,
-                    (CollectorRun.status.in_(["queued", "running"]))
-                    | ((CollectorRun.slot_key == slot) & (CollectorRun.status == "success")),
-                )
-                .limit(1)
-            ):
-                return
-            try:
-                enqueue_run(
-                    session,
+        now = datetime.now(UTC)
+        slot = slot_key(job, now, cadence=cadence)
+        if session.scalar(
+            select(CollectorRun.id)
+            .where(
+                CollectorRun.source_id == source.id,
+                CollectorRun.slot_key == slot,
+                CollectorRun.status == "success",
+            )
+            .limit(1)
+        ):
+            return
+        for run in session.scalars(
+            select(CollectorRun)
+            .where(
+                CollectorRun.source_id == source.id,
+                CollectorRun.status.in_(["queued", "running"]),
+                func.coalesce(CollectorRun.started_at, CollectorRun.queued_at)
+                > now - stale_after(source.key),
+            )
+            .order_by(CollectorRun.id)
+        ):
+            if run_job(source.key, run.slot_key) != job:
+                continue
+            age = (now - (run.started_at or run.queued_at).replace(tzinfo=UTC)).total_seconds()
+            session.add(
+                CollectorRun(
                     source_id=source.id,
                     trigger="schedule",
                     slot_key=slot,
-                    publish=publish_run,
+                    status="skipped",
+                    queued_at=now,
+                    finished_at=now,
+                    params={"blocked_by": run.id},
+                    error_code="slot_suppressed",
                 )
-            except Exception as exc:
-                logger.error("run_publish_failed", extra={"error_type": type(exc).__name__})
-        finally:
-            lock.close()
+            )
+            session.commit()
+            # The shared JSON formatter omits extras; keep safe fields in the message.
+            logger.info(
+                "slot_suppressed source=%s job=%s slot_key=%s blocked_by=%s age_seconds=%s",
+                source_key,
+                job,
+                slot,
+                run.id,
+                age,
+            )
+            return
+        try:
+            enqueue_run(
+                session, source_id=source.id, trigger="schedule", slot_key=slot, publish=publish_run
+            )
+        except Exception as exc:
+            logger.error("run_publish_failed", extra={"error_type": type(exc).__name__})
 
 
 def collect_run(run_id: int) -> None:
@@ -134,14 +180,7 @@ def collect_run(run_id: int) -> None:
             source = session.get_one(Source, run.source_id)
             if not source.enabled or source.key not in PLANS:
                 raise ValueError("Source disabled or adapter unavailable")
-            job = (
-                run.slot_key.split(":", 1)[0]
-                if run.slot_key
-                else {
-                    "google_trends": "trends",
-                    "fx_frankfurter": "fx",
-                }.get(source.key, "catalog")
-            )
+            job = run_job(source.key, run.slot_key)
             plan = PLANS[source.key](session, source, job)
             if not 0 < plan.wall_time_seconds < get_settings().collect_soft_time_limit_seconds:
                 raise ValueError("Plan budget must be positive and below soft limit")

@@ -18,7 +18,7 @@ from pulso_sources.framework import enqueue_run, slot_key
 from pulso_workers.celery_app import app
 from pulso_workers.locks import AdvisoryLock
 from pulso_workers.schedules import COLLECTION_SLOTS
-from pulso_workers.tasks import publish_run
+from pulso_workers.tasks import publish_run, stale_after
 
 logger = logging.getLogger("pulso.ops")
 OFFLINE_AFTER = timedelta(minutes=15)
@@ -94,20 +94,13 @@ def audit_slots(
 
 
 def recover_source(session: Session, source: Source, now: datetime, missing: list[str]) -> None:
-    settings = get_settings()
-    budget = {
-        "shopify_stores": settings.shopify_wall_time_seconds,
-        "cj": settings.cj_wall_time_seconds,
-        "google_trends": settings.trends_wall_time_seconds,
-        "fx_frankfurter": settings.fx_wall_time_seconds,
-    }.get(source.key, settings.collector_wall_time_seconds)
     session.execute(
         update(CollectorRun)
         .where(
             CollectorRun.source_id == source.id,
             CollectorRun.status.in_(["queued", "running"]),
             func.coalesce(CollectorRun.started_at, CollectorRun.queued_at)
-            <= now - max(timedelta(hours=2), timedelta(seconds=2 * budget)),
+            <= now - stale_after(source.key),
         )
         .values(
             status="failed",
@@ -118,6 +111,7 @@ def recover_source(session: Session, source: Source, now: datetime, missing: lis
         )
     )
     session.commit()
+    session.refresh(source, with_for_update=True)
     today = now.replace(hour=0, minute=0, second=0, microsecond=0)
     if (
         not source.enabled
@@ -136,6 +130,7 @@ def recover_source(session: Session, source: Source, now: datetime, missing: lis
             .limit(1)
         )
     ):
+        session.commit()
         return
     try:
         enqueue_run(
