@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 
-import { allNavItems, isBuilt, resolveRoute } from "./nav";
+import { allNavItems, CURRENT_PHASE, isBuilt, resolveRoute } from "./nav";
 
 // SPEC §10 routes (dynamic segments filled with an example id).
 const SPEC_ROUTES = [
@@ -24,10 +24,15 @@ describe("nav config", () => {
     for (const path of ["/nope", "/products", "/products/1/extra", "/admin"]) expect(resolveRoute(path)).toBeUndefined();
   });
 
-  test("hrefs are unique and only Daily Pulse and the UI gallery are built in Phase 0", () => {
+  test("hrefs are unique and Phase 1 builds Data Health on top of Phase 0", () => {
     const hrefs = allNavItems.map((i) => i.href);
     expect(new Set(hrefs).size).toBe(hrefs.length);
-    expect(allNavItems.filter(isBuilt).map((i) => i.href)).toEqual(["/", "/admin/ui"]);
+    expect(allNavItems.filter(isBuilt).map((i) => i.href)).toEqual(["/", "/admin/data-health", "/admin/ui"]);
     expect(resolveRoute("/admin/ui")).toMatchObject({ group: "Admin", item: { label: "UI gallery" } });
+  });
+
+  // imp-001: the coming-soon pages, the palette hints and the phase progress bar all read this one constant.
+  test("the build is in Phase 1", () => {
+    expect(CURRENT_PHASE).toBe(1);
   });
 });
