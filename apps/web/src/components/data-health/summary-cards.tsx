@@ -103,7 +103,7 @@ export function HostCard({ now }: { now: number }) {
               </span>
             ) : (
               <span title={HOST_API}>
-                <span className="tabular-nums">{host.data.next_cursor ? "At least " : ""}{host.data.open_gaps.length}</span> missed slots · latest {nameOf(gaps[0].source_key)},{" "}
+                <span className="tabular-nums">{host.data.next_cursor ? "At least " : ""}{host.data.open_gaps.length}</span> {host.data.open_gaps.length === 1 ? "missed slot" : "missed slots"} · latest {nameOf(gaps[0].source_key)},{" "}
                 <time dateTime={gaps[0].start}>{formatUtc(gaps[0].start)}</time>
               </span>
             )}
