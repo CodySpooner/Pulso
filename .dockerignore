@@ -20,3 +20,5 @@
 docs
 AGENTS.md
 CLAUDE.md
+# Owner-only seed lists stay out of every build context (DEC-073, DEC-131)
+infra/seeds/private*

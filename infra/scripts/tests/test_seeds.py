@@ -20,8 +20,7 @@ from seeds import load_seeds, read_seed
 SEEDS = Path(__file__).resolve().parents[2] / "seeds/seed_v1.yaml"
 
 
-@pytest.fixture
-def seed_data() -> dict[str, Any]:
+def shipped_seed() -> dict[str, Any]:
     data: dict[str, Any] = json.loads(
         "\n".join(
             line
@@ -29,6 +28,17 @@ def seed_data() -> dict[str, Any]:
             if not line.startswith("#")
         )
     )
+    return data
+
+
+@pytest.fixture
+def seed_data() -> dict[str, Any]:
+    """A draft, all-disabled copy of the shipped list (which is approved, DEC-073)."""
+    data = shipped_seed()
+    data["approval"].update(status="draft", approved_on=None)
+    for section in SEED_SOURCES:
+        for row in data[section]:
+            row["enabled"] = False
     return data
 
 
@@ -62,7 +72,7 @@ def write_seed(tmp_path: Path, data: dict[str, Any]) -> Path:
     return path
 
 
-def test_draft_cli_preview_has_counts_without_writes(
+def test_cli_preview_has_counts_without_writes(
     engine: Engine,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -71,7 +81,7 @@ def test_draft_cli_preview_has_counts_without_writes(
     cli.main([])
     output = capsys.readouterr().out
     for key, count in zip(SEED_SOURCES.values(), (30, 10, 50), strict=True):
-        assert f"{key}: {count} entries, 0 enabled" in output
+        assert f"{key}: {count} entries, {count} enabled" in output
         assert f"+++ {key}.config.seed (proposed)" in output
     assert "Dry run" in output
     with Session(engine) as session:
@@ -102,7 +112,7 @@ def test_cli_apply_is_idempotent_and_preserves_source_flags_and_config(
                 assert "seed" not in source.config
             else:
                 assert source.config["seed"]["version"] == "seed_v1"
-                assert not any(row["enabled"] for row in source.config["seed"]["entries"])
+                assert all(row["enabled"] for row in source.config["seed"]["entries"])
 
 
 @pytest.mark.parametrize("approved", [False, True])
@@ -127,7 +137,8 @@ def test_guard_only_returns_enabled_approved_targets(
         assert approved_targets(session, "unknown") == []
 
 
-def test_shipped_approval_matches_existing_decision_evidence(seed_data: dict[str, Any]) -> None:
+def test_shipped_approval_matches_existing_decision_evidence() -> None:
+    seed_data = shipped_seed()
     approval = seed_data["approval"]
     if approval["status"] != "approved":
         assert approval["status"] == "draft"
