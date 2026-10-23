@@ -21,7 +21,7 @@ export default async function NotAuthorizedPage() {
       {userId && (
         <div className="flex w-full items-center gap-2 rounded-lg border border-border bg-card py-1 pr-1 pl-3 shadow-card">
           <span className="text-label text-subtle-foreground">User ID</span>
-          <code className="min-w-0 flex-1 truncate text-label text-foreground">{userId}</code>
+          <code className="min-w-0 flex-1 truncate text-label text-foreground select-all">{userId}</code>
           <CopyButton value={userId} label="Copy" />
         </div>
       )}

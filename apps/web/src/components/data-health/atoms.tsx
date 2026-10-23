@@ -118,7 +118,10 @@ export function PanelError({ title, error, retry, className }: { title: string; 
     >
       {problem ? (
         <p>
-          {problem.detail} <span className="font-mono text-label text-subtle-foreground">Error ID {problem.request_id}</span>
+          {problem.detail}{" "}
+          <span className="font-mono text-label text-subtle-foreground">
+            Error ID <span className="select-all">{problem.request_id}</span>
+          </span>
         </p>
       ) : (
         <p>The Pulso API didn&apos;t answer. When it runs on your PC, this also means the PC is off.</p>

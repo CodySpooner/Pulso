@@ -18,12 +18,14 @@ export async function copyText(value: string): Promise<boolean> {
 }
 
 // What each result says and how long it shows before the label returns. A failure stays longer so it can be
-// read, and its hint says what to do next (vault Design/UI States).
-// ponytail: the hint names "the ID" because every consumer copies an ID shown beside the button; take it as
-// a prop when one copies something else.
+// read, and its hint says why and what to do next (vault Design/UI States). The why stays general because
+// copyText can't tell the causes apart honestly: no clipboard API (an insecure origin) or a refused write
+// (permission, focus or policy) all mean the clipboard isn't available.
+// ponytail: the hint names "the ID" because every consumer copies an ID shown beside the button, marked
+// `select-all` so one click selects it; take the hint as a prop when one copies something else.
 export const results = {
   copied: { text: "Copied", ms: 1200 },
-  failed: { text: "Couldn’t copy", hint: "Select the ID to copy it.", ms: 4000 },
+  failed: { text: "Couldn’t copy", hint: "The clipboard isn’t available here. Select the ID to copy it.", ms: 5000 },
 };
 
 export function CopyButton({ value, label }: { value: string; label: string }) {
