@@ -28,6 +28,10 @@ class cj_rate_limited(CJError):
     pass
 
 
+class cj_category_unresolved(CJError):
+    pass
+
+
 def classify_error(response: Response) -> CJError | None:
     try:
         payload = json.loads(response.body or b"{}")
@@ -47,7 +51,7 @@ def classify_error(response: Response) -> CJError | None:
         return cj_ip_user_limit(
             "cj_ip_user_limit", "CJ permits at most three users per IP", disable=True
         )
-    if "insufficient api points" in message:
+    if code == "16900500" or "insufficient api points" in message:
         return cj_points_exhausted(
             "cj_points_exhausted", "CJ points exhausted; wait for a later slot"
         )

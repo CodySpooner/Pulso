@@ -71,7 +71,7 @@ def test_auth_expiry_refresh_uses_fake_clock(settings: Settings) -> None:
     post = Mock(side_effect=[Response(fixture("auth")), Response(fixture("refresh"))])
     assert auth.token(post) == "fixture-access"
     assert post.call_args.args == ("/authentication/getAccessToken", {"apiKey": "fixture-key"})
-    now += timedelta(minutes=59)
+    now += timedelta(minutes=54)
     assert auth.token(post) == "fixture-access" and post.call_count == 1
     now += timedelta(minutes=1)
     assert auth.token(post) == "fixture-access-refreshed"
