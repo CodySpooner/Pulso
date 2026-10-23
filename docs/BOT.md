@@ -34,7 +34,7 @@ PulsoBot **never** requests `/cart*`, `/search`, `/checkout`, account or login p
 
 ## robots.txt
 
-PulsoBot reads `/robots.txt` before any other request to a site, and obeys the rules for `User-agent: PulsoBot`, or for `User-agent: *` if there's no PulsoBot group. A disallowed path is not requested. If robots.txt can't be read (anything other than a normal response or a `404`), PulsoBot stops for that site.
+PulsoBot reads `/robots.txt` before any other request to a site, and obeys the rules for `User-agent: PulsoBot`, or for `User-agent: *` if there's no PulsoBot group. A disallowed path is not requested. If robots.txt can't be read with a normal `200` response (a `404` included), PulsoBot stops for that site.
 
 To block PulsoBot completely:
 
