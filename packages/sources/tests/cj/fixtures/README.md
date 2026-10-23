@@ -8,4 +8,6 @@ No CJ API endpoint was called. Token strings and catalog identifiers are test-on
 - `categories.json`: the public `getCategory` example, retaining its exact Office category ID and names. It is not a complete tree and does not prove the ten seed mappings.
 - `category_tree_synthetic.json`: entirely test-only names and IDs for parent expansion and overlap/deduplication; never a real CJ tree or seed mapping.
 
-P1-08b adds fake HTTP/Redis and clock tests; no API request was made. Detail, stock and freight payloads are deferred to P1-08c.
+P1-08b adds fake HTTP/Redis and clock tests; no API request was made.
+
+P1-08c adds handwritten `detail.json`, `stock.json` and `freight.json`, following the public [product detail and product-ID inventory schemas](https://developers.cjdropshipping.com/en/api/api2/api/product.html) and [freight schema](https://developers.cjdropshipping.com/en/api/api2/api/logistic.html), checked 2026-10-23. All product/variant identifiers and carrier names are synthetic. The stock fixture distinguishes country totals from warehouse subtotals and includes unknown inventory; freight includes unknown delivery time. Tests use fake HTTP only, with the autouse network refusal retained.
