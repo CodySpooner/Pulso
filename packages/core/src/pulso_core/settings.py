@@ -70,6 +70,7 @@ class Settings(BaseSettings):
     cj_wall_time_seconds: PositiveInt = 30 * 60
     serpapi_api_key: SecretStr | None = None
     trends_monthly_search_limit: Annotated[int, Field(ge=0, le=250)] = 250
+    trends_hourly_search_limit: Annotated[int, Field(ge=1, le=50)] = 50
     trends_wall_time_seconds: PositiveInt = 10 * 60
     fx_wall_time_seconds: PositiveInt = 5 * 60
 

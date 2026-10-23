@@ -82,7 +82,7 @@ def test_collector_defaults_and_honest_user_agent(monkeypatch: pytest.MonkeyPatc
     assert (s.collector_block_threshold, s.collector_max_retries) == (5, 3)
     assert (s.collect_soft_time_limit_seconds, s.collect_hard_time_limit_seconds) == (3600, 4500)
     assert (s.shopify_requests_per_minute, s.shopify_js_panel_size) == (30, 10)
-    assert s.trends_monthly_search_limit == 250
+    assert (s.trends_monthly_search_limit, s.trends_hourly_search_limit) == (250, 50)
     with pytest.raises(ValueError, match="PULSO_BOT_CONTACT"):
         _ = s.collector_user_agent
     # The exact DEC-073 crawler identity.
@@ -104,6 +104,8 @@ def test_collector_defaults_and_honest_user_agent(monkeypatch: pytest.MonkeyPatc
     [
         ("SHOPIFY_REQUESTS_PER_MINUTE", "31"),
         ("TRENDS_MONTHLY_SEARCH_LIMIT", "251"),
+        ("TRENDS_HOURLY_SEARCH_LIMIT", "51"),
+        ("TRENDS_HOURLY_SEARCH_LIMIT", "0"),
         ("CJ_REQUESTS_PER_SECOND", "2"),
         ("COLLECTOR_BLOCK_THRESHOLD", "0"),
         ("COLLECTOR_RETRY_WAIT_CAP_SECONDS", "601"),

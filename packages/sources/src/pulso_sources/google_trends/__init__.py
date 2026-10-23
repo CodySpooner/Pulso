@@ -1,4 +1,4 @@
-"""Trends capture parsing, approved targets and conservative monthly reservations."""
+"""Trends capture parsing, approved targets and conservative monthly/hourly reservations."""
 
 import json
 from collections.abc import Sequence
@@ -81,6 +81,23 @@ def reserve(source: Source, limit: int, at: datetime) -> None:
     source.config = {**source.config, "trends_quota": {"month": month, "used": used + 1}}
 
 
+def reserve_hourly(source: Source, limit: int, at: datetime) -> None:
+    """Rolling 60 minutes beside `reserve`, same lock and commit; no refunds, no waiting (DEC-154).
+
+    An attempt exactly 60 minutes old still counts, so no closed hour exceeds the limit.
+    """
+    if not 1 <= limit <= 50:
+        raise ValueError("Invalid Trends hourly limit")
+    recent = [
+        stamp
+        for stamp in source.config.get("trends_hourly", [])
+        if at - datetime.fromisoformat(stamp) <= timedelta(hours=1)
+    ]
+    if len(recent) >= limit:
+        raise TrendsError("trends_hourly_budget_exhausted")
+    source.config = {**source.config, "trends_hourly": [*recent, at.isoformat()]}
+
+
 def plan(session: Session) -> list[Target]:
     entries = approved_targets(session, "google_trends")
     if any("," in row["keyword"] for row in entries):
@@ -127,7 +144,10 @@ def request_hook(
     if not settings.serpapi_api_key:
         raise TrendsError("serpapi_missing_key")
     session.refresh(source, with_for_update=True)
-    reserve(source, settings.trends_monthly_search_limit, datetime.now(UTC))
+    at = datetime.now(UTC)
+    reserve(source, settings.trends_monthly_search_limit, at)
+    # A full hour stops the run; the framework's rollback also drops the monthly +1 above.
+    reserve_hourly(source, settings.trends_hourly_search_limit, at)
 
 
 class GoogleTrendsParser:
