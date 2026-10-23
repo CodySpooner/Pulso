@@ -187,6 +187,7 @@ def parse_csv(
             for name, col in template.columns.items()
             if col.required and not col.default and name not in headers
         ]
+        missing += [name for name in template.required_headers if name not in headers]
         if template.one_of and not any(name in headers for name in template.one_of):
             missing.append(" or ".join(template.one_of))
         if missing:

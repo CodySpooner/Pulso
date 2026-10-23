@@ -26,7 +26,7 @@ from pulso_sources.shopify_stores.variants import CATALOG_WRITER, JSProduct, ups
 
 class Variant(BaseModel):
     id: StrictInt = Field(gt=0)
-    title: str | None
+    title: str | None = None  # an import may omit it; live parse() requires it
     price: str = Field(pattern=r"^[0-9]+(?:\.[0-9]+)?$")
     compare_at_price: str | None = Field(default=None, pattern=r"^[0-9]+(?:\.[0-9]+)?$")
     available: StrictBool | None
@@ -94,11 +94,17 @@ def parse(body: bytes) -> Sequence[Product | Meta | JSProduct]:
         len({v.id for v in p.variants}) != len(p.variants) for p in products
     ):
         raise ValueError("Duplicate catalog identity")
+    if any(v.title is None or v.available is None for p in products for v in p.variants):
+        raise ValueError("Live variants require title and availability")
     return products
 
 
 def current(row: Listing | ListingVariant, at: datetime) -> bool:
     return all(at >= t.replace(tzinfo=UTC) for t in (row.last_seen_at, row.delisted_at) if t)
+
+
+def utc_day(at: datetime) -> date:
+    return (at if at.tzinfo else at.replace(tzinfo=UTC)).astimezone(UTC).date()
 
 
 def upsert(
@@ -125,6 +131,21 @@ def upsert(
         raise ValueError("Payload does not match requested endpoint")
     store = store or session.get_one(Store, payload.request["store_id"])
     currency = currency or store.currency
+    day = observed_for or payload.captured_at.date()
+
+    def refresh(row: Listing | ListingVariant, new: bool) -> bool:
+        """Whether this capture's text replaces the row's. A live catalog is a sighting and
+        relists; an import (DEC-162) never relists or moves last_seen_at, and its text wins
+        only for a new row or evidence dated on or after the last sighting's UTC day."""
+        if not imported:
+            if current(row, payload.captured_at):
+                row.last_seen_at, row.delisted_at = payload.captured_at, None
+                return True
+            return False
+        if new:
+            row.last_seen_at = payload.captured_at
+        return new or day >= utc_day(row.last_seen_at)
+
     inserted = unchanged = 0
     for record in records:
         if isinstance(record, JSProduct):
@@ -141,6 +162,7 @@ def upsert(
                 source_id=payload.source_id, external_id=f"{store.shop_id}:{record.id}"
             )
         )
+        new = listing is None
         if listing is None:
             listing = Listing(
                 source_id=payload.source_id,
@@ -151,7 +173,7 @@ def upsert(
             session.add(listing)
         elif listing.store_id != store.id:
             raise ValueError("Catalog identity belongs to another store")
-        if current(listing, payload.captured_at):
+        if refresh(listing, new):
             for name in ("title", "handle", "vendor", "product_type"):
                 if not imported or name in record.model_fields_set:
                     setattr(listing, name, getattr(record, name))
@@ -159,13 +181,13 @@ def upsert(
                 if not imported or name in record.model_fields_set:
                     setattr(listing, f"source_{name}", getattr(record, name))
             listing.url = f"https://{store.domain}/products/{record.handle}"
-            listing.last_seen_at, listing.delisted_at = payload.captured_at, None
         session.flush()
         values: list[dict[str, Any]] = []
         for item in record.variants:
             variant = session.scalar(
                 select(ListingVariant).filter_by(listing_id=listing.id, external_id=str(item.id))
             )
+            new = variant is None
             if variant is None:
                 variant = ListingVariant(
                     listing_id=listing.id,
@@ -173,11 +195,10 @@ def upsert(
                     first_seen_at=payload.captured_at,
                 )
                 session.add(variant)
-            if current(variant, payload.captured_at):
+            if refresh(variant, new):
                 for name in ("title", "sku", "option1", "option2", "option3"):
                     if not imported or name in item.model_fields_set:
                         setattr(variant, name, getattr(item, name))
-                variant.last_seen_at, variant.delisted_at = payload.captured_at, None
             session.flush()
             values.append(
                 dict(
@@ -201,8 +222,14 @@ def upsert(
             else (False if all(v["available"] is False for v in values) else None),
             source_updated_at=record.updated_at,
         )
+        # DEC-162: an import aggregates the product only when it lists every listed variant.
+        whole = not imported or set(
+            session.scalars(
+                select(ListingVariant.id).filter_by(listing_id=listing.id, delisted_at=None)
+            )
+        ) <= {v["variant_id"] for v in values}
         snapshots: list[tuple[type[ListingSnapshot] | type[VariantSnapshot], dict[str, Any]]] = [
-            (ListingSnapshot, listing_values),
+            *([(ListingSnapshot, listing_values)] if whole else []),
             *[(VariantSnapshot, v) for v in values],
         ]
         for model, fields in snapshots:

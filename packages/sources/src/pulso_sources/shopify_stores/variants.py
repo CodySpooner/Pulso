@@ -12,10 +12,11 @@ from pulso_core.models import Listing, ListingVariant, RawPayload, Store, Varian
 from pulso_core.money import CURRENCY_EXPONENTS, from_minor, to_minor
 from pulso_sources.framework import UpsertStats, Writer, append_observation
 
+# Live catalog pages only; readers of crawl evidence exclude imports (DEC-162).
+LIVE_CATALOG = RawPayload.request["path"].as_string().startswith("/products.json?", autoescape=True)
 # DEC-120: the catalog owns what it observes; .js owns only inventory, which the catalog lacks.
 CATALOG_WRITER = Writer(
-    RawPayload.request["path"].as_string().startswith("/products.json?", autoescape=True)
-    | (RawPayload.request["import_source"].as_string() == "shopify_stores"),
+    LIVE_CATALOG | (RawPayload.request["import_source"].as_string() == "shopify_stores"),
     ("price_minor", "compare_at_minor", "available", "source_updated_at"),
 )
 JS_WRITER = Writer(

@@ -40,8 +40,9 @@ def _store(session: Session, context: Context) -> Store:
         session.add(store)
     if store.platform != "shopify" or store.shop_id not in (None, context.shop_id):
         raise ValueError("Shop identity conflicts with the stored domain")
-    store.shop_id = context.shop_id
-    store.currency = store.currency or context.currency
+    if store.currency not in (None, context.currency):  # DEC-162: one currency per store
+        raise ValueError("Import currency conflicts with the stored store currency")
+    store.shop_id, store.currency = context.shop_id, context.currency
     session.flush()
     return store
 
@@ -122,9 +123,9 @@ class ShopifyImportAdapter:
                 variants.append(
                     dict(
                         id=int(str(variant_id)),
-                        title=row.get("variant_title"),
                         price=format(row["price"], "f"),
                         available=row.get("available"),
+                        **({"title": row["variant_title"]} if "variant_title" in row else {}),
                         **({"sku": row["sku"]} if "sku" in row else {}),
                         compare_at_price=format(compare, "f") if compare is not None else None,
                     )

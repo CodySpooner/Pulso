@@ -61,8 +61,8 @@ def test_valid_rate_is_preserved(rate: str) -> None:
 
 def test_bom_semicolon_mapping_defaults_and_exact_money() -> None:
     body = (
-        "\ufeffStore;URL;Name;Cost;available\n"
-        'example.com;https://example.com/p;"Café; mug";19.99;false\n'
+        "\ufeffStore;URL;Name;Cost;available;compare_at_price\n"
+        'example.com;https://example.com/p;"Café; mug";19.99;false;\n'
     )
     parsed = parse_csv(
         "shopify_stores",
@@ -180,13 +180,13 @@ def test_excel_quoted_fields_round_trip(delimiter: str, quoting: Literal[0, 1]) 
     [
         (
             "shopify_stores",
-            b"store_domain,product_url,title,price,sku,variant_title\n"
-            b"a.test,/tee,Tee,10,TEE-S,S\na.test,/tee,Tee,12,TEE-M,M\n",
+            b"store_domain,product_url,title,price,sku,variant_title,compare_at_price,available\n"
+            b"a.test,/tee,Tee,10,TEE-S,S,,\na.test,/tee,Tee,12,TEE-M,M,,\n",
         ),
         (
             "shopify_stores",
-            b"store_domain,product_url,title,price,variant_title\n"
-            b"a.test,/tee,Tee,10,S\na.test,/tee,Tee,12,M\n",
+            b"store_domain,product_url,title,price,variant_title,compare_at_price,available\n"
+            b"a.test,/tee,Tee,10,S,,\na.test,/tee,Tee,12,M,,\n",
         ),
         (
             "cj",
@@ -227,8 +227,8 @@ def test_cj_warehouse_rows_cannot_conflict_on_shared_entities(changes: dict[str,
 
 def test_implicit_and_explicit_capture_day_match_across_variants() -> None:
     body = (
-        b"store_domain,product_url,title,price,sku,observed_for\n"
-        b"a.test,/tee,Tee,10,S,2026-01-01\na.test,/tee,Tee,12,M,\n"
+        b"store_domain,product_url,title,price,sku,observed_for,compare_at_price,available\n"
+        b"a.test,/tee,Tee,10,S,2026-01-01,,\na.test,/tee,Tee,12,M,,,\n"
     )
     assert len(parse_csv("shopify_stores", body, as_of=date(2026, 1, 1)).rows) == 2
 
@@ -253,6 +253,11 @@ def test_shopify_variants_require_consistent_listing_fields(column: str, value: 
         ("google_trends", b"keyword,date\na,2026-01-01\n", "interest"),
         ("cj", b"name,unit_cost\nTee,5\n", "cj_product_id or sku"),
         ("shopify_stores", b"store_domain,product_url,title\na.test,/tee,Tee\n", "price"),
+        (
+            "shopify_stores",
+            b"store_domain,product_url,title,price\na.test,/tee,Tee,1\n",
+            "compare_at_price, available",
+        ),
     ],
 )
 def test_missing_headers_fail_before_reading_rows(
@@ -280,7 +285,8 @@ def test_distinct_entities_and_trends_dates_remain_importable() -> None:
         ("cj", b"cj_product_id,sku,name,unit_cost\nP,,One,1\n,P,Two,2\n"),
         (
             "shopify_stores",
-            b"store_domain,product_url,title,price\na.test,/p,One,1\nb.test,/p,Two,2\n",
+            b"store_domain,product_url,title,price,compare_at_price,available\n"
+            b"a.test,/p,One,1,,\nb.test,/p,Two,2,,\n",
         ),
         ("google_trends", b"keyword,date,interest\na,2026-10-01,1\na,2026-10-02,2\n"),
         ("fx_frankfurter", b"date,base,quote,rate\n2026-01-01,USD,JPY,150\n2026-01-01,USD,EUR,1\n"),

@@ -18,6 +18,8 @@ class Template:
     columns: dict[str, Column]
     template_version: str = "csv-v1"
     one_of: tuple[str, ...] = ()
+    # Headers a file must carry even though their cells may be blank (DEC-162).
+    required_headers: tuple[str, ...] = ()
 
 
 TEMPLATES = {
@@ -35,7 +37,9 @@ TEMPLATES = {
             "product_id": Column("text"),
             "variant_id": Column("text"),
             "observed_for": Column("date"),
-        }
+        },
+        # Blank compare_at_price means no compare-at; blank available means unknown.
+        required_headers=("compare_at_price", "available"),
     ),
     "cj": Template(
         {
