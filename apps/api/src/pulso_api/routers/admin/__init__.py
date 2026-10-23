@@ -238,9 +238,14 @@ def list_runs(
     cursor: Annotated[int | None, Query(ge=1)] = None,
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
 ) -> RunPage:
-    where = [Source.key == source] if source else []
-    if cursor:
-        where.append(CollectorRun.id < cursor)
+    where = [CollectorRun.id < cursor] if cursor else []
+    if source:
+        # Filter the run column, not the joined key: PostgreSQL can then plan for the
+        # source's own row count instead of walking every run newest-first (DEC-158).
+        source_id = session.scalar(select(Source.id).where(Source.key == source))
+        if source_id is None:
+            return RunPage(items=[], next_cursor=None)
+        where.append(CollectorRun.source_id == source_id)
     items = runs(session, *where, limit=limit + 1)
     more = len(items) > limit
     return RunPage(items=items[:limit], next_cursor=items[limit - 1].id if more else None)

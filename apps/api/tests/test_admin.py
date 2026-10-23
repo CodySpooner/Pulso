@@ -196,6 +196,8 @@ def test_freshness_survives_unrelated_target_failure(admin: TestClient, engine: 
     assert [run["id"] for run in older.json()["items"]] == [first]
     assert older.json()["next_cursor"] is None
     assert admin.get("/v1/admin/runs", params={"source": "backup"}).json()["items"] == []
+    unknown = admin.get("/v1/admin/runs", params={"source": "no_such_source"})
+    assert (unknown.status_code, unknown.json()) == (200, {"items": [], "next_cursor": None})
 
     detail = admin.get(f"/v1/admin/runs/{first}").json()
     assert [(t["target_id"], t["status"]) for t in detail["targets"]] == [
