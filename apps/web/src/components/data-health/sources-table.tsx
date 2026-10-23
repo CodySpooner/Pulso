@@ -14,8 +14,8 @@ import { $api, isProblem } from "@/lib/api/client";
 import { formatAgo, formatUtc } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
-import { useHost, useRefreshAdmin, useSources } from "./api";
-import { Ago, Missing, Panel, PanelError, StatePill, TapTooltip } from "./atoms";
+import { useCoreDown, useHost, useRefreshAdmin, useSources } from "./api";
+import { Ago, Missing, Panel, PanelError, StaleLine, StatePill, TapTooltip } from "./atoms";
 import { GapsLink } from "./coverage";
 import { attentionCount, importEntry, missedNote, skipNote, sourceState, type MissedSlot, type SourceHealth, type SourceState } from "./model";
 
@@ -85,6 +85,7 @@ export function SourcesPanel({ now, onOpen, onImport }: { now: number; onOpen: (
   const sources = useSources();
   const host = useHost();
   const refresh = useRefreshAdmin();
+  const coreDown = useCoreDown();
   const patch = $api.useMutation("patch", "/v1/admin/sources/{key}");
   const run = $api.useMutation("post", "/v1/admin/sources/{key}/run");
   const [notice, setNotice] = useState<Notice | null>(null);
@@ -193,7 +194,10 @@ export function SourcesPanel({ now, onOpen, onImport }: { now: number; onOpen: (
         {status?.tone === "error" && isProblem(status.error) && ` (error ID ${status.error.request_id})`}
       </p>
 
-      {sources.isError ? (
+      {sources.isRefetchError && !coreDown && (
+        <StaleLine what="Couldn't refresh sources" error={sources.error} asOf={sources.dataUpdatedAt} retry={() => sources.refetch()} />
+      )}
+      {sources.isLoadingError ? (
         <PanelError title="Couldn't load sources" error={sources.error} retry={() => sources.refetch()} />
       ) : sources.data && rows.length === 0 ? (
         <EmptyState icon={Database} size="sm" title="No sources configured">

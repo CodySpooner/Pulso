@@ -6,8 +6,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { formatDuration, formatUtc } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
-import { BACKUP_RUNS, useBackupRuns, useHost, useSources } from "./api";
-import { Ago, Missing, Panel, PanelError, Pill, runStatus, type Tone } from "./atoms";
+import { BACKUP_RUNS, useBackupRuns, useCoreDown, useHost, useSources } from "./api";
+import { Ago, Missing, Panel, PanelError, Pill, runStatus, StaleLine, type Tone } from "./atoms";
 import { backupState, hostState, mergeGaps, type BackupState, type HostState } from "./model";
 
 const HOST_API = "GET /v1/admin/host";
@@ -55,6 +55,7 @@ function CardSkeleton() {
 export function HostCard({ now }: { now: number }) {
   const host = useHost();
   const sources = useSources();
+  const coreDown = useCoreDown();
   const state = host.data ? hostState(host.data, now) : null;
   const pill = state && hostPill[state];
   const gaps = host.data ? mergeGaps(host.data.open_gaps) : [];
@@ -66,9 +67,12 @@ export function HostCard({ now }: { now: number }) {
       title="Collector host"
       actions={pill && <Pill tone={pill.tone} icon={pill.icon}>{pill.label}</Pill>}
     >
+      {host.isRefetchError && !coreDown && (
+        <StaleLine what="Couldn't refresh the collector host" error={host.error} asOf={host.dataUpdatedAt} retry={() => host.refetch()} />
+      )}
       {host.isPending ? (
         <CardSkeleton />
-      ) : host.isError ? (
+      ) : host.isLoadingError ? (
         <PanelError title="Couldn't load the collector host" error={host.error} retry={() => host.refetch()} />
       ) : (
         <Facts>
@@ -120,15 +124,19 @@ export function HostCard({ now }: { now: number }) {
 
 export function BackupCard({ now }: { now: number }) {
   const runs = useBackupRuns();
-  const backup = runs.data ? backupState(runs.data.items, now) : null;
+  const coreDown = useCoreDown();
+  const backup =runs.data ? backupState(runs.data.items, now) : null;
   const pill = backup && backupPill[backup.state];
   const shown = backup?.lastSuccess ?? backup?.latest;
 
   return (
     <Panel id="backup" title="Backups" note={<span className="max-sm:hidden">Nightly pg_dump on the collector host</span>} actions={pill && <Pill tone={pill.tone} icon={pill.icon}>{pill.label}</Pill>}>
+      {runs.isRefetchError && !coreDown && (
+        <StaleLine what="Couldn't refresh backups" error={runs.error} asOf={runs.dataUpdatedAt} retry={() => runs.refetch()} />
+      )}
       {runs.isPending ? (
         <CardSkeleton />
-      ) : runs.isError ? (
+      ) : runs.isLoadingError ? (
         <PanelError title="Couldn't load backups" error={runs.error} retry={() => runs.refetch()} />
       ) : !backup?.latest ? (
         <p className="px-4 py-3 text-data text-muted-foreground">

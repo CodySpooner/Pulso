@@ -8,8 +8,8 @@ import { Button } from "@/components/ui/button";
 import { formatAgo, formatUtc } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
-import { useHost, useRefreshAdmin, useSources } from "./api";
-import { PanelError } from "./atoms";
+import { useCoreDown, useHost, useRefreshAdmin, useSources } from "./api";
+import { PanelError, StaleLine } from "./atoms";
 import { CoveragePanel } from "./coverage";
 import { ImportPanel, type ImportPanelHandle } from "./import-panel";
 import { hostState } from "./model";
@@ -56,8 +56,10 @@ export function DataHealth() {
     />
   );
 
-  // Both core calls failed without an API answer: the API (on the home PC) is down, not a collector.
-  if (sources.isError && host.isError) {
+  // Both core calls failed without an API answer: the API (on the home PC) is down, not a collector. Before any
+  // data that replaces the page; after, the page keeps it under one line (imp-132).
+  const coreDown = useCoreDown();
+  if (coreDown && !sources.data && !host.data) {
     return (
       <div className="flex flex-col gap-6">
         {header}
@@ -74,6 +76,8 @@ export function DataHealth() {
   return (
     <div className="flex flex-col gap-6">
       {header}
+
+      {coreDown && <StaleLine boxed what="Couldn't refresh Data Health" error={sources.error} asOf={now} retry={() => void refresh()} />}
 
       {heartbeat && (state === "late" || state === "offline") && (
         <div

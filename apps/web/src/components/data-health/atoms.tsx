@@ -182,9 +182,64 @@ export function PanelError({
           </span>
         </p>
       ) : (
-        <p>The Pulso API didn&apos;t answer. When it runs on your PC, this also means the PC is off.</p>
+        <p>{API_DOWN}</p>
       )}
     </EmptyState>
+  );
+}
+
+const API_DOWN = "The Pulso API didn't answer. When it runs on your PC, this also means the PC is off.";
+
+/** A refetch failed while the last data stays on screen (imp-132): what failed, why, how old the data is, Retry
+ *  and Copy error ID, in the import panel's error-line layout. A strip under a panel header, or `boxed` inside
+ *  padded content. Overlays stack on real data and never replace it (vault Design/UI States). */
+export function StaleLine({
+  what,
+  error,
+  asOf,
+  retry,
+  boxed,
+  className,
+}: {
+  what: string;
+  error: unknown;
+  asOf: number;
+  retry: () => void;
+  boxed?: boolean;
+  className?: string;
+}) {
+  const problem = isProblem(error) ? error : null;
+  const iso = new Date(asOf).toISOString();
+  return (
+    <div
+      role="group"
+      aria-label={what}
+      className={cn(
+        "flex flex-wrap items-center gap-x-3 gap-y-2 bg-warning-muted px-4 py-2.5 text-data",
+        boxed ? "rounded-lg border border-warning/40" : "border-b border-warning/30",
+        className,
+      )}
+    >
+      <TriangleAlert className="size-4 shrink-0 text-warning" aria-hidden />
+      <p className="min-w-0 flex-[1_1_12rem] text-foreground">
+        <span className="font-medium">{what}.</span> {problem ? problem.detail : API_DOWN} Showing data as of{" "}
+        <time dateTime={iso} className="whitespace-nowrap">
+          {formatUtc(iso)}
+        </time>
+        .
+      </p>
+      {problem && (
+        <p className="font-mono text-label text-muted-foreground">
+          Error ID <SelectableId value={problem.request_id} label="Error ID" className="inline-block max-w-full break-all" />
+        </p>
+      )}
+      <div className="ml-auto flex gap-2">
+        <Button size="sm" variant="secondary" onClick={retry}>
+          Retry
+        </Button>
+        {problem && <CopyButton value={problem.request_id} label="Copy error ID" />}
+      </div>
+    </div>
   );
 }
 
