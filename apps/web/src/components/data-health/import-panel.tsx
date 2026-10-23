@@ -286,6 +286,8 @@ export function ImportPanel({ onOpen, ref }: { onOpen: (key: string) => void; re
               </Button>
             </div>
           )}
+          {/* The rows an import skipped stay with its outcome until another file or source resets it (aud-010 A10-08). */}
+          {commit.data && <RowErrors result={commit.data} />}
         </div>
       </div>
     );
@@ -349,34 +351,53 @@ function PreviewResult({
           {blocker}
         </p>
       )}
-      {preview.errors.length > 0 && (
-        <div tabIndex={0} role="region" aria-label="Row errors" className="max-h-64 overflow-auto rounded-lg border border-border">
-          <table className="w-full border-collapse text-data">
-            <thead className="sticky top-0 bg-card">
-              <tr className="text-left text-label text-muted-foreground">
-                <th className="h-8 border-b border-border px-3 text-right font-medium">Row</th>
-                <th className="h-8 border-b border-border px-3 font-medium">Column</th>
-                <th className="h-8 w-full border-b border-border px-3 font-medium">Problem</th>
+      <RowErrors result={preview} />
+    </>
+  );
+}
+
+/**
+ * A check's or an import's row errors (the API's first 100), under a visible heading like the sample's. Below
+ * `sm` a template's longest column name ("cj_product_id or sku") would leave Problem 2 words a line, so the
+ * column name moves above its problem in the same cell (DEC-200).
+ */
+function RowErrors({ result }: { result: Pick<ImportPreview, "errors" | "error_count"> }) {
+  const heading = useId();
+  if (result.errors.length === 0) return null;
+  return (
+    <div className="flex flex-col gap-2">
+      <h3 id={heading} className="text-data font-medium text-foreground">
+        Row errors
+      </h3>
+      <div tabIndex={0} role="region" aria-labelledby={heading} className="max-h-64 overflow-auto rounded-lg border border-border">
+        <table className="w-full border-collapse text-data">
+          <thead className="sticky top-0 bg-card">
+            <tr className="text-left text-label text-muted-foreground">
+              <th className="h-8 border-b border-border px-3 text-right font-medium">Row</th>
+              <th className="hidden h-8 border-b border-border px-3 font-medium sm:table-cell">Column</th>
+              <th className="h-8 w-full border-b border-border px-3 font-medium">Problem</th>
+            </tr>
+          </thead>
+          <tbody>
+            {result.errors.map((e, i) => (
+              <tr key={i} className="border-b border-border-subtle last:border-0">
+                <td className="px-3 py-1.5 text-right align-top font-mono tabular-nums">{e.row}</td>
+                <td className="hidden px-3 py-1.5 align-top font-mono text-muted-foreground sm:table-cell">{e.column || "—"}</td>
+                <td className="px-3 py-1.5 align-top text-foreground">
+                  {e.column && <span className="block font-mono text-muted-foreground sm:hidden">{e.column}</span>}
+                  {e.message}
+                </td>
               </tr>
-            </thead>
-            <tbody>
-              {preview.errors.map((e, i) => (
-                <tr key={i} className="border-b border-border-subtle last:border-0">
-                  <td className="px-3 py-1.5 text-right font-mono tabular-nums">{e.row}</td>
-                  <td className="px-3 py-1.5 font-mono whitespace-nowrap text-muted-foreground">{e.column || "—"}</td>
-                  <td className="px-3 py-1.5 text-foreground">{e.message}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-      {preview.error_count > preview.errors.length && (
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {result.error_count > result.errors.length && (
         <p className="text-label text-subtle-foreground">
-          Showing the first {preview.errors.length} of {preview.error_count.toLocaleString("en-US")} errors.
+          Showing the first {result.errors.length} of {result.error_count.toLocaleString("en-US")} errors.
         </p>
       )}
-    </>
+    </div>
   );
 }
 
