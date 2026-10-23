@@ -60,6 +60,9 @@ test("a source without a template can't open the panel and says why", async ({ p
   const { table, panel } = await open(page);
   const trends = table.getByRole("button", { name: "Import CSV for Google Trends" });
   await expect(trends).toHaveAttribute("aria-disabled", "true");
+  // Only the icon and label fade, so the focus ring keeps 3:1.
+  await expect(trends).toHaveCSS("opacity", "1");
+  await expect(trends.getByText("Import CSV")).toHaveCSS("opacity", "0.5");
   await trends.focus();
   await expect(page.getByRole("tooltip")).toHaveText("No CSV template for Google Trends yet.");
   await trends.click({ force: true }); // aria-disabled: Playwright would wait for it to enable

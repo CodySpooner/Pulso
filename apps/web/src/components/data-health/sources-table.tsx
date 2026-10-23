@@ -398,12 +398,13 @@ function ImportButton({ source, onImport }: { source: SourceHealth; onImport: (k
       size="sm"
       variant="ghost"
       aria-disabled={!available}
-      className="aria-disabled:pointer-events-auto aria-disabled:cursor-not-allowed"
+      // Only the icon and label fade, not the button, so its focus ring keeps 3:1 (like the import panel's locks, DEC-185).
+      className="aria-disabled:pointer-events-auto aria-disabled:cursor-not-allowed aria-disabled:opacity-100 aria-disabled:*:opacity-50"
       onClick={() => available && onImport(source.key)}
       aria-label={`${label} for ${source.name}`}
     >
       <Upload aria-hidden />
-      {label}
+      <span>{label}</span>
     </Button>
   );
   if (!hint) return button;
