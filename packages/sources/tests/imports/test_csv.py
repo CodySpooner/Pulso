@@ -19,6 +19,36 @@ def test_every_template_validates_its_example(source: str) -> None:
     assert TEMPLATES[source].template_version == "csv-v1"
 
 
+@pytest.mark.parametrize(
+    "rate", ["not-a-number", "0", "-1", "0.123456789", "1e10", "NaN", "Infinity"]
+)
+def test_invalid_rate_explains_valid_form_once_per_cell(rate: str) -> None:
+    parsed = parse_csv(
+        "fx_frankfurter", f"date,base,quote,rate\n2026-01-01,USD,JPY,{rate}\n".encode()
+    )
+    assert parsed.rows == []
+    assert [(error.row, error.column, error.message) for error in parsed.errors] == [
+        (
+            2,
+            "rate",
+            "Invalid rate. Use a finite positive decimal number below 10,000,000,000 "
+            "with up to 8 decimal places.",
+        )
+    ]
+
+
+@pytest.mark.parametrize(
+    "rate", ["150", "0.00000001", "9999999999.99999999", "1.230000000", "1e-8"]
+)
+def test_valid_rate_is_preserved(rate: str) -> None:
+    parsed = parse_csv(
+        "fx_frankfurter", f"date,base,quote,rate\n2026-01-01,USD,JPY,{rate}\n".encode()
+    )
+    assert parsed.errors == []
+    assert len(parsed.rows) == 1
+    assert parsed.rows[0]["rate"] == Decimal(rate)
+
+
 def test_bom_semicolon_mapping_defaults_and_exact_money() -> None:
     body = (
         "\ufeffStore;URL;Name;Cost;available\n"

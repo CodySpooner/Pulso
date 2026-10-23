@@ -150,7 +150,7 @@ test("CSV import: keyboard to a file, row errors, one-click import, and a repeat
   const chooser = page.waitForEvent("filechooser");
   await page.keyboard.press("Enter");
   await (await chooser).setFiles(file);
-  await expect(panel.getByRole("region", { name: "Row errors" }).getByRole("row", { name: "5 rate Invalid rate value" })).toBeVisible();
+  await expect(panel.getByRole("region", { name: "Row errors" }).getByRole("row", { name: "5 rate Invalid rate. Use a finite positive decimal number below 10,000,000,000 with up to 8 decimal places." })).toBeVisible();
   await expect(panel).toContainText("3 valid");
 
   // Action 2 imports.

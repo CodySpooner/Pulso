@@ -143,7 +143,7 @@ export function runDetail(id: number): S["RunDetail"] | undefined {
 
 /** A Frankfurter FX file with one bad rate (P1-11b): the preview names its row; nothing is written. */
 export const importPreview: S["ImportPreview"] = {
-  rows: [], valid: 3, invalid: 1, skipped: 0, error_count: 1, errors: [{ row: 5, column: "rate", message: "Invalid rate value" }],
+  rows: [], valid: 3, invalid: 1, skipped: 0, error_count: 1, errors: [{ row: 5, column: "rate", message: "Invalid rate. Use a finite positive decimal number below 10,000,000,000 with up to 8 decimal places." }],
 };
 
 // apps/api/openapi.json is the exported contract; tests resolve operation ids from it, not from memory.

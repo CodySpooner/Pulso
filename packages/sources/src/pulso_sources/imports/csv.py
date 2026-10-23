@@ -206,7 +206,13 @@ def parse_csv(
                             RowError(line, name, "Date is later than the UTC capture date")
                         )
                 except ValueError, KeyError, InvalidOperation:
-                    errors.append(RowError(line, name, f"Invalid {column.kind} value"))
+                    message = (
+                        "Invalid rate. Use a finite positive decimal number below 10,000,000,000 "
+                        "with up to 8 decimal places."
+                        if column.kind == "rate"
+                        else f"Invalid {column.kind} value"
+                    )
+                    errors.append(RowError(line, name, message))
             if template.one_of and not any(row.get(name) for name in template.one_of):
                 errors.append(
                     RowError(line, " or ".join(template.one_of), "One identifier required")
