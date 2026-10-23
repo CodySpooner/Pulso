@@ -244,6 +244,17 @@ def test_contact_required_before_any_network(monkeypatch: pytest.MonkeyPatch) ->
 
 
 @pytest.mark.parametrize(
+    "contact",
+    ["not-a-url", "https://", "ftp://pulso.example/bot", "https://u:p@pulso.example", "http://[x"],
+)
+def test_non_url_contact_refused_before_any_network(contact: str) -> None:
+    # P1-31 L3: the User-Agent must carry a public contact URL (AGENTS.md §3, DEC-073).
+    transport = httpx.MockTransport(lambda request: pytest.fail("network reached"))
+    with pytest.raises(ValueError, match="PULSO_BOT_CONTACT"):
+        probe(["shop.example"], contact, transport=transport)
+
+
+@pytest.mark.parametrize(
     "store",
     [
         "http://shop.example",

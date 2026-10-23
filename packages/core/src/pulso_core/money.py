@@ -37,8 +37,14 @@ def from_minor(amount_minor: int, currency: str) -> Decimal:
     return Decimal(amount_minor).scaleb(-CURRENCY_EXPONENTS[currency])
 
 
-def convert_minor(amount_minor: int, base: str, quote: str, rate: Decimal, *, rounding: str) -> int:
-    """Convert using quote major units per base unit, rounding only the final amount."""
+def convert_minor(
+    amount_minor: int, base: str, quote: str, rate: Decimal, *, rounding: str, inverse: bool = False
+) -> int:
+    """Convert using quote major units per base unit, rounding only the final amount.
+
+    inverse=True divides by a base-per-quote rate (a stored USD-base rate when converting
+    into USD), so exact ties are not pre-rounded by 1 / rate.
+    """
     amount = from_minor(amount_minor, base)
     to_minor(amount, base)
     if not isinstance(rate, Decimal):
@@ -47,7 +53,7 @@ def convert_minor(amount_minor: int, base: str, quote: str, rate: Decimal, *, ro
         raise ValueError("FX rate must be finite and positive")
     with localcontext() as context:
         context.prec = max(28, len(str(abs(amount_minor))) + len(rate.as_tuple().digits) + 6)
-        converted = (amount * rate).quantize(
+        converted = (amount / rate if inverse else amount * rate).quantize(
             Decimal(1).scaleb(-CURRENCY_EXPONENTS[quote]), rounding=rounding
         )
         return to_minor(converted, quote)

@@ -4,12 +4,14 @@ from unittest.mock import Mock
 import pytest
 from celery.exceptions import SoftTimeLimitExceeded  # type: ignore[import-untyped]
 from sqlalchemy import select
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
 from pulso_core.logging import JsonFormatter
-from pulso_core.models import CollectorRun, RawPayload, Source
+from pulso_core.models import CollectorRun, CollectorRunTarget, RawPayload, Source
+from pulso_core.settings import get_settings
 from pulso_sources import storage
-from pulso_sources.framework import Request, Target, enqueue_run, lifecycle
+from pulso_sources.framework import Request, Target, enqueue_run, execute_run, lifecycle
 from pulso_sources.framework import fetch as framework_fetch
 from pulso_workers import tasks
 from pulso_workers.beat import LockedScheduler
@@ -85,6 +87,35 @@ def test_publish_failure_does_not_leak_into_json_logs(
         "publish_failed",
         "Publish failed",
     )
+
+
+def test_beat_survives_database_error_before_publish(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    monkeypatch.setenv("PULSO_SCHEDULER", "on")
+
+    def unavailable() -> Session:
+        raise OperationalError("SELECT", {}, Exception("fixture-db-secret"))
+
+    monkeypatch.setattr(tasks, "get_session", unavailable)
+    LockedScheduler(app=app, lazy=True).apply_entry(Mock(args=("fixture", "catalog", "daily")))
+    logs = "\n".join(JsonFormatter().format(record) for record in caplog.records)
+    assert "fixture-db-secret" not in logs and "OperationalError" in logs
+
+
+def test_execute_run_skips_a_slot_that_already_succeeded(session: Session) -> None:
+    slot = f"catalog:{datetime.now(UTC).date()}"
+    session.add(CollectorRun(source_id=1, trigger="schedule", status="success", slot_key=slot))
+    session.commit()
+    run = enqueue_run(
+        session, source_id=1, trigger="catchup", slot_key=slot, publish=lambda _: None
+    )
+    adapter = Mock()
+    target = Target("catalog", "a", [Request(mode="fixture", body=b"x")])
+    result = execute_run(session, run.id, adapter, [target], settings=get_settings())
+    assert result.status == "skipped" and not result.complete
+    adapter.parse.assert_not_called()
+    assert not session.scalars(select(CollectorRunTarget)).all()
 
 
 def test_scheduled_enqueue_persists_while_source_execution_lock_is_busy(

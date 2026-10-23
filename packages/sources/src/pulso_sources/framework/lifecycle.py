@@ -19,6 +19,7 @@ from pulso_sources.framework import (
     Response,
     Target,
     fetch,
+    require_live,
 )
 
 BLOCK_STATUSES = {403, 429, 430}
@@ -63,13 +64,15 @@ def enqueue_run(
         status="queued",
     )
     session.add(run)
+    session.flush()
+    run_id = run.id  # Bound before commit: an expired reload would reopen a transaction.
     session.commit()
     try:
-        publish(run.id)
+        publish(run_id)
     except Exception:
         session.execute(
             update(CollectorRun)
-            .where(CollectorRun.id == run.id, CollectorRun.status == "queued")
+            .where(CollectorRun.id == run_id, CollectorRun.status == "queued")
             .values(
                 status="failed",
                 error_code="publish_failed",
@@ -85,6 +88,7 @@ def enqueue_run(
 def _capture[R](
     session: Session,
     run: CollectorRun,
+    result: CollectorRunTarget,
     source: Source,
     adapter: Adapter[R],
     request: Request,
@@ -100,6 +104,7 @@ def _capture[R](
         payload = session.get_one(RawPayload, request.raw_payload_id)
         if payload.source_id != run.source_id or payload.storage_key is None:
             raise ValueError("Existing raw capture must belong to the source and have a body")
+        result.raw_payload_id = payload.id
         return Response(None, payload.status_code, payload.content_type, payload.etag), payload
     for attempt in range(settings.collector_max_retries + 1):
         while True:
@@ -124,8 +129,10 @@ def _capture[R](
                 raise RunDeferred("wall_time_budget")
             time.sleep(wait)
         source_id, source_key, run_id = source.id, source.key, run.id
-        if request.mode == "live" and request_hook is not None:
-            request_hook(session, source, run, request, None)
+        if request.mode == "live":
+            require_live(request, settings)  # A closed guard must not debit quota or count.
+            if request_hook is not None:
+                request_hook(session, source, run, request, None)
         run.http_requests += int(request.mode == "live")
         session.commit()
         retry_at = None
@@ -150,7 +157,10 @@ def _capture[R](
                 captured_at=captured_at,
             )
             run.last_status_code = response.status_code
+            result.raw_payload_id = payload.id  # Linked even if the after-hook fails.
             if request.mode == "live":
+                # Block state from the current row: an owner may have disabled it mid-fetch.
+                session.refresh(source, with_for_update=True)
                 source.last_status_code = response.status_code
                 source.consecutive_block_count = (
                     source.consecutive_block_count + 1
@@ -194,7 +204,7 @@ def _capture[R](
                 return response, payload
         delay = (
             0
-            if retry_at is not None
+            if retry_at is not None and retry_at > datetime.now(UTC)
             else min(
                 settings.collector_backoff_base_seconds * 4**attempt,
                 settings.collector_backoff_cap_seconds,
@@ -282,9 +292,8 @@ def execute_run[R](
                 raise RunDeferred("run_stopped")
             for request in target.requests:
                 response, payload = _capture(
-                    session, run, source, adapter, request, settings, deadline, request_hook
+                    session, run, result, source, adapter, request, settings, deadline, request_hook
                 )
-                result.raw_payload_id = payload.id
                 session.commit()
                 if response.status_code in BLOCK_STATUSES:
                     raise RunDeferred(f"http_{response.status_code}")

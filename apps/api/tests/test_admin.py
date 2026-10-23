@@ -432,6 +432,7 @@ def test_disable_keeps_a_block_committed_after_the_lookup(
         source = get_source(session, key)
         with (
             Session(engine) as runner,
+            patch("pulso_sources.framework.lifecycle.require_live"),
             patch("pulso_sources.framework.lifecycle.fetch", return_value=Response(None, 429)),
         ):
             target = Target("catalog", "fixture", [Request()])

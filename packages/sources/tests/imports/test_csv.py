@@ -273,6 +273,7 @@ def test_distinct_entities_and_trends_dates_remain_importable() -> None:
             b"store_domain,product_url,title,price\na.test,/p,One,1\nb.test,/p,Two,2\n",
         ),
         ("google_trends", b"keyword,date,interest\na,2026-10-01,1\na,2026-10-02,2\n"),
+        ("fx_frankfurter", b"date,base,quote,rate\n2026-01-01,USD,JPY,150\n2026-01-01,USD,EUR,1\n"),
     ]:
         parsed = parse_csv(source, body)
         assert len(parsed.rows) == 2 and not parsed.errors
@@ -291,6 +292,38 @@ def test_distinct_entities_and_trends_dates_remain_importable() -> None:
 def test_file_level_errors(body: bytes) -> None:
     with pytest.raises(ValueError):
         parse_csv("google_trends", body)
+
+
+def test_duplicate_fx_pair_date_names_both_rows() -> None:
+    # P1-40 L1: preview must reject what the Frankfurter parser would refuse at commit.
+    body = b"date,base,quote,rate\n2026-01-01,USD,JPY,150\n2026-01-01,USD,JPY,151\n"
+    with pytest.raises(DuplicateEntityRows) as caught:
+        parse_csv("fx_frankfurter", body)
+    assert {(e.row, e.message) for e in caught.value.errors} == {
+        (2, "Duplicate entity with row 3"),
+        (3, "Duplicate entity with row 2"),
+    }
+
+
+@pytest.mark.parametrize(
+    "header,message",
+    [
+        ("keyword,date,interest,Notes", "Unknown columns: notes$"),
+        ("keyword,Keyword,date,interest", "Duplicate columns: keyword$"),
+        ("keyword,,date,interest", r"Unknown columns: \(blank\)$"),
+    ],
+)
+def test_header_errors_name_the_columns(header: str, message: str) -> None:
+    with pytest.raises(ValueError, match=message):
+        parse_csv("google_trends", f"{header}\na,x,2026-01-01,1\n".encode())
+
+
+def test_trailing_unnamed_empty_column_is_ignored() -> None:
+    # Spreadsheet exports often end every line with a delimiter.
+    body = b"keyword,date,interest,\na,2026-01-01,1,\nb,2026-01-02,2\nc,2026-01-03,3,x\n"
+    parsed = parse_csv("google_trends", body)
+    assert [row["keyword"] for row in parsed.rows] == ["a", "b"]
+    assert [(e.row, e.message) for e in parsed.errors] == [(4, "Row width differs from header")]
 
 
 def test_file_and_row_caps(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -180,6 +180,8 @@ def commit_import(
         version = TEMPLATES[source_key].template_version if mode == "csv" else "shopify-json-v1"
         if mode not in {"csv", "json"} or (mode == "json" and source_key != "shopify_stores"):
             raise ValueError("Unsupported import mode/source")
+        if mode == "csv" and observed_for is not None:
+            raise ValueError("CSV rows carry their own dates; observed_for is JSON-only")
         # Serialize identity checks through capture commit, including concurrent uploads.
         session.execute(select(Source.id).where(Source.id == source.id).with_for_update())
         payload = session.scalar(

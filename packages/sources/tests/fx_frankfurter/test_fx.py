@@ -48,7 +48,7 @@ def test_parse_fixture(name: str, count: int, day: int) -> None:
 def test_hand_checked_fixture_conversion() -> None:
     rate = FrankfurterAdapter().parse((FIXTURES / "latest.json").read_bytes())[0].rate
     assert convert_minor(123, "USD", "JPY", rate, rounding=ROUND_HALF_UP) == 185
-    assert convert_minor(1500, "JPY", "USD", 1 / rate, rounding=ROUND_HALF_UP) == 1000
+    assert convert_minor(1500, "JPY", "USD", rate, rounding=ROUND_HALF_UP, inverse=True) == 1000
     with pytest.raises(ValueError):
         backfill(date(2026, 10, 22), date(2026, 10, 21))
 
@@ -136,6 +136,26 @@ def test_plan_refills_outage_from_slowest_pair(session: Session) -> None:
     assert requests[0].params["from"] == "2026-10-20"
     assert requests[0].params["to"] == "2026-10-21"
     assert "from" not in requests[1].params
+
+
+def test_one_quote_without_rates_does_not_pin_the_watermark(session: Session) -> None:
+    # P1-32 L7 (probe F2): a quote that never returns no longer restarts from 2025-01-01.
+    for quote in fx_frankfurter.QUOTES[1:]:
+        session.add(
+            FxRate(
+                date=date(2026, 10, 21),
+                base="USD",
+                quote=quote,
+                source=SOURCE,
+                rate=Decimal(1),
+                observed_for=date(2026, 10, 21),
+                captured_at=datetime(2026, 10, 21, tzinfo=UTC),
+                raw_payload_id=1,
+            )
+        )
+    backfill_request = list(plan(session, date(2026, 10, 22))[0].requests)[0]
+    assert backfill_request.params["from"] == "2026-09-21"
+    assert backfill_request.params["to"] == "2026-10-21"
 
 
 def test_refill_replay_and_conflict_keep_first_rate(session: Session) -> None:

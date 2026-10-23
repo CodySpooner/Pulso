@@ -135,6 +135,8 @@ def _entity_errors(source_key: str, rows: dict[int, Row], as_of: date) -> list[R
             ]
             if sku and pid:
                 checks.append((("cj_product_id", "sku", sku), (pid,)))
+        elif source_key == "fx_frankfurter":
+            checks = [(("date", row["date"], row["base"], row["quote"]), None)]
         for identity, values in checks:
             prior, prior_values = seen.setdefault(identity, (line, values))
             if prior != line and (values is None or prior_values != values):
@@ -166,8 +168,19 @@ def parse_csv(
         delimiter = csv.Sniffer().sniff(text.splitlines()[0], delimiters=",;").delimiter
         reader = csv.reader(io.StringIO(text, newline=""), delimiter=delimiter, strict=True)
         headers = [aliases.get(normalize(h), normalize(h)) for h in next(reader)]
-        if len(set(headers)) != len(headers) or any(h not in template.columns for h in headers):
-            raise ValueError("Unknown or duplicate mapped columns")
+        # Spreadsheet exports may end each line with a delimiter: an unnamed, empty column.
+        trailing = len(headers) > 1 and headers[-1] == ""
+        if trailing:
+            headers.pop()
+        unknown = [h for h in headers if h not in template.columns]
+        duplicate = sorted({h for h in headers if headers.count(h) > 1})
+        problems = [
+            f"{label} columns: " + ", ".join(name[:60] or "(blank)" for name in names[:10])
+            for label, names in (("Unknown", unknown), ("Duplicate", duplicate))
+            if names
+        ]
+        if problems:
+            raise ValueError("; ".join(problems))
         missing = [
             name
             for name, col in template.columns.items()
@@ -186,6 +199,8 @@ def parse_csv(
             if not values or not any(values):
                 skipped += 1
                 continue
+            if trailing and len(values) == len(headers) + 1 and not values[-1].strip():
+                values.pop()
             if len(values) != len(headers):
                 errors.append(RowError(line, "", "Row width differs from header"))
                 continue
