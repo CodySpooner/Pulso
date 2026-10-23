@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { Database, Play } from "lucide-react";
+import { Clock, Database, Play } from "lucide-react";
 
 import { EmptyState } from "@/components/pulso/empty-state";
 import { Button } from "@/components/ui/button";
@@ -10,7 +10,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { $api, isProblem } from "@/lib/api/client";
-import { formatUtc } from "@/lib/format";
+import { formatAgo, formatUtc } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 import { useHost, useRefreshAdmin, useSources } from "./api";
@@ -152,7 +152,7 @@ export function SourcesPanel({ now, onOpen }: { now: number; onOpen: (key: strin
                     <SourceName source={s} onOpen={onOpen} />
                     <StatePill state={state} />
                   </div>
-                  <StatusNote source={s} state={state} className="-mt-1 max-w-none whitespace-normal" />
+                  <StatusNote source={s} state={state} className="-mt-1" />
                   <dl className="zone-data grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-muted-foreground">
                     <dt>Last run</dt>
                     <dd className="text-foreground">
@@ -272,7 +272,7 @@ export function SourcesPanel({ now, onOpen }: { now: number; onOpen: (key: strin
         </>
       )}
 
-      <ReasonDialog returnFocusRef={toggled} confirm={confirm} pending={patch.isPending} onCancel={() => setConfirm(null)} onSubmit={(reason) => confirm && setEnabled(confirm.source, confirm.mode === "reenable", reason)} />
+      <ReasonDialog now={now} returnFocusRef={toggled} confirm={confirm} pending={patch.isPending} onCancel={() => setConfirm(null)} onSubmit={(reason) => confirm && setEnabled(confirm.source, confirm.mode === "reenable", reason)} />
     </Panel>
   );
 }
@@ -288,23 +288,23 @@ function SourceName({ source, onOpen }: { source: SourceHealth; onOpen: (key: st
       >
         <span className="block truncate">{source.name}</span>
       </button>
-      <span className="text-micro text-subtle-foreground">{typeLabel[source.type] ?? source.type}</span>
+      <span className="text-label text-subtle-foreground">{typeLabel[source.type] ?? source.type}</span>
     </div>
   );
 }
 
 function StatusNote({ source, state, className }: { source: SourceHealth; state: SourceState; className?: string }) {
-  const note = [
-    source.disabled_reason,
-    source.retry_not_before && `retry after ${formatUtc(source.retry_not_before)}`,
-    state === "skipped" && source.last_run && skipNote(source.last_run),
-  ]
-    .filter(Boolean)
-    .join(" · ");
-  if (!note) return null;
+  const reason = [source.disabled_reason, state === "skipped" && source.last_run && skipNote(source.last_run)].filter(Boolean).join(" · ");
+  if (!reason && !source.retry_not_before) return null;
+  // The table (md and up) truncates the reason; the phone card wraps it. The deadline line is never cut (imp-094).
   return (
-    <span title={note} className={cn("max-w-48 truncate text-micro text-muted-foreground", className)}>
-      {note}
+    <span className={cn("flex flex-col text-label text-muted-foreground", className)}>
+      {reason && (
+        <span title={reason} className="md:max-w-48 md:truncate">
+          {reason}
+        </span>
+      )}
+      {source.retry_not_before && <span className="whitespace-nowrap">Retry after {formatUtc(source.retry_not_before)}</span>}
     </span>
   );
 }
@@ -355,12 +355,14 @@ function RunButton({ name, blocker, pending, onRun }: { name: string; blocker: s
 }
 
 function ReasonDialog({
+  now,
   returnFocusRef,
   confirm,
   pending,
   onCancel,
   onSubmit,
 }: {
+  now: number;
   returnFocusRef: React.RefObject<HTMLElement | null>;
   confirm: Confirm | null;
   pending: boolean;
@@ -368,6 +370,9 @@ function ReasonDialog({
   onSubmit: (reason: string) => void;
 }) {
   const reenable = confirm?.mode === "reenable";
+  // Re-enabling stays allowed before retry_not_before, and it leaves the deadline as stored: live runs before
+  // it are deferred (RunDeferred), so the dialog says so instead of implying the wait is over (imp-094).
+  const retryAfter = reenable && confirm.source.retry_not_before && Date.parse(confirm.source.retry_not_before) > now ? confirm.source.retry_not_before : null;
   return (
     <Dialog open={confirm != null} onOpenChange={(open) => !open && onCancel()}>
       <DialogContent
@@ -386,10 +391,23 @@ function ReasonDialog({
           >
             <div className="flex flex-col gap-1.5">
               <DialogTitle>{reenable ? `Re-enable ${confirm.source.name}?` : `Disable ${confirm.source.name}?`}</DialogTitle>
-              <DialogDescription>
-                {reenable
-                  ? "The block rule turned this source off. Say why it is safe to try again; the reason goes to the source's audit log (§4.2)."
-                  : "Scheduled runs stop until you enable it again, and the days it is disabled show as gaps."}
+              <DialogDescription asChild>
+                <div className="flex flex-col gap-3">
+                  <p>
+                    {reenable
+                      ? "The block rule turned this source off. Say why it is safe to try again; the reason goes to the source's audit log (§4.2)."
+                      : "Scheduled runs stop until you enable it again, and the days it is disabled show as gaps."}
+                  </p>
+                  {retryAfter && (
+                    <p className="flex gap-2 rounded-md bg-warning-muted px-3 py-2 text-foreground">
+                      <Clock aria-hidden className="mt-0.5 size-3.5 shrink-0 text-warning" />
+                      <span>
+                        Retry after <span className="font-medium whitespace-nowrap">{formatUtc(retryAfter)}</span> ({formatAgo(retryAfter, now)}). You can re-enable
+                        now, but runs before then are deferred.
+                      </span>
+                    </p>
+                  )}
+                </div>
               </DialogDescription>
             </div>
             <label className="flex flex-col gap-1.5 text-label font-medium text-muted-foreground">
@@ -399,7 +417,9 @@ function ReasonDialog({
                 rows={3}
                 required={reenable}
                 className="rounded-md border border-input bg-background px-2.5 py-2 text-body text-foreground placeholder:text-subtle-foreground"
-                placeholder={reenable ? "For example: retry-after passed, store reachable again" : "For example: pausing while the seed list is reviewed"}
+                placeholder={
+                  retryAfter ? "For example: store reachable again" : reenable ? "For example: retry-after passed, store reachable again" : "For example: pausing while the seed list is reviewed"
+                }
               />
             </label>
             <div className="flex justify-end gap-2">
