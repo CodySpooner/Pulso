@@ -8,6 +8,7 @@ import {
   defaultImportSource,
   gapsNote,
   hostState,
+  importEntry,
   importOutcome,
   mergeGaps,
   previewSummary,
@@ -163,6 +164,12 @@ describe("CSV import flow", () => {
     expect(defaultImportSource([source({ key: "backup" }), cj, fx])?.key).toBe("fx_frankfurter");
     expect(defaultImportSource([source({ key: "backup" }), cj])?.key).toBe("cj");
     expect(defaultImportSource([source({ key: "backup" })])).toBeUndefined();
+  });
+
+  test("the row entry says what it can do: import, check only, or nothing without a template", () => {
+    expect(importEntry(fx)).toEqual({ label: "Import CSV", hint: null, available: true });
+    expect(importEntry(cj)).toEqual({ label: "Check CSV", hint: "No import adapter yet: check a file against the CJ Dropshipping template now.", available: true });
+    expect(importEntry(source({ name: "Amazon", csv_import: null }))).toEqual({ label: "Import CSV", hint: "No CSV template for Amazon yet.", available: false });
   });
 
   test("import is blocked without an adapter or without a valid row, never silently", () => {

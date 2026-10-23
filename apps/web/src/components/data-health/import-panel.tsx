@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useImperativeHandle, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import { ChevronDown, CircleCheck, CircleDashed, CircleX, Download, FileSpreadsheet, History, TriangleAlert, Upload } from "lucide-react";
 
 import { CopyButton } from "@/components/pulso/copy-button";
@@ -17,7 +18,12 @@ import { IMPORT_MAX_BYTES, commitBlocker, defaultImportSource, importOutcome, pr
 // CSV import (P1-11b, vault Features/CSV Export & Import): choose or drop a file, it is checked at once
 // (validation only, nothing written), then one click imports it as a `csv` collector run. A preview always
 // matches the selected source and file: changing either checks again, so a stale preview is never shown.
-export function ImportPanel({ onOpen }: { onOpen: (key: string) => void }) {
+export interface ImportPanelHandle {
+  /** A sources-table row's Import CSV (imp-081): bring the panel into view on `key`'s template. */
+  open: (key: string) => void;
+}
+
+export function ImportPanel({ onOpen, ref }: { onOpen: (key: string) => void; ref?: React.Ref<ImportPanelHandle> }) {
   const sources = useSources();
   const refresh = useRefreshAdmin();
   const preview = $api.useMutation("post", "/v1/admin/sources/{key}/import/preview");
@@ -26,13 +32,29 @@ export function ImportPanel({ onOpen }: { onOpen: (key: string) => void }) {
   const [file, setFile] = useState<File | null>(null);
   const [tooBig, setTooBig] = useState(false);
   const [dragging, setDragging] = useState(false);
+  // A row asked for another source while a file is open: the panel asks before switching (DEC-175).
+  const [ask, setAsk] = useState<{ key: string; file: File } | null>(null);
   const input = useRef<HTMLInputElement>(null);
+  const choose = useRef<HTMLButtonElement>(null);
+  const askNote = useRef<HTMLParagraphElement>(null);
+  const switchButton = useRef<HTMLButtonElement>(null);
   const openRuns = useRef<HTMLButtonElement>(null);
   const ids = useId();
   useTakeLostFocus(openRuns, commit.data);
 
   const importable = sources.data?.filter((s) => s.csv_import != null) ?? [];
   const source = importable.find((s) => s.key === picked) ?? defaultImportSource(importable);
+  // The ask lapses with its file: an import that clears it, or another file.
+  const target = ask && ask.file === file && ask.key !== source?.key ? importable.find((s) => s.key === ask.key) : undefined;
+
+  /** The Source select's change: a chosen file is checked again for the new source. */
+  function pick(key: string) {
+    setAsk(null);
+    if (key === source?.key) return;
+    setPicked(key);
+    commit.reset();
+    if (file) check(file, key);
+  }
 
   function check(next: File, key: string) {
     // A running import keeps its file (imp-092): replacing it would reset the commit, losing its outcome and
@@ -55,6 +77,16 @@ export function ImportPanel({ onOpen }: { onOpen: (key: string) => void }) {
       },
     });
   }
+
+  useImperativeHandle(ref, () => ({
+    open(key) {
+      const switching = key !== source?.key && file != null && !tooBig; // a too-big file was never sent
+      flushSync(() => (switching ? setAsk({ key, file }) : pick(key)));
+      const focus = switching ? (switchButton.current ?? askNote.current) : choose.current;
+      focus?.focus({ preventScroll: true });
+      focus?.scrollIntoView({ block: "center", behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+    },
+  }));
 
   let body: React.ReactNode;
   if (sources.isPending) {
@@ -108,12 +140,7 @@ export function ImportPanel({ onOpen }: { onOpen: (key: string) => void }) {
                 // A running import keeps its source (imp-089): switching would reset it and lose its outcome. Still
                 // focusable; a change is ignored, so React puts the value back.
                 aria-disabled={commit.isPending}
-                onChange={(e) => {
-                  if (commit.isPending) return;
-                  setPicked(e.target.value);
-                  commit.reset();
-                  if (file) check(file, e.target.value);
-                }}
+                onChange={(e) => !commit.isPending && pick(e.target.value)}
                 className="peer h-(--input-h) w-full appearance-none rounded-md border border-border bg-secondary pr-8 pl-3 text-data text-foreground hover:border-border-strong aria-disabled:pointer-events-none aria-disabled:text-subtle-foreground"
               >
                 {importable.map((s) => (
@@ -141,6 +168,23 @@ export function ImportPanel({ onOpen }: { onOpen: (key: string) => void }) {
             </p>
           )}
         </div>
+
+        {target && file && (
+          // Never switch silently: the open file would be checked against another template (or lose its import).
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border border-border bg-secondary px-4 py-3 text-data">
+            <FileSpreadsheet className="size-4 text-muted-foreground" aria-hidden />
+            <p ref={askNote} id={`${ids}-ask`} tabIndex={-1} className="min-w-0 flex-1 rounded-sm break-words text-foreground">
+              {commit.isPending
+                ? `${file.name} is importing into ${source.name}. Choose ${target.name} once it finishes.`
+                : `${file.name} is still open for ${source.name}. Switching checks it against ${target.name} instead.`}
+            </p>
+            {!commit.isPending && (
+              <Button ref={switchButton} size="sm" variant="secondary" className="ml-auto" aria-describedby={`${ids}-ask`} onClick={() => pick(target.key)}>
+                Switch to {target.name}
+              </Button>
+            )}
+          </div>
+        )}
 
         <div
           onDragOver={(e) => {
@@ -183,6 +227,7 @@ export function ImportPanel({ onOpen }: { onOpen: (key: string) => void }) {
             }}
           />
           <Button
+            ref={choose}
             variant="secondary"
             size="sm"
             // Locked like the Import button, but dimmed with a token, not opacity, so its focus ring keeps 3:1.

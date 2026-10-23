@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { Clock, Database, Play } from "lucide-react";
+import { Clock, Database, Play, Upload } from "lucide-react";
 
 import { EmptyState } from "@/components/pulso/empty-state";
 import { Button } from "@/components/ui/button";
@@ -15,7 +15,7 @@ import { cn } from "@/lib/utils";
 
 import { useHost, useRefreshAdmin, useSources } from "./api";
 import { Ago, Missing, Panel, PanelError, StatePill } from "./atoms";
-import { attentionCount, skipNote, sourceState, type SourceHealth, type SourceState } from "./model";
+import { attentionCount, importEntry, skipNote, sourceState, type SourceHealth, type SourceState } from "./model";
 
 const SOURCES_API = "GET /v1/admin/sources";
 
@@ -74,7 +74,7 @@ function problemText(error: unknown, fallback: string): string {
   return isProblem(error) ? `${error.detail} (error ID ${error.request_id})` : fallback;
 }
 
-export function SourcesPanel({ now, onOpen }: { now: number; onOpen: (key: string) => void }) {
+export function SourcesPanel({ now, onOpen, onImport }: { now: number; onOpen: (key: string) => void; onImport: (key: string) => void }) {
   const sources = useSources();
   const host = useHost();
   const refresh = useRefreshAdmin();
@@ -139,6 +139,7 @@ export function SourcesPanel({ now, onOpen }: { now: number; onOpen: (key: strin
       />
     ),
     run: <RunButton name={s.name} blocker={runBlocker(s)} pending={run.isPending && run.variables?.params.path.key === s.key} onRun={() => runNow(s)} />,
+    import: <ImportButton source={s} onImport={onImport} />,
   });
 
   return (
@@ -194,7 +195,10 @@ export function SourcesPanel({ now, onOpen }: { now: number; onOpen: (key: strin
                       {c.toggle}
                       {s.enabled ? "Enabled" : "Disabled"}
                     </label>
-                    {c.run}
+                    <div className="flex gap-2">
+                      {c.import}
+                      {c.run}
+                    </div>
                   </div>
                 </li>
               );
@@ -274,7 +278,12 @@ export function SourcesPanel({ now, onOpen }: { now: number; onOpen: (key: strin
                         )}
                       </td>
                       <td className="px-3">{c.toggle}</td>
-                      <td className="px-3 text-right">{c.run}</td>
+                      <td className="px-3">
+                        <div className="flex justify-end gap-2">
+                          {c.import}
+                          {c.run}
+                        </div>
+                      </td>
                     </tr>
                   );
                 })}
@@ -377,6 +386,31 @@ function RunButton({ name, blocker, pending, onRun }: { name: string; blocker: s
     <Tooltip>
       <TooltipTrigger asChild>{button}</TooltipTrigger>
       <TooltipContent>{blocker}</TooltipContent>
+    </Tooltip>
+  );
+}
+
+/** Opens the CSV import panel on this source's template (imp-081); without one it says why instead. */
+function ImportButton({ source, onImport }: { source: SourceHealth; onImport: (key: string) => void }) {
+  const { label, hint, available } = importEntry(source);
+  const button = (
+    <Button
+      size="sm"
+      variant="ghost"
+      aria-disabled={!available}
+      className="aria-disabled:pointer-events-auto aria-disabled:cursor-not-allowed"
+      onClick={() => available && onImport(source.key)}
+      aria-label={`${label} for ${source.name}`}
+    >
+      <Upload aria-hidden />
+      {label}
+    </Button>
+  );
+  if (!hint) return button;
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>{button}</TooltipTrigger>
+      <TooltipContent>{hint}</TooltipContent>
     </Tooltip>
   );
 }
