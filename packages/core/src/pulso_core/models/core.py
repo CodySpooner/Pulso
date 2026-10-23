@@ -72,6 +72,7 @@ class CollectorRun(BigId, Base):
             postgresql_where=text("status = 'success' AND trigger IN ('schedule', 'catchup')"),
         ),
         Index(None, "source_id", "started_at"),
+        Index(None, "source_id", "id"),  # source-filtered run pages (DEC-158)
     )
     source_id: Mapped[int] = mapped_column(ForeignKey("sources.id"))
     trigger: Mapped[str] = mapped_column(String(20))
