@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from pulso_core.models import CollectorRun, Source
 from pulso_core.settings import Settings
+from pulso_sources import framework
 from pulso_sources.cj import CJAdapter, dry_run, parse, plan
 from pulso_sources.cj.auth import Auth
 from pulso_sources.cj.auth import parse as parse_auth
@@ -132,9 +133,13 @@ def test_quota_reservation_and_utc_reset(settings: Settings) -> None:
     session.commit.assert_not_called()
 
 
-def test_network_unreachable_even_with_live_flag(settings: Settings) -> None:
+def test_network_unreachable_even_with_live_flag(
+    settings: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
     adapter = CJAdapter()
     assert fetch(adapter, Request(mode="fixture", body=fixture("list_v2")), settings=settings).body
+    monkeypatch.setattr(framework, "is_linked_worktree", lambda _: False)
+    settings.pulso_bot_contact = "https://example.test/bot"  # type: ignore[assignment]
     settings.collectors_live = True
     with pytest.raises(CollectorsLiveDisabled):
         fetch(adapter, Request(), settings=settings)
