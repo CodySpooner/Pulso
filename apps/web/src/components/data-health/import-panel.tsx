@@ -49,6 +49,7 @@ export function ImportPanel({ onOpen, ref }: { onOpen: (key: string) => void; re
 
   /** The Source select's change: a chosen file is checked again for the new source. */
   function pick(key: string) {
+    if (commit.isPending) return; // a running import keeps its source (imp-089)
     setAsk(null);
     if (key === source?.key) return;
     setPicked(key);
@@ -140,7 +141,7 @@ export function ImportPanel({ onOpen, ref }: { onOpen: (key: string) => void; re
                 // A running import keeps its source (imp-089): switching would reset it and lose its outcome. Still
                 // focusable; a change is ignored, so React puts the value back.
                 aria-disabled={commit.isPending}
-                onChange={(e) => !commit.isPending && pick(e.target.value)}
+                onChange={(e) => pick(e.target.value)}
                 className="peer h-(--input-h) w-full appearance-none rounded-md border border-border bg-secondary pr-8 pl-3 text-data text-foreground hover:border-border-strong aria-disabled:pointer-events-none aria-disabled:text-subtle-foreground"
               >
                 {importable.map((s) => (
