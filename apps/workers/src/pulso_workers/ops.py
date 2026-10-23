@@ -29,7 +29,8 @@ def slots(source_key: str, start: datetime, end: datetime) -> Iterator[tuple[str
     while day <= end:
         for source, job, minute, hour, weekday in COLLECTION_SLOTS:
             due = day.replace(hour=hour, minute=minute)
-            if source == source_key and (weekday == "*" or day.isoweekday() == int(weekday)):
+            # Crontab day_of_week: 0 is Sunday, so map ISO weekday 7 to 0.
+            if source == source_key and (weekday == "*" or day.isoweekday() % 7 == int(weekday)):
                 if start <= due <= end:
                     yield slot_key(job, due, cadence="daily" if weekday == "*" else "weekly"), due
         day += timedelta(days=1)
@@ -219,7 +220,8 @@ def heartbeat() -> None:
 
 def publish_ops(name: str) -> None:
     try:
-        app.send_task(name, queue="ops", retry=False)
+        # Expire within one heartbeat period so a consumer outage never replays a backlog.
+        app.send_task(name, queue="ops", retry=False, expires=300)
     except Exception as exc:
         logger.error("ops_publish_failed", extra={"error_type": type(exc).__name__})
 

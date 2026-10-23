@@ -49,8 +49,12 @@ class LockedScheduler(PersistentScheduler):  # type: ignore[misc]
 
         if entry.task in {"ops.heartbeat", "audit.schedule"}:
             publish_ops(entry.task)
-        else:
+            return
+        try:
             enqueue_scheduled(*entry.args)
+        except Exception as exc:
+            # Beat survives a DB outage; the gap audit and SCH-4 catch-up recover the slot.
+            logger.error("run_enqueue_failed", extra={"error_type": type(exc).__name__})
 
     def close(self) -> None:
         try:

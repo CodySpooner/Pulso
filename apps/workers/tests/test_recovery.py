@@ -442,6 +442,18 @@ def test_only_ops_consumer_starts_recovery(
 ) -> None:
     ops.start_ops(Mock(task_consumer=Mock(queues=[SimpleNamespace(name=queue)])))
     assert app.send_task.call_count == int(queue == "ops")
+    if queue == "ops":  # A backlog after an ops outage expires instead of replaying audits.
+        app.send_task.assert_called_once_with(
+            "ops.heartbeat", queue="ops", retry=False, expires=300
+        )
+
+
+def test_sunday_crontab_slot_is_audited(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Celery's day_of_week "0" is Sunday; ISO weekday numbers Sunday 7.
+    monkeypatch.setattr(ops, "COLLECTION_SLOTS", (("fixture", "weekly", 0, 5, "0"),))
+    monday = datetime(2026, 10, 19, tzinfo=UTC)
+    due = [at for _, at in ops.slots("fixture", monday, monday + timedelta(days=7))]
+    assert due == [datetime(2026, 10, 25, 5, tzinfo=UTC)]
 
 
 @pytest.mark.parametrize("guard", ["flag", "worktree"])
