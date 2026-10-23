@@ -91,7 +91,9 @@ def slot_key(job: str, at: datetime, *, cadence: Literal["daily", "weekly"] = "d
 # Imported last because lifecycle uses the public protocol/value types above.
 from pulso_sources.framework.lifecycle import RunDeferred, enqueue_run, execute_run  # noqa: E402
 from pulso_sources.framework.observations import (  # noqa: E402
+    Writer,
     append_observation,
+    current_fields,
     effective_observation,
 )
 
@@ -104,7 +106,9 @@ __all__ = [
     "RunDeferred",
     "Target",
     "UpsertStats",
+    "Writer",
     "append_observation",
+    "current_fields",
     "effective_observation",
     "enqueue_run",
     "execute_run",
