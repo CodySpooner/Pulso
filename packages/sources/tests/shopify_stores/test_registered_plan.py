@@ -178,7 +178,7 @@ def test_registration_enables_nothing_and_live_guards_hold(
     assert not source.enabled and io_mock.calls == []
     assert plan.collector_max_retries == 0 and plan.finalize is not None
     with pytest.raises(ValueError, match="Unsupported Shopify job"):
-        tasks.PLANS[source.key](session, source, "variants_js")
+        tasks.PLANS[source.key](session, source, "unsupported")
     if guard != "disabled":
         source.enabled = True
         session.commit()
