@@ -41,3 +41,116 @@ test.describe("tablet", () => {
     await expect(page.getByRole("heading", { level: 1, name: "Discover" })).toBeFocused();
   });
 });
+
+// imp-097 (vault Design/Accessibility, "Icon-only buttons: aria-label always, plus a tooltip"): at 768–1023px
+// the top bar's two icon-only buttons name themselves on hover and keyboard focus. A tap never shows the tooltip,
+// and focus handed back by a sheet or palette closed with a tap or click doesn't open it either.
+const tabletIconButtons = [
+  { name: "Open menu", tooltip: "Open menu", via: "Shift+Tab" },
+  { name: "Open command palette", tooltip: "Open command palette Ctrl K", via: "Tab" },
+];
+
+async function gotoPulse(page: Page) {
+  await page.goto("/");
+  await expect(page.locator("html")).toHaveAttribute("data-app-ready", "true");
+  await expect(page.getByRole("heading", { level: 1, name: "Daily Pulse" })).toBeVisible();
+}
+
+/** No tooltip shows, checked after the 400ms open delay has passed. */
+async function expectNoTooltip(page: Page) {
+  await page.waitForTimeout(500);
+  await expect(page.getByRole("tooltip")).toHaveCount(0);
+}
+
+for (const width of [768, 1023]) {
+  test.describe(`tablet ${width}px tooltips`, () => {
+    test.use({ viewport: { width, height: 1024 } });
+
+    for (const { name, tooltip, via } of tabletIconButtons) {
+      test(`hovering ${name} shows its tooltip below the bar`, async ({ page }) => {
+        await gotoPulse(page);
+        const button = page.getByRole("button", { name, exact: true });
+        await button.hover();
+        await expect(page.getByRole("tooltip")).toHaveText(tooltip);
+        const box = (await button.boundingBox())!;
+        const bubble = (await page.locator("[data-radix-popper-content-wrapper]").boundingBox())!;
+        expect(bubble.y).toBeGreaterThanOrEqual(box.y + box.height + 4); // below the button, clear of its 4px focus ring
+        expect(bubble.x).toBeGreaterThanOrEqual(0);
+        expect(bubble.x + bubble.width).toBeLessThanOrEqual(width);
+        await page.mouse.move(width / 2, 600, { steps: 4 }); // Radix closes on the first move outside its grace area
+        await expect(page.getByRole("tooltip")).toHaveCount(0);
+      });
+
+      test(`keyboard focus on ${name} shows its tooltip`, async ({ page }) => {
+        await gotoPulse(page);
+        // The logo link sits between the two buttons, so one key press lands on each with keyboard modality.
+        await page.getByRole("link", { name: "Pulso, go to Daily Pulse" }).focus();
+        await page.keyboard.press(via);
+        await expect(page.getByRole("button", { name, exact: true })).toBeFocused();
+        await expect(page.getByRole("tooltip")).toHaveText(tooltip);
+        await page.keyboard.press("Escape");
+        await expect(page.getByRole("tooltip")).toHaveCount(0);
+      });
+    }
+
+    test("Esc closes the sheet, focus returns to Open menu and names it", async ({ page }) => {
+      const menu = await openSheet(page, "Open menu");
+      await page.keyboard.press("Escape");
+      await expect(page.getByRole("dialog")).toBeHidden();
+      await expect(menu).toBeFocused();
+      await expect(page.getByRole("tooltip")).toHaveText("Open menu");
+    });
+
+    // The tooltip follows :focus-visible, like the focus ring: after a key press Chromium shows both on returned focus.
+    test("mouse clicks on Open menu and Close menu return focus with no ring and no tooltip", async ({ page }) => {
+      await gotoPulse(page);
+      const menu = page.getByRole("button", { name: "Open menu", exact: true });
+      await menu.click();
+      await expect(page.getByRole("dialog")).toBeVisible();
+      await page.getByRole("button", { name: "Close menu" }).click();
+      await expect(page.getByRole("dialog")).toBeHidden();
+      await expect(menu).toBeFocused();
+      expect(await menu.evaluate((el) => el.matches(":focus-visible"))).toBe(false);
+      await expectNoTooltip(page);
+    });
+
+    test("Ctrl+K still opens the palette and Esc returns focus to Open command palette", async ({ page }) => {
+      await gotoPulse(page);
+      const button = page.getByRole("button", { name: "Open command palette", exact: true });
+      await button.focus();
+      await page.keyboard.press("Control+k");
+      await expect(page.getByRole("dialog", { name: "Command palette" })).toBeVisible();
+      await page.keyboard.press("Escape");
+      await expect(page.getByRole("dialog")).toBeHidden();
+      await expect(button).toBeFocused();
+    });
+  });
+}
+
+test.describe("tablet touch tooltips", () => {
+  test.use({ viewport: { width: 768, height: 1024 }, hasTouch: true });
+
+  test("tapping Open menu opens the sheet with no tooltip, and Close menu hands focus back without one", async ({ page }) => {
+    await gotoPulse(page);
+    const menu = page.getByRole("button", { name: "Open menu", exact: true });
+    await menu.tap();
+    await expect(page.getByRole("dialog")).toBeVisible();
+    await expect(page.getByRole("tooltip")).toHaveCount(0);
+    await page.getByRole("button", { name: "Close menu" }).tap();
+    await expect(page.getByRole("dialog")).toBeHidden();
+    await expect(menu).toBeFocused();
+    await expectNoTooltip(page);
+  });
+
+  test("tapping Open command palette opens it with no tooltip, and a tap outside hands focus back without one", async ({ page }) => {
+    await gotoPulse(page);
+    const button = page.getByRole("button", { name: "Open command palette", exact: true });
+    await button.tap();
+    await expect(page.getByRole("dialog", { name: "Command palette" })).toBeVisible();
+    await expect(page.getByRole("tooltip")).toHaveCount(0);
+    await page.touchscreen.tap(384, 1000); // the overlay below the palette
+    await expect(page.getByRole("dialog")).toBeHidden();
+    await expect(button).toBeFocused();
+    await expectNoTooltip(page);
+  });
+});
