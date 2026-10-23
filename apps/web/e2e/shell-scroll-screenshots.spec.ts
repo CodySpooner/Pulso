@@ -22,7 +22,7 @@ for (const theme of ["dark", "light"] as const) {
       await expect(heading).toBeVisible();
       await expect(page.getByRole("region", { name: "CSV import" })).toBeVisible();
       await page.evaluate(() => document.fonts.ready);
-      await heading.evaluate((el) => el.scrollIntoView({ block: "start" }));
+      await page.evaluate(() => (location.hash = "open-gaps"));
       await page.waitForTimeout(400);
       await page.screenshot({ path: `${OUT}/jump-${width}-${theme}.png` });
     });

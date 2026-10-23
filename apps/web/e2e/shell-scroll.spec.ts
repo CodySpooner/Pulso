@@ -3,9 +3,9 @@ import { expect, test, type Page } from "@playwright/test";
 import { mockAdminApi } from "./data-health/fixtures";
 
 // imp-147: at lg the shell is one viewport tall and only <main> scrolls. Absolutely positioned boxes with no
-// positioned ancestor (the import panel's sr-only live regions) used to escape main's overflow and make the
-// document 1,309 px tall at 1440×900, so a fragment jump near the page end scrolled the document too and pushed
-// the whole shell up. The document must stay one viewport tall, and a jump must scroll main only.
+// positioned ancestor (the CSV panel's sr-only live regions) used to escape main's overflow and make the document
+// 1,319 px tall at 1440×900, so a fragment jump to #open-gaps scrolled the document too and pushed the whole shell
+// up 419 px. The document must stay one viewport tall, and a jump must scroll main only.
 
 const docSize = (page: Page) =>
   page.evaluate(() => ({ scrollHeight: document.documentElement.scrollHeight, scrollWidth: document.documentElement.scrollWidth, scrollY }));
@@ -27,26 +27,31 @@ for (const path of ["/admin/data-health", "/"]) {
   });
 }
 
+const jumps: [string, (page: Page) => Promise<unknown>][] = [
+  ["a native #open-gaps fragment jump", (page) => page.evaluate(() => (location.hash = "open-gaps"))],
+  ["the Overdue note's Open gaps link", (page) => page.getByRole("link", { name: /\(in Open gaps\)$/ }).locator("visible=true").click()],
+];
+
 for (const [width, height] of [
   [1440, 900],
   [375, 812],
 ] as const) {
-  test(`a fragment jump to Open gaps scrolls main, not the shell, at ${width}`, async ({ page }) => {
-    await page.setViewportSize({ width, height });
-    await openDataHealth(page);
-    const topbar = page.getByRole("banner");
-    const before = (await topbar.boundingBox())!.y;
-    const heading = page.getByRole("heading", { name: /^Open gaps/ });
-    // What a native #fragment jump does: scroll every scrollable ancestor, the document included, to the target.
-    await heading.evaluate((el) => el.scrollIntoView({ block: "start" }));
+  for (const [name, jump] of jumps) {
+    test(`${name} scrolls main, not the shell, at ${width}`, async ({ page }) => {
+      await page.setViewportSize({ width, height });
+      await openDataHealth(page);
+      const topbar = page.getByRole("banner");
+      const before = (await topbar.boundingBox())!.y;
+      await jump(page);
 
-    await expect(heading).toBeInViewport();
-    expect((await topbar.boundingBox())!.y).toBe(before);
-    const size = await docSize(page);
-    expect(size.scrollWidth).toBe(width);
-    if (width === 1440) {
-      expect(size).toMatchObject({ scrollHeight: height, scrollY: 0 });
-      expect(await page.locator("main").evaluate((el) => el.scrollTop)).toBeGreaterThan(0);
-    }
-  });
+      await expect(page.locator("#open-gaps")).toBeInViewport();
+      expect((await topbar.boundingBox())!.y).toBe(before);
+      const size = await docSize(page);
+      expect(size.scrollWidth).toBe(width);
+      if (width === 1440) {
+        expect(size).toMatchObject({ scrollHeight: height, scrollY: 0 });
+        expect(await page.locator("main").evaluate((el) => el.scrollTop)).toBeGreaterThan(0);
+      }
+    });
+  }
 }
