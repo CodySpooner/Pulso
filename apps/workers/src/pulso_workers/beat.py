@@ -44,9 +44,13 @@ class LockedScheduler(PersistentScheduler):  # type: ignore[misc]
         return float(super().tick(**kwargs))
 
     def apply_entry(self, entry: Any, producer: Any = None) -> None:
+        from pulso_workers.ops import publish_ops
         from pulso_workers.tasks import enqueue_scheduled
 
-        enqueue_scheduled(*entry.args)
+        if entry.task in {"ops.heartbeat", "audit.schedule"}:
+            publish_ops(entry.task)
+        else:
+            enqueue_scheduled(*entry.args)
 
     def close(self) -> None:
         try:
@@ -70,6 +74,9 @@ def init_scheduler(sender: Any, **kwargs: object) -> None:
         logger.error("scheduler_lock_unavailable")
         raise SystemExit(1) from None
     sender.scheduler.lock = lock
+    from pulso_workers.ops import publish_ops
+
+    publish_ops("audit.schedule")
 
 
 def main() -> None:

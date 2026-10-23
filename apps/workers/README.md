@@ -2,15 +2,15 @@
 
 Run commands from the repo root. Windows uses the solo pool; Linux uses prefork.
 Both consumers stay at concurrency 1 (D1). Source adapters own their in-process
-request limiter; no live adapter is registered by this scheduling task.
+request limiter. Worker startup imports adapter registrations; registration enables nothing.
 
 ```powershell
 uv run celery -A pulso_workers.celery_app:app worker --pool=solo -Q collect,default --concurrency=1 --loglevel=INFO
 uv run celery -A pulso_workers.celery_app:app worker --pool=solo -Q ops --concurrency=1 --loglevel=INFO
 ```
 
-The second consumer is reserved for SCH-4 heartbeat/audit, which is not implemented
-in this size split. `worker_process_init` creates a process-local SQLAlchemy engine
+The second consumer runs `ops.heartbeat` every five minutes and `audit.schedule`
+every fifteen minutes. Its startup requests a heartbeat; Beat startup requests an audit. `worker_process_init` creates a process-local SQLAlchemy engine
 and configures Pulso JSON logs. Imports open no database or broker connections.
 
 Only the collector host may run `python -m pulso_workers.beat`. Never start Beat or
@@ -22,7 +22,7 @@ actual lock on that same session before scheduling; missing/disconnected session
 stop Beat. Ticks sleep at most five seconds. Detached lock connections close their
 physical session, so no session-level lock leaks back into a pool.
 
-`schedules.py` defines six UTC crontabs. `LockedScheduler` checks `sources.enabled`,
+`schedules.py` defines six collection and two ops UTC crontabs. `LockedScheduler` checks `sources.enabled`,
 skips queued/running work or a successful current slot, and calls `enqueue_run`
 before publishing `collect.run(run_id)` to `collect`. Broker failures persist
 `failed/publish_failed` and log only the exception class; Beat's eager producer
@@ -35,15 +35,34 @@ Adapter lanes register `tasks.PLANS[source_key] = factory`. A factory receives
 request_hook=None)`. Jobs are `catalog`, `variants_js`, `freight`, `trends`, `fx`;
 manual runs default to catalog (Trends/FX use their own job). Registration must be
 imported at worker startup. Missing adapters fail the queued run without fetching.
+Frankfurter is registered. Shopify registration remains P1-04c under the permitted
+size split: its existing `collect()` needs a reusable plan/finalization extraction
+that preserves cache eligibility, retry suppression and successful-target delisting.
 The consumer holds the source advisory lock across `execute_run`, passes
 `SoftTimeLimitExceeded` as a stop exception, and applies 60/75-minute soft/hard
 limits from settings. Settings require every source budget below soft below hard,
 and backoff base no greater than cap. Windows solo relies on cooperative budgets;
 OS signal-based soft limits require Linux prefork.
 
-**Remaining SCH-4:** heartbeat, overdue/gap audit, catch-up, abandoned-run reconciliation
-and bounded redelivery after source-lock contention. A busy source leaves the row
-queued; the recovery lane must handle it before live rollout. No outbox or migration.
+**Recovery (DEC-098):** before persisting a heartbeat, ops audits the previous window.
+A gap longer than fifteen minutes records `host_offline` evidence per missed slot;
+source status is `overdue` until its latest due job slots succeed. Ops uses advisory
+key -1, separate from Beat 0 and positive source IDs. Changing container hostnames
+does not reset the single collector host's heartbeat history. No external ping.
+
+Catch-up holds the source execution lock and skips queued/running rows. With that
+lock free, rows older than max(two hours, twice the source budget) fail as `abandoned`.
+Then at most one current-period catch-up per source per UTC day is enqueued; any prior
+catch-up for that slot suppresses another, even if it failed. Daily slots before today
+remain gaps; weekly slots can catch up within the same ISO week. A successful matching
+slot links gap display evidence without changing historical observations or features.
+
+Busy deliveries persist `params.lock_retries` and republish the same ID after the
+configured delay (two retries, fifteen minutes apart by default), then fail only a
+still-queued row with `source_lock_busy`. Failed publications record `publish_failed`
+and log only the exception class. Lost publications are recovered by the stale audit.
+No outbox or migration. Real Redis transport and independent Linux ops/collect
+consumers remain unverified locally (no Docker).
 
 ```powershell
 uv run ruff check apps/workers
