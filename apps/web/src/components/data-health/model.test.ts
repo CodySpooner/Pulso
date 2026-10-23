@@ -10,6 +10,8 @@ import {
   importOutcome,
   mergeGaps,
   previewSummary,
+  sampleColumns,
+  sampleNote,
   skipNote,
   sourceState,
   utcDays,
@@ -165,6 +167,25 @@ describe("CSV import flow", () => {
     expect(commitBlocker(fx, preview())).toBeNull();
     expect(commitBlocker(cj, preview())).toMatch(/^Importing into CJ Dropshipping arrives with its import adapter/);
     expect(commitBlocker(fx, preview({ valid: 0 }))).toMatch(/^No valid rows/);
+  });
+
+  test("sample columns keep the template order every row shows; blank cells don't reorder them", () => {
+    // CJ template order: cj_product_id, sku, name, unit_cost, currency, warehouse_country, …, moq, observed_for.
+    const rows: ImportPreview["rows"] = [
+      { cj_product_id: "P1", name: "Lamp", unit_cost: "5.00", currency: "USD", moq: 10 },
+      { sku: "S2", name: "Mug", unit_cost: "2.50", currency: "USD", warehouse_country: "US", observed_for: "2026-10-01" },
+      { cj_product_id: "P3", sku: "S3", name: "Fan", unit_cost: "9.99", currency: "EUR", warehouse_country: "CN", moq: 1 },
+    ];
+    expect(sampleColumns(rows)).toEqual(["cj_product_id", "sku", "name", "unit_cost", "currency", "warehouse_country", "moq", "observed_for"]);
+    expect(sampleColumns([])).toEqual([]);
+    // Two columns no sampled row holds together can't be ordered from the sample: first seen goes first.
+    expect(sampleColumns([{ a: 1, c: 1 }, { a: 1, b: 1 }])).toEqual(["a", "c", "b"]);
+  });
+
+  test("the sample note says how much of the valid rows it shows", () => {
+    expect(sampleNote(preview({ rows: Array(20).fill({}), valid: 1284 }))).toBe("first 20 of 1,284");
+    expect(sampleNote(preview({ rows: Array(3).fill({}), valid: 3 }))).toBe("all 3");
+    expect(sampleNote(preview({ rows: [{}], valid: 1 }))).toBe("1 row");
   });
 
   test("the preview summary counts rows and blank lines", () => {
