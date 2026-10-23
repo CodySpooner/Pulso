@@ -5,7 +5,8 @@ from collections.abc import Callable
 from datetime import UTC, date, datetime, timedelta
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Body, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
+from fastapi.exceptions import RequestValidationError
 from sqlalchemy import Date, Integer, String, column, func, select, table
 from sqlalchemy.orm import Session
 from sqlalchemy.sql import ColumnElement
@@ -41,16 +42,28 @@ from pulso_core.settings import Settings, get_settings
 from pulso_core.worktree import is_linked_worktree
 from pulso_sources.framework import enqueue_run
 from pulso_sources.imports import ADAPTERS, TEMPLATES, commit_import, parse_csv, template_csv
-from pulso_sources.imports.csv import DuplicateEntityRows, ParsedCSV
+from pulso_sources.imports.csv import MAX_BYTES, DuplicateEntityRows, ParsedCSV
 from pulso_sources.seed_approval import SEED_SOURCES, approved_targets, is_approved_seed
 
 logger = logging.getLogger("pulso.api")
 router = APIRouter(prefix="/v1/admin", dependencies=[Depends(current_principal)])
 MAX_ERRORS = 100  # first row errors returned; counts stay complete (P1-22 finding 4)
 DB = Annotated[Session, Depends(get_db)]
-Upload = Annotated[
-    bytes, Body(media_type="application/octet-stream", description="The file's raw bytes.")
-]
+UPLOAD_BODY = {
+    "requestBody": {
+        "required": True,
+        "content": {
+            "application/octet-stream": {
+                "schema": {
+                    "type": "string",
+                    "contentMediaType": "application/octet-stream",
+                    "title": "Body",
+                    "description": "The file's raw bytes.",
+                }
+            }
+        },
+    }
+}
 COVERAGE = table(
     "source_daily_coverage",
     column("source_id", Integer),
@@ -278,6 +291,29 @@ def import_source(session: Session, key: str) -> Source:
     return source
 
 
+async def read_upload(request: Request) -> bytes:
+    # A Body(bytes) parameter would buffer the entire upload before this dependency runs.
+    try:
+        declared = int(request.headers.get("content-length", ""))
+    except ValueError:
+        declared = 0
+    if declared > MAX_BYTES:
+        raise APIError(422, "invalid_file", "File exceeds 20 MiB")
+    body = bytearray()
+    async for chunk in request.stream():
+        if len(body) + len(chunk) > MAX_BYTES:
+            raise APIError(422, "invalid_file", "File exceeds 20 MiB")
+        body.extend(chunk)
+    if not body:
+        raise RequestValidationError(
+            [{"loc": ("body",), "msg": "Field required", "type": "missing"}]
+        )
+    return bytes(body)
+
+
+Upload = Annotated[bytes, Depends(read_upload)]
+
+
 @router.get(
     "/sources/{key}/import/template",
     response_class=Response,
@@ -292,7 +328,9 @@ def get_import_template(key: str, session: DB) -> Response:
     )
 
 
-@router.post("/sources/{key}/import/preview", response_model=ImportPreview)
+@router.post(
+    "/sources/{key}/import/preview", response_model=ImportPreview, openapi_extra=UPLOAD_BODY
+)
 def preview_import(key: str, body: Upload, session: DB) -> ImportPreview:
     source = import_source(session, key)
     # ponytail: validation-only until P1-07–09 register read-only classifiers for preview_csv.
@@ -315,7 +353,7 @@ def preview_import(key: str, body: Upload, session: DB) -> ImportPreview:
     )
 
 
-@router.post("/sources/{key}/import", response_model=ImportResult)
+@router.post("/sources/{key}/import", response_model=ImportResult, openapi_extra=UPLOAD_BODY)
 def commit_source_import(
     key: str,
     body: Upload,
