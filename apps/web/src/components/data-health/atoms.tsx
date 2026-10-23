@@ -120,7 +120,7 @@ export function PanelError({ title, error, retry, className }: { title: string; 
         <p>
           {problem.detail}{" "}
           <span className="font-mono text-label text-subtle-foreground">
-            Error ID <span className="select-all">{problem.request_id}</span>
+            Error ID <span className="select-all selection:text-foreground">{problem.request_id}</span>
           </span>
         </p>
       ) : (

@@ -8,7 +8,7 @@ import { mockAdminApi } from "./data-health/fixtures";
 // why and stays 5 s; imp-043: that next step, selecting the ID, is one click.
 
 const ERROR_ID = "2950841734"; // the specimen's digest, admin/ui/samples.tsx
-const HINT = "The clipboard isn’t available here. Select the ID to copy it.";
+const HINT = "The clipboard isn’t available here.\nSelect the ID to copy it."; // a line each in the tooltip
 const noClipboard = () => Object.defineProperty(Navigator.prototype, "clipboard", { get: () => undefined });
 const selection = (page: Page) => page.evaluate(() => getSelection()?.toString());
 

@@ -50,7 +50,7 @@ export function ErrorState({
       <p>Something failed while loading this. A retry usually fixes it; if it keeps failing, the error ID matches the server logs.</p>
       {digest && (
         <p className="mt-2 font-mono text-label text-subtle-foreground">
-          Error ID <span className="select-all">{digest}</span>
+          Error ID <span className="select-all selection:text-foreground">{digest}</span>
         </p>
       )}
     </EmptyState>

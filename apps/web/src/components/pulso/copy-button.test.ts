@@ -32,7 +32,7 @@ describe("copy results", () => {
     expect(results.failed.text).toBe("Couldn’t copy");
     // A cause true for every failure copyText reports (no API or a refused write, never "blocked"), then an
     // imperative next step the user can take without the clipboard API.
-    expect(results.failed.hint).toBe("The clipboard isn’t available here. Select the ID to copy it.");
+    expect(results.failed.hint).toBe("The clipboard isn’t available here.\nSelect the ID to copy it.");
     expect("hint" in results.copied).toBe(false);
   });
 
