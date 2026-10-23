@@ -332,6 +332,18 @@
       },
       "Run": {
         "properties": {
+          "blocked_by": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The active run that suppressed this skipped slot (DEC-108); null otherwise.",
+            "title": "Blocked By"
+          },
           "complete": {
             "title": "Complete",
             "type": "boolean"
@@ -484,6 +496,7 @@
           "error_code",
           "error_message",
           "host",
+          "blocked_by",
           "target_count",
           "successful_target_count"
         ],
@@ -492,6 +505,18 @@
       },
       "RunDetail": {
         "properties": {
+          "blocked_by": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The active run that suppressed this skipped slot (DEC-108); null otherwise.",
+            "title": "Blocked By"
+          },
           "complete": {
             "title": "Complete",
             "type": "boolean"
@@ -651,6 +676,7 @@
           "error_code",
           "error_message",
           "host",
+          "blocked_by",
           "target_count",
           "successful_target_count",
           "targets"

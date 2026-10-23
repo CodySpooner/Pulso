@@ -230,6 +230,36 @@ def test_source_run_pages_keep_id_order_with_interleaved_sources(
     assert seen == expected
 
 
+def test_blocked_by_comes_only_from_slot_suppressed_evidence(
+    admin: TestClient, engine: Engine
+) -> None:
+    """imp-042 (DEC-123): a suppressed slot names its blocker; every other run reads null."""
+    blocker = record(engine, 2, NOW - timedelta(hours=1), a="success")
+    with Session(engine) as session:
+        runs = [
+            CollectorRun(source_id=2, trigger="schedule", status="skipped", queued_at=NOW, **extra)
+            for extra in (
+                {"params": {"blocked_by": 7}},  # not slot_suppressed: never read
+                {"params": {}, "error_code": "slot_suppressed"},  # evidence missing: stays null
+                {"params": {"blocked_by": blocker}, "error_code": "slot_suppressed"},
+            )
+        ]
+        session.add_all(runs)
+        session.commit()
+        ids = [run.id for run in runs]
+
+    cj = {s["key"]: s for s in admin.get("/v1/admin/sources").json()}["cj"]
+    assert (cj["last_run"]["id"], cj["last_run"]["blocked_by"]) == (ids[2], blocker)
+    page = admin.get("/v1/admin/runs", params={"source": "cj"}).json()["items"]
+    assert [(r["id"], r["blocked_by"]) for r in page] == [
+        (ids[2], blocker),
+        (ids[1], None),
+        (ids[0], None),
+        (blocker, None),
+    ]
+    assert admin.get(f"/v1/admin/runs/{ids[2]}").json()["blocked_by"] == blocker
+
+
 @pytest.mark.parametrize(
     "live,worktree,enabled,status,code",
     [
