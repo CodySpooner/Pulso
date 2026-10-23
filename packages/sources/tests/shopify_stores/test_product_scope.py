@@ -31,8 +31,9 @@ def status(session: Session, run_id: int, scope: str, target_id: str) -> str | N
 
 
 @pytest.mark.parametrize("reply", sorted(STORE_RULE_REPLIES))
+@pytest.mark.usefixtures("catalog")
 def test_js_failure_fails_only_that_panel_and_store_stays_active(
-    session: Session, settings: Settings, io_mock: Any, catalog: None, reply: str
+    session: Session, settings: Settings, io_mock: Any, reply: str
 ) -> None:
     io_mock.replies[JS] = STORE_RULE_REPLIES[reply]
     result = js_run(session, settings)
@@ -60,8 +61,9 @@ def test_qualification_and_catalog_responses_still_mark_untrackable(
     assert status(session, later.id, "shopify_excluded", "first.test:untrackable") is not None
 
 
+@pytest.mark.usefixtures("catalog")
 def test_duplicate_handle_panel_requests_newest_listing_once(
-    session: Session, settings: Settings, io_mock: Any, catalog: None
+    session: Session, settings: Settings, io_mock: Any
 ) -> None:
     first = session.scalars(select(Listing).where(Listing.store_id == 1)).one()
     session.add(  # A deleted product's stale twin, its handle reused before a catalog succeeded.
@@ -83,8 +85,9 @@ def test_duplicate_handle_panel_requests_newest_listing_once(
     assert any("second.test/products/" in url for url, _, _ in io_mock.calls)
 
 
+@pytest.mark.usefixtures("catalog")
 def test_delisted_listing_never_enters_panel(
-    session: Session, settings: Settings, io_mock: Any, catalog: None
+    session: Session, settings: Settings, io_mock: Any
 ) -> None:
     listing = session.scalars(select(Listing).where(Listing.store_id == 1)).one()
     listing.delisted_at = listing.last_seen_at
@@ -95,8 +98,9 @@ def test_delisted_listing_never_enters_panel(
     assert any("second.test/products/" in url for url, _, _ in io_mock.calls)
 
 
+@pytest.mark.usefixtures("catalog")
 def test_js_unsolicited_304_never_counts_as_fresh(
-    session: Session, settings: Settings, io_mock: Any, catalog: None
+    session: Session, settings: Settings, io_mock: Any
 ) -> None:
     assert js_run(session, settings).error_code is None  # Caches a successful .js body.
     meta = json.loads(fixture("meta").body or b"")
