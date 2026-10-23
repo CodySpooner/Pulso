@@ -201,6 +201,30 @@ def test_freshness_survives_unrelated_target_failure(admin: TestClient, engine: 
     assert admin.get("/v1/admin/runs/999").status_code == 404
 
 
+@pytest.mark.parametrize("limit", [1, 2, 4])
+def test_source_run_pages_keep_id_order_with_interleaved_sources(
+    admin: TestClient, engine: Engine, limit: int
+) -> None:
+    expected: list[int] = []
+    for source_id in (2, 1, 5, 2, 1, 2, 5):
+        run_id = record(engine, source_id, NOW, a="success")
+        if source_id == 2:
+            expected.insert(0, run_id)
+    params: dict[str, str | int] = {"source": "cj", "limit": limit}
+    seen: list[int] = []
+    for _ in range(len(expected)):
+        response = admin.get("/v1/admin/runs", params=params)
+        assert response.status_code == 200
+        page = response.json()
+        assert all(run["source_key"] == "cj" for run in page["items"])
+        seen.extend(run["id"] for run in page["items"])
+        if page["next_cursor"] is None:
+            break
+        params["cursor"] = page["next_cursor"]
+    assert page["next_cursor"] is None
+    assert seen == expected
+
+
 @pytest.mark.parametrize(
     "live,worktree,enabled,status,code",
     [
@@ -422,16 +446,18 @@ def test_host_reports_latest_heartbeat_and_open_gaps(admin: TestClient, engine: 
             [
                 HostHeartbeat(host="pc", at=NOW - timedelta(minutes=5)),
                 HostHeartbeat(host="pc", at=NOW - timedelta(hours=3)),
+                HostHeartbeat(host="other-pc", at=NOW - timedelta(minutes=1)),
             ]
         )
-        for slot, start, filled in [
-            ("catalog:open", NOW - timedelta(days=1), None),
-            ("catalog:filled", NOW - timedelta(days=2), run),
-            ("catalog:ancient", NOW - timedelta(days=120), None),
+        for source_id, slot, start, filled in [
+            (2, "catalog:open", NOW - timedelta(days=1), None),
+            (1, "catalog:newer", NOW - timedelta(hours=1), None),
+            (2, "catalog:filled", NOW - timedelta(days=2), run),
+            (2, "catalog:ancient", NOW - timedelta(days=120), None),
         ]:
             session.add(
                 CollectionGap(
-                    source_id=2,
+                    source_id=source_id,
                     slot_key=slot,
                     slot_start=start,
                     slot_end=start + timedelta(days=1),
@@ -441,10 +467,14 @@ def test_host_reports_latest_heartbeat_and_open_gaps(admin: TestClient, engine: 
             )
         session.commit()
     host = admin.get("/v1/admin/host").json()
-    assert naive(host["latest_heartbeat"]["at"]) == (NOW - timedelta(minutes=5)).replace(
+    assert host["latest_heartbeat"]["host"] == "other-pc"
+    assert naive(host["latest_heartbeat"]["at"]) == (NOW - timedelta(minutes=1)).replace(
         tzinfo=None
     )
-    assert [(g["source_key"], g["slot_key"]) for g in host["open_gaps"]] == [("cj", "catalog:open")]
+    assert [(g["source_key"], g["slot_key"]) for g in host["open_gaps"]] == [
+        ("shopify_stores", "catalog:newer"),
+        ("cj", "catalog:open"),
+    ]
 
 
 class ImportAdapter:

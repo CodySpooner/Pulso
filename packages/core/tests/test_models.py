@@ -102,7 +102,8 @@ def test_single_migration_head_and_offline_sql(
     output = StringIO()
     config = Config(str(Path(__file__).resolve().parents[3] / "alembic.ini"), output_buffer=output)
     scripts = ScriptDirectory.from_config(config)
-    assert scripts.get_heads() == ["0002"]
+    assert scripts.get_heads() == ["0003"]
+    assert scripts.get_revision("0003").down_revision == "0002"
     assert scripts.get_revision("0002").down_revision == "0001"
     command.upgrade(config, "head", sql=True)
     sql = output.getvalue()
@@ -117,6 +118,11 @@ def test_single_migration_head_and_offline_sql(
     assert "CREATE VIEW source_daily_coverage" in sql
     assert "WHERE template_version IS NOT NULL" in sql
     assert "'backup', 'Backups', 'internal', false" in sql
+    assert "CREATE INDEX ix_host_heartbeats_at ON host_heartbeats (at)" in sql
+    assert (
+        "CREATE INDEX ix_collection_gaps_open_slot_start ON collection_gaps (slot_start) "
+        "WHERE filled_by_run_id IS NULL"
+    ) in sql
 
 
 def test_queue_and_import_identity_contract() -> None:
