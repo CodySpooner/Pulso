@@ -11,6 +11,11 @@ async function open(page: Page) {
   await expect(page.getByRole("heading", { level: 1, name: "Data Health" })).toBeVisible();
 }
 
+/** The level of every heading in the accessibility tree, in document order. */
+async function headingLevels(page: Page) {
+  return page.getByRole("heading").evaluateAll((els) => els.map((el) => Number(el.getAttribute("aria-level") ?? el.tagName.slice(1))));
+}
+
 test("bounded pages disclose omitted rows and preserve overdue sources beyond the page", async ({ page }) => {
   const calls = await mockAdminApi(page, { host: { open_gaps: [host.open_gaps[2]], next_cursor: "fixture-next" } });
   await page.route("**/api/v1/admin/runs/412", (route) => route.fulfill({ json: { ...runDetail(412), next_cursor: "fixture-next" } }));
@@ -230,8 +235,20 @@ test.describe("states", () => {
   test("API down replaces the page with one error", async ({ page }) => {
     await mockAdminApi(page, { down: true });
     await open(page);
-    await expect(page.getByRole("heading", { name: "Can't reach the API" })).toBeVisible({ timeout: 15_000 });
+    // imp-057: the page-level error is the h1's h2, so the outline never skips a level (axe heading-order).
+    await expect(page.getByRole("heading", { level: 2, name: "Can't reach the API" })).toBeVisible({ timeout: 15_000 });
     await expect(page.getByText("When it runs on your PC, this also means the PC is off.")).toBeVisible();
+    expect(await headingLevels(page)).toEqual([1, 2]);
+  });
+
+  test("a failed panel's error stays an h3 under its panel's h2", async ({ page }) => {
+    await mockAdminApi(page);
+    await page.route((url) => url.pathname === "/api/v1/admin/coverage", (route) => route.abort("connectionrefused"));
+    await open(page);
+    const coverage = page.getByRole("region", { name: "Coverage" });
+    await expect(coverage.getByRole("heading", { level: 3, name: "Couldn't load coverage" })).toBeVisible({ timeout: 15_000 });
+    const levels = await headingLevels(page);
+    expect(levels.every((level, i) => i === 0 || level - levels[i - 1] <= 1)).toBe(true);
   });
 
   test("no sources configured", async ({ page }) => {

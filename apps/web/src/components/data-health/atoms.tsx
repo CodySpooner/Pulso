@@ -104,8 +104,21 @@ export function Ago({ iso, now, source, className }: { iso: string; now: number;
   );
 }
 
-/** A panel's failed request: cause, Retry and the API request id (vault Design/UI States, Error inline). */
-export function PanelError({ title, error, retry, className }: { title: string; error: unknown; retry: () => void; className?: string }) {
+/** A panel's failed request: cause, Retry and the API request id (vault Design/UI States, Error inline).
+ *  Its title is an h3 under the panel's h2; one that stands in for the panels directly under the h1 is an h2. */
+export function PanelError({
+  title,
+  error,
+  retry,
+  headingLevel,
+  className,
+}: {
+  title: string;
+  error: unknown;
+  retry: () => void;
+  headingLevel?: "h2" | "h3";
+  className?: string;
+}) {
   const problem = isProblem(error) ? error : null;
   return (
     <EmptyState
@@ -113,6 +126,7 @@ export function PanelError({ title, error, retry, className }: { title: string; 
       tone="error"
       size="sm"
       title={title}
+      headingLevel={headingLevel}
       className={className}
       action={
         <>
