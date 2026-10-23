@@ -830,9 +830,11 @@ def test_exact_import_cap_accepts_original_bytes(
                 .values(config={"shopify_import": context})
             )
             session.commit()
-    else:
+    else:  # Pad a data cell: csv.Sniffer scans the whole header line (seconds at 20 MiB).
         body = TRENDS_CSV.replace(
-            b"keyword,", b"keyword" + b" " * (MAX_BYTES - len(TRENDS_CSV)) + b",", 1
+            b"example keyword,",
+            b"example keyword" + b" " * (MAX_BYTES - len(TRENDS_CSV)) + b",",
+            1,
         )
     assert len(body) == MAX_BYTES
     headers = {"Content-Length": str(MAX_BYTES)} if declared else {}
