@@ -129,7 +129,7 @@ test("coverageRows places days per source and skips internal sources", () => {
 
 describe("CSV import flow", () => {
   const preview = (over: Partial<ImportPreview> = {}): ImportPreview => ({
-    rows: [], valid: 3, invalid: 1, skipped: 0, error_count: 1, errors: [{ row: 5, column: "rate", message: "Invalid rate value" }], ...over,
+    rows: [], valid: 3, invalid: 1, skipped: 0, error_count: 1, errors: [{ row: 5, column: "rate", message: "Invalid rate. Use a finite positive decimal number below 10,000,000,000 with up to 8 decimal places." }], ...over,
   });
   const result = (over: Partial<ImportResult> = {}, runOver: Partial<Run> = {}): ImportResult => ({
     run: run({ id: 42, trigger: "csv", rows_inserted: 3, rows_updated: 0, rows_unchanged: 0, ...runOver }),
