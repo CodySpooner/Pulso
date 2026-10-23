@@ -402,6 +402,11 @@ export interface components {
         };
         /** Run */
         Run: {
+            /**
+             * Blocked By
+             * @description The active run that suppressed this skipped slot (DEC-108); null otherwise.
+             */
+            blocked_by: number | null;
             /** Complete */
             complete: boolean;
             /** Error Code */
@@ -448,6 +453,11 @@ export interface components {
         };
         /** RunDetail */
         RunDetail: {
+            /**
+             * Blocked By
+             * @description The active run that suppressed this skipped slot (DEC-108); null otherwise.
+             */
+            blocked_by: number | null;
             /** Complete */
             complete: boolean;
             /** Error Code */

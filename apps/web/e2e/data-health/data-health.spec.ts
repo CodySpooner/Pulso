@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 
-import { healthySources, host, mockAdminApi, operationId, sources } from "./fixtures";
+import { healthySources, host, mockAdminApi, operationId, sources, suppressedSources } from "./fixtures";
 
 // DH-2 / DH-3 (P1-12): the Data Health page and nav badge against fixture DH-1 responses (E2E auth bypass).
 
@@ -60,6 +60,34 @@ test("renders every DH-1 field from fixtures", async ({ page }) => {
   await expect(drawer).toContainText("4 approved targets");
   await expect(drawer).toContainText("Retry not before");
   await expect(drawer.getByRole("button", { name: /#380/ })).toHaveAttribute("aria-expanded", "false");
+});
+
+test("a suppressed latest slot reads Skipped with its blocker, never Healthy (imp-042)", async ({ page }) => {
+  await mockAdminApi(page, { sources: suppressedSources });
+  await open(page);
+  const table = page.getByRole("region", { name: "Sources table" });
+  const cj = table.getByRole("row", { name: /CJ Dropshipping/ });
+  await expect(cj).toContainText("Skipped");
+  await expect(cj).toContainText("Run #419 was still active");
+  await expect(cj).not.toContainText("Healthy");
+  await expect(cj).toContainText("as of 1h ago"); // freshness stays the last success, not the skip
+  // Controls keep their precedence.
+  for (const [name, status] of [
+    ["Shopify stores", "Blocked"],
+    ["Google Trends", "Overdue"],
+    ["Frankfurter FX", "Disabled"],
+  ]) {
+    await expect(table.getByRole("row", { name: new RegExp(name) })).toContainText(status);
+  }
+  // A skip isn't an alert by itself: the badge still counts only blocked, failing and overdue.
+  await expect(page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: /Data Health/ })).toHaveAccessibleName(
+    /^Data Health\W+2 sources need attention$/,
+  );
+
+  await table.getByRole("button", { name: "CJ Dropshipping: open runs" }).click();
+  const drawer = page.getByRole("dialog", { name: "CJ Dropshipping" });
+  await expect(drawer).toContainText("Skipped");
+  await expect(drawer).toContainText("slot_suppressed");
 });
 
 test("toggle and Run now call patch_source and run_source", async ({ page }) => {
@@ -228,10 +256,21 @@ test.describe("phone width", () => {
     await expect(page.getByRole("region", { name: "Sources table" })).toBeHidden();
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(375);
   });
+
+  test("a suppressed slot's card says Skipped and why (imp-042)", async ({ page }) => {
+    await mockAdminApi(page, { sources: suppressedSources });
+    await open(page);
+    const card = page.getByRole("listitem").filter({ has: page.getByRole("button", { name: "CJ Dropshipping: open runs" }) });
+    await expect(card).toContainText("Skipped");
+    await expect(card).toContainText("Run #419 was still active");
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(375);
+  });
 });
 
 // Keeps the fixture honest: the overdue source comes from an open gap, not from a status field.
 test("fixture sanity", () => {
   expect(sources.find((s) => s.key === "google_trends")?.status).toBe("active");
   expect(host.open_gaps.some((g) => g.source_key === "google_trends")).toBe(true);
+  // imp-042: CJ's only open gap is days old, so nothing but the skip can keep it off Healthy.
+  expect(host.open_gaps.filter((g) => g.source_key === "cj").every((g) => Date.parse(g.slot_end) < Date.parse("2026-10-21T14:00:00Z"))).toBe(true);
 });
