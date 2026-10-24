@@ -308,7 +308,24 @@ def execute(
                 if "postgres" in running
                 else None
             )
-            emit(json.dumps({"containers": rows, "alembic_revision": revision, "last_op": last_op}))
+            # Read-only Data Health from the worker image (DEC-210); null until migrated.
+            health = (
+                json.loads(
+                    checked([*COMPOSE, *CONTAINER, "health"], checkout, None).rpartition("\n")[2]
+                )
+                if revision
+                else None
+            )
+            emit(
+                json.dumps(
+                    {
+                        "containers": rows,
+                        "alembic_revision": revision,
+                        "data_health": health,
+                        "last_op": last_op,
+                    }
+                )
+            )
             return
         if op == "start" and set(INFRA + CONSUMERS) <= running:
             emit("Stack already running; no changes")

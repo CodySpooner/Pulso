@@ -16,6 +16,7 @@ from collector import __main__ as host
 
 MERGES = "merge: P1-03b block accounting\nmerge: P1-38 and P1-39 fixes\nmerge: P1-09c trends"
 OWNER_PATTERN = r"fixture-owner-status \d{4}-\d{2}-\d{2}"
+HEALTH = {"as_of": "fixture", "heartbeats": [], "sources": []}
 OWNER_STATUS = "fixture-owner-status 2026-10-22"
 LATER_OWNER_STATUS = "fixture-owner-status 2026-10-23"
 
@@ -194,6 +195,7 @@ def test_status_reports_health_revision_and_previous_operation(
     runner = Runner()
     runner.running = ["postgres"]
     runner.revisions = ["0002"]
+    runner.container = HEALTH
     previous = {
         "op": "update",
         "exit": 0,
@@ -207,9 +209,26 @@ def test_status_reports_health_revision_and_previous_operation(
     assert report == {
         "containers": [{"Service": "postgres", "State": "running", "Health": "healthy"}],
         "alembic_revision": ["0002"],
+        "data_health": HEALTH,
         "last_op": previous,
     }
-    assert not any("build" in c or "run" in c or "up" in c for c in runner.calls)
+    # The only container is the read-only health step (DEC-210); nothing is built or started.
+    health = [*host.COMPOSE, *host.CONTAINER, "health"]
+    assert [c for c in runner.calls if "run" in c] == [health] and runner.stdin == [None]
+    assert not any("build" in c or "up" in c for c in runner.calls)
+
+
+@pytest.mark.parametrize(("running", "revisions"), [([], ["0002"]), (["postgres"], [])])
+def test_status_data_health_null_without_running_migrated_postgres(
+    checkout: Path, capsys: pytest.CaptureFixture[str], running: list[str], revisions: list[str]
+) -> None:
+    runner = Runner()
+    runner.running, runner.revisions = running, revisions
+    invoke(checkout, runner, "status")
+    report = json.loads(capsys.readouterr().out.splitlines()[1])
+    assert report["data_health"] is None
+    assert report["alembic_revision"] == (revisions if running else None)
+    assert container_calls(runner) == []
 
 
 def test_hold_created_mid_operation_stops_next_command(checkout: Path) -> None:

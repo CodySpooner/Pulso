@@ -1,4 +1,4 @@
-"""In-container seeds/enable/disable logic against in-memory SQLite; no collector DB."""
+"""In-container seeds/enable/disable/health logic on SQLite or a test DB; no collector DB."""
 
 import io
 import json
@@ -9,10 +9,11 @@ from typing import Any
 import pytest
 from sqlalchemy import JSON, Integer, MetaData, create_engine, select
 from sqlalchemy.engine import Engine
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import Session
 
 from collector import sources
-from pulso_core.models import Source, SourceEvent
+from pulso_core.models import CollectionGap, CollectorRun, HostHeartbeat, Source, SourceEvent
 
 PRIVATE = "owner-fixture.test"
 DEADLINE = datetime(2030, 1, 1, tzinfo=UTC)
@@ -22,12 +23,13 @@ DEADLINE = datetime(2030, 1, 1, tzinfo=UTC)
 def engine() -> Iterator[Engine]:
     metadata = MetaData()
     engine = create_engine("sqlite://")
-    for name in ("sources", "source_events"):
+    tables = ("sources", "source_events", "host_heartbeats", "collector_runs", "collection_gaps")
+    for name in tables:
         table = Source.metadata.tables[name].to_metadata(metadata)
         for column in table.columns:
-            if column.name == "id" and name == "source_events":
+            if column.name == "id" and name != "sources":
                 column.type = Integer()  # SQLite autoincrements only INTEGER keys
-            if column.name == "config":
+            if column.name in ("config", "params"):
                 column.type, column.server_default = JSON(), None
         table.create(engine)
     with Session(engine) as session, session.begin():
@@ -154,3 +156,130 @@ def test_main_runs_source_ops(
     assert json.loads(capsys.readouterr().out) == {"changed": True}
     with pytest.raises(ValueError):
         sources.main(["drop", "fx_frankfurter"])
+
+
+# Data Health for `status` (data-05, DEC-210): fixture rows only.
+SECRET = "https://fixture.test/rates?token=fixture-secret"
+
+
+def iso(value: datetime) -> str:
+    return value.astimezone(UTC).isoformat()
+
+
+def seed_health(session: Session, now: datetime) -> None:
+    ids = dict(session.execute(select(Source.key, Source.id)).tuples().all())
+    fx = session.get_one(Source, ids["fx_frankfurter"])
+    fx.status, fx.retry_not_before, fx.disabled_reason = "blocked", DEADLINE, SECRET
+    fx.config = {"seed": {"entries": [{"domain": PRIVATE}]}}
+    session.add_all(
+        [
+            HostHeartbeat(host="ops-new", at=now - timedelta(seconds=90)),
+            HostHeartbeat(host="ops-new", at=now - timedelta(hours=1)),
+            HostHeartbeat(host="ops-old", at=now - timedelta(days=2)),
+        ]
+    )
+    runs = [
+        CollectorRun(
+            source_id=fx.id,
+            trigger="schedule",
+            queued_at=now - timedelta(hours=hours),
+            started_at=now - timedelta(hours=hours),
+            finished_at=now - timedelta(hours=hours, minutes=-1),
+            status=status,
+            error_code=code,
+            error_message=SECRET if code else None,
+            params={"url": SECRET},
+        )
+        for hours, status, code in [
+            (48, "success", None),
+            (3, "success", None),
+            (2, "failed", "http_429"),
+        ]
+    ]
+    session.add_all(runs)
+    session.flush()
+    session.add_all(
+        CollectionGap(
+            source_id=fx.id,
+            slot_key=f"fx:{days}",
+            slot_start=now - timedelta(days=days),
+            slot_end=now - timedelta(days=days - 1),
+            reason="host_offline",
+            filled_by_run_id=runs[0].id if days == 1 else None,  # the newest gap is filled
+        )
+        for days in (1, 2, 3)
+    )
+
+
+def check_health(result: dict[str, Any], now: datetime) -> None:
+    assert [(b["host"], b["at"]) for b in result["heartbeats"]] == [
+        ("ops-new", iso(now - timedelta(seconds=90))),
+        ("ops-old", iso(now - timedelta(days=2))),
+    ]
+    assert 90 <= result["heartbeats"][0]["age_seconds"] < 150
+    rows = {row["key"]: row for row in result.pop("sources")}
+    assert list(rows) == sorted(rows) and set(sources.SOURCES) < set(rows)
+    hour = timedelta(hours=1)
+    assert rows.pop("fx_frankfurter") == {
+        "key": "fx_frankfurter",
+        "enabled": False,
+        "status": "blocked",
+        "retry_not_before": iso(DEADLINE),
+        "latest_run": {
+            "status": "failed",
+            "started_at": iso(now - 2 * hour),
+            "finished_at": iso(now - 2 * hour + timedelta(minutes=1)),
+            "error_code": "http_429",
+        },
+        "runs_24h": {"failed": 1, "success": 1},
+        "open_gaps": 2,
+        "newest_open_gap": {
+            "slot_key": "fx:2",
+            "slot_start": iso(now - timedelta(days=2)),
+            "slot_end": iso(now - timedelta(days=1)),
+            "reason": "host_offline",
+        },
+    }
+    for row in rows.values():
+        assert (row["latest_run"], row["runs_24h"], row["open_gaps"]) == (None, {}, 0)
+        assert row["newest_open_gap"] is None
+    assert set(result) == {"as_of", "heartbeats"}
+    # Codes, counts and times only: no config, error messages, params, URLs or settings.
+    assert SECRET not in json.dumps(result) and PRIVATE not in json.dumps(result)
+
+
+def test_health_reports_heartbeats_runs_and_open_gaps(engine: Engine) -> None:
+    now = datetime.now(UTC)
+    with Session(engine) as session, session.begin():
+        seed_health(session, now)
+        result = sources.health(session)
+    assert SECRET not in json.dumps(result) and PRIVATE not in json.dumps(result)
+    check_health(result, now)
+
+
+@pytest.mark.db
+def test_health_main_runs_in_read_only_transaction(
+    db_engine: Engine, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    now = datetime.now(UTC)
+    with Session(db_engine) as session, session.begin():
+        seed_health(session, now)
+    monkeypatch.setattr(sources, "get_session", lambda: Session(db_engine))
+    assert sources.main(["health"]) == 0
+    output = capsys.readouterr().out
+    assert SECRET not in output and PRIVATE not in output
+    check_health(json.loads(output), now)
+
+    def write(session: Session) -> dict[str, Any]:
+        session.add(HostHeartbeat(host="write-attempt"))
+        session.flush()
+        return {}
+
+    monkeypatch.setattr(sources, "health", write)
+    with pytest.raises(DBAPIError, match="read-only transaction"):
+        sources.main(["health"])
+    with Session(db_engine) as session:
+        assert (
+            session.scalar(select(HostHeartbeat).where(HostHeartbeat.host == "write-attempt"))
+            is None
+        )
