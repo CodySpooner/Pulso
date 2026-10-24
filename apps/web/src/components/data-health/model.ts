@@ -1,4 +1,4 @@
-import { OFFLINE_HINT } from "@/components/shell/offline-banner";
+import { offlineHint } from "@/components/shell/offline-banner";
 import type { components } from "@/lib/api/schema";
 import { formatUtc } from "@/lib/format";
 
@@ -46,10 +46,10 @@ export function sourceState(source: SourceHealth, latestGapEnds: HostHealth["lat
 
 /** Why Run now is unavailable, or null when it can run: the sources table's reason and the run drawer's rule
  *  (imp-171). `host` is undefined while the host call loads or failed, and that alone is no reason. */
-export function runBlocker(host: Pick<HostHealth, "live_runs_allowed"> | undefined, source: Pick<SourceHealth, "enabled">, online: boolean): string | null {
+export function runBlocker(host: Pick<HostHealth, "live_runs_allowed"> | undefined, source: Pick<SourceHealth, "enabled" | "name">, online: boolean): string | null {
   if (host && !host.live_runs_allowed) return "Live collectors run only on the collector host.";
   if (!source.enabled) return "Enable the source before running it.";
-  if (!online) return OFFLINE_HINT; // last: the other reasons still hold once reconnected
+  if (!online) return offlineHint(`run ${source.name} now`); // last: the other reasons still hold once reconnected
   return null;
 }
 
