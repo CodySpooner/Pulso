@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 
-import { mockAdminApi, offlineNetwork, problem, sources } from "./fixtures";
+import { mockAdminApi, NOW, offlineNetwork, problem, sources } from "./fixtures";
 
 // imp-154, imp-186, imp-187 owner review screenshots, from fixtures only: 1440px and 375px, dark and light. Offline
 // reasons that name their action, each open where it covers nothing: a stale line's Retry (above when wide, on the
@@ -50,23 +50,28 @@ for (const theme of ["dark", "light"] as const) {
 
       test("run drawer stale line Retry", async ({ page, context }) => {
         const cjRun = sources.find((s) => s.key === "cj")!.last_run!;
+        const runs = { down: false };
         await mockAdminApi(page);
         await page.route(
           (url) => url.pathname === "/api/v1/admin/runs" && url.searchParams.get("source") === "cj",
           (route) =>
-            new URL(route.request().url()).searchParams.get("cursor")
-              ? route.fulfill({ status: 503, json: problem(503, "req-runs-2") })
+            runs.down
+              ? route.fulfill({ status: 503, json: problem(503, "req-runs-1") })
               : route.fulfill({ json: { items: [cjRun], next_cursor: String(cjRun.id) } }),
         );
         const { setOffline } = await offlineNetwork(page, context);
         await page.goto("/admin/data-health");
         await page.getByRole("button", { name: "CJ Dropshipping: open runs" }).locator("visible=true").click();
         const drawer = page.getByRole("dialog", { name: "CJ Dropshipping" });
-        await drawer.getByRole("button", { name: "Load older runs" }).focus();
-        await page.keyboard.press("Enter");
-        const retry = drawer.getByRole("group", { name: "Couldn't load older runs" }).getByRole("button", { name: "Retry" });
+        await expect(drawer.getByRole("button", { name: "Load older runs" })).toBeVisible();
+        // The drawer's stale line is a failed refresh of the loaded runs; an older page fails at the list's foot (DEC-236 a).
+        runs.down = true;
+        await page.clock.setFixedTime(new Date(NOW.getTime() + 6 * 60_000)); // past the 5-minute staleTime
+        await page.evaluate(() => window.dispatchEvent(new Event("visibilitychange"))); // the tab refocuses: a refetch
+        const retry = drawer.getByRole("group", { name: "Couldn't refresh runs" }).getByRole("button", { name: "Retry" });
         await expect(retry).toBeVisible();
         await setOffline(true);
+        await page.keyboard.press("Shift"); // a key, so the focus below shows its ring
         await retry.focus();
         await shot(page, "drawer-stale");
       });

@@ -1,9 +1,10 @@
 import { expect, test, type Page } from "@playwright/test";
 
-import { mockAdminApi, problem, sources } from "./fixtures";
+import { mockAdminApi, offlineNetwork, problem, sources } from "./fixtures";
 
 // imp-136 + imp-179 owner review screenshots from fixtures only: the runs list's footer (Load older runs, and an
-// older page that failed, with Retry focused), and a targets Retry that restored the targets (the region focused).
+// older page that failed, with Retry focused, and the same Retry offline with its reason open below), and a targets
+// Retry that restored the targets (the region focused).
 // 1440px and 375px, dark and light.
 // Run with `pnpm --filter web e2e:screenshots e2e/data-health/drawer-recovery`; output goes to docs/screenshots/imp-136/.
 const OUT = "../../docs/screenshots/imp-136";
@@ -48,20 +49,26 @@ for (const theme of ["dark", "light"] as const) {
     [1440, 900],
     [375, 812],
   ]) {
-    for (const failing of [false, true]) {
-      test(`drawer older runs${failing ? " failed" : ""} ${width}px ${theme}`, async ({ page }) => {
+    for (const state of ["", "failed", "offline"] as const) {
+      test(`drawer older runs${state && ` ${state}`} ${width}px ${theme}`, async ({ page, context }) => {
         await open(page, width, height, theme);
-        await pagedRuns(page, failing);
+        await pagedRuns(page, state !== "");
+        const { setOffline } = await offlineNetwork(page, context);
         const drawer = await openCj(page);
         const more = drawer.getByRole("button", { name: "Load older runs" });
         await more.focus();
         await page.keyboard.press("Shift"); // a key press: the keyboard focus ring shows, as after Tab
-        if (failing) {
+        if (state) {
           await page.keyboard.press("Enter");
           await expect(drawer.getByRole("button", { name: "Retry" })).toBeFocused();
           await expect(drawer).toContainText("Couldn't load older runs.");
         }
-        await shoot(page, `drawer-older-runs${failing ? "-failed" : ""}-${width}-${theme}`);
+        if (state === "offline") {
+          await setOffline(true);
+          await page.keyboard.press("Enter"); // locked: the press shows why (DEC-236 d)
+          await expect(page.locator('[role="tooltip"][data-state$="-open"]')).toHaveCount(1);
+        }
+        await shoot(page, `drawer-older-runs${state && `-${state}`}-${width}-${theme}`);
       });
     }
 
