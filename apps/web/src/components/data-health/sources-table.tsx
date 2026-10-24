@@ -6,7 +6,7 @@ import { ChevronRight, CircleCheck, CircleDashed, CircleX, Clock, Database, Play
 
 import { CopyButton, SelectableId } from "@/components/pulso/copy-button";
 import { EmptyState } from "@/components/pulso/empty-state";
-import { OFFLINE_HINT, useOnline } from "@/components/shell/offline-banner";
+import { offlineHint, useOnline } from "@/components/shell/offline-banner";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -67,7 +67,7 @@ const skeletonRows = loadingRows.map((i) => (
 const pillSkeleton = <Skeleton className="h-5.5 w-18" />;
 
 const skeletonCards = loadingRows.map((i) => (
-  <li key={i} aria-hidden className="flex flex-col gap-2 px-4 py-3">
+  <li key={i} aria-hidden className="flex flex-col gap-2 px-4 py-4">
     <div className="flex items-center justify-between gap-2">
       <Skeleton className="h-8 w-32" />
       <Skeleton className="h-5.5 w-18" />
@@ -190,10 +190,11 @@ export function SourcesPanel({ now, onOpen, onImport }: { now: number; onOpen: (
   }
 
   const saving = (s: SourceHealth) => patch.isPending && patch.variables?.params.path.key === s.key;
-  const controls = (s: SourceHealth) => ({
+  // A phone card's reasons open below its controls row: above they'd cover the card's Freshness line (imp-187).
+  const controls = (s: SourceHealth, side?: "bottom") => ({
     toggle: (
-      // Offline, a tap or Enter shows why instead of toggling (imp-134).
-      <TapTooltip hint={online ? null : OFFLINE_HINT} asChild>
+      // Offline, a tap or Enter shows why instead of toggling (imp-134), naming what the press would do (imp-154).
+      <TapTooltip hint={online ? null : offlineHint(`${s.enabled ? "disable" : "enable"} ${s.name}`)} side={side} asChild>
         <Switch
           checked={s.enabled}
           onCheckedChange={(on) => online && !saving(s) && toggle(s, on)}
@@ -205,7 +206,7 @@ export function SourcesPanel({ now, onOpen, onImport }: { now: number; onOpen: (
         />
       </TapTooltip>
     ),
-    run: <RunButton name={s.name} blocker={runBlocker(host.data, s, online)} pending={run.isPending && run.variables?.params.path.key === s.key} onRun={() => runNow(s)} />,
+    run: <RunButton name={s.name} blocker={runBlocker(host.data, s, online)} pending={run.isPending && run.variables?.params.path.key === s.key} onRun={() => runNow(s)} side={side} />,
     import: <ImportButton source={s} onImport={onImport} />,
   });
 
@@ -251,10 +252,11 @@ export function SourcesPanel({ now, onOpen, onImport }: { now: number; onOpen: (
           <ul className="flex flex-col divide-y divide-border-subtle md:hidden">
             {sources.isPending && skeletonCards}
             {rows.map((s) => {
-              const c = controls(s);
+              const c = controls(s, "bottom");
               const state = sourceState(s, latestGapEnds, now);
               return (
-                <li key={s.key} className="flex flex-col gap-2 px-4 py-3">
+                // py-4: between two cards a reason open below the controls row clears the next card's name (imp-187).
+                <li key={s.key} className="flex flex-col gap-2 px-4 py-4">
                   <div className="flex items-center justify-between gap-2">
                     <SourceName source={s} onOpen={onOpen} />
                     {waiting(state) ? pillSkeleton : <StatePill state={state} />}
@@ -501,7 +503,7 @@ function Freshness({ source, now }: { source: SourceHealth; now: number }) {
   );
 }
 
-function RunButton({ name, blocker, pending, onRun }: { name: string; blocker: string | null; pending: boolean; onRun: () => void }) {
+function RunButton({ name, blocker, pending, onRun, side }: { name: string; blocker: string | null; pending: boolean; onRun: () => void; side?: "bottom" }) {
   const button = (
     <Button
       size="sm"
@@ -520,7 +522,7 @@ function RunButton({ name, blocker, pending, onRun }: { name: string; blocker: s
   // A tap shows the reason too (imp-126): a phone has no hover, and a tap's focus isn't focus-visible. Always
   // wrapped, so going offline doesn't remount a focused button (imp-134).
   return (
-    <TapTooltip hint={blocker} asChild>
+    <TapTooltip hint={blocker} side={side} asChild>
       {button}
     </TapTooltip>
   );

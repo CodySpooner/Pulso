@@ -13,11 +13,11 @@ import {
   type LucideIcon,
 } from "lucide-react";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { CopyButton, SelectableId } from "@/components/pulso/copy-button";
 import { EmptyState } from "@/components/pulso/empty-state";
-import { OFFLINE_HINT } from "@/components/shell/offline-banner";
+import { offlineHint } from "@/components/shell/offline-banner";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { isProblem } from "@/lib/api/client";
@@ -107,8 +107,16 @@ export function TapTooltip({
         }}
       />
       {/* Hidden while its trigger is scrolled out of view, so a reason kept open never floats over the top bar. A
-          press on the trigger is outside the hint, which Radix would take as a dismissing press. */}
-      <TooltipContent side={side} hideWhenDetached className="pointer-events-none" onPointerDownOutside={(e) => onTrigger(e) && e.preventDefault()}>
+          press on the trigger is outside the hint, which Radix would take as a dismissing press. Beside its trigger
+          a reason wraps narrow, to fit the empty part of the trigger's row; every reason keeps to the 16 px page
+          gutter, never flush with the viewport edge (DEC-235 b). */}
+      <TooltipContent
+        side={side}
+        hideWhenDetached
+        collisionPadding={16}
+        className={cn("pointer-events-none", (side === "left" || side === "right") && "max-w-32")}
+        onPointerDownOutside={(e) => onTrigger(e) && e.preventDefault()}
+      >
         {hint}
       </TooltipContent>
     </Tooltip>
@@ -191,7 +199,7 @@ export function PanelError({
       action={
         <>
           {/* Below: above, it would cover the Error ID line over Retry (imp-175). */}
-          <TapTooltip hint={online ? null : OFFLINE_HINT} side="bottom" asChild>
+          <TapTooltip hint={online ? null : offlineHint("retry")} side="bottom" asChild>
             <Button
               ref={button}
               size="sm"
@@ -261,6 +269,22 @@ export function StaleLine({
   const problem = isProblem(error) ? error : null;
   const iso = new Date(asOf).toISOString();
   const { button, failed, online, press } = useRetry(retry);
+  // Retry's reason goes where the line has nothing (imp-186, DEC-235 b). Above while nothing of the line is: below,
+  // it would cover what the line sits on, such as the coverage chart's first row. Once the actions wrap onto a row
+  // of their own (a phone, the run drawer at every width), on their row's empty left: above sits the Error ID line,
+  // and below there's no room before what the line sits on. Below otherwise.
+  const text = useRef<HTMLParagraphElement>(null);
+  const actions = useRef<HTMLDivElement>(null);
+  const [side, setSide] = useState<"top" | "left" | "bottom">("bottom");
+  useEffect(() => {
+    const [t, a] = [text.current!, actions.current!];
+    const resize = new ResizeObserver(() => {
+      const prev = a.previousElementSibling as HTMLElement; // the Error ID line, or the message
+      setSide(a.offsetTop <= t.offsetTop ? "top" : a.offsetTop >= prev.offsetTop + prev.offsetHeight ? "left" : "bottom");
+    });
+    resize.observe(a.parentElement!); // also fires once on observe
+    return () => resize.disconnect();
+  }, []);
   return (
     <div
       role="group"
@@ -273,7 +297,7 @@ export function StaleLine({
     >
       {/* What, then how old the shown data is (UI States' offline copy), then why. The icon sits in the text, so
           it stays on the first line when the line wraps on a phone. */}
-      <p className="min-w-0 flex-[1_1_12rem] text-foreground">
+      <p ref={text} className="min-w-0 flex-[1_1_12rem] text-foreground">
         <TriangleAlert className="mr-1.5 inline size-3.5 align-[-2px] text-warning" aria-hidden />
         <span className="font-medium">{what}.</span> Showing data as of{" "}
         <time dateTime={iso} className="whitespace-nowrap">
@@ -286,9 +310,8 @@ export function StaleLine({
           Error ID <SelectableId value={problem.request_id} label="Error ID" className="inline-block max-w-full break-all" />
         </p>
       )}
-      <div className="ml-auto flex gap-2">
-        {/* Below, clear of the Error ID line that wraps above Retry on a phone (imp-175). */}
-        <TapTooltip hint={online ? null : OFFLINE_HINT} side="bottom" asChild>
+      <div ref={actions} className="ml-auto flex gap-2">
+        <TapTooltip hint={online ? null : offlineHint("retry")} side={side} asChild>
           <Button
             ref={button}
             size="sm"

@@ -1850,3 +1850,34 @@ Superseded review defaults, not given entries: default #0 (move the repo) is don
   - **(c) How e2e reads a dialog's animation.** A spec that needs the closing (or entering) state injects `animation-play-state: paused !important` for the dialog, so the animation holds at its first frame, waits for `data-state="closed"` with a 2 s bounded assertion that names what it waited for, reads the animation, then removes the hold. That applies to `press-and-exit.spec.ts` and the two exit screenshot specs. The frame samplers that must see real frames (`dialog-exit.spec.ts`, `drawer-import.spec.ts`) keep their per-frame samples and also sample the close itself from a MutationObserver on `data-state`.
 - **Alternatives:** an 80 ms press token (one more token, a split transition, and a faster release); a MutationObserver that reads the computed style in the close's microtask (also race-free, but it needs its own timeout and message inside the page, and the screenshot specs need a hold anyway); a bounded frame poll (it fails faster but still misses the close under a stall); a longer test timeout (hides the race).
 - **Why:** the old poll found nothing to read when a long task fell between the close and the next frame. The 120 ms exit finished, and the dialog unmounted before the poll looked. With a forced 300 ms long task right after the close, 3 of 10 runs hung until the test timeout. With the hold, the same stall passed 10 of 10 (2.3 s each), and a dialog that never closes fails in about 2.3 s with "the dialog reports closed after Cancel … Expected "closed", Received "open"". The enter went from `ease` to `cubic-bezier(0.16, 1, 0.3, 1)` and its first keyframe from `scale3d(0.96…)` to `scale3d(0.97…)`. The exit's last keyframe went from `scale3d(0.96…)` to `scale3d(0.98…)`, still 0.12 s with `cubic-bezier(0.7, 0, 0.84, 0)`. All of these are asserted on the computed keyframes in `press-and-exit.spec.ts`.
+
+### DEC-235 · Offline reasons name their action; an open reason opens where it covers nothing
+**2026-10-24 · proposed (imp-154)** · imp-154 (imp-134 report leftover 2), imp-186, imp-187 (imp-173 report leftovers 1 and 2); DEC-206, DEC-232 (c); vault Features/Data Health; web only, no API, schema, dependency, CI or motion change
+- **Decision:**
+  - **(a) Wording.** One helper, `offlineHint(action)` in `offline-banner.tsx`, gives "You're offline. Reconnect to <action>." The action is the control's visible verb in lower case, plus the source when the control acts on one source. Per call site:
+    - Refresh: "refresh".
+    - The `PanelError` and `StaleLine` Retry: "retry". The line beside it already names what failed.
+    - A source switch: "enable <source>" or "disable <source>", whichever the press would do. The switch's label shows the current state, so "change" would hide the direction.
+    - Run now: "run <source> now", its accessible name. It is still the last of `runBlocker`'s reasons.
+    - Choose CSV… / Choose another…: "choose a CSV for <source>" / "choose another CSV for <source>".
+    - Import N rows: "import N rows into <source>", the button's own words from one `rowCount`.
+    
+    `OFFLINE_HINT` is gone.
+  - **(b) Stale line side.** `StaleLine` picks the side from its own layout, read by a `ResizeObserver` on the line (not a viewport query, since the run drawer's line wraps at every width):
+    - **Above** while Retry starts the line's first row, so nothing of the line is above it.
+    - **On the left of Retry** once the actions wrap onto a row of their own. That row is empty left of the actions, the Error ID or the message sits above them, and there isn't enough room below before the content under the line.
+    - **Below** otherwise.
+    
+    A reason beside its trigger (left or right) wraps at `max-w-32` (128 px), so "You're offline. / Reconnect to retry." fits in the space left of Retry at 375. `PanelError`'s Retry stays below (DEC-232 c). Every `TapTooltip` reason keeps `collisionPadding={16}`, the page gutter. It was 0, so a reason sat flush with the viewport edge: the phone switch's at x = 0, and Choose another…'s at 1440's right edge.
+  - **(c) Phone cards.** On a phone source card, the switch's and Run now's reasons open below the controls row. The cards and their skeleton go from `py-3` to `py-4`. That gives the 32 px a reason below needs before the next card's name: the 6 px offset, which clears the 4 px focus ring, plus the 26 px reason. The table keeps top.
+- **Alternatives:**
+  - (a) The old generic "Reconnect to use this." "change <source>" for the switch, the brief's example. Naming the file on Import: file names can be long.
+  - (b) The brief's two-way rule (above when nothing wrapped, else below). At 375, below still covers the top 5 px of the coverage chart's first row: the room under a wrapped line is 27 px. A smaller `sideOffset` would sit on Retry's focus ring. More padding under every stale line would make a taller strip on every phone, for a reason that's open for a few seconds.
+  - (c) Below without the padding: the reason's last 2 px sit on the next card's name glyphs, 6 px into its line box. Left of Run now is Check CSV, and a smaller offset would sit on the focus ring.
+- **Why:** measured in chromium with `tap-tooltip.spec.ts`'s new check, which lists the text, icons, switches and chart cells under the open reason. The before column comes from the same tests run on `origin/main`'s `atoms.tsx` and `sources-table.tsx`.
+  - Offline reasons that name their action: 0 of 7 call sites → 7 of 7.
+  - Coverage stale-line Retry: at 1440 it covered 21 chart cells (the first row's newest), now 0, above, over the empty panel header. At 375 it covered the "Shopify stores" label and 24 cells, now 0, on the left.
+  - The run drawer's stale-line Retry: no text covered before or after, at 1440 and 375. Before, it sat 8 px over the first run's row edge; now it sits on the left.
+  - The Error ID: never covered, before or after.
+  - Phone card Run now at 375: it covered 2 lines (Last run, Freshness), now 0, below. The table's Run now at 1440 still opens above.
+- **Ceiling:** the page-level stale line at 375 without an Error ID (API unreachable while offline) has Retry beside a five-line message, so no side is free. Its reason stays below, over part of the message (91 × 15 px). A backlog row is proposed in `docs/reports/imp-154.md`.

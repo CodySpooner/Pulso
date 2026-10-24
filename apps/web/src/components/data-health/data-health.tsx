@@ -4,7 +4,7 @@ import { useRef, useState } from "react";
 import { RotateCw } from "lucide-react";
 
 import { PageHeader } from "@/components/pulso/page-header";
-import { OFFLINE_HINT, useOnline } from "@/components/shell/offline-banner";
+import { offlineHint, useOnline } from "@/components/shell/offline-banner";
 import { Button } from "@/components/ui/button";
 import { formatAgo, formatUtc } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -60,7 +60,7 @@ export function DataHealth() {
         )
       }
       actions={
-        <TapTooltip hint={online ? null : OFFLINE_HINT} asChild>
+        <TapTooltip hint={online ? null : offlineHint("refresh")} asChild>
           <Button
             variant="secondary"
             onClick={() => online && void refresh()}
