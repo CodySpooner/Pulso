@@ -212,11 +212,25 @@ export function activityText(a: CJActivity): string {
   return `${plural(days, "day")} left`;
 }
 
-/** An entered amount in the currency's minor units; null unless above 0 with no more decimals than it uses. */
+/** The currencies the API accepts, with their ISO 4217 decimals: pulso_core.money.CURRENCY_EXPONENTS, kept in step by
+ *  hand. The browser's own (ICU) decimals differ from ISO outside this list, so they never decide (imp-151). */
+export const CURRENCY_DIGITS = new Map([
+  ["USD", 2],
+  ["EUR", 2],
+  ["GBP", 2],
+  ["CAD", 2],
+  ["AUD", 2],
+  ["CNY", 2],
+  ["JPY", 0],
+  ["KWD", 3],
+]);
+
+/** An entered amount in the currency's minor units; null unless the currency is listed, and the amount is above 0
+ *  with no more decimals than the currency uses. */
 export function toMinor(amount: string, currency: string): number | null {
-  const digits = new Intl.NumberFormat("en-US", { style: "currency", currency }).resolvedOptions().maximumFractionDigits ?? 2;
-  const m = /^(\d+)(?:\.(\d+))?$/.exec(amount.trim());
-  if (!m || (m[2]?.length ?? 0) > digits) return null;
+  const digits = CURRENCY_DIGITS.get(currency);
+  const m = /^(\d*)(?:\.(\d+))?$/.exec(amount.trim());
+  if (digits == null || !m || (m[2]?.length ?? 0) > digits) return null;
   const minor = Number(m[1]) * 10 ** digits + Number((m[2] ?? "").padEnd(digits, "0") || 0);
   return minor > 0 && Number.isSafeInteger(minor) ? minor : null;
 }

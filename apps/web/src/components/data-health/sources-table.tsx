@@ -23,6 +23,7 @@ import { HostRetryLink } from "./summary-cards";
 import {
   activityText,
   attentionCount,
+  CURRENCY_DIGITS,
   importEntry,
   missedNote,
   skipNote,
@@ -748,6 +749,7 @@ function Activity({ activity, label, onEdit }: { activity: CJActivity; label?: b
 }
 
 const field = "h-(--input-h) w-full min-w-0 rounded-md border border-input bg-background px-2.5 text-body text-foreground";
+const currencyList = new Intl.ListFormat("en-US", { type: "disjunction" }).format([...CURRENCY_DIGITS.keys()]);
 
 function ActivityDialog({
   returnFocusRef,
@@ -775,8 +777,10 @@ function ActivityDialog({
         {entering && (
           <form
             className="flex flex-col gap-4"
-            // A changed field clears the amount's own message, so the next Save checks it again.
-            onInput={(e) => (e.currentTarget.elements.namedItem("amount") as HTMLInputElement).setCustomValidity("")}
+            // A changed field clears the amount's and currency's own messages, so the next Save checks them again.
+            onInput={(e) => {
+              for (const name of ["amount", "currency"]) (e.currentTarget.elements.namedItem(name) as HTMLInputElement).setCustomValidity("");
+            }}
             onSubmit={(e) => {
               e.preventDefault();
               if (pending) return;
@@ -786,8 +790,13 @@ function ActivityDialog({
               const amount = form.elements.namedItem("amount") as HTMLInputElement;
               const minor = toMinor(amount.value, currency);
               if (minor == null) {
-                amount.setCustomValidity(`Enter an amount above 0 with no more decimals than ${currency} uses.`);
-                amount.reportValidity();
+                // toMinor is the amount's only judge: the field has no native step or min (imp-151).
+                const listed = CURRENCY_DIGITS.has(currency);
+                const input = listed ? amount : (form.elements.namedItem("currency") as HTMLInputElement);
+                input.setCustomValidity(
+                  listed ? `Enter an amount above 0 with no more decimals than ${currency} uses.` : `Use one of the currencies Pulso reads: ${currencyList}.`,
+                );
+                input.reportValidity();
                 return;
               }
               // The field has no zone: its value is read as UTC, as its label says.
@@ -808,7 +817,7 @@ function ActivityDialog({
             <div className="grid grid-cols-[minmax(0,1fr)_6rem] gap-3">
               <label className="flex flex-col gap-1.5 text-label font-medium text-muted-foreground">
                 Amount
-                <input type="number" name="amount" required min="0.01" step="0.01" inputMode="decimal" className={cn(field, "tabular-nums")} />
+                <input type="number" name="amount" required step="any" inputMode="decimal" className={cn(field, "tabular-nums")} />
               </label>
               <label className="flex flex-col gap-1.5 text-label font-medium text-muted-foreground">
                 Currency
