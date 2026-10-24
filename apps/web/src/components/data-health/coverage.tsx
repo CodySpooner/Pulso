@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowDown, CalendarDays, ChevronLeft, ChevronRight } from "lucide-react";
+import { ArrowDown, CalendarDays, ChevronLeft, ChevronRight, CircleHelp } from "lucide-react";
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 
 import { EmptyState } from "@/components/pulso/empty-state";
@@ -11,7 +11,7 @@ import { cn } from "@/lib/utils";
 import { useCoreDown, useCoverage, useHost, useOlderGaps, useSources } from "./api";
 import { Panel, PanelError, StaleLine } from "./atoms";
 import { LoadMore } from "./load-more";
-import { coverageRows, gapReasons, gapsNote, mergeGaps, plural, utcDays, type CoverageDay, type MissedSlot } from "./model";
+import { coverageRows, gapReasons, gapsNote, mergeGaps, openGapsView, plural, utcDays, type CoverageDay, type MissedSlot } from "./model";
 
 export const COVERAGE_DAYS = 90;
 /** Phones show the most recent month; the cells before it are hidden below md. */
@@ -72,9 +72,9 @@ export function CoveragePanel({ now }: { now: number }) {
         <StaleLine what="Couldn't refresh coverage" error={coverage.error} asOf={coverage.dataUpdatedAt} retry={() => coverage.refetch()} />
       )}
       {coverage.isPending || sources.isPending ? (
-        // The loaded layout (imp-082): a row per Phase 1 source, the axis line, the legend and an open-gaps
-        // block sized for a heading and two ranges, so nothing below moves when the data lands.
-        <div className="flex flex-col gap-3 p-4">
+        // The loaded layout (imp-082): a row per Phase 1 source, the axis line and the legend, so nothing below
+        // moves when the data lands. Open gaps keep their own skeleton below.
+        <div className="flex flex-col gap-3 px-4 pt-4 pb-3">
           <div aria-hidden className="flex flex-col gap-1.5">
             {[0, 1, 2, 3].map((i) => (
               <div key={i} className="grid grid-cols-[6.5rem_1fr] items-center gap-3 sm:grid-cols-[9rem_1fr]">
@@ -85,16 +85,6 @@ export function CoveragePanel({ now }: { now: number }) {
             <div className="h-3.5" />
           </div>
           {legend}
-          <div aria-hidden className="flex flex-col gap-2 border-t border-border-subtle pt-3">
-            <Skeleton className="h-4.5 w-72 max-w-full" />
-            <div>
-              {["h-7", "row-h-compact border-t", "row-h-compact border-t"].map((row, i) => (
-                <div key={i} className={cn("flex items-center border-border-subtle", row)}>
-                  <Skeleton className="h-4 w-full" />
-                </div>
-              ))}
-            </div>
-          </div>
         </div>
       ) : coverage.isLoadingError ? (
         <PanelError title="Couldn't load coverage" error={coverage.error} retry={() => coverage.refetch()} />
@@ -105,7 +95,7 @@ export function CoveragePanel({ now }: { now: number }) {
           Each source&apos;s days fill in here as runs land. Missed runs show as hatched gaps; history is never backfilled.
         </EmptyState>
       ) : (
-        <div className="flex flex-col gap-3 p-4">
+        <div className="flex flex-col gap-3 px-4 pt-4 pb-3">
           <div className="flex flex-col gap-1.5">
             {coverageRows(coverage.data, sources.data, days).map((row) => (
               <div key={row.key} className="grid grid-cols-[6.5rem_1fr] items-center gap-3 sm:grid-cols-[9rem_1fr]">
@@ -138,10 +128,13 @@ export function CoveragePanel({ now }: { now: number }) {
           </div>
 
           {legend}
-
-          <OpenGaps names={new Map(sources.data.map((s) => [s.key, s.name]))} host={host} />
         </div>
       )}
+      {/* Open gaps read only the host call, so a loading, failed or empty coverage call never hides them, nor the
+          Overdue links' target (imp-146). Without source names they read keys. */}
+      <div className="px-4 pb-4">
+        <OpenGaps names={new Map(sources.data?.map((s) => [s.key, s.name]))} host={host} />
+      </div>
     </Panel>
   );
 }
@@ -186,13 +179,37 @@ export function GapsLink({ missed, onFollow }: { missed: MissedSlot; onFollow?: 
 
 function OpenGaps({ names, host }: { names: Map<string, string>; host: ReturnType<typeof useHost> }) {
   const older = useOlderGaps(host.data?.next_cursor ?? null);
-  if (!host.data) return null; // the host card shows its own loading, error and stale state (imp-132)
   // Ranges merge across pages, so a range cut by a page boundary reads as one (DEC-166).
-  const gaps = [host.data.open_gaps, ...older.pages.map((p) => p.open_gaps)].flat();
+  const gaps = host.data ? [host.data.open_gaps, ...older.pages.map((p) => p.open_gaps)].flat() : [];
   const ranges = mergeGaps(gaps);
   const shown = older.on ? ranges : ranges.slice(0, SHOWN_GAPS);
   const hidden = ranges.length - shown.length;
-  if (ranges.length === 0) {
+  const view = openGapsView(host, ranges.length);
+  if (view === "loading") {
+    // Sized for the heading and two ranges (imp-082).
+    return (
+      <div aria-hidden className="flex flex-col gap-2 border-t border-border-subtle pt-3">
+        <Skeleton className="h-4.5 w-72 max-w-full" />
+        <div>
+          {["h-7", "row-h-compact border-t", "row-h-compact border-t"].map((row, i) => (
+            <div key={i} className={cn("flex items-center border-border-subtle", row)}>
+              <Skeleton className="h-4 w-full" />
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+  if (view === "unavailable") {
+    // The host card carries the error and its Retry (imp-132); this line only says what is missing (imp-145, DEC-196).
+    return (
+      <p className="border-t border-border-subtle pt-3 text-data text-muted-foreground">
+        <CircleHelp aria-hidden className="mr-1.5 inline size-3.5 align-[-2px] text-subtle-foreground" />
+        <span className="font-medium text-foreground">Gap check didn&apos;t load,</span> so open gaps can&apos;t be listed. Retry on the Collector host card.
+      </p>
+    );
+  }
+  if (view === "none") {
     return <p className="border-t border-border-subtle pt-3 text-data text-muted-foreground">No open gaps in the last 90 days.</p>;
   }
   return (
@@ -225,7 +242,7 @@ function OpenGaps({ names, host }: { names: Map<string, string>; host: ReturnTyp
           </tbody>
         </table>
       </ScrollCue>
-      {(ranges.length > SHOWN_GAPS || host.data.next_cursor) && (
+      {(ranges.length > SHOWN_GAPS || host.data?.next_cursor) && (
         <LoadMore
           note={gapsNote(shown.length, ranges.length, gaps.length, older.hasMore)}
           label={older.hasMore ? "Load older gaps" : `Show ${plural(hidden, "older range")}`}
