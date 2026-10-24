@@ -1670,7 +1670,7 @@ Superseded review defaults, not given entries: default #0 (move the repo) is don
 - **Alternatives:** keep the list inside the heatmap branch and repeat it in each error and empty branch (three copies); a Retry button on the line (a second Retry for one failed request, against DEC-197); hiding the line and relying on the host card (the list vanishes without a reason, aud-014 A14-02).
 
 ### DEC-213 · TapTooltip: a reason opened on focus survives the scroll its focus causes
-**2026-10-23 · proposed (imp-145)** · imp-145 fix, imp-156; DEC-206 (c), (e); vault Features/Data Health; changes no API or dependency
+**2026-10-24 · proposed (imp-145)** · imp-145 fix, imp-156; DEC-206 (c), (e); vault Features/Data Health; changes no API or dependency
 - **Cause:** Radix Tooltip closes whenever an ancestor of its trigger scrolls. Focusing a control that is partly or fully out of view scrolls `main` (the lg scroll container), and that scroll's event lands after the focus has opened the reason, so the reason opened and closed within one frame. The trigger kept focus but lost its description. `offline.spec.ts:94` (Refresh at 1440) hit this whenever main's scroll landed after the focus: 4/4 for the lead on imp-145, and 2/2 here once the spec stopped scrolling first. The imp-145 code itself doesn't change the timing: main sits at the same scroll offsets (946, 95, 76 px) with or without it.
 - **Decision:**
   - **(a)** `TapTooltip` ignores a close that Radix requests from a scroll event (`window.event.type === "scroll"`) while its trigger is the focused element. Every other close stays as Radix has it: blur, Escape, a press, another tooltip opening, and a hover reason when the pointer leaves or the page scrolls under it.
