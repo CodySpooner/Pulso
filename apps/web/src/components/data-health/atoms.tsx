@@ -72,13 +72,18 @@ export const sourceStates: Record<SourceState, { label: string; icon: LucideIcon
   },
 };
 
-/** A hint on hover, keyboard focus and tap (imp-073); the other props go to its trigger. The hint is
- * click-through, so an open one never covers a control. Without a hint it is inert, so a control whose reason
- * comes and goes (offline, imp-134) stays the same element and keeps focus. */
-export function TapTooltip({ hint, ...trigger }: React.ComponentProps<typeof TooltipTrigger> & { hint: React.ReactNode }) {
+/** A hint on hover, keyboard focus and tap (imp-073); the other props go to its trigger. A press opens or keeps
+ * the hint, never closes it (imp-173). The hint is click-through, so an open one never covers a control. Without
+ * a hint it is inert, so a control whose reason comes and goes (offline, imp-134) stays the same element and keeps
+ * focus. `side` defaults to Radix's top. */
+export function TapTooltip({
+  hint,
+  side,
+  ...trigger
+}: React.ComponentProps<typeof TooltipTrigger> & { hint: React.ReactNode; side?: React.ComponentProps<typeof TooltipContent>["side"] }) {
   const [open, setOpen] = useState(false);
-  const pressedOpen = useRef<boolean | null>(null); // Radix closes on pointerdown, so the click needs the state before it
   const triggerRef = useRef<HTMLButtonElement>(null);
+  const onTrigger = (e: Event | undefined) => !!e && e.target instanceof Node && !!triggerRef.current?.contains(e.target);
   return (
     <Tooltip
       open={open && !!hint}
@@ -86,24 +91,24 @@ export function TapTooltip({ hint, ...trigger }: React.ComponentProps<typeof Too
         // Radix closes on any scroll of the trigger's ancestors, including the one focusing an off-screen trigger
         // causes, so a reason shown on focus stays while its trigger keeps focus (imp-156, DEC-213).
         if (!next && window.event?.type === "scroll" && document.activeElement === triggerRef.current) return;
+        if (!next && window.event?.type === "pointerdown" && onTrigger(window.event)) return; // Radix closes on a press too (DEC-232)
         setOpen(next && !!hint);
       }}
     >
       <TooltipTrigger
         {...trigger}
         ref={triggerRef}
-        onPointerDown={() => {
-          pressedOpen.current = open;
-        }}
         onClick={(e) => {
           if (!hint) return; // the click is the control's own
-          e.preventDefault(); // Radix closes on click; a tap, click or Enter toggles instead
-          setOpen(!(pressedOpen.current ?? open));
-          pressedOpen.current = null;
+          e.preventDefault(); // Radix closes on click; a tap, click or Enter opens or keeps the reason instead
+          // Radix's own opens send this event, which closes any other open tooltip; a press-open does too (imp-155).
+          if (!open) document.dispatchEvent(new CustomEvent("tooltip.open"));
+          setOpen(true);
         }}
       />
-      {/* Hidden while its trigger is scrolled out of view, so a reason kept open never floats over the top bar. */}
-      <TooltipContent hideWhenDetached className="pointer-events-none">
+      {/* Hidden while its trigger is scrolled out of view, so a reason kept open never floats over the top bar. A
+          press on the trigger is outside the hint, which Radix would take as a dismissing press. */}
+      <TooltipContent side={side} hideWhenDetached className="pointer-events-none" onPointerDownOutside={(e) => onTrigger(e) && e.preventDefault()}>
         {hint}
       </TooltipContent>
     </Tooltip>
@@ -185,7 +190,8 @@ export function PanelError({
       className={className}
       action={
         <>
-          <TapTooltip hint={online ? null : OFFLINE_HINT} asChild>
+          {/* Below: above, it would cover the Error ID line over Retry (imp-175). */}
+          <TapTooltip hint={online ? null : OFFLINE_HINT} side="bottom" asChild>
             <Button
               ref={button}
               size="sm"
@@ -281,7 +287,8 @@ export function StaleLine({
         </p>
       )}
       <div className="ml-auto flex gap-2">
-        <TapTooltip hint={online ? null : OFFLINE_HINT} asChild>
+        {/* Below, clear of the Error ID line that wraps above Retry on a phone (imp-175). */}
+        <TapTooltip hint={online ? null : OFFLINE_HINT} side="bottom" asChild>
           <Button
             ref={button}
             size="sm"
