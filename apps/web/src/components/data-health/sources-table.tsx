@@ -1,10 +1,12 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { onlineManager } from "@tanstack/react-query";
 import { ChevronRight, Clock, Database, Play, TriangleAlert, Upload } from "lucide-react";
 
 import { CopyButton, SelectableId } from "@/components/pulso/copy-button";
 import { EmptyState } from "@/components/pulso/empty-state";
+import { OFFLINE_HINT, useOnline } from "@/components/shell/offline-banner";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -75,9 +77,14 @@ type Confirm = { source: SourceHealth; mode: "disable" | "reenable" };
 
 const th = "h-8 border-b border-border px-2 first:pl-4 last:pr-4 text-label font-medium whitespace-nowrap text-muted-foreground";
 
-/** A failed action on `source`: what failed, then why and what next. The transport copy is imp-078's next step. */
+/** A failed action on `source`: what failed, then why and what next. The transport copy is imp-078's next step;
+ *  offline when it failed, the cause is the connection, not the API (imp-134). */
 function actionFailure(source: SourceHealth, action: string, error: unknown): Failure {
-  const cause = isProblem(error) ? error.detail : "the API didn't answer. When it runs on your PC, check that the PC is on.";
+  const cause = isProblem(error)
+    ? error.detail
+    : !onlineManager.isOnline()
+      ? "you're offline. Try again once you reconnect."
+      : "the API didn't answer. When it runs on your PC, check that the PC is on.";
   return { tone: "error", text: `Couldn't ${action} ${source.name}: ${cause}`, key: source.key, error };
 }
 
@@ -86,6 +93,7 @@ export function SourcesPanel({ now, onOpen, onImport }: { now: number; onOpen: (
   const host = useHost();
   const refresh = useRefreshAdmin();
   const coreDown = useCoreDown();
+  const online = useOnline();
   const patch = $api.useMutation("patch", "/v1/admin/sources/{key}");
   const run = $api.useMutation("post", "/v1/admin/sources/{key}/run");
   const [notice, setNotice] = useState<Notice | null>(null);
@@ -149,19 +157,25 @@ export function SourcesPanel({ now, onOpen, onImport }: { now: number; onOpen: (
   function runBlocker(source: SourceHealth): string | null {
     if (host.data && !host.data.live_runs_allowed) return "Live collectors run only on the collector host.";
     if (!source.enabled) return "Enable the source before running it.";
+    if (!online) return OFFLINE_HINT; // last: the other reasons still hold once reconnected
     return null;
   }
 
   const saving = (s: SourceHealth) => patch.isPending && patch.variables?.params.path.key === s.key;
   const controls = (s: SourceHealth) => ({
     toggle: (
-      <Switch
-        checked={s.enabled}
-        onCheckedChange={(on) => !saving(s) && toggle(s, on)}
-        // aria-disabled (not disabled) while saving keeps keyboard focus on the switch when its change fails.
-        aria-disabled={saving(s)}
-        aria-label={`${s.name} enabled`}
-      />
+      // Offline, a tap or Enter shows why instead of toggling (imp-134).
+      <TapTooltip hint={online ? null : OFFLINE_HINT} asChild>
+        <Switch
+          checked={s.enabled}
+          onCheckedChange={(on) => online && !saving(s) && toggle(s, on)}
+          // aria-disabled (not disabled) while saving keeps keyboard focus on the switch when its change fails.
+          aria-disabled={saving(s) || !online}
+          aria-label={`${s.name} enabled`}
+          // The track and thumb dim, not the switch, so its focus ring keeps 3:1 while locked (DEC-185, DEC-206).
+          className="aria-disabled:cursor-not-allowed aria-disabled:opacity-100 aria-disabled:aria-checked:bg-brand/50 aria-disabled:*:opacity-50"
+        />
+      </TapTooltip>
     ),
     run: <RunButton name={s.name} blocker={runBlocker(s)} pending={run.isPending && run.variables?.params.path.key === s.key} onRun={() => runNow(s)} />,
     import: <ImportButton source={s} onImport={onImport} />,
@@ -439,8 +453,9 @@ function RunButton({ name, blocker, pending, onRun }: { name: string; blocker: s
       size="sm"
       variant="secondary"
       aria-disabled={blocker != null || pending}
-      // aria-disabled (not disabled) keeps the button focusable and hoverable so its reason shows.
-      className="aria-disabled:pointer-events-auto aria-disabled:cursor-not-allowed"
+      // aria-disabled (not disabled) keeps the button focusable and hoverable so its reason shows. Dimmed with a
+      // token, not opacity, so its focus ring keeps 3:1 (DEC-185, DEC-206).
+      className="aria-disabled:pointer-events-auto aria-disabled:cursor-not-allowed aria-disabled:text-subtle-foreground aria-disabled:opacity-100"
       onClick={() => blocker == null && !pending && onRun()}
       aria-label={`Run ${name} now`}
     >
@@ -448,8 +463,8 @@ function RunButton({ name, blocker, pending, onRun }: { name: string; blocker: s
       {pending ? "Queuing…" : "Run now"}
     </Button>
   );
-  if (!blocker) return button;
-  // A tap shows the reason too (imp-126): a phone has no hover, and a tap's focus isn't focus-visible.
+  // A tap shows the reason too (imp-126): a phone has no hover, and a tap's focus isn't focus-visible. Always
+  // wrapped, so going offline doesn't remount a focused button (imp-134).
   return (
     <TapTooltip hint={blocker} asChild>
       {button}

@@ -5,6 +5,7 @@ import { createContext, use, useCallback, useEffect, useRef, useState } from "re
 import { BottomBar } from "./bottom-bar";
 import { CommandPalette } from "./command-palette";
 import { MobileNav } from "./mobile-nav";
+import { OfflineBanner } from "./offline-banner";
 import { Sidebar } from "./sidebar";
 import { Topbar } from "./topbar";
 
@@ -97,6 +98,7 @@ export function AppShell({ children, defaultCollapsed }: { children: React.React
         <Sidebar />
         <div className="flex min-w-0 flex-1 flex-col bg-background lg:my-2 lg:mr-2 lg:overflow-hidden lg:rounded-xl lg:border lg:border-border">
           <Topbar />
+          <OfflineBanner />
           {/* `relative` makes main the containing block of absolute boxes with no positioned ancestor (sr-only live
               regions): otherwise they escape its overflow and stretch the document behind the lg shell, and a
               fragment jump then scrolls the whole shell (imp-147, DEC-201). */}
