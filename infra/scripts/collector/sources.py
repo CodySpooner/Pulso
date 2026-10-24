@@ -1,23 +1,25 @@
-"""Collector-DB step of the guarded seeds/enable/disable ops (DEC-131).
+"""Collector-DB step of the guarded seeds/enable/disable ops (DEC-131) and status (DEC-210).
 
 Runs only inside the collector worker container, launched by `infra.scripts.collector` after its
 checkout guards, lock and step-4 evidence gates; settings come from the container's env file.
-Prints one JSON line of counts or a refusal code, never seed entries or settings.
+Prints one JSON line of counts, codes and UTC times or a refusal code, never seed entries,
+payloads, messages or settings.
 """
 
 import contextlib
 import io
 import json
 import sys
-from datetime import UTC, datetime
+from collections.abc import Mapping
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import Select, func, select, text
 from sqlalchemy.orm import Session
 
 from pulso_core.db import get_session
-from pulso_core.models import Source, SourceEvent
+from pulso_core.models import CollectionGap, CollectorRun, HostHeartbeat, Source, SourceEvent
 from pulso_sources.seed_approval import SEED_SOURCES, approved_targets
 
 # The worker image copies infra/scripts/{seeds,collector}; same import path as the host CLI.
@@ -87,10 +89,78 @@ def disable(session: Session, key: str) -> dict[str, Any]:
     return {"changed": True}
 
 
+def plain(row: Mapping[Any, Any]) -> dict[str, Any]:
+    return {
+        k: v.replace(tzinfo=UTC).isoformat() if isinstance(v, datetime) else v
+        for k, v in row.items()
+    }
+
+
+def health(session: Session) -> dict[str, Any]:
+    """Data Health for `status`: selected columns only, so no config, params or error text."""
+    now = datetime.now(UTC)
+
+    def first(query: Select[Any]) -> dict[str, Any] | None:
+        row = session.execute(query.limit(1)).mappings().first()
+        return plain(row) if row else None
+
+    at = func.max(HostHeartbeat.at).label("at")
+    # ponytail: newest five hosts; every rebuilt ops container reports a new hostname.
+    beats = select(HostHeartbeat.host, at).group_by(HostHeartbeat.host).order_by(at.desc()).limit(5)
+    report: dict[str, Any] = {
+        "as_of": now.isoformat(),
+        "heartbeats": [
+            {
+                **plain(row),
+                "age_seconds": int((now - row["at"].replace(tzinfo=UTC)).total_seconds()),
+            }
+            for row in session.execute(beats).mappings()
+        ],
+        "sources": [],
+    }
+    run = select(
+        CollectorRun.status,
+        CollectorRun.started_at,
+        CollectorRun.finished_at,
+        CollectorRun.error_code,
+    )
+    gap = select(
+        CollectionGap.slot_key,
+        CollectionGap.slot_start,
+        CollectionGap.slot_end,
+        CollectionGap.reason,
+    )
+    columns = Source.id, Source.key, Source.enabled, Source.status, Source.retry_not_before
+    for source in map(plain, session.execute(select(*columns).order_by(Source.key)).mappings()):
+        source_id = source.pop("id")
+        runs = CollectorRun.source_id == source_id
+        gaps = CollectionGap.source_id == source_id, CollectionGap.filled_by_run_id.is_(None)
+        day = select(CollectorRun.status, func.count()).where(
+            runs, CollectorRun.queued_at >= now - timedelta(days=1)
+        )
+        report["sources"].append(
+            {
+                **source,
+                "latest_run": first(run.where(runs).order_by(CollectorRun.id.desc())),
+                "runs_24h": dict(session.execute(day.group_by(CollectorRun.status)).tuples().all()),
+                "open_gaps": session.scalar(
+                    select(func.count()).select_from(CollectionGap).where(*gaps)
+                ),
+                "newest_open_gap": first(
+                    gap.where(*gaps).order_by(CollectionGap.slot_start.desc())
+                ),
+            }
+        )
+    return report
+
+
 def main(argv: list[str] | None = None) -> int:
     op, *args = sys.argv[1:] if argv is None else argv
     with get_session() as session, session.begin():
-        if op == "seeds":
+        if op == "health":
+            session.execute(text("SET TRANSACTION READ ONLY"))  # before any other statement
+            result = health(session)
+        elif op == "seeds":
             result = seeds(session, json.load(sys.stdin))
         elif op == "enable":
             result = enable(session, *args)
