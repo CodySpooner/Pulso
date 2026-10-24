@@ -112,7 +112,7 @@
 }
 
 @keyframes shimmer {
-  to { transform: translateX(100%); }
+  to { transform: translateX(33.333%); } /* one bar: the Skeleton's sweep box is three bars wide (p1-53) */
 }
 @keyframes appear {
   from { opacity: 0; }

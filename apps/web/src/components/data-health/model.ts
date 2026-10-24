@@ -123,7 +123,8 @@ export const gapReasons: Record<string, string> = {
 };
 
 export interface MissedSlot {
-  slot: string;
+  /** The slot's phrases, joined by spaces: each stays on one line, so a narrow column breaks only between them (p1-53). */
+  slot: string[];
   /** The gap's reason as the Open gaps table words it; null when the gap isn't on the loaded page. */
   reason: string | null;
 }
@@ -136,11 +137,14 @@ export function missedNote(key: string, latestGapEnds: HostHealth["latest_gap_en
   const end = latestGapEnds[key];
   if (!end) return null;
   const range = mergeGaps(gaps.filter((g) => g.source_key === key)).find((r) => Date.parse(r.end) === Date.parse(end));
-  if (!range) return { slot: `Missed a slot ending ${formatUtc(end)}`, reason: null };
+  if (!range) return { slot: ["Missed a slot ending", formatUtc(end)], reason: null };
   const [start, stop] = [range.start, range.end].map((iso) => new Date(iso).toISOString());
-  // A no-break space keeps UTC on its time's line when a narrow column wraps the note.
-  const when = start.slice(0, 10) === stop.slice(0, 10) ? `${formatUtc(start).slice(0, -4)}–${stop.slice(11, 16)}\u00a0UTC` : `${formatUtc(start).slice(0, -4)} – ${formatUtc(stop)}`;
-  return { slot: `Missed ${when}`, reason: gapReasons[range.reason] ?? range.reason };
+  // A same-day range is one phrase, so it never breaks inside "10:00–12:00"; a cross-day one breaks after its dash.
+  const slot =
+    start.slice(0, 10) === stop.slice(0, 10)
+      ? [`Missed ${formatUtc(start).slice(0, -4)}–${stop.slice(11, 16)} UTC`]
+      : [`Missed ${formatUtc(start).slice(0, -4)} –`, formatUtc(stop)];
+  return { slot, reason: gapReasons[range.reason] ?? range.reason };
 }
 
 /** The open-gaps footer (DEC-166): ranges on screen, and slots loaded until the 90-day history is complete. */

@@ -1,7 +1,7 @@
 "use client";
 
 import { ArrowDown, CalendarDays, ChevronLeft, ChevronRight } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 
 import { EmptyState } from "@/components/pulso/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -154,7 +154,14 @@ export const OPEN_GAPS_ID = "open-gaps";
  * (imp-124). Following it focuses the table's heading, or calls `onFollow` instead (the run drawer closes first).
  */
 export function GapsLink({ missed, onFollow }: { missed: MissedSlot; onFollow?: () => void }) {
-  const lines = missed.reason ? [missed.slot, missed.reason] : [missed.slot];
+  // Each slot phrase stays whole, whatever the font's widths, so the line breaks only between phrases (p1-53).
+  const slot = missed.slot.map((phrase, i) => (
+    <Fragment key={i}>
+      {i > 0 && " "}
+      <span className="whitespace-nowrap">{phrase}</span>
+    </Fragment>
+  ));
+  const lines = missed.reason ? [slot, missed.reason] : [slot];
   return (
     <a
       href={`#${OPEN_GAPS_ID}`}
