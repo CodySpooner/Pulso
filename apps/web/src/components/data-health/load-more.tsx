@@ -30,6 +30,7 @@ export function LoadMore({
   onLoad: () => void;
 }) {
   const noteRef = useRef<HTMLParagraphElement>(null);
+  const button = useRef<HTMLButtonElement>(null);
   const focused = useRef(false);
   useEffect(() => {
     if (!more && focused.current) {
@@ -37,6 +38,10 @@ export function LoadMore({
       noteRef.current?.focus();
     }
   }, [more]);
+  // The error line lands above the focused button and pushes it down, out of a scroll box's view: bring it back (imp-136).
+  useEffect(() => {
+    if (error != null && focused.current) button.current?.scrollIntoView({ block: "nearest" });
+  }, [error]);
   const problem = isProblem(error) ? error : null;
 
   return (
@@ -61,7 +66,10 @@ export function LoadMore({
         {problem && <CopyButton value={problem.request_id} label="Copy error ID" />}
         {more && (
           <Button
+            ref={button}
             size="sm"
+            // Room below for the focus ring and the scroll box's padding when focus or the effect above scrolls to it.
+            className="scroll-mb-4"
             aria-disabled={pending}
             onFocus={() => (focused.current = true)}
             onBlur={() => (focused.current = false)}

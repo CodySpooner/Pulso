@@ -212,6 +212,7 @@ for (const [width, height] of [
     await expect(drawer).toContainText("Couldn't load older runs. The API is restarting. Try again. Error ID req-load-more");
     await expect(more).toHaveText("Retry");
     await expect(more).toBeFocused();
+    await expect(more).toBeInViewport({ ratio: 1 }); // the error line above didn't push it out of the drawer's view
     await expect(drawer.getByRole("button", { name: "Copy error ID" })).toBeVisible();
     await expect(runs).toHaveCount(20); // 20 of 20 kept
     await expect(errorLines(drawer)).toHaveCount(1); // at the foot only: no stale line above the list
