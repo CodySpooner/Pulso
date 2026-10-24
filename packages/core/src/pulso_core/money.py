@@ -1,6 +1,6 @@
 """Exact money parsing; FX conversion requires an explicit rounding mode."""
 
-from decimal import Decimal, localcontext
+from decimal import Decimal, InvalidOperation, Overflow, localcontext
 
 CURRENCY_EXPONENTS = {
     "USD": 2,
@@ -21,6 +21,12 @@ def to_minor(amount: Decimal | str | int, currency: str) -> int:
     if not value.is_finite():
         raise ValueError("Money must be finite")
     exponent = CURRENCY_EXPONENTS[currency]
+    # Bound the magnitude before scaling, so the context can't overflow, or underflow a
+    # non-zero amount to 0 (imp-108). Any amount that fits BIGINT minor units passes.
+    if value and value.adjusted() + exponent > 18:
+        raise ValueError("Amount exceeds BIGINT range")
+    if value and value.adjusted() + exponent < 0:
+        raise ValueError("Amount has fractional minor units")
     with localcontext() as context:
         context.prec = max(28, len(value.as_tuple().digits) + exponent + 1)
         scaled = value * 10**exponent
@@ -53,7 +59,10 @@ def convert_minor(
         raise ValueError("FX rate must be finite and positive")
     with localcontext() as context:
         context.prec = max(28, len(str(abs(amount_minor))) + len(rate.as_tuple().digits) + 6)
-        converted = (amount / rate if inverse else amount * rate).quantize(
-            Decimal(1).scaleb(-CURRENCY_EXPONENTS[quote]), rounding=rounding
-        )
+        try:
+            converted = (amount / rate if inverse else amount * rate).quantize(
+                Decimal(1).scaleb(-CURRENCY_EXPONENTS[quote]), rounding=rounding
+            )
+        except (InvalidOperation, Overflow) as exc:  # more digits than prec, or past Emax
+            raise ValueError("Amount exceeds BIGINT range") from exc
         return to_minor(converted, quote)

@@ -682,6 +682,21 @@ def test_import_template_and_preview_write_nothing(admin: TestClient, engine: En
         assert session.scalar(select(func.count()).select_from(RawPayload)) == 0
 
 
+def test_preview_reports_out_of_range_money_as_row_errors(admin: TestClient) -> None:
+    # imp-108: 1e1000000 used to escape as decimal.Overflow (500); -1e-1000030 previewed as 0.
+    body = b"sku,name,unit_cost\nSKU-1,Example only,1e1000000\nSKU-2,Example only,-1e-1000030\n"
+    response = admin.post(
+        "/v1/admin/sources/cj/import/preview",
+        content=body,
+        headers={"Content-Type": "application/octet-stream"},
+    )
+    assert response.status_code == 200
+    assert (response.json()["valid"], response.json()["invalid"]) == (0, 2)
+    assert response.json()["errors"] == [
+        {"row": row, "column": "unit_cost", "message": "Invalid money value"} for row in (2, 3)
+    ]
+
+
 def test_import_commit_then_repeat_skips(
     admin: TestClient, engine: Engine, settings: Settings, monkeypatch: pytest.MonkeyPatch
 ) -> None:
