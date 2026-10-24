@@ -129,10 +129,10 @@ export function HostCard({ now }: { now: number }) {
 }
 
 /**
- * "Collector host card" as an in-page link from a line that waits on the host call (imp-159): following it focuses
- * the card's Retry, and focus brings it into view. It renders only while that call has failed, so the Retry is there.
+ * An in-page link from a line that waits on the host call (imp-159): following it focuses the Collector host card's
+ * Retry, and focus brings it into view. It renders only while that call has failed, so the Retry is there.
  */
-export function HostRetryLink() {
+export function HostRetryLink({ children, className }: { children: React.ReactNode; className?: string }) {
   return (
     <a
       href="#host-title"
@@ -142,9 +142,9 @@ export function HostRetryLink() {
         const card = document.getElementById("host-title")?.closest("section");
         [...(card?.querySelectorAll("button") ?? [])].find((b) => b.textContent === "Retry")?.focus();
       }}
-      className="relative hit-area rounded-sm whitespace-nowrap text-foreground underline decoration-border-strong underline-offset-2 hover:decoration-current"
+      className={cn("relative hit-area rounded-sm whitespace-nowrap underline decoration-border-strong underline-offset-2 hover:decoration-current", className)}
     >
-      Collector host card
+      {children}
       <ArrowUp aria-hidden className="ml-0.5 inline size-3 align-[-2px]" />
     </a>
   );

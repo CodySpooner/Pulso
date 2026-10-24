@@ -207,7 +207,7 @@ function OpenGaps({ names, host }: { names: Map<string, string> | null; host: Re
     return (
       <p className="border-t border-border-subtle pt-3 text-data text-muted-foreground">
         <CircleHelp aria-hidden className="mr-1.5 inline size-3.5 align-[-2px] text-subtle-foreground" />
-        <span className="font-medium text-foreground">Open gaps</span> · Gap check didn&apos;t load. Retry on the <HostRetryLink />.
+        <span className="font-medium text-foreground">Open gaps</span> · Gap check didn&apos;t load. Retry on the <HostRetryLink className="text-foreground">Collector host card</HostRetryLink>.
       </p>
     );
   }

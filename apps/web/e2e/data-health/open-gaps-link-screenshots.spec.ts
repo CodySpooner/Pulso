@@ -4,8 +4,8 @@ import { mockAdminApi, problem } from "./fixtures";
 
 // imp-152 + imp-158 + imp-159 owner review screenshots from fixtures only, 1440px and 375px, dark and light:
 // the host card while GET /sources is held after GET /host landed (the latest-gap line keeps its skeleton) and
-// once the names land; with GET /host 503, the label-first Open gaps line and the host card's Retry focused by
-// its link (Enter, so the focus ring shows). Run with
+// once the names land; with GET /host 503, the label-first Open gaps line, Google Trends' Unknown note (a link,
+// focused) and the host card's Retry focused by the line's link (Enter, so the focus ring shows). Run with
 // `pnpm --filter web e2e:screenshots e2e/data-health/open-gaps-link`; output goes to docs/screenshots/imp-152/.
 const OUT = "../../docs/screenshots/imp-152";
 
@@ -59,6 +59,25 @@ for (const theme of ["dark", "light"] as const) {
       await expect(page.getByRole("region", { name: "Collector host" }).getByRole("button", { name: "Retry" })).toBeFocused();
       await page.waitForTimeout(200);
       await page.screenshot({ path: `${OUT}/host-503-retry-focused-${width}-${theme}.png` });
+    });
+
+    test(`host 503 Unknown note link ${width}px ${theme}`, async ({ page }) => {
+      await mockAdminApi(page);
+      await page.route(
+        (url) => url.pathname === "/api/v1/admin/host",
+        (route) => route.fulfill({ status: 503, json: problem(503, "req_host_503") }),
+      );
+      await open(page, width, height, theme);
+      const trigger = page.getByRole("button", { name: "Google Trends: open runs" });
+      const trends =
+        width < 768 ? page.getByRole("listitem").filter({ has: trigger }) : page.getByRole("region", { name: "Sources table" }).getByRole("row").filter({ has: trigger });
+      const link = trends.getByRole("link", { name: /^Gap check didn't load/ });
+      await expect(link).toBeVisible();
+      await page.evaluate(() => document.fonts.ready);
+      await link.focus();
+      await link.scrollIntoViewIfNeeded();
+      await page.waitForTimeout(200);
+      await page.screenshot({ path: `${OUT}/host-503-unknown-note-${width}-${theme}.png` });
     });
   }
 }

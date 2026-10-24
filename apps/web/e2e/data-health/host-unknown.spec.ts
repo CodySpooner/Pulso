@@ -16,6 +16,9 @@ async function hostDown(page: Page) {
   await page.route(isHost, (route) => route.fulfill({ status: 503, json: problem(503, "req_host_503") }));
 }
 
+// The Unknown note is a link to the host card's Retry; the pill's hint stays plain text (imp-159).
+const NOTE_LINK = "Gap check didn't load (retry on the Collector host card)";
+
 const sourcesPanel = (page: Page) => page.getByRole("region", { name: "Sources", exact: true });
 const hostRetry = (page: Page) => page.getByRole("region", { name: "Collector host" }).getByRole("button", { name: "Retry" });
 
@@ -44,10 +47,10 @@ test("1440: with the host 503, no source reads Healthy, Trends says why, the cou
   await expect(link).toHaveAccessibleName(/^Data Health\W+at least 1 source needs attention$/);
   await expect(link.getByTestId("data-health-badge")).toHaveText("1+");
 
-  // Recovery: the host answers again. The Coverage line's "Collector host card" link focuses the card's Retry
+  // Recovery: the host answers again. Trends' "Gap check didn't load" note links to the host card's Retry
   // (imp-159), and 1 Enter on it brings back the full picture.
   await page.unroute(isHost);
-  await page.getByRole("region", { name: "Coverage", exact: true }).getByRole("link", { name: "Collector host card" }).click();
+  await trends.getByRole("link", { name: NOTE_LINK }).click();
   await expect(hostRetry(page)).toBeFocused();
   await page.keyboard.press("Enter");
   await expect(trends).toContainText("Overdue");
@@ -79,6 +82,34 @@ test.describe("phone width", () => {
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(375);
   });
 });
+
+for (const width of [1440, 375]) {
+  for (const how of ["pointer", "keyboard"] as const) {
+    test(`${width}: Trends' Unknown note focuses the host card's Retry in one ${how === "pointer" ? "click" : "Enter"}`, async ({ page }) => {
+      await hostDown(page);
+      await page.setViewportSize({ width, height: width < 1024 ? 812 : 900 });
+      await page.goto(PAGE);
+      const trigger = page.getByRole("button", { name: "Google Trends: open runs" });
+      const trends =
+        width < 768 ? page.getByRole("listitem").filter({ has: trigger }) : page.getByRole("region", { name: "Sources table" }).getByRole("row").filter({ has: trigger });
+      const link = trends.getByRole("link", { name: NOTE_LINK });
+      await link.scrollIntoViewIfNeeded();
+      if (width < 1024) await expect(hostRetry(page)).not.toBeInViewport(); // above the cards on a phone
+      if (how === "pointer") await link.click();
+      else {
+        await link.focus();
+        await page.keyboard.press("Enter");
+      }
+      await expect(hostRetry(page)).toBeFocused();
+      await expect(hostRetry(page)).toBeInViewport({ ratio: 1 });
+      if (width < 1024) {
+        const bar = (await page.getByRole("banner").boundingBox())!;
+        expect((await hostRetry(page).boundingBox())!.y).toBeGreaterThanOrEqual(bar.y + bar.height); // clear of the top bar
+      }
+      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
+    });
+  }
+}
 
 test("while the host call loads, no source reads Healthy or Unknown and nothing is counted; then Overdue lands", async ({ page }) => {
   await mockAdminApi(page);
