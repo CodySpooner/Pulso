@@ -503,6 +503,13 @@ def test_toggle_waits_for_a_concurrent_block(admin: TestClient, engine: Engine) 
 
 ACTIVITY = "/v1/admin/sources/cj/activity"
 UNKNOWN = {"state": "unknown", "days_remaining": None, "as_of": None, "observed_at": None}
+STORED = {
+    "kind": "owner_entry",
+    "transaction_at": "2026-10-01T00:00:00Z",
+    "observed_at": "2026-10-01T00:00:00Z",
+    "amount_minor": 1,
+    "currency": "USD",
+}
 
 
 def cj_config(engine: Engine) -> dict[str, Any]:
@@ -550,6 +557,10 @@ def test_cj_activity_entry_is_stored_and_counts_down(admin: TestClient, engine: 
         {"amount_minor": 19.99},
         {"amount_minor": True},
         {"currency": "usd"},
+        # imp-151 (XR-7): only currencies pulso_core.money can read, and BIGINT minor units.
+        {"currency": "IDR"},
+        {"currency": "ZZZ"},
+        {"amount_minor": 2**63},
         {"transaction_at": "2026-10-01T12:00:00"},  # naive
         {"transaction_at": (NOW + timedelta(days=1)).isoformat()},
         {"observed_at": (NOW + timedelta(days=1)).isoformat()},
@@ -572,6 +583,11 @@ def test_cj_activity_rejects_invalid_entries(
         [],
         {"kind": "token_issuance", "transaction_at": "2026-10-01T00:00:00Z"},
         {"kind": "owner_entry", "transaction_at": "2026-10-01T00:00:00Z", "amount_minor": 1},
+        # Stored before 2**63 and the currency list bounded Evidence (imp-151, XR-7).
+        {**STORED, "amount_minor": 2**63},
+        {**STORED, "currency": "IDR"},
+        # imp-151 (XR-9): valid, but observed after now (a clock stepped back): no dates either.
+        lambda: {**STORED, "observed_at": (datetime.now(UTC) + timedelta(minutes=1)).isoformat()},
     ],
 )
 def test_invalid_stored_cj_activity_reads_unknown(
@@ -579,6 +595,7 @@ def test_invalid_stored_cj_activity_reads_unknown(
 ) -> None:
     with Session(engine) as session:
         source = session.get_one(Source, 2)
+        stored = stored() if callable(stored) else stored  # built at run time, not collection
         source.config = {**source.config, "cj_account_activity": stored}
         session.commit()
     response = admin.get("/v1/admin/sources")

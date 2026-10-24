@@ -1,7 +1,8 @@
 import json
+import time
 from dataclasses import dataclass
 from functools import lru_cache
-from typing import Annotated
+from typing import Annotated, Any
 from uuid import UUID
 
 import jwt
@@ -25,10 +26,31 @@ class Principal:
     is_admin: bool = True
 
 
+# PyJWT wraps only errors from opening the URL. A body that isn't JSON, or a reset or TLS error
+# while reading it, escapes its fetch unwrapped.
+OUTAGE = (PyJWKClientConnectionError, OSError, json.JSONDecodeError, UnicodeDecodeError)
+
+
+class JWKSClient(PyJWKClient):
+    """PyJWT holds its lock across a fetch, so during an outage queued requests would each wait
+    out a timeout in turn. For 5 s after a failed fetch they fail at once instead (imp-151)."""
+
+    retry_at = 0.0
+
+    def fetch_data(self) -> Any:
+        if time.monotonic() < self.retry_at:
+            raise PyJWKClientConnectionError("The last JWKS fetch failed under 5 s ago")
+        try:
+            return super().fetch_data()
+        except OUTAGE:
+            self.retry_at = time.monotonic() + 5
+            raise
+
+
 @lru_cache
-def jwks_client(url: str) -> PyJWKClient:
+def jwks_client(url: str) -> JWKSClient:
     # Cache the set with a TTL; indefinite per-key caching would outlive revocation.
-    return PyJWKClient(url, lifespan=300, timeout=3)
+    return JWKSClient(url, lifespan=300, timeout=3)
 
 
 def verify_token(token: str, settings: Settings) -> str:
@@ -44,8 +66,7 @@ def verify_token(token: str, settings: Settings) -> str:
             leeway=5,
             options={"require": ["iss", "exp", "nbf", "iat", "sub", "azp"]},
         )
-    # PyJWT wraps only network errors; a JWKS body that isn't JSON escapes its fetch unwrapped.
-    except (PyJWKClientConnectionError, json.JSONDecodeError, UnicodeDecodeError) as exc:
+    except OUTAGE as exc:
         raise APIError(
             503, "auth_unavailable", "Authentication is temporarily unavailable."
         ) from exc

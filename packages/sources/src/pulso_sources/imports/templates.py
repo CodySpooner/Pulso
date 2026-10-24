@@ -8,7 +8,9 @@ from typing import Literal
 
 @dataclass(frozen=True)
 class Column:
-    kind: Literal["text", "money", "currency", "date", "bool", "int", "interest", "country", "rate"]
+    kind: Literal[
+        "text", "money", "currency", "date", "bool", "int", "interest", "country", "rate", "id"
+    ]
     required: bool = False
     default: str = ""
 
@@ -34,8 +36,8 @@ TEMPLATES = {
             "available": Column("bool"),
             "variant_title": Column("text"),
             "sku": Column("text"),
-            "product_id": Column("text"),
-            "variant_id": Column("text"),
+            "product_id": Column("id"),
+            "variant_id": Column("id"),
             "observed_for": Column("date"),
         },
         # Blank compare_at_price means no compare-at; blank available means unknown.

@@ -18,10 +18,22 @@ from pydantic import (
     model_validator,
 )
 
+from pulso_core.money import CURRENCY_EXPONENTS
+
 WINDOW_DAYS = 30
 WARN_DAYS = 7
 
 Utc = Annotated[AwareDatetime, AfterValidator(lambda value: value.astimezone(UTC))]
+
+
+def known_currency(value: str) -> str:
+    # Only currencies with a known exponent, so minor units never depend on a browser's ICU table.
+    if value not in CURRENCY_EXPONENTS:
+        raise ValueError("Currency must be one of " + ", ".join(CURRENCY_EXPONENTS))
+    return value
+
+
+Currency = Annotated[str, Field(pattern=r"^[A-Z]{3}$"), AfterValidator(known_currency)]
 
 
 class Evidence(BaseModel):
@@ -30,8 +42,8 @@ class Evidence(BaseModel):
     kind: Literal["owner_entry", "csv_export"]
     transaction_at: Utc
     observed_at: Utc
-    amount_minor: Annotated[StrictInt, Field(gt=0)]
-    currency: str = Field(pattern=r"^[A-Z]{3}$")
+    amount_minor: Annotated[StrictInt, Field(gt=0, lt=2**63)]  # BIGINT, as to_minor (imp-108)
+    currency: Currency
 
     @model_validator(mode="after")
     def observed_after_transaction(self) -> Evidence:

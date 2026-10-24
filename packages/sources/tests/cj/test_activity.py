@@ -72,6 +72,10 @@ def test_naive_clock_is_rejected() -> None:
         {"amount_minor": True},
         {"currency": "usd"},
         {"currency": "US"},
+        # imp-151 (XR-7): only currencies pulso_core.money can read, and BIGINT minor units.
+        {"currency": "IDR"},
+        {"currency": "ZZZ"},
+        {"amount_minor": 2**63},
         {"transaction_at": AT + timedelta(seconds=1)},
         {"kind": "token_issuance"},
         {"kind": "auth_response"},

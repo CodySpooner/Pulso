@@ -2,7 +2,10 @@ import io
 import json
 import logging
 import socket
+import ssl
+import time
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
 from unittest.mock import patch
@@ -17,8 +20,9 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from pulso_api.__main__ import main
-from pulso_api.auth import Principal, current_principal, jwks_client
+from pulso_api.auth import Principal, current_principal, jwks_client, verify_token
 from pulso_api.dependencies import get_db
+from pulso_api.errors import APIError
 from pulso_api.main import create_app
 from pulso_api.openapi import export
 from pulso_api.routers.health import check_postgres
@@ -237,27 +241,44 @@ def test_unconfigured_auth_is_503(
     assert response.json()["code"] == "auth_unconfigured"
 
 
+class FailingBody(io.BytesIO):
+    """A JWKS response whose body read fails after the headers arrived."""
+
+    def __init__(self, error: OSError) -> None:
+        super().__init__()
+        self.error = error
+
+    def read(self, size: int | None = -1) -> bytes:
+        raise self.error
+
+
+HS256_TOKEN = jwt.encode(
+    {"sub": "user_a"}, "fixture-secret" * 4, algorithm="HS256", headers={"kid": "fixture-key"}
+)
+
+
 @pytest.mark.parametrize(
     "jwks,status,code",
     [
         (URLError("fixture outage"), 503, "auth_unavailable"),
         (b"<html>Bad gateway</html>", 503, "auth_unavailable"),
         (b"<html>\xe9</html>", 503, "auth_unavailable"),
+        # imp-151 (XR-5): PyJWT wraps only open errors; a reset or TLS error mid-body is bare.
+        (FailingBody(ConnectionResetError("fixture reset")), 503, "auth_unavailable"),
+        (FailingBody(ssl.SSLError("fixture TLS error")), 503, "auth_unavailable"),
         (b'{"keys": []}', 401, "bad_token"),
     ],
 )
 def test_jwks_fetch_failures(
-    client: TestClient, jwks: bytes | Exception, status: int, code: str
+    client: TestClient, jwks: bytes | Exception | FailingBody, status: int, code: str
 ) -> None:
     # The real PyJWKClient.fetch_data runs; only the HTTP opener is replaced (no network).
     def open_jwks(*args: Any, **kwargs: Any) -> io.BytesIO:
         if isinstance(jwks, Exception):
             raise jwks
-        return io.BytesIO(jwks)
+        return jwks if isinstance(jwks, FailingBody) else io.BytesIO(jwks)
 
-    token = jwt.encode(
-        {"sub": "user_a"}, "fixture-secret" * 4, algorithm="HS256", headers={"kid": "fixture-key"}
-    )
+    token = HS256_TOKEN
     jwks_client.cache_clear()
     try:
         with (
@@ -270,6 +291,40 @@ def test_jwks_fetch_failures(
     assert response.status_code == status
     assert response.json()["code"] == code
     provision.assert_not_called()
+
+
+def test_jwks_outage_answers_queued_requests_from_one_fetch(settings: Settings) -> None:
+    """imp-151 (XR-6): PyJWT holds its lock across the fetch, so concurrent requests during an
+    outage each waited out a fetch in turn. After a failed fetch they answer 503 for 5 s."""
+    fetches: list[float] = []
+
+    def open_jwks(*args: Any, **kwargs: Any) -> io.BytesIO:
+        fetches.append(time.monotonic())
+        time.sleep(0.2)  # the other requests queue behind this fetch
+        raise URLError("fixture outage")
+
+    def status() -> int:
+        try:
+            verify_token(HS256_TOKEN, settings)
+        except APIError as exc:
+            return exc.status
+        return 200
+
+    assert settings.clerk_jwks_url
+    jwks_client.cache_clear()
+    try:
+        with (
+            patch("urllib.request.OpenerDirector.open", open_jwks),
+            ThreadPoolExecutor(4) as pool,
+        ):
+            assert list(pool.map(lambda _: status(), range(4))) == [503] * 4
+            assert status() == 503  # back-to-back, still inside the cooldown
+            assert len(fetches) == 1
+            jwks_client(settings.clerk_jwks_url).retry_at = 0  # the 5 s have passed
+            assert status() == 503
+            assert len(fetches) == 2
+    finally:
+        jwks_client.cache_clear()
 
 
 def test_valid_bearer_and_cookie(

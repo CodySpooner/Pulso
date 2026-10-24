@@ -356,12 +356,21 @@ describe("toMinor", () => {
     ["1500", "JPY", 1500],
     ["1.250", "KWD", 1250],
     [" 7.10 ", "EUR", 710],
+    // imp-151 (XR-8): a leading dot, and a third decimal where the currency has one.
+    [".5", "USD", 50],
+    ["1.255", "KWD", 1255],
+    ["0.005", "KWD", 5],
   ])("%s %s is %d minor units", (amount, currency, minor) => {
     expect(toMinor(amount, currency)).toBe(minor);
   });
 
-  test.each([["0"], ["0.00"], ["-1"], ["1.999"], ["1e3"], [""], ["12,50"]])("%s USD is refused", (amount) => {
+  test.each([["0"], ["0.00"], ["-1"], ["1.999"], ["1e3"], [""], ["12,50"], ["."], [".0"]])("%s USD is refused", (amount) => {
     expect(toMinor(amount, "USD")).toBeNull();
+  });
+
+  // imp-151 (XR-7): only the API's currencies (pulso_core.money), so the browser's ICU digits never decide.
+  test.each([["IDR"], ["HUF"], ["ZZZ"], ["usd"], ["constructor"]])("%s is refused", (currency) => {
+    expect(toMinor("1", currency)).toBeNull();
   });
 
   test("a whole-unit currency refuses decimals", () => {

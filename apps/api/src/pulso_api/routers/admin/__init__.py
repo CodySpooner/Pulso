@@ -133,11 +133,14 @@ def csv_import(key: str) -> Literal["ready", "preview_only"] | None:
 
 
 def cj_activity(config: dict[str, object]) -> CJActivity:
+    unknown = CJActivity(state="unknown", days_remaining=None, as_of=None, observed_at=None)
     try:
         evidence = Evidence.model_validate(config.get("cj_account_activity"))
     except ValidationError:  # missing or invalid: unknown, never an error or 0 (DEC-211 b)
-        return CJActivity(state="unknown", days_remaining=None, as_of=None, observed_at=None)
+        return unknown
     status = countdown(evidence, datetime.now(UTC))
+    if status.state == "unknown":  # observed after now (a clock stepped back): no dates either
+        return unknown
     return CJActivity(
         state=status.state,
         days_remaining=status.days_remaining,

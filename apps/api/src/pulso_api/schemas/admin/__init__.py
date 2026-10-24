@@ -6,7 +6,7 @@ from typing import Annotated, Literal
 
 from pydantic import AfterValidator, BaseModel, ConfigDict, Field
 
-from pulso_sources.cj.activity import Evidence, Utc
+from pulso_sources.cj.activity import Currency, Evidence, Utc
 
 
 class Run(BaseModel):
@@ -78,7 +78,7 @@ class ActivityEntry(Evidence):
     observed_at: Annotated[Utc, AfterValidator(not_future)] = Field(
         default_factory=lambda: datetime.now(UTC), description="Defaults to the server's UTC now."
     )
-    currency: str = Field("USD", pattern=r"^[A-Z]{3}$")
+    currency: Currency = "USD"
 
 
 class SourceHealth(BaseModel):

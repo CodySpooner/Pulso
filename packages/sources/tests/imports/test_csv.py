@@ -124,6 +124,12 @@ def test_preview_limits_rows_but_counts_the_entire_file() -> None:
         ("title", "bad\x00title"),
         ("available", "1"),
         ("observed_for", "20260101"),
+        # imp-151 (XR-4): commit needs canonical positive BIGINT Shopify IDs.
+        *(
+            (column, value)
+            for column in ("product_id", "variant_id")
+            for value in ("abc", "0", "0012", "12.0", "-1", str(2**63))
+        ),
     ],
 )
 def test_invalid_values_are_not_repaired(column: str, value: str) -> None:
@@ -136,6 +142,26 @@ def test_invalid_values_are_not_repaired(column: str, value: str) -> None:
     parsed = parse_csv("shopify_stores", output.getvalue().encode())
     assert parsed.rows == []
     assert column in {error.column for error in parsed.errors}
+
+
+def test_shopify_ids_up_to_bigint_stay_exact_text() -> None:
+    rows = list(csv.DictReader(io.StringIO(sample_csv("shopify_stores").decode())))
+    rows[0] |= {"product_id": str(2**63 - 1), "variant_id": "7"}
+    output = io.StringIO()
+    writer = csv.DictWriter(output, rows[0].keys())
+    writer.writeheader()
+    writer.writerows(rows)
+    parsed = parse_csv("shopify_stores", output.getvalue().encode())
+    assert parsed.errors == []
+    assert (parsed.rows[0]["product_id"], parsed.rows[0]["variant_id"]) == (str(2**63 - 1), "7")
+
+
+def test_cj_moq_below_one_is_a_preview_row_error() -> None:
+    """imp-151 (XR-3): commit requires a positive moq, so preview flags 0 on its row."""
+    body = b"sku,name,unit_cost,moq\nA,Example,1,0\nB,Example,1,1\n"
+    preview = preview_csv("cj", body, classify=lambda rows: UpsertStats(inserted=len(rows)))
+    assert [(e.row, e.column) for e in preview.errors] == [(2, "moq")]
+    assert (preview.counts["insert"], preview.counts["invalid"]) == (1, 1)
 
 
 def test_cj_alternative_identifier_and_delivery_bounds() -> None:
