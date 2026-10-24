@@ -1,6 +1,6 @@
 "use client";
 
-import { CircleCheck, CircleDashed, CircleX, Clock, LoaderCircle, type LucideIcon } from "lucide-react";
+import { ArrowUp, CircleCheck, CircleDashed, CircleX, Clock, LoaderCircle, type LucideIcon } from "lucide-react";
 
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatDuration, formatUtc } from "@/lib/format";
@@ -145,6 +145,7 @@ export function HostRetryLink() {
       className="relative hit-area rounded-sm whitespace-nowrap text-foreground underline decoration-border-strong underline-offset-2 hover:decoration-current"
     >
       Collector host card
+      <ArrowUp aria-hidden className="ml-0.5 inline size-3 align-[-2px]" />
     </a>
   );
 }
