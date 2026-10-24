@@ -169,7 +169,8 @@ function DrawerBody({ source, now, onGaps, onImport }: { source: SourceHealth; n
         </dl>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
+      {/* pb-12: the runs footer ends the box, and its Retry's offline reason needs the room below (DEC-236 d). */}
+      <div className="min-h-0 flex-1 overflow-y-auto px-5 pt-4 pb-12">
         {/* The drawer covers the page's line, so it says its own (imp-132). Only a failed refresh: an older page's
             failure is the footer's, under the runs it keeps (imp-136). */}
         {runs.isRefetchError && (
@@ -340,15 +341,18 @@ function RunDetailView({ run, title }: { run: Run; title: React.RefObject<HTMLEl
           </div>
         )}
         {detail.isSuccess && detail.data.next_cursor && targets.length > 0 && (
-          <LoadMore
-            note={targetsNote(targets.length, (more.pages.at(-1) ?? detail.data).target_count, more.hasMore)}
-            label="Load more targets"
-            more={more.hasMore}
-            pending={more.pending}
-            error={more.error}
-            errorTitle="Couldn't load more targets"
-            onLoad={more.load}
-          />
+          // Room for an offline Retry reason below the footer, clear of the next run's row (imp-136).
+          <div className="pb-2">
+            <LoadMore
+              note={targetsNote(targets.length, (more.pages.at(-1) ?? detail.data).target_count, more.hasMore)}
+              label="Load more targets"
+              more={more.hasMore}
+              pending={more.pending}
+              error={more.error}
+              errorTitle="Couldn't load more targets"
+              onLoad={more.load}
+            />
+          </div>
         )}
       </div>
     </RetryScope>
