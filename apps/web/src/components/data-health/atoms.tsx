@@ -24,6 +24,7 @@ import { formatAgo, formatUtc } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 import type { SourceState } from "./model";
+import { RetryScope, useRetry, useRetryScope } from "./retry";
 
 // Small Data Health building blocks. Status never relies on colour alone: every pill has an icon and a
 // label (vault Features/Data Health, Acceptance criteria).
@@ -172,6 +173,7 @@ export function PanelError({
   className?: string;
 }) {
   const problem = isProblem(error) ? error : null;
+  const { button, failed, press } = useRetry(retry);
   return (
     <EmptyState
       icon={TriangleAlert}
@@ -182,7 +184,7 @@ export function PanelError({
       className={className}
       action={
         <>
-          <Button size="sm" variant="primary" onClick={retry}>
+          <Button ref={button} size="sm" variant="primary" onClick={press}>
             Retry
           </Button>
           {problem && <CopyButton value={problem.request_id} label="Copy error ID" />}
@@ -199,6 +201,10 @@ export function PanelError({
       ) : (
         <p>{API_DOWN}</p>
       )}
+      {/* Only a Retry the owner pressed that failed is spoken, once (imp-135); its Retry has taken the lost focus. */}
+      <p role="alert" className="sr-only">
+        {failed ? `${title}. ${problem ? problem.detail : API_DOWN}` : ""}
+      </p>
     </EmptyState>
   );
 }
@@ -225,6 +231,7 @@ export function StaleLine({
 }) {
   const problem = isProblem(error) ? error : null;
   const iso = new Date(asOf).toISOString();
+  const { button, failed, press } = useRetry(retry);
   return (
     <div
       role="group"
@@ -251,16 +258,21 @@ export function StaleLine({
         </p>
       )}
       <div className="ml-auto flex gap-2">
-        <Button size="sm" variant="secondary" onClick={retry}>
+        <Button ref={button} size="sm" variant="secondary" onClick={press}>
           Retry
         </Button>
         {problem && <CopyButton value={problem.request_id} label="Copy error ID" />}
       </div>
+      {/* A pressed Retry that failed again, once (imp-135); the line stays, so its Retry keeps focus. */}
+      <p role="alert" className="sr-only">
+        {failed ? `${what}. ${problem ? problem.detail : API_DOWN}` : ""}
+      </p>
     </div>
   );
 }
 
-/** Card / panel shell shared by the page sections (vault Design/Component Inventory, Card `panel`). */
+/** Card / panel shell shared by the page sections (vault Design/Component Inventory, Card `panel`). A Retry
+ *  inside it that restores the panel leaves focus on its heading (imp-135). */
 export function Panel({
   id,
   title,
@@ -276,16 +288,19 @@ export function Panel({
   children: React.ReactNode;
   className?: string;
 }) {
+  const heading = useRef<HTMLHeadingElement>(null);
+  const retry = useRetryScope(heading);
   return (
     <section aria-labelledby={`${id}-title`} className={cn("flex min-w-0 flex-col rounded-xl border border-border bg-card shadow-card", className)}>
       <header className="flex min-h-12 flex-wrap items-center gap-x-3 gap-y-1 border-b border-border-subtle px-4 py-2.5">
-        <h2 id={`${id}-title`} className="text-title-3 font-semibold text-foreground">
+        {/* The scroll margin clears the phone's top bar when a restored panel's heading takes focus. */}
+        <h2 ref={heading} id={`${id}-title`} tabIndex={-1} className="scroll-mt-18 text-title-3 font-semibold text-foreground lg:scroll-mt-4">
           {title}
         </h2>
         {note && <span className="text-label text-subtle-foreground">{note}</span>}
         {actions && <div className="ml-auto flex items-center gap-2">{actions}</div>}
       </header>
-      {children}
+      <RetryScope value={retry}>{children}</RetryScope>
     </section>
   );
 }

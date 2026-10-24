@@ -14,9 +14,17 @@ import { PanelError, StaleLine, TapTooltip } from "./atoms";
 import { CoveragePanel } from "./coverage";
 import { ImportPanel, type ImportPanelHandle } from "./import-panel";
 import { hostState } from "./model";
+import { RetryScope, useRetryScope } from "./retry";
 import { RunDrawer } from "./run-drawer";
 import { SourcesPanel } from "./sources-table";
 import { BackupCard, HostCard } from "./summary-cards";
+
+/** The first panel back after the page-level Retry: its heading takes the focus that Retry lost (imp-135). */
+const firstPanel = {
+  get current() {
+    return document.getElementById("host-title");
+  },
+};
 
 // DH-2 (vault Features/Data Health): the collection cockpit. Every panel loads, fails and retries on its own;
 // only "API unreachable" replaces the page. Relative times are measured from the fetch ("as of").
@@ -35,6 +43,7 @@ export function DataHealth() {
   const fetching = sources.isFetching || host.isFetching;
   // Offline a refetch would only pause until reconnect, so Refresh says why instead (imp-134).
   const online = useOnline();
+  const pageRetry = useRetryScope(firstPanel);
 
   const header = (
     <PageHeader
@@ -74,9 +83,11 @@ export function DataHealth() {
     return (
       <div className="flex flex-col gap-6">
         {header}
-        <section className="rounded-xl border border-border bg-card shadow-card">
-          <PanelError title="Can't reach the API" error={sources.error} retry={() => void refresh()} headingLevel="h2" size="md" className="py-12" />
-        </section>
+        <RetryScope value={pageRetry}>
+          <section className="rounded-xl border border-border bg-card shadow-card">
+            <PanelError title="Can't reach the API" error={sources.error} retry={() => void refresh()} headingLevel="h2" size="md" className="py-12" />
+          </section>
+        </RetryScope>
       </div>
     );
   }
@@ -88,7 +99,11 @@ export function DataHealth() {
     <div className="flex flex-col gap-6">
       {header}
 
-      {coreDown && <StaleLine boxed what="Couldn't refresh Data Health" error={sources.error} asOf={now} retry={() => void refresh()} />}
+      {coreDown && (
+        <RetryScope value={pageRetry}>
+          <StaleLine boxed what="Couldn't refresh Data Health" error={sources.error} asOf={now} retry={() => void refresh()} />
+        </RetryScope>
+      )}
 
       {heartbeat && (state === "late" || state === "offline") && (
         <div
