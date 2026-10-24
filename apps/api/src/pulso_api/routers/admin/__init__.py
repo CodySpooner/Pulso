@@ -18,6 +18,8 @@ from pulso_api.auth import Principal, current_principal
 from pulso_api.dependencies import get_db
 from pulso_api.errors import APIError
 from pulso_api.schemas.admin import (
+    ActivityEntry,
+    CJActivity,
     CoverageDay,
     Gap,
     Heartbeat,
@@ -42,6 +44,7 @@ from pulso_core.models import (
 )
 from pulso_core.settings import Settings, get_settings
 from pulso_core.worktree import is_linked_worktree
+from pulso_sources.cj.activity import Evidence, countdown
 from pulso_sources.framework import enqueue_run
 from pulso_sources.imports import ADAPTERS, TEMPLATES, commit_import, parse_csv, template_csv
 from pulso_sources.imports.csv import MAX_BYTES, DuplicateEntityRows, ParsedCSV
@@ -129,6 +132,20 @@ def csv_import(key: str) -> Literal["ready", "preview_only"] | None:
     return "ready" if key in ADAPTERS else "preview_only"
 
 
+def cj_activity(config: dict[str, object]) -> CJActivity:
+    try:
+        evidence = Evidence.model_validate(config.get("cj_account_activity"))
+    except ValidationError:  # missing or invalid: unknown, never an error or 0 (DEC-211 b)
+        return CJActivity(state="unknown", days_remaining=None, as_of=None, observed_at=None)
+    status = countdown(evidence, datetime.now(UTC))
+    return CJActivity(
+        state=status.state,
+        days_remaining=status.days_remaining,
+        as_of=evidence.transaction_at,
+        observed_at=evidence.observed_at,
+    )
+
+
 def source_health(session: Session) -> list[SourceHealth]:
     latest = select(func.max(CollectorRun.id)).group_by(CollectorRun.source_id)
     last_runs = {run.source_key: run for run in runs(session, CollectorRun.id.in_(latest))}
@@ -164,6 +181,7 @@ def source_health(session: Session) -> list[SourceHealth]:
                 seed_approved=isinstance(seed, dict) and is_approved_seed(seed) if seeded else None,
                 approved_targets=len(approved_targets(session, source.key)) if seeded else None,
                 csv_import=csv_import(source.key),
+                activity=cj_activity(source.config) if source.key == "cj" else None,
             )
         )
     return result
@@ -201,6 +219,16 @@ def patch_source(
     )
     session.commit()
     return next(health for health in source_health(session) if health.key == key)
+
+
+@router.put("/sources/cj/activity", response_model=SourceHealth)
+def put_cj_activity(entry: ActivityEntry, session: DB) -> SourceHealth:
+    source = get_source(session, "cj")
+    # Re-read under the row lock and change only this key, so a CJ run or seeds apply keeps its own.
+    session.refresh(source, with_for_update=True)
+    source.config = {**source.config, "cj_account_activity": entry.model_dump(mode="json")}
+    session.commit()
+    return next(health for health in source_health(session) if health.key == "cj")
 
 
 @router.post("/sources/{key}/run", response_model=Run, status_code=202)

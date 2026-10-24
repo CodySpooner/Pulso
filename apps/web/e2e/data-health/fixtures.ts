@@ -59,6 +59,13 @@ export const sources: S["SourceHealth"][] = [
   },
 ];
 
+/** imp-161: CJ's activity countdown (DEC-216) as the API serves it at NOW, from an order `days` before 30 run out. */
+export const activity = (state: S["CJActivity"]["state"], days: number): S["CJActivity"] => ({
+  state, days_remaining: days, as_of: at(24 * (30 - days)), observed_at: at(1),
+});
+
+export const withActivity = (a: S["CJActivity"]): S["SourceHealth"][] => sources.map((s) => (s.key === "cj" ? { ...s, activity: a } : s));
+
 /** Every source healthy and enabled: the badge has nothing to count. */
 export const healthySources: S["SourceHealth"][] = sources.map((s) => ({
   ...s, enabled: true, status: "active", disabled_reason: null, disabled_at: null, retry_not_before: null,
@@ -243,7 +250,7 @@ export interface MockOptions {
 export async function mockAdminApi(page: Page, options: MockOptions = {}): Promise<Call[]> {
   const calls: Call[] = [];
   const imported = new Map<string, number>(); // file bytes → the run that imported them
-  const list = options.sources ?? sources;
+  let list = options.sources ?? sources; // a CJ activity entry replaces CJ's row, as the API stores it
   const targets = options.targets;
   const withTargets = <R extends S["Run"]>(r: R): R =>
     targets ? { ...r, target_count: targets.length, successful_target_count: targets.filter((t) => t.status === "success").length } : r;
@@ -288,6 +295,13 @@ export async function mockAdminApi(page: Page, options: MockOptions = {}): Promi
     }
     if (source && method === "POST" && sourceMatch[2]) {
       return json(run({ id: 500, source_key: source.key, trigger: "manual", status: "queued", started_at: null, finished_at: null, queued_at: NOW.toISOString() }), 202);
+    }
+    if (method === "PUT" && apiPath === "/v1/admin/sources/cj/activity") {
+      const { transaction_at } = request.postDataJSON() as S["ActivityEntry"];
+      const days = 30 - (Date.parse(NOW.toISOString().slice(0, 10)) - Date.parse(transaction_at.slice(0, 10))) / 86_400_000;
+      const a = { state: days <= 0 ? "expired" : days <= 7 ? "warn" : "ok", days_remaining: days, as_of: transaction_at, observed_at: NOW.toISOString() } as const;
+      list = list.map((s) => (s.key === "cj" ? { ...s, activity: a } : s));
+      return json(list.find((s) => s.key === "cj"));
     }
     const importMatch = apiPath.match(/^\/v1\/admin\/sources\/([^/]+)\/import(\/preview|\/template)?$/);
     if (importMatch?.[2] === "/template") return route.fulfill({ contentType: "text/csv", body: "date,base,quote,rate\n2026-01-01,USD,JPY,150\n" });

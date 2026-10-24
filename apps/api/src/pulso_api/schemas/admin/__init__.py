@@ -1,10 +1,12 @@
 """Data Health admin shapes (DH-1). Null means unknown: the UI shows "no source yet", never 0."""
 
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 from decimal import Decimal
-from typing import Literal
+from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field
+
+from pulso_sources.cj.activity import Evidence, Utc
 
 
 class Run(BaseModel):
@@ -52,6 +54,33 @@ class RunPage(BaseModel):
     next_cursor: int | None = Field(description="Pass as `cursor` for the next (older) page.")
 
 
+class CJActivity(BaseModel):
+    """DEC-216: missing or invalid stored evidence is unknown, with every other field null."""
+
+    state: Literal["unknown", "ok", "warn", "expired"]
+    days_remaining: int | None = Field(
+        description="30 minus UTC days since the transaction; 0 or less once expired."
+    )
+    as_of: datetime | None = Field(description="The evidence's transaction time.")
+    observed_at: datetime | None
+
+
+def not_future(value: datetime) -> datetime:
+    if value > datetime.now(UTC):
+        raise ValueError("Evidence cannot be observed in the future")
+    return value
+
+
+class ActivityEntry(Evidence):
+    """The owner's latest positive CJ transaction; Evidence's checks apply (DEC-216)."""
+
+    kind: Literal["owner_entry"] = "owner_entry"
+    observed_at: Annotated[Utc, AfterValidator(not_future)] = Field(
+        default_factory=lambda: datetime.now(UTC), description="Defaults to the server's UTC now."
+    )
+    currency: str = Field("USD", pattern=r"^[A-Z]{3}$")
+
+
 class SourceHealth(BaseModel):
     key: str
     name: str
@@ -73,6 +102,9 @@ class SourceHealth(BaseModel):
     quota_limit: int | None = None
     csv_import: Literal["ready", "preview_only"] | None = Field(
         description="Null: no CSV template. preview_only: commit waits for its import adapter."
+    )
+    activity: CJActivity | None = Field(
+        None, exclude_if=lambda value: value is None, description="CJ only; other sources omit it."
     )
 
 

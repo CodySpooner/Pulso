@@ -53,6 +53,7 @@ from pulso_core.models import (
 )
 from pulso_core.settings import Settings, get_settings
 from pulso_sources import storage
+from pulso_sources.cj.activity import Evidence
 from pulso_sources.framework import (
     Request,
     Response,
@@ -77,6 +78,7 @@ ROUTES = [
     ("GET", "/v1/admin/sources"),
     ("PATCH", "/v1/admin/sources/cj"),
     ("POST", "/v1/admin/sources/cj/run"),
+    ("PUT", "/v1/admin/sources/cj/activity"),
     ("GET", "/v1/admin/runs"),
     ("GET", "/v1/admin/runs/1"),
     ("GET", "/v1/admin/coverage"),
@@ -497,6 +499,127 @@ def test_toggle_waits_for_a_concurrent_block(admin: TestClient, engine: Engine) 
     )
     enabled = admin.patch("/v1/admin/sources/cj", json={"enabled": True})
     assert (enabled.status_code, enabled.json()["code"]) == (422, "reason_required")
+
+
+ACTIVITY = "/v1/admin/sources/cj/activity"
+UNKNOWN = {"state": "unknown", "days_remaining": None, "as_of": None, "observed_at": None}
+
+
+def cj_config(engine: Engine) -> dict[str, Any]:
+    with Session(engine) as session:
+        return session.get_one(Source, 2).config
+
+
+def test_cj_activity_entry_is_stored_and_counts_down(admin: TestClient, engine: Engine) -> None:
+    """DEC-216: an owner entry is stored as Evidence and read back as the CJ row's countdown."""
+    sources = {source["key"]: source for source in admin.get("/v1/admin/sources").json()}
+    assert sources["cj"]["activity"] == UNKNOWN  # no evidence: no number, never 0
+    assert all("activity" not in s for key, s in sources.items() if key != "cj")
+
+    paid = NOW - timedelta(days=3)
+    response = admin.put(ACTIVITY, json={"transaction_at": paid.isoformat(), "amount_minor": 1999})
+    assert response.status_code == 200
+    activity = response.json()["activity"]
+    assert (activity["state"], activity["days_remaining"]) == ("ok", 27)
+    assert datetime.fromisoformat(activity["as_of"]) == paid
+    stored = Evidence.model_validate(cj_config(engine)["cj_account_activity"])
+    assert (stored.kind, stored.amount_minor, stored.currency) == ("owner_entry", 1999, "USD")
+    assert NOW <= stored.observed_at <= datetime.now(UTC)  # the server's clock
+
+    late = {"transaction_at": "2026-01-02T09:30:00+08:00", "observed_at": "2026-01-03T00:00:00Z"}
+    response = admin.put(ACTIVITY, json=late | {"amount_minor": 500, "currency": "EUR"})
+    activity = response.json()["activity"]
+    assert activity["state"] == "expired" and activity["days_remaining"] < 0
+    assert (activity["as_of"], activity["observed_at"]) == (
+        "2026-01-02T01:30:00Z",
+        "2026-01-03T00:00:00Z",
+    )
+    assert admin.get("/v1/admin/sources").json()[1]["activity"] == activity
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {"kind": "csv_export"},
+        {"kind": "token_issuance"},
+        {"kind": "auth_response"},
+        {"kind": "api_order"},
+        {"amount_minor": 0},
+        {"amount_minor": -1},
+        {"amount_minor": "1999"},
+        {"amount_minor": 19.99},
+        {"amount_minor": True},
+        {"currency": "usd"},
+        {"transaction_at": "2026-10-01T12:00:00"},  # naive
+        {"transaction_at": (NOW + timedelta(days=1)).isoformat()},
+        {"observed_at": (NOW + timedelta(days=1)).isoformat()},
+        {"accessToken": "fixture"},
+    ],
+)
+def test_cj_activity_rejects_invalid_entries(
+    admin: TestClient, engine: Engine, changes: dict[str, Any]
+) -> None:
+    body = {"transaction_at": (NOW - timedelta(days=1)).isoformat(), "amount_minor": 1} | changes
+    response = admin.put(ACTIVITY, json=body)
+    assert (response.status_code, response.json()["code"]) == (422, "validation_error")
+    assert "cj_account_activity" not in cj_config(engine)
+
+
+@pytest.mark.parametrize(
+    "stored",
+    [
+        "fixture",
+        [],
+        {"kind": "token_issuance", "transaction_at": "2026-10-01T00:00:00Z"},
+        {"kind": "owner_entry", "transaction_at": "2026-10-01T00:00:00Z", "amount_minor": 1},
+    ],
+)
+def test_invalid_stored_cj_activity_reads_unknown(
+    admin: TestClient, engine: Engine, stored: object
+) -> None:
+    with Session(engine) as session:
+        source = session.get_one(Source, 2)
+        source.config = {**source.config, "cj_account_activity": stored}
+        session.commit()
+    response = admin.get("/v1/admin/sources")
+    assert response.status_code == 200
+    assert response.json()[1]["activity"] == UNKNOWN
+
+
+@pytest.mark.parametrize("engine", [pytest.param("postgres", marks=pytest.mark.db)], indirect=True)
+def test_cj_activity_write_keeps_a_concurrent_config_change(
+    admin: TestClient, engine: Engine
+) -> None:
+    """imp-149 pattern: the entry waits on the row lock and merges into the committed config."""
+
+    def lock_waits() -> bool:
+        with engine.connect() as connection:
+            return bool(
+                connection.scalar(
+                    text(
+                        "SELECT count(*) FROM pg_stat_activity"
+                        " WHERE datname = current_database() AND wait_event_type = 'Lock'"
+                    )
+                )
+            )
+
+    points = {"day": NOW.date().isoformat(), "reserved": 50}
+    with ThreadPoolExecutor(1) as pool, Session(engine) as runner:
+        source = runner.get_one(Source, 2, with_for_update=True)  # a CJ run holding the row
+        pending = pool.submit(
+            admin.put, ACTIVITY, json={"transaction_at": NOW.isoformat(), "amount_minor": 1}
+        )
+        deadline = time.monotonic() + 10
+        while not lock_waits():
+            assert time.monotonic() < deadline, "the entry never waited on the source row"
+            time.sleep(0.05)
+        source.config = {**source.config, "cj_points": points}
+        runner.commit()
+        response = pending.result(timeout=10)
+    assert response.json()["activity"]["state"] == "ok"
+    config = cj_config(engine)
+    assert config["cj_points"] == points  # not lost to the entry's stale read
+    assert Evidence.model_validate(config["cj_account_activity"]).amount_minor == 1
 
 
 def test_publish_failure_logs_only_the_error_class(

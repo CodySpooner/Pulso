@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { onlineManager } from "@tanstack/react-query";
-import { ChevronRight, Clock, Database, Play, TriangleAlert, Upload } from "lucide-react";
+import { ChevronRight, CircleCheck, CircleDashed, CircleX, Clock, Database, Play, TriangleAlert, Upload, type LucideIcon } from "lucide-react";
 
 import { CopyButton, SelectableId } from "@/components/pulso/copy-button";
 import { EmptyState } from "@/components/pulso/empty-state";
@@ -19,7 +19,19 @@ import { cn } from "@/lib/utils";
 import { useCoreDown, useHost, useRefreshAdmin, useSources } from "./api";
 import { Ago, Missing, Panel, PanelError, StaleLine, StatePill, TapTooltip } from "./atoms";
 import { GapsLink } from "./coverage";
-import { attentionCount, importEntry, missedNote, skipNote, sourceState, type MissedSlot, type SourceHealth, type SourceState } from "./model";
+import {
+  activityText,
+  attentionCount,
+  importEntry,
+  missedNote,
+  skipNote,
+  sourceState,
+  toMinor,
+  type CJActivity,
+  type MissedSlot,
+  type SourceHealth,
+  type SourceState,
+} from "./model";
 
 const SOURCES_API = "GET /v1/admin/sources";
 
@@ -74,6 +86,9 @@ const skeletonCards = loadingRows.map((i) => (
 type Failure = { tone: "error"; text: string; key: string; error: unknown };
 type Notice = { tone: "ok"; text: string } | Failure;
 type Confirm = { source: SourceHealth; mode: "disable" | "reenable" };
+/** The open order-evidence dialog, and when it opened: the latest order time it accepts (DEC-216). */
+type Entering = { source: SourceHealth; at: number };
+type ActivityBody = { kind: "owner_entry"; transaction_at: string; amount_minor: number; currency: string };
 
 const th = "h-8 border-b border-border px-2 first:pl-4 last:pr-4 text-label font-medium whitespace-nowrap text-muted-foreground";
 
@@ -96,8 +111,11 @@ export function SourcesPanel({ now, onOpen, onImport }: { now: number; onOpen: (
   const online = useOnline();
   const patch = $api.useMutation("patch", "/v1/admin/sources/{key}");
   const run = $api.useMutation("post", "/v1/admin/sources/{key}/run");
+  const putActivity = $api.useMutation("put", "/v1/admin/sources/cj/activity");
   const [notice, setNotice] = useState<Notice | null>(null);
   const [confirm, setConfirm] = useState<Confirm | null>(null);
+  const [entering, setEntering] = useState<Entering | null>(null);
+  const [activityFailure, setActivityFailure] = useState<Failure | null>(null);
   const toggled = useRef<HTMLElement | null>(null); // the dialog has no Radix trigger, so focus returns here
 
   const latestGapEnds = host.data?.latest_gap_ends; // undefined while the host call loads or failed (imp-133)
@@ -149,6 +167,27 @@ export function SourcesPanel({ now, onOpen, onImport }: { now: number; onOpen: (
           void refresh();
         },
         onError: (error) => setNotice(actionFailure(source, "start", error)),
+      },
+    );
+  }
+
+  function openActivity(source: SourceHealth) {
+    toggled.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    setActivityFailure(null);
+    setEntering({ source, at: Date.now() });
+  }
+
+  function saveActivity(source: SourceHealth, body: ActivityBody) {
+    setActivityFailure(null);
+    putActivity.mutate(
+      { body },
+      {
+        onSuccess: (s) => {
+          setEntering(null);
+          setNotice({ tone: "ok", text: `Order saved. ${source.name} activity: ${s.activity ? activityText(s.activity) : "unknown"}.` });
+          void refresh();
+        },
+        onError: (error) => setActivityFailure(actionFailure(source, "save the order for", error)),
       },
     );
   }
@@ -241,6 +280,14 @@ export function SourcesPanel({ now, onOpen, onImport }: { now: number; onOpen: (
                     <dd className="text-foreground">
                       <Freshness source={s} now={now} />
                     </dd>
+                    {s.activity && (
+                      <>
+                        <dt>Activity</dt>
+                        <dd>
+                          <Activity activity={s.activity} onEdit={() => openActivity(s)} />
+                        </dd>
+                      </>
+                    )}
                   </dl>
                   <div className="flex items-center justify-between gap-2">
                     <label className="flex items-center gap-2 text-data text-muted-foreground">
@@ -301,6 +348,7 @@ export function SourcesPanel({ now, onOpen, onImport }: { now: number; onOpen: (
                         <div className="flex flex-col items-start gap-0.5">
                           {waiting(state) ? pillSkeleton : <StatePill state={state} />}
                           {!waiting(state) && <StatusNote source={s} state={state} missed={missed(s, state)} />}
+                          {s.activity && <Activity activity={s.activity} label onEdit={() => openActivity(s)} />}
                         </div>
                       </td>
                       <td className="px-2">
@@ -373,6 +421,17 @@ export function SourcesPanel({ now, onOpen, onImport }: { now: number; onOpen: (
           clearFailure();
         }}
         onSubmit={(reason) => confirm && setEnabled(confirm.source, confirm.mode === "reenable", reason)}
+      />
+      <ActivityDialog
+        returnFocusRef={toggled}
+        entering={entering}
+        pending={putActivity.isPending}
+        failure={activityFailure}
+        onCancel={() => {
+          setEntering(null);
+          setActivityFailure(null);
+        }}
+        onSubmit={(body) => entering && saveActivity(entering.source, body)}
       />
     </Panel>
   );
@@ -615,6 +674,149 @@ function ReasonDialog({
               </DialogClose>
               <Button type="submit" variant="primary" aria-disabled={pending} className="aria-disabled:pointer-events-auto">
                 {pending ? "Saving…" : reenable ? "Re-enable" : "Disable"}
+              </Button>
+            </div>
+          </form>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// CJ turns its API off after 30 days with no transaction amount (1600014, DEC-136); the countdown runs only from
+// evidence the owner enters (DEC-211, DEC-216). Each state has an icon and words, never colour alone.
+const activityStates: Record<CJActivity["state"], { icon: LucideIcon; tone: string; hint: string }> = {
+  unknown: {
+    icon: CircleDashed,
+    tone: "text-muted-foreground",
+    hint: "CJ turns its API off after 30 days with no transaction (1600014). Add your latest CJ order to start the countdown.",
+  },
+  ok: { icon: CircleCheck, tone: "text-foreground", hint: "UTC days until CJ's 30-day inactivity rule (1600014) can turn the API off, from your latest CJ order." },
+  warn: { icon: Clock, tone: "text-warning", hint: "Place a CJ order before the 30 days run out, then update this, or CJ may turn the API off (1600014)." },
+  expired: {
+    icon: CircleX,
+    tone: "text-negative",
+    hint: "30 days have passed since your latest CJ order, so the API is likely off (1600014). Place an order, request reactivation in My CJ, then update this.",
+  },
+};
+
+const utcDay = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
+
+/** Two lines, like the status notes: the countdown, then the order it counts from (its "as of") and the way to
+ *  change it. `label` names it where no term does (the table's Status cell). */
+function Activity({ activity, label, onEdit }: { activity: CJActivity; label?: boolean; onEdit: () => void }) {
+  const s = activityStates[activity.state];
+  return (
+    <span className="flex flex-col items-start text-label">
+      <span className="flex items-center gap-1.5 whitespace-nowrap">
+        {label && <span className="text-muted-foreground">Activity</span>}
+        <TapTooltip hint={s.hint} className={cn("relative hit-area inline-flex items-center gap-1 rounded-sm font-medium", s.tone)}>
+          <s.icon aria-hidden className="size-3.5" />
+          {activityText(activity)}
+        </TapTooltip>
+      </span>
+      <span className="flex items-center gap-1.5 whitespace-nowrap text-muted-foreground">
+        {activity.as_of && (
+          <span>
+            Last order{" "}
+            <time dateTime={activity.as_of} title={`Latest CJ order ${formatUtc(activity.as_of)}, entered ${formatUtc(activity.observed_at ?? activity.as_of)} · ${SOURCES_API}`}>
+              {utcDay.format(new Date(activity.as_of))}
+            </time>{" "}
+            ·
+          </span>
+        )}
+        {/* Underlined like the row's other in-cell links (GapsLink, SourceName). */}
+        <button
+          type="button"
+          onClick={onEdit}
+          aria-label={`${activity.as_of ? "Update order" : "Add order"} for CJ activity`}
+          className="relative hit-area rounded-sm font-medium text-foreground underline decoration-border-strong underline-offset-2 hover:decoration-current"
+        >
+          {activity.as_of ? "Update order" : "Add order"}
+        </button>
+      </span>
+    </span>
+  );
+}
+
+const field = "h-(--input-h) w-full min-w-0 rounded-md border border-input bg-background px-2.5 text-body text-foreground";
+
+function ActivityDialog({
+  returnFocusRef,
+  entering,
+  pending,
+  failure,
+  onCancel,
+  onSubmit,
+}: {
+  returnFocusRef: React.RefObject<HTMLElement | null>;
+  entering: Entering | null;
+  pending: boolean;
+  /** The last Save failed: the dialog stays open and says why, and Save tries again. */
+  failure: Failure | null;
+  onCancel: () => void;
+  onSubmit: (body: ActivityBody) => void;
+}) {
+  return (
+    <Dialog open={entering != null} onOpenChange={(open) => !open && onCancel()}>
+      <DialogContent
+        onCloseAutoFocus={(e) => {
+          e.preventDefault();
+          returnFocusRef.current?.focus();
+        }}
+      >
+        {entering && (
+          <form
+            className="flex flex-col gap-4"
+            // A changed field clears the amount's own message, so the next Save checks it again.
+            onInput={(e) => (e.currentTarget.elements.namedItem("amount") as HTMLInputElement).setCustomValidity("")}
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (pending) return;
+              const form = e.currentTarget;
+              const data = new FormData(form);
+              const currency = String(data.get("currency")).toUpperCase();
+              const amount = form.elements.namedItem("amount") as HTMLInputElement;
+              const minor = toMinor(amount.value, currency);
+              if (minor == null) {
+                amount.setCustomValidity(`Enter an amount above 0 with no more decimals than ${currency} uses.`);
+                amount.reportValidity();
+                return;
+              }
+              // The field has no zone: its value is read as UTC, as its label says.
+              onSubmit({ kind: "owner_entry", transaction_at: new Date(`${data.get("at")}Z`).toISOString(), amount_minor: minor, currency });
+            }}
+          >
+            <div className="flex flex-col gap-1.5">
+              <DialogTitle>Latest CJ order</DialogTitle>
+              <DialogDescription>
+                CJ turns its API off after 30 days with no transaction amount (1600014). Enter your latest paid CJ order and Data Health counts down from
+                it.
+              </DialogDescription>
+            </div>
+            <label className="flex flex-col gap-1.5 text-label font-medium text-muted-foreground">
+              Order date and time (UTC)
+              <input type="datetime-local" name="at" required max={new Date(entering.at).toISOString().slice(0, 16)} className={field} />
+            </label>
+            <div className="grid grid-cols-[minmax(0,1fr)_6rem] gap-3">
+              <label className="flex flex-col gap-1.5 text-label font-medium text-muted-foreground">
+                Amount
+                <input type="number" name="amount" required min="0.01" step="0.01" inputMode="decimal" className={cn(field, "tabular-nums")} />
+              </label>
+              <label className="flex flex-col gap-1.5 text-label font-medium text-muted-foreground">
+                Currency
+                <input name="currency" required defaultValue="USD" pattern="[A-Za-z]{3}" maxLength={3} autoComplete="off" className={cn(field, "uppercase")} />
+              </label>
+            </div>
+            {failure && <ActionError failure={failure} />}
+            <div className="flex justify-end gap-2">
+              <DialogClose asChild>
+                <Button type="button" variant="ghost">
+                  Cancel
+                </Button>
+              </DialogClose>
+              <Button type="submit" variant="primary" aria-disabled={pending} className="aria-disabled:pointer-events-auto">
+                {pending ? "Saving…" : "Save order"}
               </Button>
             </div>
           </form>

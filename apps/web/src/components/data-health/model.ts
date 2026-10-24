@@ -189,6 +189,25 @@ export function coverageRows(coverage: CoverageDay[], sources: SourceHealth[], d
     .map((s) => ({ key: s.key, name: s.name, cells: days.map((d) => byKey.get(`${s.key} ${d}`) ?? null) }));
 }
 
+export type CJActivity = components["schemas"]["CJActivity"];
+
+/** CJ's 30-day activity countdown in words (DEC-216): no number without evidence, and a minus sign once past. */
+export function activityText(a: CJActivity): string {
+  const days = a.days_remaining;
+  if (a.state === "unknown" || days == null) return "No evidence yet";
+  if (a.state === "expired") return `Expired · ${days < 0 ? "−" : ""}${plural(Math.abs(days), "day")}`;
+  return `${plural(days, "day")} left`;
+}
+
+/** An entered amount in the currency's minor units; null unless above 0 with no more decimals than it uses. */
+export function toMinor(amount: string, currency: string): number | null {
+  const digits = new Intl.NumberFormat("en-US", { style: "currency", currency }).resolvedOptions().maximumFractionDigits ?? 2;
+  const m = /^(\d+)(?:\.(\d+))?$/.exec(amount.trim());
+  if (!m || (m[2]?.length ?? 0) > digits) return null;
+  const minor = Number(m[1]) * 10 ** digits + Number((m[2] ?? "").padEnd(digits, "0") || 0);
+  return minor > 0 && Number.isSafeInteger(minor) ? minor : null;
+}
+
 export type ImportPreview = components["schemas"]["ImportPreview"];
 export type ImportResult = components["schemas"]["ImportResult"];
 
