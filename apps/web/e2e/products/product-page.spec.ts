@@ -94,11 +94,11 @@ test("a product with no source says so, never 0", async ({ page }) => {
   await page.goto(URL);
   const strip = stats(page);
   await expect(strip.getByRole("button", { name: /: No source yet$/ })).toHaveCount(3);
-  await expect(strip).toContainText("No store listing is matched to this product yet.");
+  await expect(strip).toContainText("No store listing matched yet.");
   await expect(strip).not.toContainText(/\b0\b|\$0/);
   await expect(page.getByText("Uncategorised")).toBeVisible();
   await strip.getByRole("button").first().focus();
-  await expect(openCard(page)).toContainText("No source yet. No store listing is matched");
+  await expect(openCard(page)).toContainText("No source yet. No store listing matched yet.");
 });
 
 test("stale numbers say so and link to Data Health", async ({ page }) => {
@@ -106,7 +106,7 @@ test("stale numbers say so and link to Data Health", async ({ page }) => {
   await page.goto(URL);
   await expect(page.getByText("Some numbers are older than expected.")).toBeVisible();
   await expect(page.getByText(/Shopify stores last captured Oct \d+, \d\d:\d\d UTC \(3d ago\)/)).toBeVisible();
-  await expect(page.getByRole("link", { name: "Data Health" }).last()).toHaveAttribute("href", "/admin/data-health");
+  await expect(page.getByRole("link", { name: "Open Data Health" })).toHaveAttribute("href", "/admin/data-health");
   await expect(stats(page).getByText(/· stale$/)).toHaveCount(2);
 });
 

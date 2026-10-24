@@ -61,16 +61,20 @@ export function ProductPage({ id }: { id: string }) {
           {/* One h1 in every state, so the focus the route template gives it on a navigation survives the load. */}
           <h1
             tabIndex={-1}
+            title={data?.title}
             className={cn("line-clamp-2 text-title-1 font-semibold break-words text-foreground outline-none", !data && !failed && "sr-only")}
           >
             {data?.title ?? (notFound ? "Product not found" : failed ? "Product" : "Loading product")}
           </h1>
           {data ? (
             <p className="text-label text-subtle-foreground">
-              {data.category?.replaceAll(" > ", " › ") ?? "Uncategorised"} · First seen{" "}
-              <time dateTime={data.first_seen_at} title={formatUtc(data.first_seen_at)}>
-                {day.format(new Date(data.first_seen_at))}
-              </time>
+              {data.category?.replaceAll(" > ", " › ") ?? "Uncategorised"} ·{" "}
+              <span className="whitespace-nowrap">
+                First seen{" "}
+                <time dateTime={data.first_seen_at} title={formatUtc(data.first_seen_at)}>
+                  {day.format(new Date(data.first_seen_at))}
+                </time>
+              </span>
             </p>
           ) : (
             !failed && (
@@ -156,11 +160,10 @@ function Loaded({ product, now }: { product: Stats; now: number }) {
           <TriangleAlert className="mr-1.5 inline size-3.5 align-[-2px] text-warning" aria-hidden />
           <span className="font-medium">Some numbers are older than expected.</span>{" "}
           {stale.map((s) => `${s.source_name} last captured ${formatUtc(s.as_of)} (${formatAgo(s.as_of, now)})`).join("; ")}. The
-          collector host may be off or the source paused. See{" "}
-          <Link href="/admin/data-health" className="link-inline me-1 rounded-sm underline decoration-border-strong underline-offset-2 hover:decoration-current">
-            Data Health
+          collector host may be off or the source paused.{" "}
+          <Link href="/admin/data-health" className="link-inline rounded-sm whitespace-nowrap underline decoration-border-strong underline-offset-2 hover:decoration-current">
+            Open Data Health
           </Link>
-          .
         </p>
       )}
       <ProductTabs />

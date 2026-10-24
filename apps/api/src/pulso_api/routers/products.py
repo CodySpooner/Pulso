@@ -18,7 +18,7 @@ from pulso_api.schemas.provenance import NoSource, Sourced, Stat
 from pulso_core.models import Category, Image, Listing, ListingSnapshot, Product, Source
 
 router = APIRouter(prefix="/v1/products", dependencies=[Depends(current_principal)])
-NO_PRICE = "No USD retail price observed for this product yet."
+NO_PRICE = "No USD retail price observed yet."
 
 
 class ProductHeader(BaseModel):
@@ -116,13 +116,13 @@ def get_product(
         store_count=stat(
             newest(stores),
             lambda _: len({row.store_id for row in stores}),
-            "No store listing is matched to this product yet.",
+            "No store listing matched yet.",
             now,
         ),
         supplier_count=stat(
             newest(suppliers),
             lambda _: len({row.supplier_id for row in suppliers}),
-            "No supplier listing is matched to this product yet.",
+            "No supplier listing matched yet.",
             now,
         ),
         price_min_minor=stat(min(priced, key=low, default=None), low, NO_PRICE, now),

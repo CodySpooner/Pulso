@@ -35,10 +35,10 @@ export const unmatched: S["ProductHeader"] = {
   ...product,
   image_url: null,
   category: null,
-  store_count: none("No store listing is matched to this product yet."),
-  supplier_count: none("No supplier listing is matched to this product yet."),
-  price_min_minor: none("No USD retail price observed for this product yet."),
-  price_max_minor: none("No USD retail price observed for this product yet."),
+  store_count: none("No store listing matched yet."),
+  supplier_count: none("No supplier listing matched yet."),
+  price_min_minor: none("No USD retail price observed yet."),
+  price_max_minor: none("No USD retail price observed yet."),
 };
 
 /** The store crawler last captured 3 days ago, past twice its daily interval. */

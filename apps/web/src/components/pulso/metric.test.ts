@@ -11,7 +11,7 @@ const sourced: Stat = {
   value: 2400, source: "shopify_stores", source_name: "Shopify stores", as_of: "2026-10-24T06:04:00Z",
   raw_payload_id: 77, method: null, stale: false,
 };
-const missing: Stat = { value: null, reason: "No supplier listing is matched to this product yet." };
+const missing: Stat = { value: null, reason: "No supplier listing matched yet." };
 const usd = (minor: number) => `$${(minor / 100).toFixed(2)}`;
 
 const card = (stat: Stat) => renderToStaticMarkup(createElement(ProvenanceCard, { stat, label: "Lowest price", now: NOW }));
@@ -52,7 +52,7 @@ describe("ProvenanceCard", () => {
 
   test("no source yet carries the reason, and no as-of or payload", () => {
     const html = card(missing);
-    expect(html).toContain("No source yet. No supplier listing is matched to this product yet.");
+    expect(html).toContain("No source yet. No supplier listing matched yet.");
     expect(html).not.toContain("<time");
     expect(html).not.toContain("Raw payload");
   });
