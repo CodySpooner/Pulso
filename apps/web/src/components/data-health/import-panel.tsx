@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useImperativeHandle, useRef, useState } from "react";
+import { useId, useImperativeHandle, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { ChevronDown, CircleCheck, CircleDashed, CircleX, Download, FileSpreadsheet, History, TriangleAlert, Upload } from "lucide-react";
 
@@ -15,6 +15,7 @@ import { cn } from "@/lib/utils";
 import { fileUpload, useRefreshAdmin, useSources } from "./api";
 import { Missing, Panel, PanelError, Pill, TapTooltip } from "./atoms";
 import { IMPORT_MAX_BYTES, commitBlocker, defaultImportSource, importOutcome, previewSummary, sampleColumns, sampleNote, type ImportPreview } from "./model";
+import { useTakeLostFocus } from "./retry";
 
 // CSV import (P1-11b, vault Features/CSV Export & Import): choose or drop a file, it is checked at once
 // (validation only, nothing written), then one click imports it as a `csv` collector run. A preview always
@@ -466,16 +467,6 @@ const IMPORT_FAILED = "The API didn't answer while importing. When it runs on yo
 function failure(error: unknown, fallback: string) {
   const problem = isProblem(error) ? error : null;
   return { problem, text: problem ? problem.detail : fallback, retry: problem?.status !== 422 };
-}
-
-/**
- * Focuses `ref` once `when` holds, but only when nothing has focus (aud-004 C2-02): the control a keyboard
- * user just used (Import, Retry) left with the step it belonged to. Never takes focus from another control.
- */
-function useTakeLostFocus(ref: React.RefObject<HTMLElement | null>, when: unknown = true) {
-  useEffect(() => {
-    if (when && document.activeElement === document.body) ref.current?.focus();
-  }, [ref, when]);
 }
 
 function ErrorLine({ error, retry, fallback }: { error: unknown; retry: () => void; fallback: string }) {
