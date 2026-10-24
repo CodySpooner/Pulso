@@ -108,10 +108,12 @@ export function TapTooltip({
       />
       {/* Hidden while its trigger is scrolled out of view, so a reason kept open never floats over the top bar. A
           press on the trigger is outside the hint, which Radix would take as a dismissing press. Beside its trigger
-          a reason wraps narrow, to fit the empty part of the trigger's row (DEC-235 b). */}
+          a reason wraps narrow, to fit the empty part of the trigger's row; every reason keeps to the 16 px page
+          gutter, never flush with the viewport edge (DEC-235 b). */}
       <TooltipContent
         side={side}
         hideWhenDetached
+        collisionPadding={16}
         className={cn("pointer-events-none", (side === "left" || side === "right") && "max-w-32")}
         onPointerDownOutside={(e) => onTrigger(e) && e.preventDefault()}
       >
