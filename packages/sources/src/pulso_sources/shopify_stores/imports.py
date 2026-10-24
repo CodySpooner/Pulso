@@ -96,7 +96,7 @@ class ShopifyImportAdapter:
             identity = (
                 {"external_id": f"{store.shop_id}:{product_id}"}
                 if product_id
-                else {"handle": handle}
+                else {"handle": handle, "delisted_at": None}  # imp-150: never a deleted twin
             )
             listing = session.scalars(
                 select(Listing).filter_by(
@@ -117,8 +117,12 @@ class ShopifyImportAdapter:
                         raise ValueError("Unknown variant requires a Shopify variant_id")
                     key = {"sku": row["sku"]} if row.get("sku") else {"title": row["variant_title"]}
                     variant_id = session.scalars(
-                        select(ListingVariant.external_id).filter_by(listing_id=listing.id, **key)
-                    ).one()
+                        select(ListingVariant.external_id).filter_by(
+                            listing_id=listing.id, delisted_at=None, **key
+                        )
+                    ).one_or_none()
+                    if variant_id is None:
+                        raise ValueError("Unknown variant requires a Shopify variant_id")
                 compare = row.get("compare_at_price")
                 variants.append(
                     dict(

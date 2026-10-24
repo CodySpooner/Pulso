@@ -383,3 +383,81 @@ def test_imports_do_not_reorder_the_js_panel(
     body = f"{HEADER},observed_for\nfirst.test,{URL},Live title 1,24.99,USD,,true,1,1,2020-01-01\n"
     assert importing(session, settings, body.encode()).status == "success"
     assert js_panel(session, small, monkeypatch) == ["product-1"]
+
+
+# imp-150 (XR-2): ID-less rows never resolve to a delisted listing or variant.
+SKU_HEADER = (
+    "store_domain,product_url,title,price,currency,compare_at_price,available,sku,product_id"
+)
+
+
+def adapter_errors(monkeypatch: pytest.MonkeyPatch) -> list[str]:
+    """Exception texts from the import adapter; runs record only the exception type."""
+    errors: list[str] = []
+    upsert = ShopifyImportAdapter.upsert
+
+    def spy(self: ShopifyImportAdapter, *args: Any, **kw: Any) -> Any:
+        try:
+            return upsert(self, *args, **kw)
+        except Exception as exc:
+            errors.append(str(exc))
+            raise
+
+    monkeypatch.setattr(ShopifyImportAdapter, "upsert", spy)
+    return errors
+
+
+def delisted_product(session: Session, settings: Settings, io_mock: Any) -> Listing:
+    """Product A (product-1, SKU-1) is deleted; a twin with its handle and SKU is not crawled."""
+    live_catalog(io_mock)
+    crawl(session, settings)
+    io_mock.replies[CATALOG] = fixture("empty_catalog")
+    crawl(session, settings)
+    listing = mine(session)
+    assert listing.delisted_at is not None
+    return listing
+
+
+def test_handle_only_row_never_resolves_to_a_delisted_listing(
+    session: Session, settings: Settings, io_mock: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    listing = delisted_product(session, settings, io_mock)
+    errors = adapter_errors(monkeypatch)
+    body = f"{SKU_HEADER}\nfirst.test,{URL},Twin title,24.00,USD,,,SKU-1,\n".encode()
+    result = importing(session, settings, body)
+    assert (result.status, result.error_code) == ("partial", "ValueError")
+    assert errors == ["Unknown handle requires a Shopify product_id"]
+    assert payload_rows(session, ListingSnapshot, result) == 0
+    assert payload_rows(session, VariantSnapshot, result) == 0
+    session.refresh(listing)
+    assert listing.title == "Live title 1"
+
+
+def test_sku_only_row_never_resolves_to_a_delisted_variant(
+    session: Session, settings: Settings, io_mock: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    live_catalog(io_mock, {}, {"id": 2, "sku": "SKU-2", "title": "Large"})
+    crawl(session, settings)
+    variant = session.scalars(select(ListingVariant).filter_by(external_id="2")).one()
+    variant.delisted_at = variant.last_seen_at  # no crawl delists variants yet; imports still must
+    session.commit()
+    errors = adapter_errors(monkeypatch)
+    body = f"{SKU_HEADER}\nfirst.test,{URL},Live title 1,24.00,USD,,,SKU-2,\n".encode()
+    result = importing(session, settings, body)
+    assert (result.status, result.error_code) == ("partial", "ValueError")
+    assert errors == ["Unknown variant requires a Shopify variant_id"]
+    assert payload_rows(session, ListingSnapshot, result) == 0
+    assert payload_rows(session, VariantSnapshot, result) == 0
+
+
+def test_explicit_product_id_still_records_history_for_a_delisted_listing(
+    session: Session, settings: Settings, io_mock: Any
+) -> None:
+    listing = delisted_product(session, settings, io_mock)
+    body = f"{SKU_HEADER}\nfirst.test,{URL},Twin title,24.00,USD,,,SKU-1,1\n".encode()
+    result = importing(session, settings, body)
+    assert result.status == "success"
+    assert payload_rows(session, VariantSnapshot, result) == 1
+    assert current(session)["price_minor"] == 2400
+    session.refresh(listing)
+    assert listing.delisted_at is not None
