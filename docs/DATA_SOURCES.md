@@ -29,7 +29,7 @@ Canonical compliance record required by SPEC §4.2: for every data source, its a
 | Competitor Shopify stores | `shopify_stores` | Public storefront JSON (unauthenticated) | planned (enable after fixtures pass + risk acceptance copied to DECISIONS.md) | 1 | Free |
 | CJ Dropshipping | `cj` | Official API 2.0, API key | planned (pending owner answer on 30-day transactions) | 1 | Free |
 | Google Trends | `google_trends` | SerpApi free tier; official alpha if granted | planned | 1 | Free (≤ 250 searches/mo) |
-| Frankfurter FX | `fx_frankfurter` | Official, keyless | planned | 1 | Free |
+| Frankfurter FX | `fx_frankfurter` | Official, keyless | enabled (collector host since 2026-10-24) | 1 | Free |
 | AliExpress | `aliexpress` | Open Platform Affiliate + DS APIs (app approval) | planned, live-lookup only | 3 | Free ("temporarily") |
 | Amazon | `amazon` | Manual CSV only (no usable official API) | planned (CSV); Creators API disabled (ineligible) | 3 | Free |
 | Meta Ad Library | `meta_ad_library` | Graph API v26.0 `ads_archive` (EU/UK commercial only); CSV for US | planned | 8 (CSV optional earlier) | Free |
@@ -165,7 +165,7 @@ The report's own caveat: states are observations, and a 404 alone cannot establi
 - **Use:** first rate per date/base/quote/source is retained (DEC-051/060); each fetch retains raw evidence, and conflicting rates add an `fx_conflict` event instead of rewriting history. Features select only rates captured before the next UTC midnight and carry the latest observed rate forward (DEC-031, D4). Late backfills cannot improve earlier features. Conversion uses integer minor units and explicit Decimal rounding (DEC-088).
 - **First live run (data-06, DEC-230):** enabled on the collector host 2026-10-24T18:47Z (DEC-073). The catch-up run at 18:50Z ended `partial` with `error_code` `ValueError`, not blocked. Its raw payload isn't readable from a worktree, and the framework stores only the exception's class name. Docs re-checked 2026-10-24 without calling data endpoints: `/v2/rates` "returns a flat array, one row per quote", blends providers by default, and returns NDJSON only when the `Accept` header asks for it. Each adapter check now has its own error code: `FxNotRateArray`, `FxDuplicateRow`, `FxCaptureMetadata`, `FxUnsupportedRequest` or `FxBackfillRange`. A bare `ValueError` now points at raw storage or the framework. A row dated after the capture's UTC date, an early blend from a provider that is already on the next day, is skipped from that capture and the rest of the capture is stored. The run row counts the skip as `rows_fetched − rows_inserted − rows_unchanged`, and a later capture stores the row. Object bodies and duplicate pair/date rows still fail the capture under their new codes.
 - **Risk:** low for blended rates; provider-specific terms differ, outages can delay rates, and abuse blocking still follows the default block rule. No key expiry. Evidence: `Source - Frankfurter FX`, SF §13.
-- **Cost:** free; no paid tier documented for this keyless service. **Status:** planned. **Phase:** 1.
+- **Cost:** free; no paid tier documented for this keyless service. **Status:** enabled on the collector host since 2026-10-24T18:47Z (DEC-073); first run partial, fixed by data-06 (DEC-230). **Phase:** 1.
 
 ## AliExpress (`aliexpress`)
 
