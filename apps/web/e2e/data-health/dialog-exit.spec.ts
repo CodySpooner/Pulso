@@ -66,7 +66,7 @@ for (const motion of ["no-preference", "reduce"] as const) {
         await expect(opener).toBeFocused();
 
         const frames = await closingFrames(page);
-        // With motion the exit runs ~200 ms, so frames are sampled; reduced motion may finish before the next frame.
+        // With motion the exit runs ~120 ms (imp-177), so frames are sampled; reduced motion may finish before the next frame.
         if (motion === "no-preference") expect(frames.length).toBeGreaterThan(3);
         expect(frames.filter((f) => f.name !== c.title)).toEqual([]);
         if (c.error) expect(frames.filter((f) => !f.text.includes(c.error!))).toEqual([]);

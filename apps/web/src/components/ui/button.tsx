@@ -5,8 +5,9 @@ import { Slot } from "radix-ui";
 import { cn } from "@/lib/utils";
 
 // Pulso variants (vault Design/Component Inventory): neutral primary; at most one `brand` button per screen.
+// A locked (disabled or aria-disabled) button never depresses: its `active:scale-100` outranks every size's press.
 const buttonVariants = cva(
-  "relative hit-area inline-flex shrink-0 items-center justify-center gap-1.5 rounded-md border border-transparent font-medium whitespace-nowrap select-none transition-[color,background-color,border-color,scale] duration-(--duration-fast) ease-standard active:scale-[0.98] disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none aria-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+  "relative hit-area inline-flex shrink-0 items-center justify-center gap-1.5 rounded-md border border-transparent font-medium whitespace-nowrap select-none transition-[color,background-color,border-color,scale] duration-(--duration-fast) ease-standard active:scale-[0.98] disabled:pointer-events-none disabled:opacity-50 disabled:active:scale-100 aria-disabled:pointer-events-none aria-disabled:opacity-50 aria-disabled:active:scale-100 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
   {
     variants: {
       variant: {
