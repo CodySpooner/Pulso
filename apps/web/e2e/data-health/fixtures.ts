@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
-import type { Page } from "@playwright/test";
+import type { BrowserContext, Page } from "@playwright/test";
 
 import type { components } from "../../src/lib/api/schema";
 
@@ -244,6 +244,23 @@ export interface MockOptions {
   down?: boolean;
   /** Hold every response this long, to show loading skeletons. */
   delayMs?: number;
+}
+
+/** Playwright's routes still answer while the context is offline, so this one fails each call the way an offline
+ *  Chromium does, and records it; online calls go on to the fixtures (imp-134). Call after mockAdminApi. */
+export async function offlineNetwork(page: Page, context: BrowserContext) {
+  const offlineCalls: string[] = [];
+  let offline = false;
+  await page.route("**/api/**", (route) => {
+    if (!offline) return route.fallback();
+    offlineCalls.push(`${route.request().method()} ${new URL(route.request().url()).pathname}`);
+    return route.abort("internetdisconnected");
+  });
+  const setOffline = async (on: boolean) => {
+    offline = on;
+    await context.setOffline(on);
+  };
+  return { offlineCalls, setOffline };
 }
 
 /** Answers /api/v1/admin/* from the fixtures and records every call. Call before page.goto. */
