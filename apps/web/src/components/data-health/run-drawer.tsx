@@ -16,7 +16,7 @@ import { Ago, Missing, PanelError, runStatus, sourceStates, StaleLine, StatePill
 import { GapsLink, OPEN_GAPS_ID } from "./coverage";
 import { LoadMore } from "./load-more";
 import { RetryScope, useRetryScope } from "./retry";
-import { missedNote, skipNote, sourceState, targetsNote, typeLabel, type Run, type SourceHealth } from "./model";
+import { missedNote, runBlocker, skipNote, sourceState, targetsNote, typeLabel, type Run, type SourceHealth } from "./model";
 
 const RUNS_API = "GET /v1/admin/runs";
 
@@ -92,8 +92,9 @@ function DrawerBody({ source, now, onGaps, onImport }: { source: SourceHealth; n
   const state = sourceState(source, host.data?.latest_gap_ends, now);
   const missed = state === "overdue" && host.data ? missedNote(source.key, host.data.latest_gap_ends, host.data.open_gaps) : null;
   const online = useOnline();
-  // Run now's own rule (the sources table's runBlocker); a preview-only CSV template checks files but adds no run.
-  const canRun = host.data?.live_runs_allowed === true && source.enabled && online;
+  // Run now's rule, and the copy names it only once the host call says live runs are allowed (the table doesn't
+  // wait for it). A preview-only CSV template checks files but adds no run.
+  const canRun = host.data != null && runBlocker(host.data, source, online) == null;
   const csv = source.csv_import === "ready";
   const quota = source.quota_limit != null ? `${source.quota_used?.toLocaleString("en-US") ?? "—"} / ${source.quota_limit.toLocaleString("en-US")}` : null;
   // The drawer is a retry scope (imp-168): a pressed Retry that fails is announced once, one that restores focuses the title.

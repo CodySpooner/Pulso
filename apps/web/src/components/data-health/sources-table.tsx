@@ -26,6 +26,7 @@ import {
   CURRENCY_DIGITS,
   importEntry,
   missedNote,
+  runBlocker,
   skipNote,
   sourceState,
   toMinor,
@@ -188,14 +189,6 @@ export function SourcesPanel({ now, onOpen, onImport }: { now: number; onOpen: (
     );
   }
 
-  /** Why Run now is unavailable, or null when it can run. */
-  function runBlocker(source: SourceHealth): string | null {
-    if (host.data && !host.data.live_runs_allowed) return "Live collectors run only on the collector host.";
-    if (!source.enabled) return "Enable the source before running it.";
-    if (!online) return OFFLINE_HINT; // last: the other reasons still hold once reconnected
-    return null;
-  }
-
   const saving = (s: SourceHealth) => patch.isPending && patch.variables?.params.path.key === s.key;
   const controls = (s: SourceHealth) => ({
     toggle: (
@@ -212,7 +205,7 @@ export function SourcesPanel({ now, onOpen, onImport }: { now: number; onOpen: (
         />
       </TapTooltip>
     ),
-    run: <RunButton name={s.name} blocker={runBlocker(s)} pending={run.isPending && run.variables?.params.path.key === s.key} onRun={() => runNow(s)} />,
+    run: <RunButton name={s.name} blocker={runBlocker(host.data, s, online)} pending={run.isPending && run.variables?.params.path.key === s.key} onRun={() => runNow(s)} />,
     import: <ImportButton source={s} onImport={onImport} />,
   });
 
