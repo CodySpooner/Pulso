@@ -9,9 +9,9 @@ import { formatUtc } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 import { useCoreDown, useCoverage, useHost, useOlderGaps, useSources } from "./api";
-import { Panel, PanelError, StaleLine } from "./atoms";
+import { Panel, PanelError, StaleLine, WaitsLine } from "./atoms";
 import { LoadMore } from "./load-more";
-import { coverageRows, gapReasons, gapsNote, mergeGaps, openGapsView, plural, utcDays, type CoverageDay, type MissedSlot } from "./model";
+import { coverageRows, gapReasons, gapsNote, mergeGaps, openGapsView, plural, utcDays, type CoverageDay, type CoverageRow, type MissedSlot } from "./model";
 import { HostRetryLink } from "./summary-cards";
 
 export const COVERAGE_DAYS = 90;
@@ -59,6 +59,14 @@ function summary(cells: (CoverageDay | null)[]): string {
   return [...counts].map(([label, n]) => `${n} ${label}`).join(", ");
 }
 
+/** Rows without the source list (imp-139): the coverage call's own keys, in its key order, stand in for names. The API
+ *  already leaves internal sources out, so only the names and the sources with no runs yet are missing. */
+function keyRows(coverage: CoverageDay[], days: string[]): CoverageRow[] {
+  const byKey = new Map<string, Map<string, CoverageDay>>();
+  for (const c of coverage) byKey.set(c.source_key, (byKey.get(c.source_key) ?? new Map<string, CoverageDay>()).set(c.day, c));
+  return [...byKey].map(([key, byDay]) => ({ key, name: key, cells: days.map((d) => byDay.get(d) ?? null) }));
+}
+
 export function CoveragePanel({ now }: { now: number }) {
   const coverage = useCoverage(COVERAGE_DAYS);
   const sources = useSources();
@@ -89,16 +97,18 @@ export function CoveragePanel({ now }: { now: number }) {
         </div>
       ) : coverage.isLoadingError ? (
         <PanelError title="Couldn't load coverage" error={coverage.error} retry={() => coverage.refetch()} />
-      ) : sources.isLoadingError ? (
-        <PanelError title="Couldn't load sources" error={sources.error} retry={() => sources.refetch()} />
       ) : coverage.data.length === 0 ? (
         <EmptyState icon={CalendarDays} size="sm" title="No coverage yet">
           Each source&apos;s days fill in here as runs land. Missed runs show as hatched gaps; history is never backfilled.
         </EmptyState>
       ) : (
         <div className="flex flex-col gap-3 px-4 pt-4 pb-3">
+          {/* The Sources panel keeps that call's error and Retry (imp-139); the rows its own call loaded stay. */}
+          {!sources.data && (
+            <WaitsLine lead="Names wait for the source list above.">Rows show source keys, and sources with no runs yet aren&apos;t listed.</WaitsLine>
+          )}
           <div className="flex flex-col gap-1.5">
-            {coverageRows(coverage.data, sources.data, days).map((row) => (
+            {(sources.data ? coverageRows(coverage.data, sources.data, days) : keyRows(coverage.data, days)).map((row) => (
               <div key={row.key} className="grid grid-cols-[6.5rem_1fr] items-center gap-3 sm:grid-cols-[9rem_1fr]">
                 <span className="truncate text-label text-muted-foreground" title={row.name}>
                   {row.name}

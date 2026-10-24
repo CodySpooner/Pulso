@@ -14,7 +14,7 @@ import { $api, isProblem } from "@/lib/api/client";
 import { cn } from "@/lib/utils";
 
 import { fileUpload, useRefreshAdmin, useSources } from "./api";
-import { Missing, Panel, PanelError, Pill, TapTooltip } from "./atoms";
+import { Missing, Panel, Pill, TapTooltip, WaitsLine } from "./atoms";
 import { IMPORT_MAX_BYTES, commitBlocker, defaultImportSource, importOutcome, previewSummary, sampleColumns, sampleNote, type ImportPreview } from "./model";
 import { useTakeLostFocus } from "./retry";
 
@@ -107,8 +107,12 @@ export function ImportPanel({ onOpen, ref }: { onOpen: (key: string) => void; re
       </div>
     );
   } else if (sources.isLoadingError) {
-    // A failed refetch keeps the cached sources; the Sources panel's line reports that call (imp-132).
-    body = <PanelError title="Couldn't load import sources" error={sources.error} retry={() => sources.refetch()} />;
+    // The Sources panel reports that call, failed (imp-139) or stale (imp-132); a failed refetch keeps the sources.
+    body = (
+      <WaitsLine lead="Waits for the source list above." className="p-4">
+        Retry there to choose a source and import.
+      </WaitsLine>
+    );
   } else if (!source) {
     body = (
       <EmptyState icon={FileSpreadsheet} size="sm" title="No source has a CSV template yet">
