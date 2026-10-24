@@ -17,16 +17,26 @@ async function openFx(page: Page) {
   return { panel, drawer, link: drawer.getByRole("button", { name: "CSV import panel" }) };
 }
 
-/** Records the drawer title's text on every closing frame until the dialog is gone. */
+/**
+ * Records the drawer title's text on every closing frame until the dialog is gone, and at the moment it reports
+ * closed (a MutationObserver), so a frame stall that outlasts the exit can't leave the close unsampled (imp-183).
+ */
 async function sampleClosing(page: Page) {
   await page.evaluate(() => {
     const frames: string[] = [];
     Object.assign(window, { closing_: frames });
-    const tick = () => {
+    const sample = () => {
       const dialog = document.querySelector('[role="dialog"]');
-      if (!dialog) return;
-      if (dialog.getAttribute("data-state") === "closed") frames.push(document.getElementById(dialog.getAttribute("aria-labelledby") ?? "")?.textContent ?? "");
-      requestAnimationFrame(tick);
+      if (dialog?.getAttribute("data-state") === "closed") frames.push(document.getElementById(dialog.getAttribute("aria-labelledby") ?? "")?.textContent ?? "");
+      return dialog !== null;
+    };
+    new MutationObserver((_, observer) => {
+      if (!document.querySelector('[role="dialog"][data-state="closed"]')) return;
+      observer.disconnect();
+      sample();
+    }).observe(document.body, { subtree: true, attributeFilter: ["data-state"] });
+    const tick = () => {
+      if (sample()) requestAnimationFrame(tick);
     };
     tick();
   });

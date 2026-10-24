@@ -30,16 +30,16 @@ for (const theme of ["dark", "light"] as const) {
         const dialog = page.getByRole("dialog", { name: "Disable CJ Dropshipping?" });
         await expect(dialog).toBeVisible();
         await page.waitForTimeout(300); // the enter animation has finished
-        await page.evaluate(async () => {
-          const cancel = [...document.querySelectorAll<HTMLButtonElement>('[role="dialog"] button')].find((b) => b.textContent === "Cancel")!;
-          cancel.click();
-          while (!document.querySelector('[role="dialog"][data-state="closed"]')) await new Promise(requestAnimationFrame);
+        // The exit is held from its first frame, so no frame stall can end it before the shot (imp-183).
+        await page.addStyleTag({ content: "[data-state=closed] { animation-play-state: paused !important; }" });
+        await dialog.getByRole("button", { name: "Cancel" }).evaluate((b: HTMLElement) => b.click());
+        await expect(dialog).toHaveAttribute("data-state", "closed");
+        await page.evaluate(() => {
           for (const a of document.getAnimations()) {
             a.pause();
             a.currentTime = 60;
           }
         });
-        await expect(dialog).toHaveAttribute("data-state", "closed");
         await page.screenshot({ path: `${OUT}/exit-${width}-${theme}.png` });
       });
 

@@ -9,17 +9,29 @@ import { activity, mockAdminApi, problem, withActivity } from "./fixtures";
 const PAGE = "/admin/data-health";
 const table = (page: Page) => page.getByRole("region", { name: "Sources table" });
 
-/** Records, every frame until no dialog is left, its state and accessible name (aria-labelledby) and its text. */
+/**
+ * Records, every frame until no dialog is left, its state and accessible name (aria-labelledby) and its text. It
+ * also records the moment the dialog reports closed (a MutationObserver), so a frame stall that outlasts the exit
+ * can't leave the close unsampled (imp-183).
+ */
 async function sampleUntilGone(page: Page) {
   await page.evaluate(() => {
     const frames: { state: string | null; name: string; text: string }[] = [];
     Object.assign(window, { frames_: frames });
-    const tick = () => {
+    const sample = () => {
       const dialog = document.querySelector('[role="dialog"]');
-      if (!dialog) return;
+      if (!dialog) return false;
       const title = document.getElementById(dialog.getAttribute("aria-labelledby") ?? "");
       frames.push({ state: dialog.getAttribute("data-state"), name: title?.textContent ?? "", text: dialog.textContent ?? "" });
-      requestAnimationFrame(tick);
+      return true;
+    };
+    new MutationObserver((_, observer) => {
+      if (!document.querySelector('[role="dialog"][data-state="closed"]')) return;
+      observer.disconnect();
+      sample();
+    }).observe(document.body, { subtree: true, attributeFilter: ["data-state"] });
+    const tick = () => {
+      if (sample()) requestAnimationFrame(tick);
     };
     tick();
   });
@@ -67,7 +79,7 @@ for (const motion of ["no-preference", "reduce"] as const) {
 
         const frames = await closingFrames(page);
         // With motion the exit runs ~120 ms (imp-177), so frames are sampled; reduced motion may finish before the next frame.
-        if (motion === "no-preference") expect(frames.length).toBeGreaterThan(3);
+        if (motion === "no-preference") expect(frames.length, "closing samples (a frame stall shortens the exit to fewer)").toBeGreaterThan(3);
         expect(frames.filter((f) => f.name !== c.title)).toEqual([]);
         if (c.error) expect(frames.filter((f) => !f.text.includes(c.error!))).toEqual([]);
       });

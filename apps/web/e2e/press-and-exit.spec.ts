@@ -15,15 +15,17 @@ test("a dialog enters at base and exits at fast with ease-in", async ({ page }) 
   await expect(dialog).toHaveCSS("animation-duration", "0.2s");
   await expect(dialog).toHaveCSS("animation-timing-function", "ease");
 
-  // The first frame after Cancel where the content is closing: its exit animation's timing.
-  const exit = await page.evaluate(async () => {
-    [...document.querySelectorAll<HTMLButtonElement>('[role="dialog"] button')].find((b) => b.textContent === "Cancel")!.click();
-    let closing: Element | null;
-    while (!(closing = document.querySelector('[role="dialog"][data-state="closed"]'))) await new Promise(requestAnimationFrame);
-    const { animationName, animationDuration, animationTimingFunction } = getComputedStyle(closing);
+  // The closing content's exit animation timing, read with the exit held at its first frame. Polling frames for the
+  // closed state raced the unmount: a frame stall past the 120 ms exit left nothing to find, and it hung (imp-183).
+  const hold = await page.addStyleTag({ content: "[data-state=closed] { animation-play-state: paused !important; }" });
+  await dialog.getByRole("button", { name: "Cancel" }).click();
+  await expect(dialog, "the dialog reports closed after Cancel").toHaveAttribute("data-state", "closed", { timeout: 2_000 });
+  const exit = await dialog.evaluate((el) => {
+    const { animationName, animationDuration, animationTimingFunction } = getComputedStyle(el);
     return { animationName, animationDuration, animationTimingFunction };
   });
   expect(exit).toEqual({ animationName: "exit", animationDuration: "0.12s", animationTimingFunction: "cubic-bezier(0.7, 0, 0.84, 0)" });
+  await hold.evaluate((style) => (style as Element).remove());
   await expect(dialog).toBeHidden();
 });
 
