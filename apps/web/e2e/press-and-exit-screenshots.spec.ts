@@ -5,7 +5,9 @@ import { mockAdminApi } from "./data-health/fixtures";
 // imp-177 + imp-141 owner review screenshots, from fixtures only: 1440px and 375px, dark and light.
 // - exit-*: the Disable dialog halfway (60 ms) through its 120 ms exit after Cancel, held there.
 // - locked-press-*: the locked "Run CJ Dropshipping now" held under a pointer press, at full size, its reason shown.
-// Run with `pnpm --filter web e2e:screenshots e2e/press-and-exit`; output goes to docs/screenshots/imp-177/.
+// - enter-* (imp-182): the Disable dialog a quarter (50 ms) into its 200 ms enter from 0.97 with ease-out, held there.
+// Run with `pnpm --filter web e2e:screenshots e2e/press-and-exit`; output goes to docs/screenshots/imp-177/, and the
+// enter to docs/screenshots/imp-183/.
 const OUT = "../../docs/screenshots/imp-177";
 
 for (const theme of ["dark", "light"] as const) {
@@ -25,21 +27,31 @@ for (const theme of ["dark", "light"] as const) {
         await page.evaluate(() => document.fonts.ready);
       });
 
+      test("enter", async ({ page }) => {
+        await page.addStyleTag({ content: "[data-state=open] { animation-play-state: paused !important; }" });
+        await page.getByRole("switch", { name: "CJ Dropshipping enabled" }).locator("visible=true").click();
+        await expect(page.getByRole("dialog", { name: "Disable CJ Dropshipping?" })).toBeVisible();
+        await page.evaluate(() => {
+          for (const a of document.getAnimations()) a.currentTime = 50;
+        });
+        await page.screenshot({ path: `../../docs/screenshots/imp-183/enter-${width}-${theme}.png` });
+      });
+
       test("exit", async ({ page }) => {
         await page.getByRole("switch", { name: "CJ Dropshipping enabled" }).locator("visible=true").click();
         const dialog = page.getByRole("dialog", { name: "Disable CJ Dropshipping?" });
         await expect(dialog).toBeVisible();
         await page.waitForTimeout(300); // the enter animation has finished
-        await page.evaluate(async () => {
-          const cancel = [...document.querySelectorAll<HTMLButtonElement>('[role="dialog"] button')].find((b) => b.textContent === "Cancel")!;
-          cancel.click();
-          while (!document.querySelector('[role="dialog"][data-state="closed"]')) await new Promise(requestAnimationFrame);
+        // The exit is held from its first frame, so no frame stall can end it before the shot (imp-183).
+        await page.addStyleTag({ content: "[data-state=closed] { animation-play-state: paused !important; }" });
+        await dialog.getByRole("button", { name: "Cancel" }).evaluate((b: HTMLElement) => b.click());
+        await expect(dialog).toHaveAttribute("data-state", "closed");
+        await page.evaluate(() => {
           for (const a of document.getAnimations()) {
             a.pause();
             a.currentTime = 60;
           }
         });
-        await expect(dialog).toHaveAttribute("data-state", "closed");
         await page.screenshot({ path: `${OUT}/exit-${width}-${theme}.png` });
       });
 
