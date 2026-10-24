@@ -1,10 +1,13 @@
+import io
 import json
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from unittest.mock import Mock
 
 import pytest
 from pydantic import SecretStr
 from sqlalchemy import func, select
+from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session
 
 from pulso_core.models import (
@@ -16,7 +19,7 @@ from pulso_core.models import (
     SourceEvent,
 )
 from pulso_core.settings import Settings
-from pulso_sources import framework
+from pulso_sources import framework, storage
 from pulso_sources.cj import CJAdapter, collect
 from pulso_sources.cj.auth import Auth
 from pulso_sources.cj.budget import record_points, reserve
@@ -259,3 +262,47 @@ def test_body_block_codes_accumulate_without_changing_http_evidence(
     assert not source.enabled
     assert session.scalar(select(func.count()).select_from(SourceEvent)) == 1
     assert all(p.status_code == 200 for p in session.scalars(select(RawPayload)))
+
+
+@pytest.mark.db
+def test_received_points_keep_config_committed_during_request(
+    db_engine: Engine, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    objects: dict[str, bytes] = {}
+    client = Mock()
+    client.put_object.side_effect = lambda **kw: objects.__setitem__(kw["Key"], kw["Body"])
+    client.get_object.side_effect = lambda **kw: {"Body": io.BytesIO(objects[kw["Key"]])}
+    monkeypatch.setattr(storage, "make_client", lambda _: client)
+    monkeypatch.setattr(storage, "get_settings", Mock())
+    monkeypatch.setattr(framework, "is_linked_worktree", lambda _: False)
+    monkeypatch.setattr("pulso_sources.cj.transport.is_linked_worktree", lambda _: False)
+    monkeypatch.setattr(Auth, "token", lambda *a, **kw: "fixture-access")
+    cfg = settings()
+    cfg.collectors_live = True
+    cfg.pulso_bot_contact = "https://example.test/bot"  # type: ignore[assignment]
+    body = json.loads(BODY)
+    body["pointsInfo"] = {"usedToday": 50, "remaining": 49950, "total": 50000}
+
+    def fake_fetch(*args: object, **kwargs: object) -> Response:
+        # A seeds apply commits while the CJ request is in flight.
+        with Session(db_engine) as other:
+            seeded = other.get_one(Source, 2)
+            seeded.config = {**seeded.config, "seed": {"version": "withdrawn"}}
+            other.commit()
+        return Response(json.dumps(body).encode(), 200)
+
+    monkeypatch.setattr(Transport, "http", fake_fetch)
+    with Session(db_engine) as session:
+        source = session.get_one(Source, 2)
+        source.enabled = True
+        record_points(source, BODY, datetime.now(UTC))
+        session.commit()
+        run = enqueue_run(session, source_id=2, trigger="manual", publish=lambda _: None)
+        requests = [Request(params={"endpoint": "/product/listV2"})]
+        collect(session, run.id, [Target("cj_catalog_panel", "fixture", requests)], settings=cfg)
+        assert run.status == "success"
+    with Session(db_engine) as check:
+        config = check.get_one(Source, 2).config
+    assert config["seed"] == {"version": "withdrawn"}
+    assert config["cj_provider_points"]["info"] == body["pointsInfo"]
+    assert config["cj_points"]["reserved"] == 50
