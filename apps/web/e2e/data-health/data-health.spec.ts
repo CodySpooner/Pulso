@@ -399,7 +399,7 @@ test.describe("phone width", () => {
   test.describe("touch", () => {
     test.use({ hasTouch: true });
 
-    test("a tap toggles a status hint, and an open hint never blocks a control (imp-073)", async ({ page }) => {
+    test("a tap opens a status hint, and an open hint never blocks a control (imp-073)", async ({ page }) => {
       await mockAdminApi(page, { sources: suppressedSources });
       await open(page);
       const card = page.getByRole("listitem").filter({ has: page.getByRole("button", { name: "CJ Dropshipping: open runs" }) });
@@ -413,7 +413,10 @@ test.describe("phone width", () => {
       const box = (await page.locator("[data-radix-popper-content-wrapper]").boundingBox())!;
       const under = await page.evaluate(([x, y]) => document.elementFromPoint(x, y)?.closest("[data-radix-popper-content-wrapper]") ?? null, [box.x + box.width / 2, box.y + box.height / 2]);
       expect(under).toBeNull();
+      // A second tap keeps it (imp-173, DEC-232); a tap elsewhere closes it.
       await pill.tap();
+      await expect(pill).toHaveAttribute("data-state", /-open$/);
+      await page.getByRole("heading", { level: 1 }).tap();
       await expect(hint).toBeHidden();
 
       // An open hint doesn't swallow the next action: one tap on the switch opens its dialog and closes the hint.

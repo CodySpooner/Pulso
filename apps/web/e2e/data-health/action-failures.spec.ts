@@ -183,7 +183,9 @@ test.describe("375px touch", () => {
       const [button, box] = [(await control.boundingBox())!, (await page.locator("[data-radix-popper-content-wrapper]").boundingBox())!];
       expect(box.y).toBeGreaterThanOrEqual(0);
       expect(Math.min(Math.abs(box.y + box.height - button.y), Math.abs(box.y - (button.y + button.height)))).toBeLessThan(16);
-      await control.tap({ force: true });
+      await control.tap({ force: true }); // a second tap keeps it (imp-173, DEC-232); a tap elsewhere closes it
+      await expect(control).toHaveAttribute("data-state", /-open$/);
+      await page.getByRole("heading", { level: 1 }).tap();
       await expect(hint).toBeHidden();
       expect(calls.filter((c) => c.method !== "GET")).toEqual([]);
     });
