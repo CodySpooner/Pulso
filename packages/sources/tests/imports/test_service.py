@@ -3,7 +3,7 @@ import io
 import json
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from threading import Barrier
 from typing import Any, Literal
 from unittest.mock import MagicMock
@@ -281,6 +281,84 @@ def test_reupload_does_not_duplicate_a_queued_or_running_run_on_the_capture(
     assert third.status == "skipped" and third.params["original_run_id"] == retry.id
     assert s3.put_object.call_count == 1
     assert session.scalar(select(func.count()).select_from(RawPayload)) == 1
+
+
+def _orphaned_claim(
+    session: Session, settings: Settings, monkeypatch: pytest.MonkeyPatch, **ages: datetime
+) -> tuple[CollectorRun, int]:
+    """An import whose API process died: capture committed, run left queued/running."""
+    with monkeypatch.context() as dead:
+        dead.setattr(
+            import_service,
+            "execute_run",
+            lambda s, run_id, *a, **k: s.get_one(CollectorRun, run_id),
+        )
+        claim = commit_import(session, "cj", sample_csv("cj"), settings=settings)
+    for name, value in ages.items():
+        setattr(claim, name, value)
+    claim.status = "running" if claim.started_at else "queued"
+    session.commit()
+    monkeypatch.setitem(ADAPTERS, "cj", lambda data: FakeAdapter(data, "2"))
+    return claim, session.scalars(select(RawPayload.id)).one()
+
+
+def _retry_or_replay(
+    session: Session, settings: Settings, action: str, payload_id: int
+) -> CollectorRun:
+    if action == "replay":
+        return replay_import(session, payload_id, settings=settings)
+    return commit_import(session, "cj", sample_csv("cj"), settings=settings)
+
+
+@pytest.mark.parametrize("action", ["retry", "replay"])
+def test_stale_import_claim_is_abandoned_and_stops_blocking(
+    session: Session,
+    settings: Settings,
+    s3: MagicMock,
+    monkeypatch: pytest.MonkeyPatch,
+    action: str,
+) -> None:
+    month_ago = datetime.now(UTC) - timedelta(days=30)
+    claim, payload_id = _orphaned_claim(session, settings, monkeypatch, queued_at=month_ago)
+    run = _retry_or_replay(session, settings, action, payload_id)
+    assert run.status == "success", run.error_message
+    assert run.params["raw_payload_id"] == payload_id and run.rows_inserted == 1
+    session.refresh(claim)
+    assert (claim.status, claim.complete) == ("failed", False)
+    assert (claim.error_code, claim.error_message) == ("abandoned", "abandoned")
+    assert claim.finished_at is not None
+    assert claim.queued_at.replace(tzinfo=UTC) == month_ago
+    assert session.scalar(select(func.count()).select_from(RawPayload)) == 1
+    assert s3.put_object.call_count == 1
+
+
+@pytest.mark.parametrize("action", ["retry", "replay"])
+def test_recently_started_import_claim_still_blocks(
+    session: Session,
+    settings: Settings,
+    s3: MagicMock,
+    monkeypatch: pytest.MonkeyPatch,
+    action: str,
+) -> None:
+    now = datetime.now(UTC)
+    # Age is measured from the start: an old queue time alone does not make it stale.
+    claim, payload_id = _orphaned_claim(
+        session,
+        settings,
+        monkeypatch,
+        queued_at=now - timedelta(days=30),
+        started_at=now - timedelta(hours=2) + timedelta(minutes=5),
+    )
+    run = _retry_or_replay(session, settings, action, payload_id)
+    assert run.status == "skipped"
+    assert run.params == {
+        "raw_payload_id": payload_id,
+        "original_run_id": claim.id,
+        "reason": "in_progress",
+    }
+    session.refresh(claim)
+    assert (claim.status, claim.finished_at, claim.error_code) == ("running", None, None)
+    assert s3.put_object.call_count == 1
 
 
 def test_retry_reads_outside_transactions_with_fresh_session(

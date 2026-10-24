@@ -5,10 +5,10 @@ import json
 from collections import Counter
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import asdict, dataclass
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from typing import Any, Literal
 
-from sqlalchemy import or_, select
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.orm import Session
 
 from pulso_core.models import CollectorRun, CollectorRunTarget, RawPayload, Source
@@ -145,18 +145,34 @@ def _failed(session: Session, run: CollectorRun, exc: Exception) -> CollectorRun
     return run
 
 
-def _active_run(session: Session, payload: RawPayload) -> int | None:
-    return session.scalar(
-        select(CollectorRun.id)
-        .where(
-            CollectorRun.status.in_(["queued", "running"]),
-            or_(
-                CollectorRun.id == payload.run_id,
-                CollectorRun.params["raw_payload_id"].as_integer() == payload.id,
-            ),
-        )
-        .limit(1)
+def _active_run(session: Session, payload: RawPayload, settings: Settings) -> int | None:
+    """Under the caller's source lock, first end stale import claims as abandoned (DEC-221)."""
+    claims = (
+        CollectorRun.status.in_(["queued", "running"]),
+        or_(
+            CollectorRun.id == payload.run_id,
+            CollectorRun.params["raw_payload_id"].as_integer() == payload.id,
+        ),
     )
+    # DEC-098's max(2 h, twice the budget); imports run on execute_run's default budget.
+    stale = max(timedelta(hours=2), timedelta(seconds=2 * settings.collector_wall_time_seconds))
+    now = datetime.now(UTC)
+    session.execute(
+        update(CollectorRun)
+        .where(
+            *claims,
+            CollectorRun.trigger == "csv",
+            func.coalesce(CollectorRun.started_at, CollectorRun.queued_at) <= now - stale,
+        )
+        .values(
+            status="failed",
+            complete=False,
+            finished_at=now,
+            error_code="abandoned",
+            error_message="abandoned",
+        )
+    )
+    return session.scalar(select(CollectorRun.id).where(*claims).limit(1))
 
 
 def commit_import(
@@ -171,7 +187,8 @@ def commit_import(
 ) -> CollectorRun:
     """Synchronous worker entry point; repeats of an imported capture skip before parsing,
     adapter lookup or S3. A capture with no successful run re-runs on its stored bytes and
-    metadata with the current parser, unless a run on it is still queued/running (DEC-092).
+    metadata with the current parser, unless a run on it is still queued/running (DEC-092)
+    and younger than the stale threshold (DEC-221).
 
     Pass mapping from the preview; otherwise use sources.config.csv_mapping. Returns
     terminal run evidence (including sanitized failures), with row errors in params.
@@ -205,7 +222,7 @@ def commit_import(
                 .order_by(CollectorRunTarget.run_id)
                 .limit(1)
             )
-            active = _active_run(session, payload)
+            active = _active_run(session, payload, settings)
             if done or active:
                 run.status, run.finished_at = "skipped", datetime.now(UTC)
                 reason = {} if done else {"reason": "in_progress"}
@@ -262,7 +279,7 @@ def replay_import(session: Session, raw_payload_id: int, *, settings: Settings) 
     run = enqueue_run(session, source_id=source.id, trigger="csv", publish=lambda _: None)
     try:
         session.execute(select(Source.id).where(Source.id == source.id).with_for_update())
-        active = _active_run(session, payload)
+        active = _active_run(session, payload, settings)
         run.params = {"raw_payload_id": payload.id}
         if active:
             run.status, run.finished_at = "skipped", datetime.now(UTC)
