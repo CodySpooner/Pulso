@@ -1,3 +1,4 @@
+import json
 from dataclasses import dataclass
 from functools import lru_cache
 from typing import Annotated
@@ -43,7 +44,8 @@ def verify_token(token: str, settings: Settings) -> str:
             leeway=5,
             options={"require": ["iss", "exp", "nbf", "iat", "sub", "azp"]},
         )
-    except PyJWKClientConnectionError as exc:
+    # PyJWT wraps only network errors; a JWKS body that isn't JSON escapes its fetch unwrapped.
+    except (PyJWKClientConnectionError, json.JSONDecodeError, UnicodeDecodeError) as exc:
         raise APIError(
             503, "auth_unavailable", "Authentication is temporarily unavailable."
         ) from exc

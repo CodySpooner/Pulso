@@ -1,3 +1,4 @@
+import io
 import json
 import logging
 import socket
@@ -5,16 +6,18 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 from unittest.mock import patch
+from urllib.error import URLError
 from uuid import uuid4
 
 import jwt
 import pytest
 from botocore.stub import Stubber
+from cryptography.hazmat.primitives.asymmetric import rsa
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from pulso_api.__main__ import main
-from pulso_api.auth import Principal, current_principal
+from pulso_api.auth import Principal, current_principal, jwks_client
 from pulso_api.dependencies import get_db
 from pulso_api.main import create_app
 from pulso_api.openapi import export
@@ -166,6 +169,8 @@ def test_readiness_checks_s3_and_closes_client(
         ({"azp": None}, "bad_token"),
         ({"sub": None}, "bad_token"),
         ({"nbf": None}, "bad_token"),
+        ({"exp": None}, "bad_token"),
+        ({"iat": None}, "bad_token"),
     ],
 )
 def test_invalid_jwt_rejected(
@@ -205,6 +210,66 @@ def test_wrong_algorithm_rejected(
         {"sub": "user_a"}, "fixture-secret" * 4, algorithm="HS256", headers={"kid": "fixture-key"}
     )
     assert client.get("/v1/me", headers={"Authorization": "Bearer " + token}).status_code == 401
+
+
+def test_unknown_kid_rejected(
+    client: TestClient,
+    signed_token: Callable[[dict[str, Any]], str],
+) -> None:
+    other_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    token = jwt.encode(
+        {"sub": "user_a"}, other_key, algorithm="RS256", headers={"kid": "other-key"}
+    )
+    with patch("pulso_api.auth.provision_principal") as provision:
+        response = client.get("/v1/me", headers={"Authorization": "Bearer " + token})
+    assert response.status_code == 401
+    assert response.json()["code"] == "bad_token"
+    provision.assert_not_called()
+
+
+@pytest.mark.parametrize("field", ["clerk_issuer", "clerk_jwks_url"])
+def test_unconfigured_auth_is_503(
+    monkeypatch: pytest.MonkeyPatch, client: TestClient, settings: Settings, field: str
+) -> None:
+    monkeypatch.setattr(settings, field, None)
+    response = client.get("/v1/me", headers={"Authorization": "Bearer fixture"})
+    assert response.status_code == 503
+    assert response.json()["code"] == "auth_unconfigured"
+
+
+@pytest.mark.parametrize(
+    "jwks,status,code",
+    [
+        (URLError("fixture outage"), 503, "auth_unavailable"),
+        (b"<html>Bad gateway</html>", 503, "auth_unavailable"),
+        (b"<html>\xe9</html>", 503, "auth_unavailable"),
+        (b'{"keys": []}', 401, "bad_token"),
+    ],
+)
+def test_jwks_fetch_failures(
+    client: TestClient, jwks: bytes | Exception, status: int, code: str
+) -> None:
+    # The real PyJWKClient.fetch_data runs; only the HTTP opener is replaced (no network).
+    def open_jwks(*args: Any, **kwargs: Any) -> io.BytesIO:
+        if isinstance(jwks, Exception):
+            raise jwks
+        return io.BytesIO(jwks)
+
+    token = jwt.encode(
+        {"sub": "user_a"}, "fixture-secret" * 4, algorithm="HS256", headers={"kid": "fixture-key"}
+    )
+    jwks_client.cache_clear()
+    try:
+        with (
+            patch("urllib.request.OpenerDirector.open", open_jwks),
+            patch("pulso_api.auth.provision_principal") as provision,
+        ):
+            response = client.get("/v1/me", headers={"Authorization": "Bearer " + token})
+    finally:
+        jwks_client.cache_clear()
+    assert response.status_code == status
+    assert response.json()["code"] == code
+    provision.assert_not_called()
 
 
 def test_valid_bearer_and_cookie(
