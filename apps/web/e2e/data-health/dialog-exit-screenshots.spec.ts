@@ -45,14 +45,14 @@ for (const theme of ["dark", "light"] as const) {
           const dialog = page.getByRole("dialog", { name: "Disable CJ Dropshipping?" });
           await expect(dialog).toBeVisible();
           await page.waitForTimeout(300); // the enter animation has finished
-          // Press Cancel, then hold every animation 100 ms into the exit (of ~200 ms).
+          // Press Cancel, then hold every animation 60 ms into the exit (of ~120 ms, imp-177).
           await page.evaluate(async () => {
             const cancel = [...document.querySelectorAll<HTMLButtonElement>('[role="dialog"] button')].find((b) => b.textContent === "Cancel")!;
             cancel.click();
             while (!document.querySelector('[role="dialog"][data-state="closed"]')) await new Promise(requestAnimationFrame);
             for (const a of document.getAnimations()) {
               a.pause();
-              a.currentTime = 100;
+              a.currentTime = 60;
             }
           });
           await expect(dialog).toHaveAttribute("data-state", "closed");
