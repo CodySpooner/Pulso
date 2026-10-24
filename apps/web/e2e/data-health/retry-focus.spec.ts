@@ -1,6 +1,6 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
 
-import { mockAdminApi, problem } from "./fixtures";
+import { mockAdminApi, problem, suppressedSources } from "./fixtures";
 
 // imp-135 (aud-014 A14-04): a Retry the owner presses never leaves focus on the page. Success moves it to the
 // restored panel's heading; a failure brings it back to Retry (also when the error left while refreshing) and is
@@ -209,7 +209,7 @@ for (const [what, failing] of [
     [1440, 900],
     [375, 812],
   ]) {
-    test(`drawer Retry (${what}) at ${width}px: each failed press is announced once, success focuses the drawer title`, async ({ page }) => {
+    test(`drawer Retry (${what}) at ${width}px: each failed press is announced once, success focuses ${what === "runs" ? "the drawer title" : "the restored targets"}`, async ({ page }) => {
       await page.setViewportSize({ width, height });
       await recordAnnouncements(page);
       await mockAdminApi(page);
@@ -252,12 +252,31 @@ for (const [what, failing] of [
       api.down = false;
       await tabTo(page, retry, drawer);
       await page.keyboard.press("Enter");
-      const title = drawer.getByRole("heading", { level: 2, name: "CJ Dropshipping" });
-      await expect(title).toBeFocused();
-      expect(await title.evaluate((el) => getComputedStyle(el).outlineStyle)).not.toBe("none"); // a visible ring
-      await expect(what === "runs" ? drawer.getByRole("list", { name: "CJ Dropshipping runs" }) : drawer.getByRole("region", { name: "Run 418 targets" })).toBeVisible();
+      // imp-179: a targets Retry lands on the targets it brought back (0 Tabs to them); a runs Retry on the title.
+      const restored =
+        what === "runs" ? drawer.getByRole("heading", { level: 2, name: "CJ Dropshipping" }) : drawer.getByRole("region", { name: "Run 418 targets" });
+      await expect(restored).toBeFocused();
+      expect(await restored.evaluate((el) => getComputedStyle(el).outlineStyle)).not.toBe("none"); // a visible ring
+      if (what === "runs") await expect(drawer.getByRole("list", { name: "CJ Dropshipping runs" })).toBeVisible();
       expect(await announced(page)).toEqual([]);
       expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
     });
   }
 }
+
+test("drawer targets Retry for a run with no targets: success focuses the drawer title", async ({ page }) => {
+  await mockAdminApi(page, { sources: suppressedSources }); // CJ's newest run, #420, was a skip with 0 targets
+  const api = { down: true };
+  await page.route("**/api/v1/admin/runs/420", (route) => (api.down ? route.fulfill({ status: 503, json: problem(503, "e2e-drawer-503") }) : route.fallback()));
+  await page.goto(PAGE);
+  await page.getByRole("button", { name: "CJ Dropshipping: open runs" }).locator("visible=true").click();
+  const drawer = page.getByRole("dialog", { name: "CJ Dropshipping" });
+  const retry = drawer.getByRole("button", { name: "Retry" });
+  await expect(drawer.getByRole("heading", { name: "Couldn't load targets" })).toBeVisible();
+  await tabTo(page, retry, drawer);
+
+  api.down = false;
+  await page.keyboard.press("Enter");
+  await expect(drawer.getByText("No targets recorded for this run.")).toBeVisible();
+  await expect(drawer.getByRole("heading", { level: 2, name: "CJ Dropshipping" })).toBeFocused();
+});

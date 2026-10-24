@@ -1,6 +1,6 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 
-import { manyGaps, manyTargets, mockAdminApi, problem } from "./fixtures";
+import { manyGaps, manyTargets, mockAdminApi, NOW, problem, sources } from "./fixtures";
 
 // imp-075 (DEC-166): Load more reaches every open gap and run target past the first bounded page, once each,
 // only when asked, with focus kept on the control. 260 items: the first page (50), one Load more page (200),
@@ -163,6 +163,93 @@ test("run targets: Load more traverses 260 targets once each; reopening starts o
   await expect(rows).toHaveCount(1 + 50);
   await expect(drawer.getByRole("button", { name: "Load more targets" })).toBeVisible();
   expect(seen.filter((r) => r.cursor !== null)).toHaveLength(loaded.length);
+});
+
+// imp-136 (aud-014 A14-05): the runs list ends in the same footer. 45 CJ runs, newest first: pages of 20, 20 and 5,
+// each page's cursor the id of the run before it.
+const CJ_RUNS = (url: URL) => url.pathname === "/api/v1/admin/runs" && url.searchParams.get("source") === "cj";
+const cjRun = sources.find((s) => s.key === "cj")!.last_run!;
+const cjRuns = Array.from({ length: 45 }, (_, i) => ({ ...cjRun, id: cjRun.id - i }));
+
+async function pagedCjRuns(page: Page) {
+  await page.route(CJ_RUNS, (route) => {
+    const url = new URL(route.request().url());
+    const cursor = Number(url.searchParams.get("cursor") ?? Infinity);
+    const rest = cjRuns.filter((r) => r.id < cursor);
+    const items = rest.slice(0, Number(url.searchParams.get("limit")));
+    return route.fulfill({ json: { items, next_cursor: rest.length > items.length ? items.at(-1)!.id : null } });
+  });
+}
+
+async function openCj(page: Page) {
+  await page.goto(PAGE);
+  await page.getByRole("button", { name: "CJ Dropshipping: open runs" }).locator("visible=true").click();
+  const drawer = page.getByRole("dialog", { name: "CJ Dropshipping" });
+  return { drawer, runs: drawer.getByRole("list", { name: "CJ Dropshipping runs" }).getByRole("listitem") };
+}
+
+/** Every failure line in the drawer: a panel error, a stale line or a footer's. */
+const errorLines = (drawer: Locator) => drawer.getByText(/^Couldn't (load|refresh)/);
+
+for (const [width, height] of [
+  [1440, 900],
+  [375, 812],
+]) {
+  test(`runs at ${width}px: a failed older page keeps the loaded runs; its footer retries that page only, keeping focus`, async ({ page }) => {
+    await page.setViewportSize({ width, height });
+    await mockAdminApi(page);
+    await pagedCjRuns(page);
+    await fail(page, "/v1/admin/runs", String(cjRun.id - 19), 2); // the press and TanStack's one retry
+    const seen = requests(page, /^\/api\/v1\/admin\/runs$/);
+    const { drawer, runs } = await openCj(page);
+    await expect(runs).toHaveCount(20);
+    await expect(drawer).toContainText("Showing 20 runs · older runs not loaded yet");
+
+    const more = drawer.getByRole("button", { name: /^(Load older runs|Loading…|Retry)$/ });
+    await expect(more).toHaveText("Load older runs");
+    await more.focus();
+    await page.keyboard.press("Enter");
+    await expect(drawer).toContainText("Couldn't load older runs. The API is restarting. Try again. Error ID req-load-more");
+    await expect(more).toHaveText("Retry");
+    await expect(more).toBeFocused();
+    await expect(drawer.getByRole("button", { name: "Copy error ID" })).toBeVisible();
+    await expect(runs).toHaveCount(20); // 20 of 20 kept
+    await expect(errorLines(drawer)).toHaveCount(1); // at the foot only: no stale line above the list
+    await expect(drawer.getByText("Showing data as of")).toHaveCount(0);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
+
+    await page.keyboard.press("Enter");
+    await expect(runs).toHaveCount(40);
+    await expect(more).toHaveText("Load older runs");
+    await expect(more).toBeFocused();
+    await expect(errorLines(drawer)).toHaveCount(0);
+
+    await page.keyboard.press("Enter");
+    await expect(runs).toHaveCount(45);
+    await expect(more).toHaveCount(0);
+    await expect(drawer.getByText("Showing all 45 runs")).toBeFocused();
+    // The newest page once; then only the older pages, the failed one asked again by Retry.
+    expect(seen.filter((r) => r.limit === "20")).toEqual([
+      { cursor: null, limit: "20" },
+      ...Array(3).fill({ cursor: String(cjRun.id - 19), limit: "20" }),
+      { cursor: String(cjRun.id - 39), limit: "20" },
+    ]);
+  });
+}
+
+test("runs: a failed refresh of the newest page shows its line above the list once, and the footer stays as it was", async ({ page }) => {
+  await mockAdminApi(page);
+  await pagedCjRuns(page);
+  const { drawer, runs } = await openCj(page);
+  await expect(runs).toHaveCount(20);
+
+  await page.route(CJ_RUNS, (route) => (new URL(route.request().url()).searchParams.get("cursor") ? route.fallback() : route.fulfill({ status: 503, json: problem(503, "req-runs-1") })));
+  await page.clock.setFixedTime(new Date(NOW.getTime() + 6 * 60_000)); // past the 5-minute staleTime
+  await page.evaluate(() => window.dispatchEvent(new Event("visibilitychange"))); // the tab refocuses: a refetch
+  await expect(drawer.getByRole("group", { name: "Couldn't refresh runs" })).toContainText("Error ID req-runs-1");
+  await expect(errorLines(drawer)).toHaveCount(1);
+  await expect(runs).toHaveCount(20);
+  await expect(drawer.getByRole("button", { name: "Load older runs" })).toBeVisible();
 });
 
 test("the runs list asks for its first page without a cursor", async ({ page }) => {
