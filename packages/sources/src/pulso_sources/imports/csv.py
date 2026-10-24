@@ -89,6 +89,10 @@ def _cell(value: str, column: Column, currency: str) -> Cell:
         case "country":
             if not re.fullmatch(r"[A-Z]{2}", value):
                 raise ValueError("Use a two-letter uppercase country code")
+        case "id":
+            # Canonical text, so "0012" can't miss the stored "12"; stays text past JS's 2**53.
+            if not re.fullmatch(r"[1-9][0-9]{0,18}", value) or int(value) >= 2**63:
+                raise ValueError("Use a positive integer ID without leading zeros")
     return value
 
 
@@ -237,6 +241,8 @@ def parse_csv(
             minimum, maximum = row.get("min_days"), row.get("max_days")
             if isinstance(minimum, int) and isinstance(maximum, int) and minimum > maximum:
                 errors.append(RowError(line, "max_days", "Must be at least min_days"))
+            if row.get("moq") == 0:  # the CJ adapter's PositiveInt (imp-151)
+                errors.append(RowError(line, "moq", "Must be at least 1"))
             if len(errors) == start:
                 rows[line] = row
         duplicates = _entity_errors(source_key, rows, as_of)
