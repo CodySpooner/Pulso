@@ -294,7 +294,7 @@ export function Panel({
     <section aria-labelledby={`${id}-title`} className={cn("flex min-w-0 flex-col rounded-xl border border-border bg-card shadow-card", className)}>
       <header className="flex min-h-12 flex-wrap items-center gap-x-3 gap-y-1 border-b border-border-subtle px-4 py-2.5">
         {/* The scroll margin clears the phone's top bar when a restored panel's heading takes focus. */}
-        <h2 ref={heading} id={`${id}-title`} tabIndex={-1} className="scroll-mt-18 text-title-3 font-semibold text-foreground lg:scroll-mt-4">
+        <h2 ref={heading} id={`${id}-title`} tabIndex={-1} className="scroll-mt-18 rounded-sm text-title-3 font-semibold text-foreground lg:scroll-mt-4">
           {title}
         </h2>
         {note && <span className="text-label text-subtle-foreground">{note}</span>}
