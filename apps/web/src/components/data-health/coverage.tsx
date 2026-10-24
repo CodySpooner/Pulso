@@ -203,11 +203,12 @@ function OpenGaps({ names, host }: { names: Map<string, string> | null; host: Re
   }
   if (view === "unavailable") {
     // The host card carries the error and its Retry (imp-132); this line says what is missing (imp-145, DEC-196), under
-    // the section's own label, and links to that Retry (imp-158, imp-159).
+    // the section's own label, and links to that Retry (imp-158, imp-159). The period follows the link with no space,
+    // so `me-1` keeps it clear of the focus ring (imp-169).
     return (
       <p className="border-t border-border-subtle pt-3 text-data text-muted-foreground">
         <CircleHelp aria-hidden className="mr-1.5 inline size-3.5 align-[-2px] text-subtle-foreground" />
-        <span className="font-medium text-foreground">Open gaps</span> · Gap check didn&apos;t load. Retry on the <HostRetryLink className="text-foreground">Collector host card</HostRetryLink>.
+        <span className="font-medium text-foreground">Open gaps</span> · Gap check didn&apos;t load. Retry on the <HostRetryLink className="link-inline me-1 text-foreground">Collector host card</HostRetryLink>.
       </p>
     );
   }
