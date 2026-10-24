@@ -1841,3 +1841,34 @@ Superseded review defaults, not given entries: default #0 (move the repo) is don
   - (b) A module-level store or a React context holding the open id: more code, and a press-open still wouldn't close a plain Radix `Tooltip`. The event is the smallest that works, but its name is internal to `@radix-ui/react-tooltip` (1.4.1). `tap-tooltip.spec.ts` counts open reasons, so a rename fails CI instead of passing silently.
   - (c) `bottom` only on a phone: a media-query hook for one hint, and it would get the run drawer wrong, which is narrow at every viewport, so its stale line wraps the Error ID above Retry there too. The cost of one rule: on a wide stale line the reason now sits over the right end of the coverage chart's first row while it's open, where above it sat over the empty panel header. Choosing the side from whether the Error ID wrapped is left to the backlog. Radix collision handling alone: it flips only at the viewport edge, never around page content.
 - **Why:** measured in chromium, before → after (`tap-tooltip.spec.ts`; the numbers from a throwaway probe run on both versions). Enter or Space on a focused locked control with its reason open: reason kept on 0/5 → 5/5 controls (Refresh, a switch, Run now, Choose CSV…, Retry). A click after the hover: 0/5 → 5/5, and the trigger never passes through `closed` (before, each click closed it, so a second click reopened it). A second tap on an open reason: closed → open. Enter or Space on a focused control while another reason was open on hover: 2 open reasons → 1. A second reason opened by a click, hover or tap was already 1 open and stays 1. The Retry reason against the Error ID line: it overlapped on the panel error at 1440 (25 × 11 px) and on both surfaces at 375 (stale line 89 × 16 px, panel error 54 × 11 px); now it is below Retry and overlaps neither, at either width. Each guard in (a) has its own failing check: without the `pointerdown` guard or without `onPointerDownOutside`, the recorded states read `closed, instant-open` for each press.
+
+### DEC-235 · Offline reasons name their action; an open reason opens where it covers nothing
+**2026-10-24 · proposed (imp-154)** · imp-154 (imp-134 report leftover 2), imp-186, imp-187 (imp-173 report leftovers 1 and 2); DEC-206, DEC-232 (c); vault Features/Data Health; web only, no API, schema, dependency, CI or motion change
+- **Decision:**
+  - **(a) Wording.** One helper, `offlineHint(action)` in `offline-banner.tsx`, gives "You're offline. Reconnect to <action>." The action is the control's visible verb in lower case, plus the source when the control acts on one source. Per call site:
+    - Refresh: "refresh".
+    - The `PanelError` and `StaleLine` Retry: "retry". The line beside it already names what failed.
+    - A source switch: "enable <source>" or "disable <source>", whichever the press would do. The switch's label shows the current state, so "change" would hide the direction.
+    - Run now: "run <source> now", its accessible name. It is still the last of `runBlocker`'s reasons.
+    - Choose CSV… / Choose another…: "choose a CSV for <source>" / "choose another CSV for <source>".
+    - Import N rows: "import N rows into <source>", the button's own words from one `rowCount`.
+    
+    `OFFLINE_HINT` is gone.
+  - **(b) Stale line side.** `StaleLine` picks the side from its own layout, read by a `ResizeObserver` on the line (not a viewport query, since the run drawer's line wraps at every width):
+    - **Above** while Retry starts the line's first row, so nothing of the line is above it.
+    - **On the left of Retry** once the actions wrap onto a row of their own. That row is empty left of the actions, the Error ID or the message sits above them, and there isn't enough room below before the content under the line.
+    - **Below** otherwise.
+    
+    A reason beside its trigger (left or right) wraps at `max-w-32` (128 px), so "You're offline. / Reconnect to retry." fits in the space left of Retry at 375. `PanelError`'s Retry stays below (DEC-232 c). Every `TapTooltip` reason keeps `collisionPadding={16}`, the page gutter. It was 0, so a reason sat flush with the viewport edge: the phone switch's at x = 0, and Choose another…'s at 1440's right edge.
+  - **(c) Phone cards.** On a phone source card, the switch's and Run now's reasons open below the controls row. The cards and their skeleton go from `py-3` to `py-4`. That gives the 32 px a reason below needs before the next card's name: the 6 px offset, which clears the 4 px focus ring, plus the 26 px reason. The table keeps top.
+- **Alternatives:**
+  - (a) The old generic "Reconnect to use this." "change <source>" for the switch, the brief's example. Naming the file on Import: file names can be long.
+  - (b) The brief's two-way rule (above when nothing wrapped, else below). At 375, below still covers the top 5 px of the coverage chart's first row: the room under a wrapped line is 27 px. A smaller `sideOffset` would sit on Retry's focus ring. More padding under every stale line would make a taller strip on every phone, for a reason that's open for a few seconds.
+  - (c) Below without the padding: the reason's last 2 px sit on the next card's name glyphs, 6 px into its line box. Left of Run now is Check CSV, and a smaller offset would sit on the focus ring.
+- **Why:** measured in chromium with `tap-tooltip.spec.ts`'s new check, which lists the text, icons, switches and chart cells under the open reason. The before column comes from the same tests run on `origin/main`'s `atoms.tsx` and `sources-table.tsx`.
+  - Offline reasons that name their action: 0 of 7 call sites → 7 of 7.
+  - Coverage stale-line Retry: at 1440 it covered 21 chart cells (the first row's newest), now 0, above, over the empty panel header. At 375 it covered the "Shopify stores" label and 24 cells, now 0, on the left.
+  - The run drawer's stale-line Retry: no text covered before or after, at 1440 and 375. Before, it sat 8 px over the first run's row edge; now it sits on the left.
+  - The Error ID: never covered, before or after.
+  - Phone card Run now at 375: it covered 2 lines (Last run, Freshness), now 0, below. The table's Run now at 1440 still opens above.
+- **Ceiling:** the page-level stale line at 375 without an Error ID (API unreachable while offline) has Retry beside a five-line message, so no side is free. Its reason stays below, over part of the message (91 × 15 px). A backlog row is proposed in `docs/reports/imp-154.md`.
