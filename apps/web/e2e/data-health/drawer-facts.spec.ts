@@ -76,7 +76,7 @@ test("a never-run source off the collector host names CSV import, not Run now", 
   await page.getByRole("button", { name: "Frankfurter FX: open runs" }).first().click();
   const drawer = page.getByRole("dialog", { name: "Frankfurter FX" });
   await expect(drawer.getByRole("heading", { name: "No runs yet" })).toBeVisible();
-  await expect(drawer).toContainText("This source is disabled, so the collector host doesn't run it.");
+  await expect(drawer).toContainText("This source is disabled, so the collector host won't run it until it's enabled.");
   await expect(drawer).toContainText("CSV import panel");
   await expect(drawer).not.toContainText("Run now");
 });

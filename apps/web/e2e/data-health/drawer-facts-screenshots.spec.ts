@@ -30,3 +30,35 @@ for (const theme of ["dark", "light"] as const) {
     }
   }
 }
+
+// imp-127/119/128/131: facts in the table's and the pill's words (Blocked, Overdue, Disabled), FX's never-run state
+// naming CSV import, and the Shopify targets table scrolled into view.
+const OUT_127 = "../../docs/screenshots/imp-127";
+
+for (const theme of ["dark", "light"] as const) {
+  for (const [width, height] of [
+    [1440, 900],
+    [375, 812],
+  ]) {
+    for (const [slug, name] of [
+      ["shopify", "Shopify stores"],
+      ["trends", "Google Trends"],
+      ["fx", "Frankfurter FX"],
+    ]) {
+      test(`imp-127 ${slug} drawer ${width}px ${theme}`, async ({ page }) => {
+        await mockAdminApi(page);
+        await page.setViewportSize({ width, height });
+        await page.emulateMedia({ colorScheme: theme });
+        await page.addInitScript((t) => localStorage.setItem("theme", t), theme);
+        await page.goto("/admin/data-health");
+        await page.getByRole("button", { name: `${name}: open runs` }).first().click();
+        const drawer = page.getByRole("dialog", { name });
+        await expect(drawer).toContainText(slug === "fx" ? "No runs yet" : "Payload");
+        if (slug === "shopify") await drawer.getByRole("region", { name: "Run 412 targets" }).scrollIntoViewIfNeeded();
+        await page.evaluate(() => document.fonts.ready);
+        await page.waitForTimeout(500);
+        await page.screenshot({ path: `${OUT_127}/drawer-${slug}-${width}-${theme}.png` });
+      });
+    }
+  }
+}

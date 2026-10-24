@@ -159,7 +159,7 @@ function DrawerBody({ source, now, onGaps }: { source: SourceHealth; now: number
         ) : items.length === 0 ? (
           // Names only the ways to a first run this source has now (imp-128).
           <EmptyState icon={History} size="sm" title="No runs yet">
-            {source.enabled ? "Runs appear here once the collector host runs this source." : "This source is disabled, so the collector host doesn't run it."}
+            {source.enabled ? "Runs appear here once the collector host runs this source." : "This source is disabled, so the collector host won't run it until it's enabled."}
             {canRun && csv
               ? " Press Run now in the Sources panel, or import a CSV from the CSV import panel, to add its first run."
               : canRun
