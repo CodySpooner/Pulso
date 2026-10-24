@@ -145,7 +145,8 @@ export function HostRetryLink({ children, className }: { children: React.ReactNo
       className={cn("relative hit-area rounded-sm whitespace-nowrap underline decoration-border-strong underline-offset-2 hover:decoration-current", className)}
     >
       {children}
-      <ArrowUp aria-hidden className="ml-0.5 inline size-3 align-[-2px]" />
+      {/* The viewBox trims the glyph's 2 px side bearings, so the link's edge and focus ring sit on the arrow (imp-169). */}
+      <ArrowUp aria-hidden viewBox="4 0 16 24" className="ml-1 inline h-3 w-2 align-[-2px]" />
     </a>
   );
 }

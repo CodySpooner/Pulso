@@ -110,6 +110,13 @@
     }
   }
 }
+/* Inline text links in running copy (imp-169, DEC-222): the focus ring (2 px at 2 px offset) reaches 4 px past the
+   link, more than a space, so it met the word beside it. A 1 px offset and 2 px of side margin leave 2 px of air
+   to a word behind a space; punctuation straight after the link needs `me-1` too. Still an outline (forced colors). */
+@utility link-inline {
+  margin-inline: --spacing(0.5);
+  &:focus-visible { outline-offset: 1px; }
+}
 
 @keyframes shimmer {
   to { transform: translateX(33.333%); } /* one bar: the Skeleton's sweep box is three bars wide (p1-53) */
