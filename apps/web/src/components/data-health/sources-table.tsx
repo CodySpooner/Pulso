@@ -27,6 +27,7 @@ import {
   skipNote,
   sourceState,
   toMinor,
+  typeLabel,
   type CJActivity,
   type MissedSlot,
   type SourceHealth,
@@ -34,13 +35,6 @@ import {
 } from "./model";
 
 const SOURCES_API = "GET /v1/admin/sources";
-
-const typeLabel: Record<string, string> = {
-  official_api: "Official API",
-  public_endpoint: "Public endpoint",
-  vendor: "Vendor API",
-  internal: "Internal",
-};
 
 // "No source yet" rows (vault Features/Data Health, States): later-phase sources, greyed out with their phase.
 const planned = [
