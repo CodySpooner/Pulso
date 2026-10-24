@@ -31,7 +31,7 @@ for (const value of ["bogus", "risk", "PROFIT", ""]) {
 test("tabs activate manually; a switch replaces the URL and keeps other params", async ({ page }) => {
   await mockProductApi(page);
   await page.goto(`${URL}?supplier=99102`);
-  const history = await page.evaluate(() => history.length);
+  const entries = await page.evaluate(() => history.length);
   await page.getByRole("tab", { name: "Overview" }).focus();
   await page.keyboard.press("ArrowRight");
   await expect(page.getByRole("tab", { name: "Trends" })).toBeFocused();
@@ -45,7 +45,7 @@ test("tabs activate manually; a switch replaces the URL and keeps other params",
   await expect(page).toHaveURL(`${URL}?supplier=99102&tab=profit`);
   await page.getByRole("tab", { name: "Overview" }).click(); // one click, back to the clean default URL
   await expect(page).toHaveURL(`${URL}?supplier=99102`);
-  expect(await page.evaluate(() => history.length)).toBe(history); // replace, so Back leaves the page
+  expect(await page.evaluate(() => history.length)).toBe(entries); // replace, so Back leaves the page
   await expect(page.getByRole("tab", { name: "Overview" })).toBeFocused();
 });
 
