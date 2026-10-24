@@ -299,7 +299,7 @@ test.describe("states", () => {
         await open(page);
         const coverage = page.getByRole("region", { name: "Coverage" });
         await expect(coverage.getByRole("heading", { level: 3, name: "Couldn't load coverage" })).toBeVisible({ timeout: 15_000 });
-        expect(await font(coverage.getByRole("heading", { level: 3 }))).toBe(`${body}/500`);
+        expect(await font(coverage.getByRole("heading", { level: 3, name: "Couldn't load coverage" }))).toBe(`${body}/500`); // Open gaps stay below (imp-146)
         expect(await font(coverage.getByRole("heading", { level: 2 }))).toBe(`${title3}/600`);
         expect(await noHScroll()).toBe(true);
       });
