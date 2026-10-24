@@ -147,6 +147,13 @@ export function missedNote(key: string, latestGapEnds: HostHealth["latest_gap_en
   return { slot, reason: gapReasons[range.reason] ?? range.reason };
 }
 
+/** What the Open gaps block shows. It reads only the host call, so the coverage call never hides it (imp-146),
+ *  and a host call that failed before any data says the gap check didn't load, never "no gaps" (imp-145, DEC-196). */
+export function openGapsView(host: { data?: HostHealth; isPending: boolean }, ranges: number): "loading" | "unavailable" | "none" | "ranges" {
+  if (host.data) return ranges > 0 ? "ranges" : "none";
+  return host.isPending ? "loading" : "unavailable";
+}
+
 /** The open-gaps footer (DEC-166): ranges on screen, and slots loaded until the 90-day history is complete. */
 export function gapsNote(shown: number, ranges: number, slots: number, more: boolean): string {
   const showing = shown < ranges ? `Showing ${shown} of ${plural(ranges, "range")}` : `Showing ${plural(ranges, "range")}`;

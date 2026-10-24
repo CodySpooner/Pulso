@@ -12,6 +12,7 @@ import {
   importOutcome,
   mergeGaps,
   missedNote,
+  openGapsView,
   previewSummary,
   sampleColumns,
   sampleNote,
@@ -20,6 +21,7 @@ import {
   targetsNote,
   utcDays,
   type Gap,
+  type HostHealth,
   type ImportPreview,
   type ImportResult,
   type Run,
@@ -190,6 +192,16 @@ describe("missedNote", () => {
     expect(missedNote("cj", ends, [gap({ source_key: "fx", slot_start: ago(3), slot_end: ago(2) })])).toEqual({ slot: ["Missed a slot ending", "Oct 22, 12:00 UTC"], reason: null });
   });
   test("no gap for the source", () => expect(missedNote("fx", ends, [])).toBeNull());
+});
+
+// imp-145 + imp-146: Open gaps read only the host call, so the coverage call never hides them, and a failed host
+// call never reads as an empty list or "no gaps".
+describe("openGapsView", () => {
+  const host: HostHealth = { live_runs_allowed: false, next_cursor: null, latest_gap_ends: {}, latest_heartbeat: null, open_gaps: [gap()] };
+  test("host loading: the skeleton", () => expect(openGapsView({ isPending: true }, 0)).toBe("loading"));
+  test("host failed before any data: the gap check didn't load", () => expect(openGapsView({ isPending: false }, 0)).toBe("unavailable"));
+  test("host data with ranges: the list", () => expect(openGapsView({ isPending: false, data: host }, 1)).toBe("ranges"));
+  test("host data without ranges: no open gaps", () => expect(openGapsView({ isPending: false, data: { ...host, open_gaps: [] } }, 0)).toBe("none"));
 });
 
 test("utcDays ends on today's UTC date", () => {

@@ -177,6 +177,32 @@ test("Run now is unavailable off the collector host and says why", async ({ page
   expect(calls.filter((c) => c.method === "POST")).toEqual([]);
 });
 
+// imp-156: Radix closes a tooltip when an ancestor of its trigger scrolls, so focusing an off-screen locked control
+// used to close the reason its own focus had just opened.
+test("focusing an off-screen locked control scrolls to it, and its reason stays open while it keeps focus", async ({ page }) => {
+  await mockAdminApi(page);
+  await open(page);
+  const main = page.locator("#main");
+  const run = page.getByRole("region", { name: "Sources table" }).getByRole("button", { name: "Run CJ Dropshipping now" });
+  const why = "Live collectors run only on the collector host.";
+  const reason = page.getByRole("tooltip", { name: why }).first();
+  await expect(run).toHaveAttribute("aria-disabled", "true");
+
+  await main.evaluate((m) => m.scrollTo(0, m.scrollHeight));
+  await expect(run).not.toBeInViewport();
+  await run.focus();
+  await expect(run).toBeInViewport();
+  await expect(run).toHaveAccessibleDescription(why); // a closing tooltip still shows while it fades out
+  await expect(reason).toBeVisible();
+
+  // Scrolled away while focused, the reason is hidden rather than left floating over the top bar, and comes back.
+  await main.evaluate((m) => m.scrollTo(0, m.scrollHeight));
+  await expect(reason).toBeHidden();
+  await expect(run).toHaveAccessibleDescription(why);
+  await run.evaluate((el) => el.scrollIntoView({ block: "center" }));
+  await expect(reason).toBeVisible();
+});
+
 test("CSV import: keyboard to a file, row errors, one-click import, and a repeat is skipped", async ({ page }) => {
   const calls = await mockAdminApi(page);
   await open(page);
@@ -299,7 +325,7 @@ test.describe("states", () => {
         await open(page);
         const coverage = page.getByRole("region", { name: "Coverage" });
         await expect(coverage.getByRole("heading", { level: 3, name: "Couldn't load coverage" })).toBeVisible({ timeout: 15_000 });
-        expect(await font(coverage.getByRole("heading", { level: 3 }))).toBe(`${body}/500`);
+        expect(await font(coverage.getByRole("heading", { level: 3, name: "Couldn't load coverage" }))).toBe(`${body}/500`); // Open gaps stay below (imp-146)
         expect(await font(coverage.getByRole("heading", { level: 2 }))).toBe(`${title3}/600`);
         expect(await noHScroll()).toBe(true);
       });

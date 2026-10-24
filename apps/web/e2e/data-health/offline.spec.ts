@@ -27,8 +27,7 @@ async function pressOffline(control: Locator, touch: boolean) {
     await saysWhy(control);
     return;
   }
-  // Scrolled first: Radix closes a tooltip when an ancestor of its trigger scrolls, as focus() scrolling does.
-  await control.scrollIntoViewIfNeeded();
+  // Not scrolled first: focusing an off-screen control scrolls main, and the reason stays open (imp-156).
   await control.blur(); // focus() on the focused element fires no focus event
   await control.focus();
   await saysWhy(control);
@@ -85,6 +84,7 @@ for (const [width, height] of [
       expect(offlineCalls).toEqual(["PATCH /api/v1/admin/sources/cj"]); // the one press, failed at once
       await dialog.getByRole("button", { name: "Cancel" }).click();
       await expect(dialog).toBeHidden();
+      await expect(cj).toBeFocused(); // after the exit animation, so it never lands on a later press
 
       await expect(banner).toHaveCount(1);
       await expect(banner).toHaveText("You're offline. Showing data as of Oct 22, 14:00 UTC. Refresh and actions are off until you reconnect.");
