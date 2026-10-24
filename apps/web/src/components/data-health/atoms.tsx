@@ -75,12 +75,18 @@ export const sourceStates: Record<SourceState, { label: string; icon: LucideIcon
 /** A hint on hover, keyboard focus and tap (imp-073); the other props go to its trigger. A press opens or keeps
  * the hint, never closes it (imp-173). The hint is click-through, so an open one never covers a control. Without
  * a hint it is inert, so a control whose reason comes and goes (offline, imp-134) stays the same element and keeps
- * focus. `side` defaults to Radix's top. */
+ * focus. `side` defaults to Radix's top. `contentClassName` styles the hint, e.g. `pointer-events-auto` for a card whose
+ * text can be selected (the Metric provenance card, DEC-238). */
 export function TapTooltip({
   hint,
   side,
+  contentClassName,
   ...trigger
-}: React.ComponentProps<typeof TooltipTrigger> & { hint: React.ReactNode; side?: React.ComponentProps<typeof TooltipContent>["side"] }) {
+}: React.ComponentProps<typeof TooltipTrigger> & {
+  hint: React.ReactNode;
+  side?: React.ComponentProps<typeof TooltipContent>["side"];
+  contentClassName?: string;
+}) {
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const onTrigger = (e: Event | undefined) => !!e && e.target instanceof Node && !!triggerRef.current?.contains(e.target);
@@ -114,7 +120,7 @@ export function TapTooltip({
         side={side}
         hideWhenDetached
         collisionPadding={16}
-        className={cn("pointer-events-none", (side === "left" || side === "right") && "max-w-32")}
+        className={cn("pointer-events-none", (side === "left" || side === "right") && "max-w-32", contentClassName)}
         onPointerDownOutside={(e) => onTrigger(e) && e.preventDefault()}
       >
         {hint}
