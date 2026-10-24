@@ -12,8 +12,15 @@ from pulso_core.db import Base
 from pulso_core.models import FxRate, RawPayload, SourceEvent
 from pulso_core.money import convert_minor
 from pulso_sources import fx_frankfurter
-from pulso_sources.framework import Request
-from pulso_sources.fx_frankfurter import SOURCE, FrankfurterAdapter, backfill, plan, rate_as_of
+from pulso_sources.framework import Request, UpsertStats
+from pulso_sources.fx_frankfurter import (
+    SOURCE,
+    FrankfurterAdapter,
+    FxBackfillRange,
+    backfill,
+    plan,
+    rate_as_of,
+)
 from pulso_sources.imports import ADAPTERS, ImportData, parse_csv
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -49,7 +56,7 @@ def test_hand_checked_fixture_conversion() -> None:
     rate = FrankfurterAdapter().parse((FIXTURES / "latest.json").read_bytes())[0].rate
     assert convert_minor(123, "USD", "JPY", rate, rounding=ROUND_HALF_UP) == 185
     assert convert_minor(1500, "JPY", "USD", rate, rounding=ROUND_HALF_UP, inverse=True) == 1000
-    with pytest.raises(ValueError):
+    with pytest.raises(FxBackfillRange):
         backfill(date(2026, 10, 22), date(2026, 10, 21))
 
 
@@ -176,8 +183,8 @@ def test_refill_replay_and_conflict_keep_first_rate(session: Session) -> None:
         assert adapter.upsert(session, corrected, late, parser_version="2").inserted == 0
     assert session.scalar(select(func.count()).select_from(SourceEvent)) == 1
     assert session.get_one(FxRate, (date(2026, 10, 20), "USD", "JPY", SOURCE)).rate == Decimal(151)
-    with pytest.raises(ValueError, match="capture date"):
-        adapter.upsert(session, history, first, parser_version="1")
+    # DEC-230: rows dated after the capture's UTC date are skipped, not rejected.
+    assert adapter.upsert(session, history, first, parser_version="1") == UpsertStats(unchanged=1)
 
 
 def test_csv_registration_validation_and_manual_provenance(session: Session) -> None:
