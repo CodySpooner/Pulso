@@ -67,7 +67,7 @@ const skeletonRows = loadingRows.map((i) => (
 const pillSkeleton = <Skeleton className="h-5.5 w-18" />;
 
 const skeletonCards = loadingRows.map((i) => (
-  <li key={i} aria-hidden className="flex flex-col gap-2 px-4 py-3">
+  <li key={i} aria-hidden className="flex flex-col gap-2 px-4 py-4">
     <div className="flex items-center justify-between gap-2">
       <Skeleton className="h-8 w-32" />
       <Skeleton className="h-5.5 w-18" />
@@ -255,7 +255,8 @@ export function SourcesPanel({ now, onOpen, onImport }: { now: number; onOpen: (
               const c = controls(s, "bottom");
               const state = sourceState(s, latestGapEnds, now);
               return (
-                <li key={s.key} className="flex flex-col gap-2 px-4 py-3">
+                // py-4: between two cards a reason open below the controls row clears the next card's name (imp-187).
+                <li key={s.key} className="flex flex-col gap-2 px-4 py-4">
                   <div className="flex items-center justify-between gap-2">
                     <SourceName source={s} onOpen={onOpen} />
                     {waiting(state) ? pillSkeleton : <StatePill state={state} />}

@@ -4,33 +4,33 @@ import { mockAdminApi, offlineNetwork, type Call } from "./fixtures";
 
 // imp-134 (aud-014 A14-03): offline, nothing is queued. One banner says so and how old the data is; Refresh, the
 // switches, Run now and Import say why they're unavailable; a disable pressed then cancelled offline, and an
-// import pressed offline, are never sent on reconnect.
+// import pressed offline, are never sent on reconnect. Each reason names what its control does (imp-154).
 
-const HINT = "You're offline. Reconnect to use this.";
+const hint = (action: string) => `You're offline. Reconnect to ${action}.`;
 const file = { name: "rates.csv", mimeType: "text/csv", buffer: Buffer.from("date,base,quote,rate\n2026-01-01,USD,JPY,150\n") };
 const patches = (calls: Call[]) => calls.filter((c) => c.method === "PATCH");
 const commits = (calls: Call[]) => calls.filter((c) => c.method === "POST" && c.path.endsWith("/import"));
 const runs = (calls: Call[]) => calls.filter((c) => c.method === "POST" && c.path.endsWith("/run"));
-/** `control`'s tooltip is open with the offline reason: an open Radix tooltip describes its trigger. */
-const saysWhy = async (control: Locator) => {
-  await expect(control).toHaveAccessibleDescription(HINT);
-  await expect(control.page().getByRole("tooltip", { name: HINT }).first()).toBeVisible();
+/** `control`'s tooltip is open with its offline reason: an open Radix tooltip describes its trigger. */
+const saysWhy = async (control: Locator, reason: string) => {
+  await expect(control).toHaveAccessibleDescription(reason);
+  await expect(control.page().getByRole("tooltip", { name: reason }).first()).toBeVisible();
 };
 /**
  * Presses an unavailable `control` and checks it says why. A tap shows the reason (imp-126); on a desktop, keyboard
  * focus shows it at once (a mouse sees it on hover), then a click does nothing. force: aria-disabled, so
  * Playwright would wait for it to enable.
  */
-async function pressOffline(control: Locator, touch: boolean) {
+async function pressOffline(control: Locator, reason: string, touch: boolean) {
   if (touch) {
     await control.tap({ force: true });
-    await saysWhy(control);
+    await saysWhy(control, reason);
     return;
   }
   // Not scrolled first: focusing an off-screen control scrolls main, and the reason stays open (imp-156).
   await control.blur(); // focus() on the focused element fires no focus event
   await control.focus();
-  await saysWhy(control);
+  await saysWhy(control, reason);
   await control.click({ force: true });
 }
 const noHScroll = (page: Page) => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth);
@@ -75,24 +75,28 @@ for (const [width, height] of [
       expect(await noHScroll(page)).toBe(true);
 
       // Each control says why, and a press does nothing else.
-      await pressOffline(refresh, touch);
+      await pressOffline(refresh, hint("refresh"), touch);
       await expect(refresh).toHaveAttribute("aria-disabled", "true");
       await expect(refresh).toHaveText("Refresh"); // no refetch started
 
-      await pressOffline(cj, touch);
+      await pressOffline(cj, hint("disable CJ Dropshipping"), touch);
       await expect(dialog).toBeHidden();
       await expect(cj).toBeChecked();
 
-      await pressOffline(page.getByRole("button", { name: "Run CJ Dropshipping now" }), touch);
+      const fx = page.getByRole("switch", { name: "Frankfurter FX enabled" }); // off, so its press would enable it
+      await pressOffline(fx, hint("enable Frankfurter FX"), touch);
+      await expect(fx).not.toBeChecked();
+
+      await pressOffline(page.getByRole("button", { name: "Run CJ Dropshipping now" }), hint("run CJ Dropshipping now"), touch);
 
       // Import keeps its existing reason line under the button, so a phone sees it without a tap.
       await expect(importButton).toHaveAttribute("aria-disabled", "true");
-      await expect(importButton).toHaveAccessibleDescription(HINT);
-      await expect(panel.getByText(HINT)).toBeVisible();
+      await expect(importButton).toHaveAccessibleDescription(hint("import 3 rows into Frankfurter FX"));
+      await expect(panel.getByText(hint("import 3 rows into Frankfurter FX"))).toBeVisible();
       await importButton.click({ force: true });
       await expect(importButton).toHaveText("Import 3 rows"); // not "Importing…"
 
-      await pressOffline(panel.getByRole("button", { name: "Choose another…" }), touch);
+      await pressOffline(panel.getByRole("button", { name: "Choose another…" }), hint("choose another CSV for Frankfurter FX"), touch);
 
       expect(offlineCalls).toHaveLength(1); // the controls sent nothing
       // Reconnect: the banner goes, the controls come back, and nothing pressed offline is sent.
