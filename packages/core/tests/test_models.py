@@ -102,7 +102,8 @@ def test_single_migration_head_and_offline_sql(
     output = StringIO()
     config = Config(str(Path(__file__).resolve().parents[3] / "alembic.ini"), output_buffer=output)
     scripts = ScriptDirectory.from_config(config)
-    assert scripts.get_heads() == ["0004"]
+    assert scripts.get_heads() == ["0005"]
+    assert scripts.get_revision("0005").down_revision == "0004"
     assert scripts.get_revision("0004").down_revision == "0003"
     assert scripts.get_revision("0003").down_revision == "0002"
     assert scripts.get_revision("0002").down_revision == "0001"
@@ -125,6 +126,12 @@ def test_single_migration_head_and_offline_sql(
         "WHERE filled_by_run_id IS NULL"
     ) in sql
     assert "CREATE INDEX ix_collector_runs_source_id_id ON collector_runs (source_id, id)" in sql
+    for table, column in (("images", "embedding"), ("listings", "title_embedding")):
+        assert (
+            f"CREATE INDEX ix_{table}_{column} ON {table} USING hnsw ({column} vector_cosine_ops)"
+        ) in sql
+        assert f"ALTER TABLE {table} ADD COLUMN {column} VECTOR(512)" in sql
+    assert "BEFORE UPDATE OR DELETE ON match_decisions" in sql
 
 
 def test_queue_and_import_identity_contract() -> None:

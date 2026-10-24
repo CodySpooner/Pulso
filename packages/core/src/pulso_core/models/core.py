@@ -152,6 +152,9 @@ class WorkspaceSettings(WorkspaceOwned, Base):
         CheckConstraint(
             "payment_fee_fixed_minor >= 0 AND default_cpa_minor >= 0", name="cost_range"
         ),
+        CheckConstraint("duty_default_bps >= 0", name="duty_default_range"),
+        CheckConstraint("returns_bps BETWEEN 0 AND 10000", name="returns_range"),
+        CheckConstraint("customs_fee_minor >= 0", name="customs_fee_range"),
     )
     default_country: Mapped[str] = mapped_column(CHAR(2), server_default="US")
     currency: Mapped[str] = mapped_column(
@@ -162,6 +165,10 @@ class WorkspaceSettings(WorkspaceOwned, Base):
     shopify_fee_bps: Mapped[int] = mapped_column(server_default="0")
     default_cpa_minor: Mapped[int] = mapped_column(BigInteger, server_default="0")
     target_margin_bps: Mapped[int] = mapped_column(server_default="0")
+    # NULL = "duty not set" in the UI, never an assumed 0 (R-16); tariffs can exceed 100%.
+    duty_default_bps: Mapped[int | None]
+    returns_bps: Mapped[int] = mapped_column(server_default="0")
+    customs_fee_minor: Mapped[int] = mapped_column(BigInteger, server_default="0")
 
 
 class WorkspaceTrackedStore(WorkspaceOwned, Base):
@@ -169,3 +176,22 @@ class WorkspaceTrackedStore(WorkspaceOwned, Base):
     __table_args__ = (PrimaryKeyConstraint("workspace_id", "store_id"),)
     store_id: Mapped[int] = mapped_column(ForeignKey("stores.id"), index=True)
     added_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class ProductNote(WorkspaceOwned, CreatedAt, Base):
+    __tablename__ = "product_notes"
+    __table_args__ = (Index(None, "workspace_id", "product_id"),)
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    product_id: Mapped[UUID] = mapped_column(ForeignKey("products.id"))
+    author_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"))
+    body: Mapped[str] = mapped_column(Text)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class ProductTag(WorkspaceOwned, Base):
+    __tablename__ = "product_tags"
+    __table_args__ = (PrimaryKeyConstraint("workspace_id", "product_id", "tag"),)
+    product_id: Mapped[UUID] = mapped_column(ForeignKey("products.id"))
+    tag: Mapped[str] = mapped_column(String(80))

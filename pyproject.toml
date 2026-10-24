@@ -36,6 +36,11 @@ files = ["apps", "packages", "infra/scripts"]
 module = ["boto3", "botocore.*"]
 ignore_missing_imports = true
 
+[[tool.mypy.overrides]]
+# pgvector ships no py.typed marker (0.4.2).
+module = ["pgvector.*"]
+ignore_missing_imports = true
+
 [tool.pytest.ini_options]
 markers = ["db: requires a reachable, dedicated Postgres test database (TEST_DATABASE_URL)"]
 testpaths = ["apps", "packages", "infra"]
