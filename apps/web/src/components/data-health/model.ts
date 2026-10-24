@@ -20,7 +20,7 @@ export const BACKUP_MAX_AGE_MS = 26 * HOUR;
 
 export type SourceState = "blocked" | "disabled" | "running" | "failing" | "overdue" | "skipped" | "partial" | "never" | "healthy" | "unknown";
 
-/** States that put a count on the Data Health nav badge (DH-3). */
+/** States that put a count on the Data Health nav badge (DH-3); `attentionCount` adds expired CJ activity (DEC-223). */
 export const ATTENTION: ReadonlySet<SourceState> = new Set(["blocked", "failing", "overdue"]);
 
 /** States settled before the gap check, so the host's gap summary can't change them. */
@@ -48,15 +48,20 @@ export function skipNote(run: Run): string {
   return run.blocked_by != null ? `Run #${run.blocked_by} was still active` : "An earlier run was still active";
 }
 
-/** Sources needing attention. `atLeast` when the gap summary is missing and a source it could make Overdue is
- *  left, so the count is a floor and must read as one (imp-133). */
+/** Sources needing attention: an attention state, or an enabled source whose CJ activity countdown expired, so
+ *  CJ can turn its API off (DEC-223). `atLeast` when the gap summary is missing and an uncounted source it could
+ *  make Overdue is left, so the count is a floor and must read as one (imp-133). */
 export function attentionCount(
   sources: SourceHealth[],
   latestGapEnds: HostHealth["latest_gap_ends"] | undefined,
   now: number,
 ): { count: number; atLeast: boolean } {
   const states = sources.map((s) => sourceState(s, latestGapEnds, now));
-  return { count: states.filter((s) => ATTENTION.has(s)).length, atLeast: !latestGapEnds && states.some((s) => !BEFORE_GAP_CHECK.has(s)) };
+  const counted = sources.map((s, i) => ATTENTION.has(states[i]) || (s.enabled && s.activity?.state === "expired"));
+  return {
+    count: counted.filter(Boolean).length,
+    atLeast: !latestGapEnds && states.some((s, i) => !counted[i] && !BEFORE_GAP_CHECK.has(s)),
+  };
 }
 
 export type HostState = "none" | "online" | "late" | "offline";

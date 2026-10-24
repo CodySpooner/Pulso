@@ -136,6 +136,32 @@ test("attentionCount is a floor while a source could still be overdue", () => {
   expect(attentionCount([blocked, failing, disabled], undefined, NOW)).toEqual({ count: 2, atLeast: false });
 });
 
+// imp-166 (DEC-223): an expired CJ activity countdown on an enabled source needs attention, counted once; warn is
+// a heads-up on the row only, and a source the owner disabled runs nothing the lapse could stop.
+describe("attentionCount and CJ activity", () => {
+  const activity = (state: "unknown" | "ok" | "warn" | "expired", days: number | null) => ({ state, days_remaining: days, as_of: ago(240), observed_at: ago(1) });
+  const expired = activity("expired", -3);
+
+  test.each([
+    ["expired", source({ activity: expired }), 1],
+    ["warn", source({ activity: activity("warn", 5) }), 0],
+    ["ok", source({ activity: activity("ok", 22) }), 0],
+    ["unknown", source({ activity: activity("unknown", null) }), 0],
+    ["expired on a disabled source", source({ enabled: false, status: "disabled", activity: expired }), 0],
+    ["expired on a blocked source", source({ status: "blocked", enabled: false, activity: expired }), 1],
+    ["expired on a failing source", source({ last_run: run({ status: "failed" }), activity: expired }), 1],
+    ["expired on an overdue source", source({ activity: expired }), 1],
+  ] as const)("%s counts %i", (name, s, count) => {
+    expect(attentionCount([s], name.endsWith("overdue source") ? { cj: ago(7) } : {}, NOW)).toEqual({ count, atLeast: false });
+  });
+
+  test("without the gap summary an expired source is already counted, so only the others make the count a floor", () => {
+    expect(attentionCount([source({ activity: expired })], undefined, NOW)).toEqual({ count: 1, atLeast: false });
+    expect(attentionCount([source({ activity: expired }), source({ key: "g" })], undefined, NOW)).toEqual({ count: 1, atLeast: true });
+    expect(attentionCount([source({ activity: activity("warn", 5) })], undefined, NOW)).toEqual({ count: 0, atLeast: true });
+  });
+});
+
 test("hostState follows the 15 min / 2 h heartbeat rule", () => {
   const host = (at: string | null) => ({ live_runs_allowed: true, open_gaps: [], next_cursor: null, latest_gap_ends: {}, latest_heartbeat: at ? { host: "pc", at } : null });
   expect(hostState(host(null), NOW)).toBe("none");
