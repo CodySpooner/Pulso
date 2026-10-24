@@ -5,9 +5,9 @@ import { cn } from "@/lib/utils";
 import { useHost, useSources } from "./api";
 import { attentionCount } from "./model";
 
-// DH-3: blocked, failing and overdue sources put a red count on the Data Health nav item (red only for
-// failures, vault Design/App Shell & Navigation). Nothing renders while either call loads, when sources fail
-// or at zero. When only the host call failed, the count is a floor and reads "1+" (imp-133).
+// DH-3: blocked, failing and overdue sources, and an enabled source whose CJ activity expired (DEC-223), put a red
+// count on the Data Health nav item (red only for failures, vault Design/App Shell & Navigation). Nothing renders
+// while either call loads, when sources fail or at zero. When only the host call failed, the count is a floor and reads "1+" (imp-133).
 export function DataHealthNavBadge({ expandedClass, railClass }: { expandedClass?: string; railClass?: string }) {
   const sources = useSources();
   const host = useHost();
