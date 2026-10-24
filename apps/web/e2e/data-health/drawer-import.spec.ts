@@ -97,3 +97,16 @@ for (const csv_import of [null, "preview_only"] as const) {
     await expect(drawer.getByRole("button", { name: "CSV import panel" })).toHaveCount(0);
   });
 }
+
+test("a never-run source that can run names both, and its button still opens the panel", async ({ page }) => {
+  await mockAdminApi(page, {
+    host: { live_runs_allowed: true },
+    sources: sources.map((s) => (s.key === "fx_frankfurter" ? { ...s, enabled: true, status: "active" } : s)),
+  });
+  const { panel, drawer, link } = await openFx(page);
+  await expect(drawer).toContainText("Press Run now in the Sources panel, or import a CSV from the CSV import panel, to add its first run.");
+  await link.click();
+  await expect(page.getByRole("dialog")).toBeHidden();
+  await expect(panel.getByLabel("Source")).toHaveValue("fx_frankfurter");
+  await expect(panel.getByRole("button", { name: "Choose CSV…" })).toBeFocused();
+});

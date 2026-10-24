@@ -196,11 +196,11 @@ function DrawerBody({ source, now, onGaps, onImport }: { source: SourceHealth; n
             {source.enabled ? "Runs appear here once the collector host runs this source." : "This source is disabled, so the collector host won't run it until it's enabled."}
             {canRun && csv ? (
               // A comma straight after the link needs `me-1` (DEC-222 b).
-              <> Press Run now in the Sources panel, or import a CSV from the {importLink("me-1")}, to add its first run.</>
+              <> Press Run now in the Sources panel, or import a CSV from the {importLink("me-1")}, to add its first&nbsp;run.</>
             ) : canRun ? (
               " Press Run now in the Sources panel to start its first run."
             ) : csv ? (
-              <> Import a CSV from the {importLink()} to add its first run.</>
+              <> Import a CSV from the {importLink()} to add its first&nbsp;run.</>
             ) : null}
           </EmptyState>
         ) : (
