@@ -172,7 +172,8 @@ export function SourcesPanel({ now, onOpen, onImport }: { now: number; onOpen: (
           // aria-disabled (not disabled) while saving keeps keyboard focus on the switch when its change fails.
           aria-disabled={saving(s) || !online}
           aria-label={`${s.name} enabled`}
-          className="aria-disabled:cursor-not-allowed"
+          // The track and thumb dim, not the switch, so its focus ring keeps 3:1 while locked (DEC-185, DEC-206).
+          className="aria-disabled:cursor-not-allowed aria-disabled:opacity-100 aria-disabled:aria-checked:bg-brand/50 aria-disabled:*:opacity-50"
         />
       </TapTooltip>
     ),
@@ -452,8 +453,9 @@ function RunButton({ name, blocker, pending, onRun }: { name: string; blocker: s
       size="sm"
       variant="secondary"
       aria-disabled={blocker != null || pending}
-      // aria-disabled (not disabled) keeps the button focusable and hoverable so its reason shows.
-      className="aria-disabled:pointer-events-auto aria-disabled:cursor-not-allowed"
+      // aria-disabled (not disabled) keeps the button focusable and hoverable so its reason shows. Dimmed with a
+      // token, not opacity, so its focus ring keeps 3:1 (DEC-185, DEC-206).
+      className="aria-disabled:pointer-events-auto aria-disabled:cursor-not-allowed aria-disabled:text-subtle-foreground aria-disabled:opacity-100"
       onClick={() => blocker == null && !pending && onRun()}
       aria-label={`Run ${name} now`}
     >

@@ -56,7 +56,8 @@ export function DataHealth() {
             variant="secondary"
             onClick={() => online && void refresh()}
             aria-disabled={fetching || !online}
-            className="aria-disabled:pointer-events-auto aria-disabled:cursor-not-allowed"
+            // Dimmed with a token, not opacity, so its focus ring keeps 3:1 while locked (DEC-185, DEC-206).
+            className="aria-disabled:pointer-events-auto aria-disabled:cursor-not-allowed aria-disabled:text-subtle-foreground aria-disabled:opacity-100"
           >
             <RotateCw className={cn(fetching && "motion-safe:animate-spin")} aria-hidden />
             {fetching ? "Refreshing…" : "Refresh"}
