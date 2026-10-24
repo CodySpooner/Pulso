@@ -27,6 +27,27 @@ QUOTES = tuple(code for code in CURRENCY_EXPONENTS if code != "USD")
 SOURCE = "frankfurter_blended"
 
 
+# One class per check: a run records only type(exc).__name__ as its error_code (data-06).
+class FxNotRateArray(ValueError):
+    pass
+
+
+class FxDuplicateRow(ValueError):
+    pass
+
+
+class FxCaptureMetadata(ValueError):
+    pass
+
+
+class FxUnsupportedRequest(ValueError):
+    pass
+
+
+class FxBackfillRange(ValueError):
+    pass
+
+
 class Rate(BaseModel):
     date: Date
     base: str
@@ -63,7 +84,7 @@ def plan(session: Session, day: Date) -> list[Target]:
 
 def backfill(start: Date, end: Date) -> list[Target]:
     if start > end:
-        raise ValueError("FX backfill start must not follow end")
+        raise FxBackfillRange("FX backfill start must not follow end")
     return [
         Target(
             "fx",
@@ -107,7 +128,7 @@ class FrankfurterAdapter:
 
     def fetch(self, request: Request, *, user_agent: str) -> Response:
         if set(request.params) - {"base", "quotes", "from", "to"}:
-            raise ValueError("Only blended FX requests are supported")
+            raise FxUnsupportedRequest("Only blended FX requests are supported")
         try:
             with closing(
                 HTTPSConnection(
@@ -137,23 +158,25 @@ class FrankfurterAdapter:
             else json.loads(body, parse_float=Decimal)
         )
         if not isinstance(rows, list):
-            raise ValueError("Expected a Frankfurter v2 rate array")
+            raise FxNotRateArray("Expected a Frankfurter v2 rate array")
         records = [Rate.model_validate(row) for row in rows]
         keys = [(row.date, row.base, row.quote) for row in records]
         if len(set(keys)) != len(keys):
-            raise ValueError("Duplicate FX pair/date in capture")
+            raise FxDuplicateRow("Duplicate FX pair/date in capture")
         return records
 
     def upsert(
         self, session: Session, records: Sequence[Rate], payload: RawPayload, *, parser_version: str
     ) -> UpsertStats:
         if payload.captured_at.utcoffset() is None or not 1 <= len(parser_version) <= 80:
-            raise ValueError("FX requires an aware capture time and parser version")
-        if any(row.date > payload.captured_at.astimezone(UTC).date() for row in records):
-            raise ValueError("FX date is later than capture date")
+            raise FxCaptureMetadata("FX requires an aware capture time and parser version")
+        day = payload.captured_at.astimezone(UTC).date()
+        # DEC-230: a row dated after the capture's UTC day is an early blend; a later capture
+        # stores it. Skipped rows stay counted as rows_fetched minus inserted and unchanged.
+        kept = [row for row in records if row.date <= day]
         source = "manual" if self.data is not None else SOURCE
         inserted, conflict = 0, False
-        for row in records:
+        for row in kept:
             key = {"date": row.date, "base": row.base, "quote": row.quote, "source": source}
             added = session.scalar(
                 insert(FxRate)
@@ -191,4 +214,4 @@ class FrankfurterAdapter:
                 )
             )
             session.flush()
-        return UpsertStats(inserted=inserted, unchanged=len(records) - inserted)
+        return UpsertStats(inserted=inserted, unchanged=len(kept) - inserted)
