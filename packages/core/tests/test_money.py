@@ -69,6 +69,23 @@ def test_to_minor_rejects_one_minor_unit_outside_bigint(currency: str, value: st
         to_minor(value, currency)
 
 
+@pytest.mark.parametrize("value", ["1e1000000", "-1e1000000"])
+def test_to_minor_rejects_exponent_overflow_as_bigint(value: str) -> None:
+    with pytest.raises(ValueError, match="Amount exceeds BIGINT range"):
+        to_minor(value, "USD")
+
+
+@pytest.mark.parametrize("value", ["1e-1000030", "-1e-1000030"])
+def test_to_minor_never_rounds_a_tiny_nonzero_amount_to_zero(value: str) -> None:
+    with pytest.raises(ValueError, match="Amount has fractional minor units"):
+        to_minor(value, "USD")
+
+
+@pytest.mark.parametrize("value", ["0E+1000000", "-0E-1000030"])
+def test_to_minor_keeps_zero_at_any_exponent(value: str) -> None:
+    assert to_minor(value, "USD") == 0
+
+
 def test_unknown_currency_is_not_assumed_to_have_two_decimals() -> None:
     with pytest.raises(KeyError):
         to_minor("1.23", "XYZ")
@@ -116,3 +133,10 @@ def test_fx_rejects_noninteger_input_and_bigint_overflow() -> None:
     ]:
         with pytest.raises(ValueError, match="Amount exceeds BIGINT range"):
             convert_minor(amount, "USD", "USD", rate, rounding=ROUND_HALF_EVEN)
+
+
+@pytest.mark.parametrize("rate,inverse", [("1e30", False), ("1e-30", True), ("1e1000000", False)])
+def test_fx_rejects_a_result_beyond_the_working_context(rate: str, inverse: bool) -> None:
+    # imp-108: these used to raise decimal.InvalidOperation (quantize) or Overflow (multiply).
+    with pytest.raises(ValueError, match="Amount exceeds BIGINT range"):
+        convert_minor(100, "USD", "USD", Decimal(rate), rounding=ROUND_HALF_EVEN, inverse=inverse)
