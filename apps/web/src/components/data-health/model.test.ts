@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 
 import {
+  activityText,
   attentionCount,
   backupState,
   commitBlocker,
@@ -19,6 +20,7 @@ import {
   skipNote,
   sourceState,
   targetsNote,
+  toMinor,
   utcDays,
   type Gap,
   type HostHealth,
@@ -303,5 +305,40 @@ describe("load more notes", () => {
     expect(targetsNote(50, 260, true)).toBe("Showing 50 of 260 targets");
     expect(targetsNote(260, 260, false)).toBe("Showing all 260 targets");
     expect(targetsNote(250, 240, true)).toBe("Showing 250 of at least 251 targets"); // targets landed after the count
+  });
+});
+
+// imp-161 (DEC-216): the CJ row's four activity states; unknown never shows a number, expired carries a minus.
+describe("activityText", () => {
+  const at = { as_of: ago(24), observed_at: ago(1) };
+  test.each([
+    ["unknown", { state: "unknown", days_remaining: null, as_of: null, observed_at: null }, "No evidence yet"],
+    ["ok", { state: "ok", days_remaining: 22, ...at }, "22 days left"],
+    ["warn", { state: "warn", days_remaining: 1, ...at }, "1 day left"],
+    ["expired today", { state: "expired", days_remaining: 0, ...at }, "Expired · 0 days"],
+    ["expired a while ago", { state: "expired", days_remaining: -15, ...at }, "Expired · −15 days"],
+  ] as const)("%s", (_, activity, text) => {
+    expect(activityText(activity)).toBe(text);
+  });
+});
+
+describe("toMinor", () => {
+  test.each([
+    ["19.99", "USD", 1999],
+    ["20", "USD", 2000],
+    ["0.5", "USD", 50],
+    ["1500", "JPY", 1500],
+    ["1.250", "KWD", 1250],
+    [" 7.10 ", "EUR", 710],
+  ])("%s %s is %d minor units", (amount, currency, minor) => {
+    expect(toMinor(amount, currency)).toBe(minor);
+  });
+
+  test.each([["0"], ["0.00"], ["-1"], ["1.999"], ["1e3"], [""], ["12,50"]])("%s USD is refused", (amount) => {
+    expect(toMinor(amount, "USD")).toBeNull();
+  });
+
+  test("a whole-unit currency refuses decimals", () => {
+    expect(toMinor("15.5", "JPY")).toBeNull();
   });
 });
