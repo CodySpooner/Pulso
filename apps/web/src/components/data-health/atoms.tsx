@@ -17,6 +17,7 @@ import { useRef, useState } from "react";
 
 import { CopyButton, SelectableId } from "@/components/pulso/copy-button";
 import { EmptyState } from "@/components/pulso/empty-state";
+import { OFFLINE_HINT } from "@/components/shell/offline-banner";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { isProblem } from "@/lib/api/client";
@@ -173,7 +174,7 @@ export function PanelError({
   className?: string;
 }) {
   const problem = isProblem(error) ? error : null;
-  const { button, failed, press } = useRetry(retry);
+  const { button, failed, online, press } = useRetry(retry);
   return (
     <EmptyState
       icon={TriangleAlert}
@@ -184,9 +185,19 @@ export function PanelError({
       className={className}
       action={
         <>
-          <Button ref={button} size="sm" variant="primary" onClick={press}>
-            Retry
-          </Button>
+          <TapTooltip hint={online ? null : OFFLINE_HINT} asChild>
+            <Button
+              ref={button}
+              size="sm"
+              variant="primary"
+              // Locked offline with secondary tokens, not opacity, so its focus ring keeps 3:1 (DEC-185, DEC-206).
+              className="aria-disabled:pointer-events-auto aria-disabled:cursor-not-allowed aria-disabled:border-border aria-disabled:bg-secondary aria-disabled:text-subtle-foreground aria-disabled:opacity-100"
+              aria-disabled={!online}
+              onClick={press}
+            >
+              Retry
+            </Button>
+          </TapTooltip>
           {problem && <CopyButton value={problem.request_id} label="Copy error ID" />}
         </>
       }
@@ -231,7 +242,7 @@ export function StaleLine({
 }) {
   const problem = isProblem(error) ? error : null;
   const iso = new Date(asOf).toISOString();
-  const { button, failed, press } = useRetry(retry);
+  const { button, failed, online, press } = useRetry(retry);
   return (
     <div
       role="group"
@@ -258,9 +269,19 @@ export function StaleLine({
         </p>
       )}
       <div className="ml-auto flex gap-2">
-        <Button ref={button} size="sm" variant="secondary" onClick={press}>
-          Retry
-        </Button>
+        <TapTooltip hint={online ? null : OFFLINE_HINT} asChild>
+          <Button
+            ref={button}
+            size="sm"
+            variant="secondary"
+            // Locked offline, dimmed with a token, not opacity, so its focus ring keeps 3:1 (DEC-185, DEC-206).
+            className="aria-disabled:pointer-events-auto aria-disabled:cursor-not-allowed aria-disabled:text-subtle-foreground aria-disabled:opacity-100"
+            aria-disabled={!online}
+            onClick={press}
+          >
+            Retry
+          </Button>
+        </TapTooltip>
         {problem && <CopyButton value={problem.request_id} label="Copy error ID" />}
       </div>
       {/* A pressed Retry that failed again, once (imp-135); the line stays, so its Retry keeps focus. */}

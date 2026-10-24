@@ -1,6 +1,6 @@
-import { expect, test, type BrowserContext, type Locator, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 
-import { mockAdminApi, type Call } from "./fixtures";
+import { mockAdminApi, offlineNetwork, type Call } from "./fixtures";
 
 // imp-134 (aud-014 A14-03): offline, nothing is queued. One banner says so and how old the data is; Refresh, the
 // switches, Run now and Import say why they're unavailable; a disable pressed then cancelled offline, and an
@@ -35,23 +35,6 @@ async function pressOffline(control: Locator, touch: boolean) {
 }
 const noHScroll = (page: Page) => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth);
 
-/** Playwright's routes still answer while the context is offline, so this one fails each call the way an offline
- *  Chromium does, and records it; online calls go on to the fixtures. */
-async function network(page: Page, context: BrowserContext) {
-  const offlineCalls: string[] = [];
-  let offline = false;
-  await page.route("**/api/**", (route) => {
-    if (!offline) return route.fallback();
-    offlineCalls.push(`${route.request().method()} ${new URL(route.request().url()).pathname}`);
-    return route.abort("internetdisconnected");
-  });
-  const setOffline = async (on: boolean) => {
-    offline = on;
-    await context.setOffline(on);
-  };
-  return { offlineCalls, setOffline };
-}
-
 for (const [width, height] of [
   [1440, 900],
   [375, 812],
@@ -62,7 +45,7 @@ for (const [width, height] of [
 
     test("offline: one banner, every write control says why, and nothing is sent on reconnect", async ({ page, context }) => {
       const calls = await mockAdminApi(page, { host: { live_runs_allowed: true } });
-      const { offlineCalls, setOffline } = await network(page, context);
+      const { offlineCalls, setOffline } = await offlineNetwork(page, context);
       await page.goto("/admin/data-health");
       const banner = page.getByRole("status").filter({ hasText: "You're offline." });
       const refresh = page.getByRole("button", { name: "Refresh" });
