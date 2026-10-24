@@ -595,14 +595,20 @@ function ImportButton({ source, onImport }: { source: SourceHealth; onImport: (k
   );
 }
 
+/** `values` while `open`, else the last open ones: a closing dialog keeps its title, body and accessible name
+ *  through its exit animation, until it is hidden and focus returns (imp-165). */
+function useLastOpen<T extends unknown[]>(open: boolean, ...values: T): T {
+  const [shown, setShown] = useState(values);
+  if (open && values.some((v, i) => v !== shown[i])) setShown(values);
+  return open ? values : shown;
+}
+
 function ReasonDialog({
   now,
   returnFocusRef,
-  confirm,
-  pending,
-  failure,
   onCancel,
   onSubmit,
+  ...props
 }: {
   now: number;
   returnFocusRef: React.RefObject<HTMLElement | null>;
@@ -613,12 +619,13 @@ function ReasonDialog({
   onCancel: () => void;
   onSubmit: (reason: string) => void;
 }) {
+  const [confirm, pending, failure] = useLastOpen(props.confirm != null, props.confirm, props.pending, props.failure);
   const reenable = confirm?.mode === "reenable";
   // Re-enabling stays allowed before retry_not_before, and it leaves the deadline as stored: live runs before
   // it are deferred (RunDeferred), so the dialog says so instead of implying the wait is over (imp-094).
   const retryAfter = reenable && confirm.source.retry_not_before && Date.parse(confirm.source.retry_not_before) > now ? confirm.source.retry_not_before : null;
   return (
-    <Dialog open={confirm != null} onOpenChange={(open) => !open && onCancel()}>
+    <Dialog open={props.confirm != null} onOpenChange={(open) => !open && onCancel()}>
       <DialogContent
         onCloseAutoFocus={(e) => {
           e.preventDefault();
@@ -744,11 +751,9 @@ const field = "h-(--input-h) w-full min-w-0 rounded-md border border-input bg-ba
 
 function ActivityDialog({
   returnFocusRef,
-  entering,
-  pending,
-  failure,
   onCancel,
   onSubmit,
+  ...props
 }: {
   returnFocusRef: React.RefObject<HTMLElement | null>;
   entering: Entering | null;
@@ -758,8 +763,9 @@ function ActivityDialog({
   onCancel: () => void;
   onSubmit: (body: ActivityBody) => void;
 }) {
+  const [entering, pending, failure] = useLastOpen(props.entering != null, props.entering, props.pending, props.failure);
   return (
-    <Dialog open={entering != null} onOpenChange={(open) => !open && onCancel()}>
+    <Dialog open={props.entering != null} onOpenChange={(open) => !open && onCancel()}>
       <DialogContent
         onCloseAutoFocus={(e) => {
           e.preventDefault();
