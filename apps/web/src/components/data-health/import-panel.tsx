@@ -7,7 +7,7 @@ import { ChevronDown, CircleCheck, CircleDashed, CircleX, Download, FileSpreadsh
 
 import { CopyButton } from "@/components/pulso/copy-button";
 import { EmptyState } from "@/components/pulso/empty-state";
-import { OFFLINE_HINT, useOnline } from "@/components/shell/offline-banner";
+import { offlineHint, useOnline } from "@/components/shell/offline-banner";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { $api, isProblem } from "@/lib/api/client";
@@ -243,7 +243,7 @@ export function ImportPanel({ onOpen, ref }: { onOpen: (key: string) => void; re
               if (chosen) check(chosen, source.key);
             }}
           />
-          <TapTooltip hint={online ? null : OFFLINE_HINT} asChild>
+          <TapTooltip hint={online ? null : offlineHint(`${file ? "choose another" : "choose a"} CSV for ${source.name}`)} asChild>
             <Button
               ref={choose}
               variant="secondary"
@@ -278,7 +278,7 @@ export function ImportPanel({ onOpen, ref }: { onOpen: (key: string) => void; re
           {preview.data && file && (
             <PreviewResult
               preview={preview.data}
-              blocker={blocker ?? (online ? null : OFFLINE_HINT)}
+              blocker={blocker ?? (online ? null : offlineHint(`import ${rowCount(preview.data.valid)} into ${source.name}`))}
               blockerId={`${ids}-blocker`}
               blockerShown={source.csv_import !== "ready"}
               pending={commit.isPending}
@@ -360,7 +360,7 @@ function PreviewResult({
           aria-describedby={blocker ? blockerId : undefined}
           onClick={() => !unavailable && onImport()}
         >
-          {pending ? "Importing…" : `Import ${preview.valid.toLocaleString("en-US")} ${preview.valid === 1 ? "row" : "rows"}`}
+          {pending ? "Importing…" : `Import ${rowCount(preview.valid)}`}
         </Button>
       </div>
       {blocker && !blockerShown && (
@@ -468,6 +468,9 @@ function fileSize(bytes: number): string {
   const kb = bytes / 1024;
   return kb < 1024 ? `${kb.toFixed(1)} KB` : `${(kb / 1024).toFixed(1)} MB`;
 }
+
+/** "1 row", "1,240 rows": the Import button's words, and its offline reason's. */
+const rowCount = (n: number) => `${n.toLocaleString("en-US")} ${n === 1 ? "row" : "rows"}`;
 
 const TOO_BIG = "This file is over 20 MB. Split it into smaller files and import each.";
 // The next step matches PanelError's API-down copy; a retried import is safe because the same bytes are skipped.

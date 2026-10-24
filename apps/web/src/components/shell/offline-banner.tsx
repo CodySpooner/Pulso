@@ -6,8 +6,9 @@ import { WifiOff } from "lucide-react";
 
 import { formatUtc } from "@/lib/format";
 
-/** Why a control that sends a request is unavailable while the browser is offline (imp-134). */
-export const OFFLINE_HINT = "You're offline. Reconnect to use this.";
+/** Why a control that sends a request is unavailable while the browser is offline (imp-134), naming what it does:
+ *  `action` is its visible label's verb, plus the source it acts on, if one (imp-154, DEC-235 a). */
+export const offlineHint = (action: string) => `You're offline. Reconnect to ${action}.`;
 
 /** TanStack's own online state (the window's online/offline events), so the UI agrees with its paused queries. */
 export function useOnline(): boolean {
