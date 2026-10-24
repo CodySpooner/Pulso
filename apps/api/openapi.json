@@ -6,6 +6,7 @@
         "description": "The owner's latest positive CJ transaction; Evidence's checks apply (DEC-216).",
         "properties": {
           "amount_minor": {
+            "exclusiveMaximum": 9.223372036854776e+18,
             "exclusiveMinimum": 0.0,
             "title": "Amount Minor",
             "type": "integer"
