@@ -1625,3 +1625,13 @@ Superseded review defaults, not given entries: default #0 (move the repo) is don
   - **(e)** `TapTooltip` is inert without a hint, so a control whose reason comes and goes stays the same element and keeps keyboard focus when the connection drops.
 - **Alternatives:** every control fails at once (each press costs a round trip to learn the cause, and the transport copy blames the API or the PC); queries `"always"` too (the 5-minute refetch would put a stale line blaming the API on screen every 5 minutes offline); a `navigator.onLine` hook of our own (it can disagree with TanStack's pausing, which starts online and follows the window events); removing the paused mutation on Cancel (keeps the queue, and every other dialog would need the same); a service worker (none in v1, vault UI States).
 - **Why:** nothing pressed offline is ever sent later (1 → 0 in the e2e), every offline state says why (0/3 → 3/3), and the owner learns it is offline without pressing anything. Web only.
+
+### DEC-209 · Logging: every logger sits under `pulso`; the JSON allowlist grows one named key at a time
+**2026-10-24 · proposed (imp-110)** · aud-013 F-16; SPEC §12 (structured JSON logs); vault Data/Sources/Source - CJ Dropshipping; changes no API, schema or dependency
+- **Cause:** `configure_logging` attaches the JSON handler to the `pulso` logger only, with `propagate` off, and `JsonFormatter` copies only named `extra` keys. The CJ logger was `getLogger(__name__)`, which is `pulso_sources.cj`, outside that tree. So `cj_points_projection` printed through a root handler without its number, or printed nothing with no root handler (aud-013 F-16).
+- **Decision:**
+  - **(a)** Loggers are named under `pulso.` explicitly (`pulso.sources.cj`), never `__name__`: our package names (`pulso_core`, `pulso_sources`, …) are not under `pulso`.
+  - **(b)** `JsonFormatter` keeps its explicit allowlist of `extra` keys as the redaction boundary. A key is added only together with a call site that passes it; this adds `source` and `projected_points`.
+  - **(c)** `collection_failed` drops `run_id`. `collect_run` sets `job_id` to the same id for its whole body, so the line already carries it.
+- **Alternatives:** attach the handler to the root logger (third-party lines join the JSON stream, and a Celery worker replaces root handlers by default); copy every non-standard record attribute (any `extra` holding a body or a key would reach the logs); add `run_id` to the allowlist (duplicates `job_id`).
+- **Why:** the projection is the check on CJ's daily points and must be visible before CJ joins the worker plans. `extra=` call sites that lose keys: 2/11 → 0/11.

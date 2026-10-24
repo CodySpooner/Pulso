@@ -43,7 +43,7 @@ from pulso_sources.framework.lifecycle import BLOCK_STATUSES, _retry_after
 if TYPE_CHECKING:
     from pulso_sources.cj.tracked import TrackedAdapter
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("pulso.sources.cj")  # under configure_logging's "pulso" tree
 Identifier = Annotated[str, Field(min_length=1, max_length=200)]
 
 
