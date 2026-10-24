@@ -71,18 +71,20 @@ export const sourceStates: Record<SourceState, { label: string; icon: LucideIcon
 };
 
 /** A hint on hover, keyboard focus and tap (imp-073); the other props go to its trigger. The hint is
- * click-through, so an open one never covers a control. */
+ * click-through, so an open one never covers a control. Without a hint it is inert, so a control whose reason
+ * comes and goes (offline, imp-134) stays the same element and keeps focus. */
 export function TapTooltip({ hint, ...trigger }: React.ComponentProps<typeof TooltipTrigger> & { hint: React.ReactNode }) {
   const [open, setOpen] = useState(false);
   const pressedOpen = useRef<boolean | null>(null); // Radix closes on pointerdown, so the click needs the state before it
   return (
-    <Tooltip open={open} onOpenChange={setOpen}>
+    <Tooltip open={open && !!hint} onOpenChange={(next) => setOpen(next && !!hint)}>
       <TooltipTrigger
         {...trigger}
         onPointerDown={() => {
           pressedOpen.current = open;
         }}
         onClick={(e) => {
+          if (!hint) return; // the click is the control's own
           e.preventDefault(); // Radix closes on click; a tap, click or Enter toggles instead
           setOpen(!(pressedOpen.current ?? open));
           pressedOpen.current = null;

@@ -6,13 +6,14 @@ import { ChevronDown, CircleCheck, CircleDashed, CircleX, Download, FileSpreadsh
 
 import { CopyButton } from "@/components/pulso/copy-button";
 import { EmptyState } from "@/components/pulso/empty-state";
+import { OFFLINE_HINT, useOnline } from "@/components/shell/offline-banner";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { $api, isProblem } from "@/lib/api/client";
 import { cn } from "@/lib/utils";
 
 import { fileUpload, useRefreshAdmin, useSources } from "./api";
-import { Missing, Panel, PanelError, Pill } from "./atoms";
+import { Missing, Panel, PanelError, Pill, TapTooltip } from "./atoms";
 import { IMPORT_MAX_BYTES, commitBlocker, defaultImportSource, importOutcome, previewSummary, sampleColumns, sampleNote, type ImportPreview } from "./model";
 
 // CSV import (P1-11b, vault Features/CSV Export & Import): choose or drop a file, it is checked at once
@@ -40,6 +41,8 @@ export function ImportPanel({ onOpen, ref }: { onOpen: (key: string) => void; re
   const switchButton = useRef<HTMLButtonElement>(null);
   const openRuns = useRef<HTMLButtonElement>(null);
   const ids = useId();
+  // Offline nothing new is sent (imp-134): Choose CSV… and a drop wait, and Import says why.
+  const online = useOnline();
   useTakeLostFocus(openRuns, commit.data);
 
   const importable = sources.data?.filter((s) => s.csv_import != null) ?? [];
@@ -191,7 +194,7 @@ export function ImportPanel({ onOpen, ref }: { onOpen: (key: string) => void; re
         <div
           onDragOver={(e) => {
             e.preventDefault(); // even while importing: a file dropped outside a drop target opens in the tab
-            if (commit.isPending) e.dataTransfer.dropEffect = "none";
+            if (commit.isPending || !online) e.dataTransfer.dropEffect = "none";
             else setDragging(true);
           }}
           onDragLeave={() => setDragging(false)}
@@ -199,7 +202,7 @@ export function ImportPanel({ onOpen, ref }: { onOpen: (key: string) => void; re
             e.preventDefault();
             setDragging(false);
             const dropped = e.dataTransfer.files[0];
-            if (dropped) check(dropped, source.key);
+            if (dropped && online) check(dropped, source.key);
           }}
           className={cn(
             "flex flex-col items-center gap-3 rounded-lg border border-dashed border-border-strong px-5 py-4 text-center transition-transform duration-(--duration-fast) ease-standard sm:flex-row sm:text-left",
@@ -228,17 +231,19 @@ export function ImportPanel({ onOpen, ref }: { onOpen: (key: string) => void; re
               if (chosen) check(chosen, source.key);
             }}
           />
-          <Button
-            ref={choose}
-            variant="secondary"
-            size="sm"
-            // Locked like the Import button, but dimmed with a token, not opacity, so its focus ring keeps 3:1.
-            className="sm:ml-auto aria-disabled:pointer-events-auto aria-disabled:cursor-not-allowed aria-disabled:text-subtle-foreground aria-disabled:opacity-100"
-            aria-disabled={commit.isPending}
-            onClick={() => !commit.isPending && input.current?.click()}
-          >
-            {file ? "Choose another…" : "Choose CSV…"}
-          </Button>
+          <TapTooltip hint={online ? null : OFFLINE_HINT} asChild>
+            <Button
+              ref={choose}
+              variant="secondary"
+              size="sm"
+              // Locked like the Import button, but dimmed with a token, not opacity, so its focus ring keeps 3:1.
+              className="sm:ml-auto aria-disabled:pointer-events-auto aria-disabled:cursor-not-allowed aria-disabled:text-subtle-foreground aria-disabled:opacity-100"
+              aria-disabled={commit.isPending || !online}
+              onClick={() => !commit.isPending && online && input.current?.click()}
+            >
+              {file ? "Choose another…" : "Choose CSV…"}
+            </Button>
+          </TapTooltip>
         </div>
 
         <p role="status" className="sr-only">
@@ -261,7 +266,7 @@ export function ImportPanel({ onOpen, ref }: { onOpen: (key: string) => void; re
           {preview.data && file && (
             <PreviewResult
               preview={preview.data}
-              blocker={blocker ?? null}
+              blocker={blocker ?? (online ? null : OFFLINE_HINT)}
               blockerId={`${ids}-blocker`}
               blockerShown={source.csv_import !== "ready"}
               pending={commit.isPending}

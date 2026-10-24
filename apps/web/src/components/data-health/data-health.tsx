@@ -4,12 +4,13 @@ import { useRef, useState } from "react";
 import { RotateCw } from "lucide-react";
 
 import { PageHeader } from "@/components/pulso/page-header";
+import { OFFLINE_HINT, useOnline } from "@/components/shell/offline-banner";
 import { Button } from "@/components/ui/button";
 import { formatAgo, formatUtc } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 import { useCoreDown, useHost, useRefreshAdmin, useSources } from "./api";
-import { PanelError, StaleLine } from "./atoms";
+import { PanelError, StaleLine, TapTooltip } from "./atoms";
 import { CoveragePanel } from "./coverage";
 import { ImportPanel, type ImportPanelHandle } from "./import-panel";
 import { hostState } from "./model";
@@ -32,6 +33,8 @@ export function DataHealth() {
   const importPanel = useRef<ImportPanelHandle>(null);
   const now = Math.max(sources.dataUpdatedAt, host.dataUpdatedAt);
   const fetching = sources.isFetching || host.isFetching;
+  // Offline a refetch would only pause until reconnect, so Refresh says why instead (imp-134).
+  const online = useOnline();
 
   const header = (
     <PageHeader
@@ -48,10 +51,17 @@ export function DataHealth() {
         )
       }
       actions={
-        <Button variant="secondary" onClick={() => void refresh()} aria-disabled={fetching} className="aria-disabled:pointer-events-auto">
-          <RotateCw className={cn(fetching && "motion-safe:animate-spin")} aria-hidden />
-          {fetching ? "Refreshing…" : "Refresh"}
-        </Button>
+        <TapTooltip hint={online ? null : OFFLINE_HINT} asChild>
+          <Button
+            variant="secondary"
+            onClick={() => online && void refresh()}
+            aria-disabled={fetching || !online}
+            className="aria-disabled:pointer-events-auto aria-disabled:cursor-not-allowed"
+          >
+            <RotateCw className={cn(fetching && "motion-safe:animate-spin")} aria-hidden />
+            {fetching ? "Refreshing…" : "Refresh"}
+          </Button>
+        </TapTooltip>
       }
     />
   );
