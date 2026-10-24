@@ -2,6 +2,7 @@
 
 import { useId, useImperativeHandle, useRef, useState } from "react";
 import { flushSync } from "react-dom";
+import { onlineManager } from "@tanstack/react-query";
 import { ChevronDown, CircleCheck, CircleDashed, CircleX, Download, FileSpreadsheet, History, TriangleAlert, Upload } from "lucide-react";
 
 import { CopyButton } from "@/components/pulso/copy-button";
@@ -28,8 +29,12 @@ export interface ImportPanelHandle {
 export function ImportPanel({ onOpen, ref }: { onOpen: (key: string) => void; ref?: React.Ref<ImportPanelHandle> }) {
   const sources = useSources();
   const refresh = useRefreshAdmin();
-  const preview = $api.useMutation("post", "/v1/admin/sources/{key}/import/preview");
-  const commit = $api.useMutation("post", "/v1/admin/sources/{key}/import");
+  // Whether the browser was offline when the check or import failed (imp-153), read at failure as actionFailure
+  // does, so the line names the connection, not the API, and keeps that cause after reconnecting.
+  const [failedOffline, setFailedOffline] = useState(false);
+  const onError = () => setFailedOffline(!onlineManager.isOnline());
+  const preview = $api.useMutation("post", "/v1/admin/sources/{key}/import/preview", { onError });
+  const commit = $api.useMutation("post", "/v1/admin/sources/{key}/import", { onError });
   const [picked, setPicked] = useState<string | null>(null);
   const [file, setFile] = useState<File | null>(null);
   const [tooBig, setTooBig] = useState(false);
@@ -113,13 +118,15 @@ export function ImportPanel({ onOpen, ref }: { onOpen: (key: string) => void; re
   } else {
     const blocker = preview.data && commitBlocker(source, preview.data);
     const outcome = commit.data && importOutcome(commit.data, source.name);
-    const failed = preview.isError && file ? failure(preview.error, CHECK_FAILED) : commit.isError ? failure(commit.error, IMPORT_FAILED) : null;
+    const checkFailed = failedOffline ? CHECK_OFFLINE : CHECK_FAILED;
+    const importFailed = failedOffline ? IMPORT_OFFLINE : IMPORT_FAILED;
+    const failed = preview.isError && file ? failure(preview.error, checkFailed) : commit.isError ? failure(commit.error, importFailed) : null;
     // One short announcement per step, in one region only: failures are assertive, progress and results
     // polite (aud-004 C2-01). A failure empties the status, so a stale preview summary is never re-read.
     const alert = tooBig
       ? TOO_BIG
       : failed
-        ? `${failed.text}${failed.retry ? " Select Retry to try again." : ""}`
+        ? `${failed.text}${failed.retry && !failedOffline ? " Select Retry to try again." : ""}` // the offline copy names Retry
         : outcome?.tone === "error"
           ? outcome.text
           : "";
@@ -262,7 +269,7 @@ export function ImportPanel({ onOpen, ref }: { onOpen: (key: string) => void; re
             </>
           )}
           {preview.isError && file && (
-            <ErrorLine error={preview.error} retry={() => check(file, source.key)} fallback={CHECK_FAILED} />
+            <ErrorLine error={preview.error} retry={() => check(file, source.key)} fallback={checkFailed} />
           )}
           {preview.data && file && (
             <PreviewResult
@@ -274,7 +281,7 @@ export function ImportPanel({ onOpen, ref }: { onOpen: (key: string) => void; re
               onImport={importFile}
             />
           )}
-          {commit.isError && <ErrorLine error={commit.error} retry={importFile} fallback={IMPORT_FAILED} />}
+          {commit.isError && <ErrorLine error={commit.error} retry={importFile} fallback={importFailed} />}
           {/* Last, in reading and Tab order: row errors and a failed import's Retry are what to act on (DEC-174). */}
           {preview.data && file && preview.data.rows.length > 0 && <RowSample preview={preview.data} />}
           {outcome && (
@@ -462,6 +469,9 @@ const TOO_BIG = "This file is over 20 MB. Split it into smaller files and import
 // The next step matches PanelError's API-down copy; a retried import is safe because the same bytes are skipped.
 const CHECK_FAILED = "The API didn't answer while checking the file. When it runs on your PC, check that the PC is on.";
 const IMPORT_FAILED = "The API didn't answer while importing. When it runs on your PC, check that the PC is on; a retry never imports the same file twice.";
+// Failed while the browser was offline (imp-153): the connection, not the API, and the same next step.
+const CHECK_OFFLINE = "You're offline. Retry once you reconnect.";
+const IMPORT_OFFLINE = "You're offline. Retry once you reconnect; a retry never imports the same file twice.";
 
 /** A failed request in words. A 422 is about the file itself: retrying the same bytes can't help. */
 function failure(error: unknown, fallback: string) {

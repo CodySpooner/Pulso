@@ -69,9 +69,13 @@ export function useRetryScope(restored: React.RefObject<HTMLElement | null>): Sc
   return scope;
 }
 
-/** A Retry button that reports to its scope. `failed` holds from a failure its scope reports until the next press. */
+/**
+ * A Retry button that reports to its scope. `failed` holds from a failure its scope reports until the next press.
+ * Offline it is locked like Refresh (imp-157, DEC-220): a press only shows why, and the reconnect refetch is TanStack's.
+ */
 export function useRetry(retry: () => void) {
   const scope = useContext(RetryScope);
+  const online = useOnline();
   const [failed, setFailed] = useState(false);
   const button = useRef<HTMLButtonElement>(null);
   const [surface] = useState<Surface>(() => ({ button, fail: () => setFailed(true) }));
@@ -79,11 +83,12 @@ export function useRetry(retry: () => void) {
   useEffect(() => scope?.show(surface), [scope, surface]);
   useTakeLostFocus(button, failed); // a Retry that failed again comes back focused
   const press = () => {
+    if (!online) return;
     setFailed(false); // so a repeat failure is announced again
     scope?.press(surface);
     retry();
   };
-  return { button, failed, press };
+  return { button, failed, online, press };
 }
 
 /**
