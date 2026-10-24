@@ -222,6 +222,18 @@ export function PanelError({
 
 const API_DOWN = "The Pulso API didn't answer. When it runs on your PC, this also means the PC is off.";
 
+/** What a panel lacks while another panel's call has failed (imp-139): one muted line, never a second error. That
+ *  panel keeps the error, Retry and error ID, and its Retry restores this too. Not a live region: refetches stay
+ *  silent. Set like the Open gaps line that waits on the host card (imp-158). */
+export function WaitsLine({ lead, children, className }: { lead: string; children: React.ReactNode; className?: string }) {
+  return (
+    <p className={cn("text-data text-muted-foreground", className)}>
+      <CircleHelp aria-hidden className="mr-1.5 inline size-3.5 align-[-2px] text-subtle-foreground" />
+      <span className="font-medium text-foreground">{lead}</span> {children}
+    </p>
+  );
+}
+
 /** A refetch failed while the last data stays on screen (imp-132): what failed, why, how old the data is, Retry
  *  and Copy error ID, in the import panel's error-line layout. A strip under a panel header, or `boxed` inside
  *  padded content. Overlays stack on real data and never replace it (vault Design/UI States). */
