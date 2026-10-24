@@ -3,7 +3,7 @@ import { expect, test, type Page } from "@playwright/test";
 import { activity, mockAdminApi, withActivity } from "./fixtures";
 
 // imp-161 (DEC-216): the CJ row counts down CJ's 30-day inactivity rule (1600014) from the owner's latest order,
-// in words with an icon, and a new order is two clicks away: Add order (or Update), then Save order.
+// in words with an icon, and a new order is two clicks away: Add order (or Update order), then Save order.
 const cjRow = (page: Page) => page.getByRole("region", { name: "Sources table" }).getByRole("row", { name: /CJ Dropshipping/ });
 
 for (const [state, days, text, asOf] of [
@@ -52,13 +52,13 @@ test("round trip: no evidence yet, then Add order and Save order count down from
   await expect(page.getByRole("status").filter({ hasText: "Order saved" })).toHaveText("Order saved. CJ Dropshipping activity: 28 days left.");
   await expect(row.getByRole("button", { name: "28 days left" })).toBeVisible();
   await expect(row.getByText("Last order Oct 20")).toBeVisible();
-  await expect(row.getByRole("button", { name: "Update CJ activity" })).toBeFocused(); // focus returns to the row
+  await expect(row.getByRole("button", { name: "Update order for CJ activity" })).toBeFocused(); // focus returns to the row
 });
 
 test("the form refuses a future time and a zero amount before sending; Escape sends nothing", async ({ page }) => {
   const calls = await mockAdminApi(page, { sources: withActivity(activity("ok", 22)) });
   await page.goto("/admin/data-health");
-  await cjRow(page).getByRole("button", { name: "Update CJ activity" }).click();
+  await cjRow(page).getByRole("button", { name: "Update order for CJ activity" }).click();
   const dialog = page.getByRole("dialog", { name: "Latest CJ order" });
   const at = dialog.getByLabel("Order date and time (UTC)");
   await at.fill("2026-10-22T15:00"); // an hour after the pinned clock
@@ -70,7 +70,7 @@ test("the form refuses a future time and a zero amount before sending; Escape se
   expect(await dialog.getByLabel("Amount").evaluate((el: HTMLInputElement) => el.validity.valid)).toBe(false);
   await page.keyboard.press("Escape");
   await expect(dialog).toBeHidden();
-  await expect(cjRow(page).getByRole("button", { name: "Update CJ activity" })).toBeFocused();
+  await expect(cjRow(page).getByRole("button", { name: "Update order for CJ activity" })).toBeFocused();
   expect(calls.filter((c) => c.method === "PUT")).toEqual([]);
 });
 
@@ -80,6 +80,6 @@ test("phone: the CJ card lists its activity without page overflow", async ({ pag
   await page.goto("/admin/data-health");
   const card = page.getByRole("listitem").filter({ has: page.getByRole("button", { name: "CJ Dropshipping: open runs" }) });
   await expect(card.getByRole("button", { name: "5 days left" })).toBeVisible();
-  await expect(card.getByRole("button", { name: "Update CJ activity" })).toBeVisible();
+  await expect(card.getByRole("button", { name: "Update order for CJ activity" })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(375);
 });

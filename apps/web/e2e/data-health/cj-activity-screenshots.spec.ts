@@ -26,7 +26,7 @@ for (const theme of ["dark", "light"] as const) {
         await page.addInitScript((t) => localStorage.setItem("theme", t), theme);
         await page.goto("/admin/data-health");
         const panel = page.getByRole("region", { name: "Sources", exact: true });
-        const edit = panel.getByRole("button", { name: /^(Update|Add order for) CJ activity$/ }).locator("visible=true");
+        const edit = panel.getByRole("button", { name: /^(Update order|Add order) for CJ activity$/ }).locator("visible=true");
         await expect(edit).toBeVisible();
         await page.evaluate(() => document.fonts.ready);
         await panel.screenshot({ path: `${OUT}/${name}-${width}-${theme}.png` });

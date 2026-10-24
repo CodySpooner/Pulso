@@ -729,10 +729,10 @@ function Activity({ activity, label, onEdit }: { activity: CJActivity; label?: b
         <button
           type="button"
           onClick={onEdit}
-          aria-label={activity.as_of ? "Update CJ activity" : "Add order for CJ activity"}
+          aria-label={`${activity.as_of ? "Update order" : "Add order"} for CJ activity`}
           className="relative hit-area rounded-sm font-medium text-foreground underline decoration-border-strong underline-offset-2 hover:decoration-current"
         >
-          {activity.as_of ? "Update" : "Add order"}
+          {activity.as_of ? "Update order" : "Add order"}
         </button>
       </span>
     </span>
