@@ -76,10 +76,20 @@ export const sourceStates: Record<SourceState, { label: string; icon: LucideIcon
 export function TapTooltip({ hint, ...trigger }: React.ComponentProps<typeof TooltipTrigger> & { hint: React.ReactNode }) {
   const [open, setOpen] = useState(false);
   const pressedOpen = useRef<boolean | null>(null); // Radix closes on pointerdown, so the click needs the state before it
+  const triggerRef = useRef<HTMLButtonElement>(null);
   return (
-    <Tooltip open={open && !!hint} onOpenChange={(next) => setOpen(next && !!hint)}>
+    <Tooltip
+      open={open && !!hint}
+      onOpenChange={(next) => {
+        // Radix closes on any scroll of the trigger's ancestors, including the one focusing an off-screen trigger
+        // causes, so a reason shown on focus stays while its trigger keeps focus (imp-156, DEC-213).
+        if (!next && window.event?.type === "scroll" && document.activeElement === triggerRef.current) return;
+        setOpen(next && !!hint);
+      }}
+    >
       <TooltipTrigger
         {...trigger}
+        ref={triggerRef}
         onPointerDown={() => {
           pressedOpen.current = open;
         }}
@@ -90,7 +100,10 @@ export function TapTooltip({ hint, ...trigger }: React.ComponentProps<typeof Too
           pressedOpen.current = null;
         }}
       />
-      <TooltipContent className="pointer-events-none">{hint}</TooltipContent>
+      {/* Hidden while its trigger is scrolled out of view, so a reason kept open never floats over the top bar. */}
+      <TooltipContent hideWhenDetached className="pointer-events-none">
+        {hint}
+      </TooltipContent>
     </Tooltip>
   );
 }
