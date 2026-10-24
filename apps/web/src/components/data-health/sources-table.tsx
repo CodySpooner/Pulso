@@ -19,6 +19,7 @@ import { cn } from "@/lib/utils";
 import { useCoreDown, useHost, useRefreshAdmin, useSources } from "./api";
 import { Ago, Missing, Panel, PanelError, StaleLine, StatePill, TapTooltip } from "./atoms";
 import { GapsLink } from "./coverage";
+import { HostRetryLink } from "./summary-cards";
 import {
   activityText,
   attentionCount,
@@ -459,11 +460,11 @@ function StatusNote({ source, state, missed, className }: { source: SourceHealth
   const reason = [
     source.disabled_reason,
     state === "skipped" && source.last_run && skipNote(source.last_run),
-    state === "unknown" && "Gap check didn't load", // short enough for the table's truncated note; the hint says the rest
   ]
     .filter(Boolean)
     .join(" · ");
-  if (!reason && !source.retry_not_before && !missed) return null;
+  const unknown = state === "unknown";
+  if (!reason && !unknown && !source.retry_not_before && !missed) return null;
   // The table (md and up) truncates the reason; the phone card wraps it. The deadline line is never cut (imp-094).
   return (
     <span className={cn("flex flex-col text-label text-muted-foreground", className)}>
@@ -471,6 +472,12 @@ function StatusNote({ source, state, missed, className }: { source: SourceHealth
         <span title={reason} className="md:max-w-48 md:truncate">
           {reason}
         </span>
+      )}
+      {/* Short enough for the table's note, and a link to the host card's Retry; the pill's hint says the rest (imp-159). */}
+      {unknown && (
+        <HostRetryLink className="w-fit md:pointer-coarse:mt-4">
+          Gap check didn&apos;t load<span className="sr-only"> (retry on the Collector host card)</span>
+        </HostRetryLink>
       )}
       {source.retry_not_before && <span className="whitespace-nowrap">Retry after {formatUtc(source.retry_not_before)}</span>}
       {/* Never truncated: the slot and reason are the why (imp-124). The slot sizes its column: a same-day slot is

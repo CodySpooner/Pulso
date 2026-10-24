@@ -1,6 +1,6 @@
 "use client";
 
-import { CircleCheck, CircleDashed, CircleX, Clock, LoaderCircle, type LucideIcon } from "lucide-react";
+import { ArrowUp, CircleCheck, CircleDashed, CircleX, Clock, LoaderCircle, type LucideIcon } from "lucide-react";
 
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatDuration, formatUtc } from "@/lib/format";
@@ -109,6 +109,9 @@ export function HostCard({ now }: { now: number }) {
               <span title={HOST_API} className="text-muted-foreground">
                 None
               </span>
+            ) : sources.isPending ? (
+              // The line names its source, so it waits for the names rather than read a key and rewrap (imp-152).
+              <Skeleton className="h-4.5 w-full max-sm:h-9" />
             ) : (
               <span title={HOST_API}>
                 <span className="tabular-nums">{host.data.next_cursor ? "At least " : ""}{host.data.open_gaps.length}</span> {host.data.open_gaps.length === 1 ? "missed slot" : "missed slots"} · latest {nameOf(gaps[0].source_key)},{" "}
@@ -122,6 +125,28 @@ export function HostCard({ now }: { now: number }) {
         </Facts>
       )}
     </Panel>
+  );
+}
+
+/**
+ * An in-page link from a line that waits on the host call (imp-159): following it focuses the Collector host card's
+ * Retry, and focus brings it into view. It renders only while that call has failed, so the Retry is there.
+ */
+export function HostRetryLink({ children, className }: { children: React.ReactNode; className?: string }) {
+  return (
+    <a
+      href="#host-title"
+      onClick={(e) => {
+        // As GapsLink: focus scrolls only as far as needed, where a fragment jump would also shift the shell at lg.
+        e.preventDefault();
+        const card = document.getElementById("host-title")?.closest("section");
+        [...(card?.querySelectorAll("button") ?? [])].find((b) => b.textContent === "Retry")?.focus();
+      }}
+      className={cn("relative hit-area rounded-sm whitespace-nowrap underline decoration-border-strong underline-offset-2 hover:decoration-current", className)}
+    >
+      {children}
+      <ArrowUp aria-hidden className="ml-0.5 inline size-3 align-[-2px]" />
+    </a>
   );
 }
 

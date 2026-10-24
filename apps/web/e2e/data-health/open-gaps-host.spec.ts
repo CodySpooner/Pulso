@@ -4,10 +4,11 @@ import { mockAdminApi, problem } from "./fixtures";
 
 // imp-145 + imp-146: Open gaps come from GET /host alone. With the coverage call failed they still render, so the
 // Overdue links (imp-124) land on their heading; with the host call failed one line says the gap check didn't
-// load and names the next step (DEC-196), never an empty list or "no gaps".
+// load and names the next step (DEC-196), never an empty list or "no gaps". imp-158 + imp-159: that line starts
+// with the section's label, and its "Collector host card" link focuses the card's Retry in 1 click or Enter.
 
 const LINK = "Missed Oct 22, 10:00–12:00 UTC Host offline (in Open gaps)";
-const UNAVAILABLE = "Gap check didn't load, so open gaps can't be listed. Retry on the Collector host card.";
+const UNAVAILABLE = "Open gaps · Gap check didn't load. Retry on the Collector host card.";
 
 /** Every admin call answers from the fixtures except `failing`, which answers 503. */
 async function load(page: Page, width: number, failing: "host" | "coverage") {
@@ -37,12 +38,36 @@ for (const width of [1440, 375]) {
     const line = panel.locator("p", { hasText: "Gap check didn't load" });
     await expect(line).toHaveCount(1);
     await expect(line).toHaveText(UNAVAILABLE);
+    expect(await line.evaluate((el) => el.textContent!.startsWith("Open gaps"))).toBe(true); // label first
     await expect(line).toBeVisible();
     await expect(panel.getByRole("region", { name: "Open gaps" })).toHaveCount(0);
     await expect(page.locator("#open-gaps")).toHaveCount(0);
     await expect(panel).not.toContainText("No open gaps");
     expect(await pageScroll(page)).toBe(0);
   });
+
+  for (const how of ["pointer", "keyboard"] as const) {
+    test(`host 503 at ${width}px: the line's link focuses the host card's Retry in one ${how === "pointer" ? "click" : "Enter"}`, async ({ page }) => {
+      await load(page, width, "host");
+      const link = coverage(page).getByRole("link", { name: "Collector host card" });
+      const retry = page.getByRole("region", { name: "Collector host" }).getByRole("button", { name: "Retry" });
+      await link.scrollIntoViewIfNeeded();
+      await expect(retry).not.toBeInViewport(); // the card sits far above the line
+      if (how === "pointer") await link.click();
+      else {
+        await link.focus();
+        await page.keyboard.press("Enter");
+      }
+      await expect(retry).toBeFocused();
+      await expect(retry).toBeInViewport({ ratio: 1 });
+      if (width < 1024) {
+        // Clear of the phone's sticky top bar.
+        const bar = (await page.getByRole("banner").boundingBox())!;
+        expect((await retry.boundingBox())!.y).toBeGreaterThanOrEqual(bar.y + bar.height);
+      }
+      expect(await pageScroll(page)).toBe(0);
+    });
+  }
 
   test(`coverage 503 at ${width}px: Open gaps stay, and the row and drawer links land on their heading`, async ({ page }) => {
     await load(page, width, "coverage");

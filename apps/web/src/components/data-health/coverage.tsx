@@ -12,6 +12,7 @@ import { useCoreDown, useCoverage, useHost, useOlderGaps, useSources } from "./a
 import { Panel, PanelError, StaleLine } from "./atoms";
 import { LoadMore } from "./load-more";
 import { coverageRows, gapReasons, gapsNote, mergeGaps, openGapsView, plural, utcDays, type CoverageDay, type MissedSlot } from "./model";
+import { HostRetryLink } from "./summary-cards";
 
 export const COVERAGE_DAYS = 90;
 /** Phones show the most recent month; the cells before it are hidden below md. */
@@ -131,9 +132,9 @@ export function CoveragePanel({ now }: { now: number }) {
         </div>
       )}
       {/* Open gaps read only the host call, so a loading, failed or empty coverage call never hides them, nor the
-          Overdue links' target (imp-146). Without source names they read keys. */}
+          Overdue links' target (imp-146). They wait for the source names (imp-152); if sources fails they read keys. */}
       <div className="px-4 pb-4">
-        <OpenGaps names={new Map(sources.data?.map((s) => [s.key, s.name]))} host={host} />
+        <OpenGaps names={sources.isPending ? null : new Map(sources.data?.map((s) => [s.key, s.name]))} host={host} />
       </div>
     </Panel>
   );
@@ -177,7 +178,7 @@ export function GapsLink({ missed, onFollow }: { missed: MissedSlot; onFollow?: 
   );
 }
 
-function OpenGaps({ names, host }: { names: Map<string, string>; host: ReturnType<typeof useHost> }) {
+function OpenGaps({ names, host }: { names: Map<string, string> | null; host: ReturnType<typeof useHost> }) {
   const older = useOlderGaps(host.data?.next_cursor ?? null);
   // Ranges merge across pages, so a range cut by a page boundary reads as one (DEC-166).
   const gaps = host.data ? [host.data.open_gaps, ...older.pages.map((p) => p.open_gaps)].flat() : [];
@@ -185,7 +186,7 @@ function OpenGaps({ names, host }: { names: Map<string, string>; host: ReturnTyp
   const shown = older.on ? ranges : ranges.slice(0, SHOWN_GAPS);
   const hidden = ranges.length - shown.length;
   const view = openGapsView(host, ranges.length);
-  if (view === "loading") {
+  if (view === "loading" || (view === "ranges" && !names)) {
     // Sized for the heading and two ranges (imp-082).
     return (
       <div aria-hidden className="flex flex-col gap-2 border-t border-border-subtle pt-3">
@@ -201,11 +202,12 @@ function OpenGaps({ names, host }: { names: Map<string, string>; host: ReturnTyp
     );
   }
   if (view === "unavailable") {
-    // The host card carries the error and its Retry (imp-132); this line only says what is missing (imp-145, DEC-196).
+    // The host card carries the error and its Retry (imp-132); this line says what is missing (imp-145, DEC-196), under
+    // the section's own label, and links to that Retry (imp-158, imp-159).
     return (
       <p className="border-t border-border-subtle pt-3 text-data text-muted-foreground">
         <CircleHelp aria-hidden className="mr-1.5 inline size-3.5 align-[-2px] text-subtle-foreground" />
-        <span className="font-medium text-foreground">Gap check didn&apos;t load,</span> so open gaps can&apos;t be listed. Retry on the Collector host card.
+        <span className="font-medium text-foreground">Open gaps</span> · Gap check didn&apos;t load. Retry on the <HostRetryLink className="text-foreground">Collector host card</HostRetryLink>.
       </p>
     );
   }
@@ -231,7 +233,7 @@ function OpenGaps({ names, host }: { names: Map<string, string>; host: ReturnTyp
           <tbody>
             {shown.map((r) => (
               <tr key={`${r.source_key} ${r.reason} ${r.start}`} className="row-h-compact border-t border-border-subtle">
-                <td className="pr-3 text-foreground">{names.get(r.source_key) ?? r.source_key}</td>
+                <td className="pr-3 text-foreground">{names?.get(r.source_key) ?? r.source_key}</td>
                 <td className="pr-3 whitespace-nowrap text-foreground" title="GET /v1/admin/host">
                   {formatUtc(r.start)} → {formatUtc(r.end)}
                 </td>
