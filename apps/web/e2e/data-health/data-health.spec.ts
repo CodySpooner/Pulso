@@ -99,7 +99,7 @@ test("renders every DH-1 field from fixtures", async ({ page }) => {
   await expect(drawer).toContainText("blocked_429");
   await expect(drawer).toContainText("#9001");
   await expect(drawer).toContainText("4 approved targets");
-  await expect(drawer).toContainText("Retry not before");
+  await expect(drawer).toContainText("Retry after"); // imp-119: the row's and the dialog's words
   await expect(drawer.getByRole("button", { name: /#380/ })).toHaveAttribute("aria-expanded", "false");
 });
 

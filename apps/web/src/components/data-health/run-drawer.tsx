@@ -4,6 +4,7 @@ import { useRef, useState } from "react";
 import { ChevronRight, History } from "lucide-react";
 
 import { EmptyState } from "@/components/pulso/empty-state";
+import { useOnline } from "@/components/shell/offline-banner";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -11,10 +12,10 @@ import { formatUtc } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 import { useHost, useMoreTargets, useRunDetail, useSourceRuns } from "./api";
-import { Ago, Missing, PanelError, runStatus, StaleLine, StatePill } from "./atoms";
+import { Ago, Missing, PanelError, runStatus, sourceStates, StaleLine, StatePill } from "./atoms";
 import { GapsLink, OPEN_GAPS_ID } from "./coverage";
 import { LoadMore } from "./load-more";
-import { missedNote, skipNote, sourceState, targetsNote, type Run, type SourceHealth } from "./model";
+import { missedNote, skipNote, sourceState, targetsNote, typeLabel, type Run, type SourceHealth } from "./model";
 
 const RUNS_API = "GET /v1/admin/runs";
 
@@ -73,6 +74,10 @@ function DrawerBody({ source, now, onGaps }: { source: SourceHealth; now: number
   const items = runs.data?.pages.flatMap((p) => p.items) ?? [];
   const state = sourceState(source, host.data?.latest_gap_ends, now);
   const missed = state === "overdue" && host.data ? missedNote(source.key, host.data.latest_gap_ends, host.data.open_gaps) : null;
+  const online = useOnline();
+  // Run now's own rule (the sources table's runBlocker); a preview-only CSV template checks files but adds no run.
+  const canRun = host.data?.live_runs_allowed === true && source.enabled && online;
+  const csv = source.csv_import === "ready";
   const quota = source.quota_limit != null ? `${source.quota_used?.toLocaleString("en-US") ?? "—"} / ${source.quota_limit.toLocaleString("en-US")}` : null;
 
   return (
@@ -95,12 +100,13 @@ function DrawerBody({ source, now, onGaps }: { source: SourceHealth; now: number
             <span className="font-mono">{source.key}</span>
           </Fact>
           <Fact label="Type · phase">
-            {source.type} · Phase {source.phase}
+            {typeLabel[source.type] ?? source.type} · Phase {source.phase}
           </Fact>
+          {/* The pill's words, then the switch once; a Disabled pill already says the first (imp-127). */}
           <Fact label="Status">
-            {source.status}
-            {source.enabled ? " · enabled" : " · disabled"}
-            {source.disabled_at && (
+            {state !== "disabled" && `${sourceStates[state].label} · `}
+            {source.enabled ? "Enabled" : "Disabled"}
+            {!source.enabled && source.disabled_at && (
               <span className="text-muted-foreground">
                 {" "}
                 since <span className="whitespace-nowrap">{formatUtc(source.disabled_at)}</span>
@@ -108,7 +114,7 @@ function DrawerBody({ source, now, onGaps }: { source: SourceHealth; now: number
             )}
           </Fact>
           {source.disabled_reason && <Fact label="Reason">{source.disabled_reason}</Fact>}
-          <Fact label="Retry not before">{source.retry_not_before ? formatUtc(source.retry_not_before) : <Missing reason="No retry deadline" />}</Fact>
+          <Fact label="Retry after">{source.retry_not_before ? formatUtc(source.retry_not_before) : <Missing reason="No retry deadline" />}</Fact>
           <Fact label="Last code">
             {source.last_status_code != null ? <span className="font-mono">{source.last_status_code}</span> : <Missing reason="No response recorded yet" />}
           </Fact>
@@ -151,8 +157,16 @@ function DrawerBody({ source, now, onGaps }: { source: SourceHealth; now: number
         ) : runs.isLoadingError ? (
           <PanelError title="Couldn't load runs" error={runs.error} retry={() => runs.refetch()} />
         ) : items.length === 0 ? (
+          // Names only the ways to a first run this source has now (imp-128).
           <EmptyState icon={History} size="sm" title="No runs yet">
-            Runs appear here when the collector host runs this source, or when you press Run now.
+            {source.enabled ? "Runs appear here once the collector host runs this source." : "This source is disabled, so the collector host won't run it until it's enabled."}
+            {canRun && csv
+              ? " Press Run now in the Sources panel, or import a CSV from the CSV import panel, to add its first run."
+              : canRun
+                ? " Press Run now in the Sources panel to start its first run."
+                : csv
+                  ? " Import a CSV from the CSV import panel to add its first run."
+                  : null}
           </EmptyState>
         ) : (
           <ol aria-label={`${source.name} runs`} className="flex flex-col gap-2">
@@ -255,16 +269,17 @@ function RunDetailView({ run }: { run: Run }) {
         <div role="region" aria-label={`Run ${run.id} targets`} tabIndex={0} className="relative overflow-x-auto">
           <table className="zone-data w-full">
             <thead>
-              <tr className="text-left text-label text-muted-foreground">
+              <tr className="text-left text-label whitespace-nowrap text-muted-foreground">
                 <th scope="col" className="h-7 pr-3 font-medium">Target</th>
                 <th scope="col" className="pr-3 font-medium">Status</th>
-                <th scope="col" className="num font-medium">Raw payload</th>
+                <th scope="col" className="num font-medium">Payload</th>
               </tr>
             </thead>
             <tbody>
               {targets.map((t) => (
                 <tr key={`${t.scope} ${t.target_id}`} className="row-h-compact border-t border-border-subtle">
-                  <td className="max-w-56 truncate pr-3" title={`${t.scope} · ${t.target_id} · captured ${formatUtc(t.captured_at)}`}>
+                  {/* The target takes the width left and truncates, so Status and Payload always show (imp-131). */}
+                  <td className="w-full max-w-0 truncate pr-3" title={`${t.scope} · ${t.target_id} · captured ${formatUtc(t.captured_at)}`}>
                     <span className="text-subtle-foreground">{t.scope} · </span>
                     {t.target_id}
                   </td>

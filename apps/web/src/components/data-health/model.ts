@@ -122,6 +122,14 @@ export const gapReasons: Record<string, string> = {
   blocked: "Blocked",
 };
 
+/** A source's type as the sources table and the run drawer word it (imp-127). */
+export const typeLabel: Record<string, string> = {
+  official_api: "Official API",
+  public_endpoint: "Public endpoint",
+  vendor: "Vendor API",
+  internal: "Internal",
+};
+
 export interface MissedSlot {
   /** The slot's phrases, joined by spaces: each stays on one line, so a narrow column breaks only between them (p1-53). */
   slot: string[];
