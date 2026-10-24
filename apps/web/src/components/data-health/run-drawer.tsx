@@ -15,6 +15,7 @@ import { useHost, useMoreTargets, useRunDetail, useSourceRuns } from "./api";
 import { Ago, Missing, PanelError, runStatus, sourceStates, StaleLine, StatePill } from "./atoms";
 import { GapsLink, OPEN_GAPS_ID } from "./coverage";
 import { LoadMore } from "./load-more";
+import { RetryScope, useRetryScope } from "./retry";
 import { missedNote, skipNote, sourceState, targetsNote, typeLabel, type Run, type SourceHealth } from "./model";
 
 const RUNS_API = "GET /v1/admin/runs";
@@ -79,12 +80,17 @@ function DrawerBody({ source, now, onGaps }: { source: SourceHealth; now: number
   const canRun = host.data?.live_runs_allowed === true && source.enabled && online;
   const csv = source.csv_import === "ready";
   const quota = source.quota_limit != null ? `${source.quota_used?.toLocaleString("en-US") ?? "—"} / ${source.quota_limit.toLocaleString("en-US")}` : null;
+  // The drawer is a retry scope (imp-168): a pressed Retry that fails is announced once, one that restores focuses the title.
+  const title = useRef<HTMLHeadingElement>(null);
+  const retry = useRetryScope(title);
 
   return (
-    <>
+    <RetryScope value={retry}>
       <div className="flex flex-col gap-2 border-b border-border-subtle px-5 pt-4 pb-4">
         <div className="flex items-center gap-2 pr-10">
-          <SheetTitle className="truncate text-title-2 font-semibold text-foreground">{source.name}</SheetTitle>
+          <SheetTitle ref={title} tabIndex={-1} className="truncate rounded-sm text-title-2 font-semibold text-foreground">
+            {source.name}
+          </SheetTitle>
           <StatePill state={state} />
         </div>
         {/* Why it is Overdue while its newest run may read Succeeded (imp-124). The link closes the drawer first.
@@ -181,7 +187,7 @@ function DrawerBody({ source, now, onGaps }: { source: SourceHealth; now: number
           </Button>
         )}
       </div>
-    </>
+    </RetryScope>
   );
 }
 

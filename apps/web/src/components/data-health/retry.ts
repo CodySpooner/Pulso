@@ -7,9 +7,11 @@ import { useOnline } from "@/components/shell/offline-banner";
 
 // Where focus goes, and what is announced, when the control a keyboard user just pressed leaves the page.
 
-/** Focuses `el`, but only when nothing has focus: the control the user just used left with its step. */
+/** Focuses `el`, but only when nothing has focus: the control the user just used left with its step. In a dialog,
+ *  Radix moves a removed control's focus to the dialog itself, so there that counts as nothing too (imp-168). */
 function takeLostFocus(el: HTMLElement | null) {
-  if (document.activeElement === document.body) el?.focus();
+  const active = document.activeElement;
+  if (active === document.body || (active?.getAttribute("role") === "dialog" && active.contains(el))) el?.focus();
 }
 
 /**
@@ -79,7 +81,7 @@ export function useRetry(retry: () => void) {
   const [failed, setFailed] = useState(false);
   const button = useRef<HTMLButtonElement>(null);
   const [surface] = useState<Surface>(() => ({ button, fail: () => setFailed(true) }));
-  // Outside a scope (the run drawer) nothing is followed: the dialog keeps focus (aud-014 A14-04).
+  // Outside a scope nothing is followed.
   useEffect(() => scope?.show(surface), [scope, surface]);
   useTakeLostFocus(button, failed); // a Retry that failed again comes back focused
   const press = () => {

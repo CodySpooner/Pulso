@@ -31,9 +31,9 @@ const announced = (page: Page) => page.evaluate(() => [...(window as unknown as 
 const forget = (page: Page) => page.evaluate(() => void (window as unknown as { heard: string[] }).heard.splice(0));
 const bodyFocused = (page: Page) => page.evaluate(() => document.activeElement === document.body);
 
-/** Tab from the page's Refresh button until `target` has focus, as a keyboard user gets there. */
-async function tabTo(page: Page, target: Locator) {
-  await page.getByRole("button", { name: "Refresh" }).focus();
+/** Tab from the page's Refresh button (or `from`) until `target` has focus, as a keyboard user gets there. */
+async function tabTo(page: Page, target: Locator, from = page.getByRole("button", { name: "Refresh" })) {
+  await from.focus();
   for (let i = 0; i < 80 && !(await target.evaluate((el) => el === document.activeElement)); i++) await page.keyboard.press("Tab");
   await expect(target).toBeFocused();
 }
@@ -198,3 +198,66 @@ test("a stale panel's Retry: failure keeps focus and is announced once; success 
   await expect(retry).toHaveCount(0);
   expect(await announced(page)).toEqual([]);
 });
+
+// imp-168: the run drawer is a retry scope too. Each failed press is announced once, like a panel's; success focuses
+// the drawer's title. Focus never leaves the dialog, and a refetch nobody pressed Retry for stays silent there too.
+for (const [what, failing] of [
+  ["runs", (url: URL) => url.pathname === "/api/v1/admin/runs" && url.searchParams.get("source") === "cj"],
+  ["targets", "**/api/v1/admin/runs/418"], // CJ's newest run, which opens expanded
+] as const) {
+  for (const [width, height] of [
+    [1440, 900],
+    [375, 812],
+  ]) {
+    test(`drawer Retry (${what}) at ${width}px: each failed press is announced once, success focuses the drawer title`, async ({ page }) => {
+      await page.setViewportSize({ width, height });
+      await recordAnnouncements(page);
+      await mockAdminApi(page);
+      const api = { down: true, calls: 0 };
+      await page.route(failing, (route) => {
+        api.calls++;
+        return api.down ? route.fulfill({ status: 503, json: problem(503, "e2e-drawer-503") }) : route.fallback();
+      });
+      await page.goto(PAGE);
+      await page.getByRole("button", { name: "CJ Dropshipping: open runs" }).locator("visible=true").click();
+      const drawer = page.getByRole("dialog", { name: "CJ Dropshipping" });
+      const retry = drawer.getByRole("button", { name: "Retry" });
+      await expect(drawer.getByRole("heading", { name: `Couldn't load ${what}` })).toBeVisible();
+      expect(await announced(page)).toEqual([]); // the first load's failure is silent
+      await tabTo(page, retry, drawer);
+
+      // A second failed press, with focus already back on Retry (0 Tabs), is announced again.
+      for (let press = 1; press <= 2; press++) {
+        await forget(page);
+        const before = api.calls;
+        await page.keyboard.press("Enter");
+        await expect.poll(() => api.calls).toBe(before + 2); // the press and TanStack's one retry
+        await expect(retry).toBeFocused();
+        await expect.poll(() => announced(page)).toEqual([`Couldn't load ${what}. ${RESTARTING}`]);
+        await page.waitForTimeout(500);
+        expect(await announced(page)).toHaveLength(1);
+      }
+
+      // Nothing pressed Retry for this refetch: silent, and focus stays on the dialog, where Radix leaves a lost one.
+      await drawer.focus();
+      await forget(page);
+      const quiet = api.calls;
+      await refocusTab(page);
+      await expect.poll(() => api.calls).toBe(quiet + 2);
+      await expect(retry).toBeVisible();
+      await page.waitForTimeout(500);
+      await expect(drawer).toBeFocused();
+      expect(await announced(page)).toEqual([]);
+
+      api.down = false;
+      await tabTo(page, retry, drawer);
+      await page.keyboard.press("Enter");
+      const title = drawer.getByRole("heading", { level: 2, name: "CJ Dropshipping" });
+      await expect(title).toBeFocused();
+      expect(await title.evaluate((el) => getComputedStyle(el).outlineStyle)).not.toBe("none"); // a visible ring
+      await expect(what === "runs" ? drawer.getByRole("list", { name: "CJ Dropshipping runs" }) : drawer.getByRole("region", { name: "Run 418 targets" })).toBeVisible();
+      expect(await announced(page)).toEqual([]);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
+    });
+  }
+}
