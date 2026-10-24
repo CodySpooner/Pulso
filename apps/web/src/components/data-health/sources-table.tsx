@@ -794,7 +794,7 @@ function ActivityDialog({
                 const listed = CURRENCY_DIGITS.has(currency);
                 const input = listed ? amount : (form.elements.namedItem("currency") as HTMLInputElement);
                 input.setCustomValidity(
-                  listed ? `Enter an amount above 0 with no more decimals than ${currency} uses.` : `Use one of the currencies Pulso reads: ${currencyList}.`,
+                  listed ? `Enter an amount above 0 with no more decimals than ${currency} uses.` : `Use a currency Pulso supports: ${currencyList}.`,
                 );
                 input.reportValidity();
                 return;

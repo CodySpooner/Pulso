@@ -103,7 +103,7 @@ test("a currency outside the API's list is refused on the Currency field; fixing
   await currency.fill("idr");
   await dialog.getByRole("button", { name: "Save order" }).click();
   expect(await currency.evaluate((el: HTMLInputElement) => el.validationMessage)).toBe(
-    "Use one of the currencies Pulso reads: USD, EUR, GBP, CAD, AUD, CNY, JPY, or KWD.",
+    "Use a currency Pulso supports: USD, EUR, GBP, CAD, AUD, CNY, JPY, or KWD.",
   );
   expect(await dialog.getByLabel("Amount").evaluate((el: HTMLInputElement) => el.validity.valid)).toBe(true);
   expect(calls.filter((c) => c.method === "PUT")).toEqual([]);
