@@ -1,4 +1,5 @@
 import json
+import logging
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from unittest.mock import Mock
@@ -7,6 +8,7 @@ import pytest
 from pydantic import SecretStr, ValidationError
 from sqlalchemy.orm import Session
 
+from pulso_core.logging import configure_logging
 from pulso_core.models import CollectorRun, Source
 from pulso_core.settings import Settings
 from pulso_sources import framework
@@ -98,7 +100,9 @@ def test_auth_requires_timezone() -> None:
         parse_auth(json.dumps(payload).encode())
 
 
-def test_seed_projection_and_plan(caplog: pytest.LogCaptureFixture) -> None:
+def test_seed_projection_and_plan(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
     root = Path(__file__).resolve().parents[4]
     seed = (root / "infra/seeds/seed_v1.yaml").read_text(encoding="utf-8")
     count = len(
@@ -106,9 +110,18 @@ def test_seed_projection_and_plan(caplog: pytest.LogCaptureFixture) -> None:
             "cj_categories"
         ]
     )
-    with caplog.at_level("INFO"):
-        assert dry_run(count) == 16500 < 20000
-    assert caplog.records[-1].projected_points == 16500  # type: ignore[attr-defined]
+    pulso = logging.getLogger("pulso")
+    for attr in ("handlers", "level", "propagate"):
+        monkeypatch.setattr(pulso, attr, getattr(pulso, attr))
+    configure_logging("INFO")  # as the worker's init_process does
+    assert dry_run(count) == 16500 < 20000
+    [line] = capsys.readouterr().err.splitlines()
+    emitted = json.loads(line)
+    assert (emitted["message"], emitted["source"], emitted["projected_points"]) == (
+        "cj_points_projection",
+        "cj",
+        16500,
+    )
     targets = plan(["fixture-category"])
     requests = [r for target in targets for r in target.requests]
     assert len(requests) == 15

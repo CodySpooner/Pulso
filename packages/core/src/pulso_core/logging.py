@@ -19,7 +19,16 @@ class JsonFormatter(logging.Formatter):
             "request_id": request_id.get(),
             "job_id": job_id.get(),
         }
-        for key in ("method", "path", "status", "duration_ms", "error_type"):
+        # Explicit allowlist: never dump arbitrary record attributes (bodies, credentials).
+        for key in (
+            "method",
+            "path",
+            "status",
+            "duration_ms",
+            "error_type",
+            "source",
+            "projected_points",
+        ):
             if hasattr(record, key):
                 payload[key] = getattr(record, key)
         if record.exc_info:

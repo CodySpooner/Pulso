@@ -220,9 +220,7 @@ def collect_run(run_id: int) -> None:
                 )
             )
             session.commit()
-            logger.error(
-                "collection_failed", extra={"run_id": run_id, "error_type": type(exc).__name__}
-            )
+            logger.error("collection_failed", extra={"error_type": type(exc).__name__})
         finally:
             lock.close()
 
