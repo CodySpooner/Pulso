@@ -14,7 +14,7 @@ function useSignedIn(): boolean {
 }
 
 /** A call carries the Clerk session token, so it waits for the session; the E2E bypass has none to wait for. */
-const useApiReady: () => boolean = authBypass ? () => true : useSignedIn;
+export const useApiReady: () => boolean = authBypass ? () => true : useSignedIn;
 
 // Collection runs at most hourly; a 5-minute refetch keeps the badge and "as of" honest without polling hard.
 const live = { refetchInterval: 5 * 60_000 };
