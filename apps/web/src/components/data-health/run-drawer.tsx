@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { ChevronRight, History } from "lucide-react";
+import { ArrowDown, ChevronRight, History } from "lucide-react";
 
 import { EmptyState } from "@/components/pulso/empty-state";
 import { useOnline } from "@/components/shell/offline-banner";
@@ -29,14 +29,22 @@ export function RunDrawer({
   source,
   now,
   onClose,
+  onImport,
   returnFocusRef,
 }: {
   source: SourceHealth | null;
   now: number;
   onClose: () => void;
+  /** Opens the CSV import panel on `key`, as the Sources row's Import does. */
+  onImport: (key: string) => void;
   returnFocusRef: React.RefObject<HTMLElement | null>;
 }) {
   const toGaps = useRef(false); // closed by the missed-slot link: focus goes to Open gaps, not back to the opener
+  const toImport = useRef<string | null>(null); // closed by the CSV import link: the panel opens on this key (imp-172)
+  // The last source shown, so a closing drawer keeps its body through the exit, never an empty sheet (imp-165's rule).
+  const [last, setLast] = useState(source);
+  if (source && source !== last) setLast(source);
+  const shown = source ?? last;
   return (
     <Sheet open={source != null} onOpenChange={(open) => !open && onClose()}>
       <SheetContent
@@ -49,17 +57,25 @@ export function RunDrawer({
         }}
         onCloseAutoFocus={(e) => {
           e.preventDefault();
+          // Once the drawer is gone (its focus trap and scroll lock too), the panel takes the focus and scrolls in.
+          const key = toImport.current;
+          toImport.current = null;
+          if (key) return onImport(key);
           const gaps = toGaps.current && document.getElementById(OPEN_GAPS_ID);
           toGaps.current = false;
           (gaps || returnFocusRef.current)?.focus();
         }}
       >
-        {source && (
+        {shown && (
           <DrawerBody
-            source={source}
+            source={shown}
             now={now}
             onGaps={() => {
               toGaps.current = true;
+              onClose();
+            }}
+            onImport={() => {
+              toImport.current = shown.key;
               onClose();
             }}
           />
@@ -69,7 +85,7 @@ export function RunDrawer({
   );
 }
 
-function DrawerBody({ source, now, onGaps }: { source: SourceHealth; now: number; onGaps: () => void }) {
+function DrawerBody({ source, now, onGaps, onImport }: { source: SourceHealth; now: number; onGaps: () => void; onImport: () => void }) {
   const host = useHost();
   const runs = useSourceRuns(source.key);
   const items = runs.data?.pages.flatMap((p) => p.items) ?? [];
@@ -83,6 +99,18 @@ function DrawerBody({ source, now, onGaps }: { source: SourceHealth; now: number
   // The drawer is a retry scope (imp-168): a pressed Retry that fails is announced once, one that restores focuses the title.
   const title = useRef<HTMLHeadingElement>(null);
   const retry = useRetryScope(title);
+  // One press closes the drawer and opens the panel on this source, as the Sources row's Import does (imp-172).
+  const importLink = (end?: string) => (
+    <button
+      type="button"
+      onClick={onImport}
+      className={cn("link-inline relative hit-area rounded-sm whitespace-nowrap text-foreground underline decoration-border-strong underline-offset-2 hover:decoration-current", end)}
+    >
+      CSV import panel
+      {/* Trimmed like HostRetryLink's arrow, so the focus ring sits on the glyph (DEC-222 c). */}
+      <ArrowDown aria-hidden viewBox="4 0 16 24" className="ml-1 inline h-3 w-2 align-[-2px]" />
+    </button>
+  );
 
   return (
     <RetryScope value={retry}>
@@ -166,13 +194,14 @@ function DrawerBody({ source, now, onGaps }: { source: SourceHealth; now: number
           // Names only the ways to a first run this source has now (imp-128).
           <EmptyState icon={History} size="sm" title="No runs yet">
             {source.enabled ? "Runs appear here once the collector host runs this source." : "This source is disabled, so the collector host won't run it until it's enabled."}
-            {canRun && csv
-              ? " Press Run now in the Sources panel, or import a CSV from the CSV import panel, to add its first run."
-              : canRun
-                ? " Press Run now in the Sources panel to start its first run."
-                : csv
-                  ? " Import a CSV from the CSV import panel to add its first run."
-                  : null}
+            {canRun && csv ? (
+              // A comma straight after the link needs `me-1` (DEC-222 b).
+              <> Press Run now in the Sources panel, or import a CSV from the {importLink("me-1")}, to add its first&nbsp;run.</>
+            ) : canRun ? (
+              " Press Run now in the Sources panel to start its first run."
+            ) : csv ? (
+              <> Import a CSV from the {importLink()} to add its first&nbsp;run.</>
+            ) : null}
           </EmptyState>
         ) : (
           <ol aria-label={`${source.name} runs`} className="flex flex-col gap-2">

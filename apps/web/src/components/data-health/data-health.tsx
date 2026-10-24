@@ -128,7 +128,13 @@ export function DataHealth() {
       <CoveragePanel now={now} />
       <ImportPanel ref={importPanel} onOpen={openRuns} />
 
-      <RunDrawer source={sources.data?.find((s) => s.key === openKey) ?? null} now={now} onClose={() => setOpenKey(null)} returnFocusRef={opener} />
+      <RunDrawer
+        source={sources.data?.find((s) => s.key === openKey) ?? null}
+        now={now}
+        onClose={() => setOpenKey(null)}
+        onImport={(key) => importPanel.current?.open(key)}
+        returnFocusRef={opener}
+      />
     </div>
   );
 }
