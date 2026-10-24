@@ -308,7 +308,7 @@ function RunDetailView({ run, title }: { run: Run; title: React.RefObject<HTMLEl
         ) : targets.length === 0 ? (
           <p className="text-label text-muted-foreground">No targets recorded for this run.</p>
         ) : (
-          <div ref={region} role="region" aria-label={`Run ${run.id} targets`} tabIndex={0} className="relative overflow-x-auto">
+          <div ref={region} role="region" aria-label={`Run ${run.id} targets`} tabIndex={0} className="relative overflow-x-auto rounded-sm">
             <table className="zone-data w-full">
               <thead>
                 <tr className="text-left text-label whitespace-nowrap text-muted-foreground">
