@@ -2,11 +2,15 @@
 
 from pulso_core.models.catalog import (
     Category,
+    CategoryMapping,
     Image,
     Listing,
     ListingSnapshot,
     ListingVariant,
+    MatchCandidate,
+    MatchDecision,
     Product,
+    ProductDailyFeature,
     VariantSnapshot,
 )
 from pulso_core.models.collection import (
@@ -20,6 +24,8 @@ from pulso_core.models.core import (
     CollectorRun,
     Currency,
     FxRate,
+    ProductNote,
+    ProductTag,
     RawPayload,
     Source,
     User,
@@ -32,6 +38,7 @@ from pulso_core.models.vendors import ShippingOption, Store, Supplier, SupplierO
 
 __all__ = [
     "Category",
+    "CategoryMapping",
     "CollectorRun",
     "CollectorRunTarget",
     "CollectionGap",
@@ -42,7 +49,12 @@ __all__ = [
     "Listing",
     "ListingSnapshot",
     "ListingVariant",
+    "MatchCandidate",
+    "MatchDecision",
     "Product",
+    "ProductDailyFeature",
+    "ProductNote",
+    "ProductTag",
     "RawPayload",
     "ShippingOption",
     "SearchTrend",
