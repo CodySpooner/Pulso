@@ -84,7 +84,9 @@ for (const theme of ["dark", "light"] as const) {
       sources.down = false;
       await panel(page, "Sources").getByRole("button", { name: "Retry" }).click();
       await expect(panel(page, "Sources").getByRole("button", { name: "CJ Dropshipping: open runs" })).toBeVisible();
+      await expect(panel(page, "Sources").getByRole("heading", { level: 2, name: "Sources" })).toBeFocused(); // imp-135
       await expect(coverage.getByRole("img", { name: /^Google Trends, last 90 days: / })).toBeVisible();
+      await expect(coverage.getByRole("img", { name: /, last 90 days: / })).toHaveCount(4); // Frankfurter FX's row is back
       await expect(coverage.getByText(COVERAGE_LINE)).toHaveCount(0);
       await expect(csv.getByRole("combobox", { name: "Source" })).toBeVisible();
       await expect(csv.getByText(IMPORT_LINE)).toHaveCount(0);
