@@ -214,7 +214,8 @@ export function contrastMisses(scope: string): ContrastMiss[] {
     const range = document.createRange();
     range.selectNodeContents(node);
     const box = range.getBoundingClientRect();
-    if (box.width < 2 || box.height < 2) continue; // sr-only
+    const clip = el.getBoundingClientRect(); // sr-only: a 1px box that its nowrap text overflows (p3-12)
+    if (box.width < 2 || box.height < 2 || clip.width < 2 || clip.height < 2) continue;
 
     let fg = rgba(getComputedStyle(el).color);
     const layers: number[][] = [];
