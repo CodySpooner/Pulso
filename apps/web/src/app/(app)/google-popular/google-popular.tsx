@@ -347,7 +347,7 @@ function NoRows({ page, set }: { page: Page; set: Set }) {
           action={<Button onClick={() => set({ brands: "all" })}>Show hidden brands</Button>}
         >
           {page.hidden_by_you
-            ? `Each brand here has ${page.major_brand_rows} or more products in this report, or you hid it. Show them to unhide one.`
+            ? `Each brand here has ${page.major_brand_rows} or more products in this report, or you hid it. Show hidden brands, then unhide one from its row.`
             : `Every brand in this report has ${page.major_brand_rows} or more products in it.`}
         </EmptyState>
       ) : (

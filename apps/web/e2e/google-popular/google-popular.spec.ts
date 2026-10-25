@@ -120,7 +120,7 @@ test.describe("brand list (DEC-277)", () => {
     await page.getByRole("status").filter({ hasText: "Kestrelle hidden" }).getByRole("button", { name: "Undo" }).click();
     await expect(rows(page)).toHaveCount(30);
     expect(rules.has("kestrelle")).toBe(false);
-    await expect(page.getByRole("status").filter({ hasText: "Kestrelle unhidden" })).toBeVisible();
+    await expect(page.getByRole("status").filter({ hasText: "Kestrelle shown again" })).toBeVisible();
   });
 
   test("a hidden brand comes back in two clicks, and a shown major brand stays with a chip", async ({ page }) => {

@@ -39,7 +39,7 @@ export function useBrandRules() {
       const all = (key[2] as { params?: { query?: { include_major_brands?: boolean } } } | undefined)?.params?.query?.include_major_brands === true;
       if (data) queryClient.setQueryData(key, patchPages(data, brand, next, all));
     }
-    const text = next ? `${brand} ${said[next]}` : previous === "show" ? `${brand} follows the major-brand rule again` : `${brand} unhidden`;
+    const text = next ? `${brand} ${said[next]}` : previous === "show" ? `${brand} no longer always shown` : `${brand} shown again`;
     setNote({ id: ++seq.current, text, undo: undoable ? () => apply(brand, previous, next, false) : undefined });
     const done = next ? put.mutateAsync({ body: { brand, action: next } }) : remove.mutateAsync({ params: { query: { brand } } });
     done.then(
