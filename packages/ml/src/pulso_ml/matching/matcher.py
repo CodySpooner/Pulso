@@ -88,8 +88,8 @@ def redirects(session: Session) -> dict[UUID, UUID | None]:
 def lock(session: Session) -> None:
     """Every matching write holds one transaction lock, so a run and a decision never interleave.
 
-    A merge moves every listing of the merged product under it, so no pointer read after
-    the lock names a product merged since the run loaded its redirects.
+    Read pointers and redirects after it: a merge that committed before it is then seen whole
+    (XR-30), and none can commit until the transaction ends.
     ponytail: one global lock; per-product locks if decisions ever queue behind a run.
     """
     session.execute(select(func.pg_advisory_xact_lock(MATCHING_LOCK)))
@@ -138,8 +138,7 @@ def match(session: Session, rates: RateLookup, config: ScorerConfig = CONFIG) ->
         )
         or 0
     )
-    merged = redirects(session)
-    gtins(session, merged, counts)
+    gtins(session, counts, config)
     usd_rates: dict[tuple[str, date], Decimal | None] = {}
     seen: set[tuple[int, int]] = set()
 
@@ -159,6 +158,7 @@ def match(session: Session, rates: RateLookup, config: ScorerConfig = CONFIG) ->
         select(Listing.id).where(embedded).order_by(Listing.id)
     ).all():
         lock(session)
+        merged = redirects(session)
         # Filters past the first ef_search hits keep scanning the index (pgvector 0.8).
         session.execute(text("SET LOCAL hnsw.iterative_scan = strict_order"))
         source = session.get_one(Listing, listing_id)
@@ -281,12 +281,13 @@ def settle(session: Session) -> None:
     session.commit()
 
 
-def gtins(session: Session, merged: dict[UUID, UUID | None], counts: Counts) -> None:
+def gtins(session: Session, counts: Counts, config: ScorerConfig) -> None:
     """Listings of different vendors sharing a valid GTIN pair at score 1.0 (M-4, DEC-255).
 
     A vendor that puts one GTIN on two of its listings isn't using it as an identifier, so
     those listings drop out of that GTIN. Each pair goes through link(), so M-3's R-15,
-    two-product and manual rules hold. One transaction per GTIN.
+    two-product and manual rules hold. One transaction per GTIN. A pending GTIN pair that no
+    longer shares a code goes back to M-3 (XR-34, DEC-282).
 
     ponytail: every barcode is read into memory each run; group a normalised column in SQL
     once listing_variants outgrows that.
@@ -310,6 +311,7 @@ def gtins(session: Session, merged: dict[UUID, UUID | None], counts: Counts) -> 
                 continue
             seen.add(pair)
             lock(session)  # held until this GTIN's commit; taking it again is a no-op
+            merged = redirects(session)
             a, b = session.scalars(select(Listing).where(Listing.id.in_(pair))).all()
             products = {canonical(merged, listing.product_id) for listing in (a, b)}
             if len(products) == 1 and None not in products:
@@ -342,6 +344,18 @@ def gtins(session: Session, merged: dict[UUID, UUID | None], counts: Counts) -> 
             else:
                 counts.gtin_queued += 1
         session.commit()
+    # Scored on its stored components, 0 with none; the score pass re-scores it like any
+    # pending pair it meets, so it links, stays queued or leaves the queue (DEC-260 c).
+    lock(session)
+    for candidate in session.scalars(
+        select(MatchCandidate)
+        .where(MatchCandidate.status == "pending", MatchCandidate.scorer_version == GTIN_VERSION)
+        .with_for_update()
+    ):
+        if (candidate.listing_a_id, candidate.listing_b_id) not in seen:
+            score = combined(config, candidate.image_cos, candidate.title_cos, candidate.phash_sim)
+            candidate.score, candidate.scorer_version = score or Decimal(0), config.version
+    session.commit()
 
 
 def load_facts(

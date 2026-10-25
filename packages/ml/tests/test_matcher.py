@@ -1,4 +1,5 @@
 import math
+import sys
 from collections import Counter
 from collections.abc import Iterator
 from datetime import UTC, date, datetime, timedelta
@@ -25,6 +26,7 @@ from pulso_core.models import (
     Supplier,
 )
 from pulso_core.models.catalog import EMBEDDING_DIM
+from pulso_ml.matching import matcher
 from pulso_ml.matching.decisions import (
     accept,
     membership,
@@ -86,7 +88,7 @@ class World:
 
     def listing(
         self,
-        vendor: Store | Supplier,
+        vendor: Store | Supplier | None,
         axis: int,
         degrees: float = 0.0,
         *,
@@ -1136,3 +1138,152 @@ def test_xr36_an_owner_unlink_stays_frozen_under_a_forged_reason_and_an_undone_a
     world.run()
     assert products(session, cost, late) == [None, None]
     assert candidate(session, cost, late).status == "pending"  # type: ignore[union-attr]
+
+
+@pytest.mark.parametrize("by", ["image", "gtin"])
+@pytest.mark.parametrize("mid_run", [False, True], ids=["before", "mid-run"])
+def test_xr30_a_merge_before_or_during_a_run_never_hides_a_split(
+    world: World, db_engine: Engine, monkeypatch: pytest.MonkeyPatch, by: str, mid_run: bool
+) -> None:
+    """Split `off` off `old`, then merge `old` into the product `near` sits on: the pair is never
+    queued. Before the run, that is apart()'s merged-into branch (XR-35 gap 3); after the run
+    began, the pass must read the merge after its lock (XR-30)."""
+    session = world.session
+    old, absorber = world.product(), world.product()
+    world.listing(world.store(), 1, product=old)
+    off = world.listing(world.store(), 0, product=old)
+    near = world.listing(world.store(), 0, QUEUE_ANGLE, product=absorber, embedded=by == "image")
+    if by == "gtin":
+        world.barcode(off, GTIN)
+        world.barcode(near, GTIN)
+    session.commit()
+    split(session, [off.id], "owner", "not the same lamp")
+    session.commit()
+
+    def owner_merges() -> None:
+        with Session(db_engine) as owner:
+            merge(owner, old, absorber, "owner", "same lamp")
+            owner.commit()
+
+    if mid_run:  # the merge commits just before the pass that meets the pair takes its lock
+        original = matcher.lock
+
+        def merge_then_lock(session: Session) -> None:
+            nonlocal mid_run
+            caller = sys._getframe(1).f_code.co_name
+            if mid_run and caller == ("gtins" if by == "gtin" else "match"):
+                mid_run = False
+                owner_merges()
+            original(session)
+
+        monkeypatch.setattr(matcher, "lock", merge_then_lock)
+    else:
+        owner_merges()
+    world.run()
+    assert candidate(session, off, near) is None
+
+
+def test_xr34_a_gtin_pair_whose_code_is_gone_goes_back_to_m3(world: World) -> None:
+    session = world.session
+    reuser = world.store()
+    # Each listing on its own product, so the GTIN pass queues each pair at 1.0. Orthogonal
+    # images, so M-3 would discard them; `unseen` has no embedding, so M-3 never meets it.
+    pairs = {
+        "changed": (GTIN, [world.listing(world.store(), 2, product=world.product())]),
+        "reused": ("036000291452", [world.listing(reuser, 3, product=world.product())]),
+        "unseen": ("96385074", []),
+    }
+    pairs["changed"][1].append(world.listing(world.store(), 5, product=world.product()))
+    pairs["reused"][1].append(world.listing(world.store(), 6, product=world.product()))
+    for _ in range(2):
+        pairs["unseen"][1].append(
+            world.listing(world.store(), 4, product=world.product(), embedded=False)
+        )
+    for code, listings in pairs.values():
+        for listing in listings:
+            world.barcode(listing, code)
+    world.run()
+    for _, pair in pairs.values():
+        row = candidate(session, *pair)
+        assert row is not None
+        assert (row.status, row.score, row.scorer_version) == ("pending", Decimal(1), GTIN_VERSION)
+
+    # One store changes its barcode; another starts putting the code on a second listing,
+    # so it drops out of that code.
+    for name in ("changed", "unseen"):
+        session.execute(
+            update(ListingVariant)
+            .where(ListingVariant.listing_id == pairs[name][1][1].id)
+            .values(barcode="5012345678900")
+        )
+    world.barcode(world.listing(reuser, 7, embedded=False), "036000291452")
+    # M-3 had queued this pair before a shared code outranked it (DEC-255 c). The code is gone
+    # and M-3 doesn't meet the pair this run, so its stored components score it.
+    outranked = [
+        world.listing(world.store(), 8, product=world.product(), embedded=False) for _ in range(2)
+    ]
+    session.add(
+        MatchCandidate(
+            listing_a_id=outranked[0].id,
+            listing_b_id=outranked[1].id,
+            image_cos=Decimal("0.8"),
+            title_cos=Decimal("0.8"),
+            phash_sim=Decimal(1),
+            score=Decimal(1),
+            scorer_version=GTIN_VERSION,
+            status="pending",
+        )
+    )
+    world.run()
+    for name in ("changed", "reused"):  # re-scored by M-3, below the band: out of the queue
+        row = candidate(session, *pairs[name][1])
+        assert row is not None
+        assert (row.status, row.score, row.scorer_version) == (
+            "rejected",
+            Decimal("0.1500"),
+            CONFIG.version,
+        ), name
+    row = candidate(session, *pairs["unseen"][1])  # no component to score it: no evidence
+    assert row is not None
+    assert (row.status, row.score, row.scorer_version) == ("pending", Decimal(0), CONFIG.version)
+    row = candidate(session, *outranked)
+    assert row is not None
+    assert (row.status, row.score, row.scorer_version) == (
+        "pending",
+        Decimal("0.8300"),
+        CONFIG.version,
+    )
+    assert session.scalar(select(func.count()).select_from(MatchDecision)) == 0
+
+
+def test_xr35_both_matcher_passes_link_under_the_matching_lock(
+    world: World, db_engine: Engine, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    world.listing(world.supplier(), 0)
+    world.listing(world.store(), 0, 1, price=2500)  # 1.0 by image, sane markup
+    by_gtin = [world.listing(world.store(), 1, embedded=False) for _ in range(2)]
+    for listing in by_gtin:
+        world.barcode(listing, GTIN)
+    held: list[tuple[str, bool]] = []
+    original = matcher.link
+
+    def link(session: Session, candidate: MatchCandidate, *args: Any) -> bool:
+        with db_engine.connect() as other:
+            free = other.scalar(select(func.pg_try_advisory_xact_lock(MATCHING_LOCK)))
+        held.append((candidate.scorer_version, not free))
+        return original(session, candidate, *args)
+
+    monkeypatch.setattr(matcher, "link", link)
+    counts = world.run()
+    assert (counts.linked, counts.gtin_linked) == (1, 1)
+    assert sorted(held) == sorted([(CONFIG.version, True), (GTIN_VERSION, True)])
+
+
+def test_xr35_vendorless_listings_are_each_their_own_vendor(world: World) -> None:
+    pair = [world.listing(None, 0, embedded=False) for _ in range(2)]
+    for listing in pair:
+        world.barcode(listing, GTIN)
+    counts = world.run()
+    first, second = products(world.session, *pair)
+    assert first is not None and first == second
+    assert counts.gtin_linked == 1
