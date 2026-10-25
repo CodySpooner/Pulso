@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from pulso_core.logging import JsonFormatter
 from pulso_core.models import CollectionGap, CollectorRun, HostHeartbeat, Source
 from pulso_sources.framework import lifecycle
-from pulso_workers import ops, tasks
+from pulso_workers import ops, schedules, tasks
 from pulso_workers.beat import LockedScheduler
 from pulso_workers.celery_app import app
 
@@ -208,8 +208,15 @@ def test_slot_grace_leaves_scheduled_failure_one_catchup(
     ],
 )
 def test_spent_weekly_catchup_does_not_block_daily_slot(
-    session: Session, recovery: Mock, freight_catchup: str | None, today: bool
+    session: Session,
+    recovery: Mock,
+    monkeypatch: pytest.MonkeyPatch,
+    freight_catchup: str | None,
+    today: bool,
 ) -> None:
+    # The weekly CJ freight slot is unscheduled until it has a plan (DEC-321b).
+    slots = (*schedules.COLLECTION_SLOTS, ("cj", "freight", 30, 4, "1"))
+    monkeypatch.setattr(ops, "COLLECTION_SLOTS", slots)
     session.get_one(Source, 1).key = "cj"
     monday = NOW.replace(day=19, hour=4, minute=30)
     session.add(

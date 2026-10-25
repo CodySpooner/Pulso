@@ -258,7 +258,7 @@ def test_registered_js_plan_and_guards(
         assert any(u.endswith(".js") for u, _, _ in io_mock.calls)
     else:
         assert queued.error_code == (
-            "ValueError" if guard == "disabled" else "CollectorsLiveDisabled"
+            "source_unavailable" if guard == "disabled" else "CollectorsLiveDisabled"
         )
         assert io_mock.calls == []
 

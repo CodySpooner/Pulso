@@ -197,7 +197,9 @@ def test_registration_enables_nothing_and_live_guards_hold(
             lambda: settings.model_copy(update={"collectors_live": guard == "worktree"}),
         )
     result = registered()
-    assert result.error_code == ("ValueError" if guard == "disabled" else "CollectorsLiveDisabled")
+    assert result.error_code == (
+        "source_unavailable" if guard == "disabled" else "CollectorsLiveDisabled"
+    )
     assert io_mock.calls == []
 
 
