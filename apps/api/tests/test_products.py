@@ -384,10 +384,11 @@ def test_feed_items_trace_every_number(api: TestClient, feed: dict[str, str]) ->
     assert steady["category"] == "Home & Garden > Lighting > Lamps"
     # The card's freshness is its oldest feeding family: the CJ snapshot, 9 h ago.
     assert datetime.fromisoformat(steady["as_of"]) == NOW - timedelta(hours=9)
-    for each in items.values():
+    for each in items.values():  # the fixture's workspace has no settings row
         assert each["best_margin_minor"] == {
             "value": None,
-            "reason": "The landed-cost engine arrives with UX-8.",
+            "reason": "No workspace settings yet.",
+            "missing": [],
         }
     for key in ("no_signal", "old", "unmatched"):
         assert items[feed[key]]["velocity"] == {
