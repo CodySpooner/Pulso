@@ -777,6 +777,10 @@ export interface components {
              * @description sources.key, or `settings` / `owner_estimate`.
              */
             source: string;
+            /** Source Name */
+            source_name: string;
+            /** Stale */
+            stale: boolean;
         };
         /** Match */
         Match: {
@@ -981,6 +985,8 @@ export interface components {
         };
         /** ProfitCalc */
         ProfitCalc: {
+            /** Ad Cost Minor */
+            ad_cost_minor: number;
             /**
              * As Of
              * @description The oldest observation in `sources` (DEC-259); null when only settings and owner estimates feed the result.
@@ -997,10 +1003,16 @@ export interface components {
             customs_fee_minor: number;
             /** Ddp */
             ddp: boolean;
+            /** Duty Bps */
+            duty_bps: number | null;
             /** Duty Minor */
             duty_minor: number | null;
             /** Estimates */
             estimates: string[];
+            /** Freight Max Days */
+            freight_max_days: number | null;
+            /** Freight Min Days */
+            freight_min_days: number | null;
             /** Freight Minor */
             freight_minor: number | null;
             /** Goods Minor */
@@ -1018,6 +1030,17 @@ export interface components {
             method: string | null;
             /** Missing */
             missing: ("price_missing" | "supplier_cost_missing" | "freight_missing" | "freight_variant_mismatch" | "duty_not_set" | "fx_missing" | "amount_out_of_range")[];
+            /** Net Bps */
+            net_bps: number | null;
+            /**
+             * Net Minor
+             * @description After `ad_cost_minor`: net profit per order.
+             */
+            net_minor: number | null;
+            /** Payment Fee Bps */
+            payment_fee_bps: number;
+            /** Payment Fee Fixed Minor */
+            payment_fee_fixed_minor: number;
             /** Payment Fee Minor */
             payment_fee_minor: number | null;
             /** Price Minor */
@@ -1029,8 +1052,12 @@ export interface components {
             product_id: string;
             /** Quantity */
             quantity: number;
+            /** Returns Bps */
+            returns_bps: number;
             /** Returns Minor */
             returns_minor: number | null;
+            /** Shopify Fee Bps */
+            shopify_fee_bps: number;
             /** Shopify Fee Minor */
             shopify_fee_minor: number | null;
             /** Sources */
@@ -1044,6 +1071,11 @@ export interface components {
         };
         /** ProfitCalcRequest */
         ProfitCalcRequest: {
+            /**
+             * Ad Cost Minor
+             * @description USD ad cost per order (CPA). Omitted: settings.default_cpa_minor.
+             */
+            ad_cost_minor?: number | null;
             /** Customs Fee Minor */
             customs_fee_minor?: number | null;
             /**

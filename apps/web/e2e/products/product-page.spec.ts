@@ -11,8 +11,8 @@ const metrics = (page: Page) => stats(page).getByRole("button");
 const panelHeading = (page: Page, label: string) =>
   page.getByRole("tabpanel").getByRole("heading", { name: label === "Overview" ? "Where it appears" : `The ${label} tab arrives in Phase 2` });
 
-// Sellers has its body (p2-11) and its own spec, sellers.spec.ts.
-for (const [value, label] of Object.entries(TAB_LABELS).filter(([value]) => value !== "sellers")) {
+// Sellers (p2-11) and Profit (p2-20) have their bodies and their own specs, sellers.spec.ts and profit.spec.ts.
+for (const [value, label] of Object.entries(TAB_LABELS).filter(([value]) => value !== "sellers" && value !== "profit")) {
   test(`?tab=${value} deep-links to ${label}`, async ({ page }) => {
     await mockProductApi(page);
     await page.goto(`${URL}?tab=${value}`);

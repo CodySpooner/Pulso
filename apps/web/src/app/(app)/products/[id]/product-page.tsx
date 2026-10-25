@@ -21,6 +21,7 @@ import { cn } from "@/lib/utils";
 
 import { ContextRail } from "./context-rail";
 import { Overview } from "./overview";
+import { ProfitTab } from "./profit/profit-tab";
 import { SellersTab } from "./sellers/sellers-tab";
 import { card, newest, StatCard } from "./stat-card";
 import { resolveTab, TAB_FLAGS, TABS, type Tab } from "./tabs";
@@ -226,6 +227,8 @@ function ProductTabs({ id }: { id: string }) {
                 <SellersTab id={id} />
               ) : t.value === "trends" ? (
                 <TrendsTab id={id} />
+              ) : t.value === "profit" ? (
+                <ProfitTab id={id} />
               ) : (
                 <EmptyState icon={t.icon} headingLevel="h2" title={`The ${t.label} tab arrives in Phase 2`}>
                   {t.summary} Task {t.task} builds it; nothing shows here until it comes from a real source.
