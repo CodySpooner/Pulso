@@ -161,7 +161,7 @@ def test_the_chain_fires_one_alert_per_workspace_and_a_rerun_fires_nothing(
             ws: [(mine[ws], cutoff(D), f"{mine[ws]}:supplier_offer:{listing}:{D}")] for ws in (a, b)
         }
     assert done(run(chain, db_engine, caplog, "ml.features", start=str(D), end=str(D))) == [
-        f"alerts_done day={D} workspaces=2 fired=0 skipped=0 failed=0"
+        f"alerts_done day={D} workspaces=2 fired=0 skipped=1 failed=0"  # still held (DEC-335 d)
     ]
     with Session(db_engine) as session:
         assert {ws: alerts(session, ws) for ws in (a, b)} == fired
@@ -179,7 +179,7 @@ def test_a_backfill_evaluates_each_day_at_its_own_cutoff(
         for listing in (early, late):
             snap(session, listing, at(first, 12), 1000)
         snap(session, early, at(middle, 10), 1100)
-        snap(session, late, cutoff(middle) + timedelta(hours=1), 1100)  # after middle's cutoff
+        snap(session, late, cutoff(middle), 1100)  # at the cutoff: the next day (DEC-335 a)
         session.commit()
     lines = run(chain, db_engine, caplog, "ml.features", start=str(first), end=str(D))
     assert done(lines) == [

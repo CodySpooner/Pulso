@@ -3922,13 +3922,13 @@ Superseded review defaults, not given entries: default #0 (move the repo) is don
 - **Not here:** XR-65 (a merged product's rules stop watching); a gap filled by a catch-up run (`filled_by_run_id`) still holds, as before; per-offer capture evidence.
 
 ### DEC-334 · SC-6 evaluates alerts nightly: after each day's committed scores, `alerts.evaluate()` for every workspace at the day's cutoff (d+1 00:00Z), one commit per workspace, a failing workspace logged and rolled back on its own, one `alerts_done` line per day
-**2026-10-25 · proposed (p4-23)** · Phase 4 task WF-4 (imp-465); SPEC §6.10; DEC-031, DEC-324 (c, d, f, h), DEC-326 (a, j); AGENTS.md §3, §4, §7; vault Features/Alerts & Notifications; `docs/reports/p4-23.md`; no migration, endpoint, Beat entry, flag or dependency change; `evaluate()` unchanged
+**2026-10-25 · proposed (p4-23)** · Phase 4 task WF-4 (imp-465); SPEC §6.10; DEC-031, DEC-324 (c, d, f, h), DEC-326 (a, j), DEC-335 (a, c, d); AGENTS.md §3, §4, §7; vault Features/Alerts & Notifications; `docs/reports/p4-23.md`; no migration, endpoint, Beat entry, flag or dependency change; `evaluate()` unchanged
 - **Decision:**
   - **(a) Where.** `pulso_workers.ml.score()` is the step that both `ml.features` (after each day it commits) and the `ml.scores` one-shot run. It now calls `evaluate_alerts(session, d)` after the scores commit. A day with no feature rows is still evaluated, because supplier-offer rules read snapshots, not scores.
   - **(b) `as_of` is the day's cutoff**, `pulso_ml.features.daily.cutoff(d)` (d+1 00:00Z), not the run time. This narrows DEC-324 (h)'s `<run time>`.
     - A backfill of d−2..d evaluates each day in order with its own cutoff, and every alert's `fired_at` is its day's cutoff.
-    - An observation captured after a day's cutoff is invisible to that day's run.
-    - A re-run fires nothing new: an offer's state moves only on a newer observation (DEC-324 c), and the dedupe key backs that up. Re-running an older day after a newer one fires nothing either.
+    - `evaluate()` reads strictly before `as_of` (DEC-335 a), so a capture at or after a day's cutoff is invisible to that day's run and belongs to the next day (DEC-031).
+    - A re-run fires nothing new: an offer's state moves only on a newer observation or a confirming run (DEC-324 c, DEC-335 c), and the dedupe key backs that up. A held crossing still counts as `skipped` on a re-run (DEC-335 d). Re-running an older day after a newer one fires nothing either.
   - **(c) Every workspace, ordered by id.** Each workspace is evaluated and then committed on its own.
     - If one raises, only its uncommitted work rolls back: seeded Testing defaults, rule state and alerts. The worker logs `alerts_failed day=<d> workspace_id=<id>` at ERROR, with the traceback and the job id (the JSON formatter adds both), and moves on to the next workspace.
     - The task doesn't fail. The day's scores were already committed.
@@ -3942,14 +3942,13 @@ Superseded review defaults, not given entries: default #0 (move the repo) is don
   - **One transaction for all workspaces:** one bad rule would lose every workspace's alerts.
   - **A savepoint per workspace inside one commit:** the same isolation, but a crash later in the loop loses the earlier workspaces' work. A commit per workspace is simpler.
   - **Failing the task when a workspace fails:** the backfill's later days wouldn't run, and Celery's failed state wouldn't say which workspace. The ERROR line names it.
-  - **Reading `captured_at < as_of` (DEC-031's strict bound):** that changes `evaluate()`'s `<=`, which every engine test relies on (they evaluate at an observation's own instant). With `<=`, a capture stamped exactly d+1 00:00:00Z joins day d's run with its own date in the dedupe key, so it still fires once and never before it was captured.
   - **A separate `ml.alerts` task chained after scores:** another task and route for the same step. The call inside `score()` covers both tasks.
   - **Counting fired alerts inside `evaluate()`:** its return type would change under every engine test.
 - **Why:** `apps/workers/tests/test_alerts_nightly.py` runs the real `ml.features` and `ml.scores` tasks (real `daily.run`, `nightly.run` and `evaluate()`) on a throwaway `pgvector/pgvector:0.8.7-pg18-trixie`, over fixture rows only:
-  - two workspaces with a rule crossing on d each get one alert with `fired_at` = d's cutoff, and a Testing default held by a gap counts as `skipped=1`; a re-run of d fires 0 and leaves the rows as they were;
-  - a d−2..d backfill fires a d−1 crossing at d−1's cutoff, and a crossing captured an hour after d−1's cutoff only at d's;
+  - two workspaces with a rule crossing on d each get one alert with `fired_at` = d's cutoff, and a Testing default held by a gap counts as `skipped=1`; a re-run of d fires 0, still counts the hold (`skipped=1`, DEC-335 d) and leaves the rows as they were;
+  - a d−2..d backfill fires a d−1 crossing at d−1's cutoff, and a crossing captured exactly at d−1's cutoff only at d's;
   - a workspace with a malformed rule is logged with its id and job id and rolled back, including its good rule's alert; the next workspace still gets its alert, and d's two score rows stay committed;
   - with `FEATURES_ENABLED` off, neither task evaluates a rule.
 
-  `apps/workers/tests/test_ml.py` pins the order: scores, commit, then alerts, in both tasks. 15 one-line mutations each fail a test (`docs/reports/p4-23.md`).
+  `apps/workers/tests/test_ml.py` pins the order: scores, commit, then alerts, in both tasks. 16 one-line mutations each fail a test (`docs/reports/p4-23.md`).
 - **Not here:** a job-runs row for Data Health (backlog row); the "Last evaluation" footer (WF-4b reads `last_evaluated_at`); evaluation after `store_crawl` and supplier refreshes; the score-based rules (imp-466–468).
