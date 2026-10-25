@@ -36,6 +36,11 @@ def hnsw_cosine(column: str) -> Index:
     )
 
 
+def trigram(column: str) -> Index:
+    """A pg_trgm GIN index for global search's substring and fuzzy matches (DEC-252)."""
+    return Index(None, column, postgresql_using="gin", postgresql_ops={column: "gin_trgm_ops"})
+
+
 class Category(Base):
     __tablename__ = "categories"
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=False)
@@ -64,6 +69,7 @@ class Product(Base):
             "id",
             postgresql_where=text("merged_into_id IS NULL"),
         ),
+        trigram("name"),
     )
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
     name: Mapped[str] = mapped_column(Text)
@@ -83,6 +89,7 @@ class Listing(BigId, Base):
         UniqueConstraint("source_id", "external_id"),
         CheckConstraint("num_nonnulls(store_id, supplier_id) <= 1", name="one_vendor"),
         hnsw_cosine("title_embedding"),
+        trigram("title"),
     )
     source_id: Mapped[int] = mapped_column(ForeignKey("sources.id"))
     external_id: Mapped[str] = mapped_column(Text)

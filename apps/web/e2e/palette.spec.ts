@@ -36,7 +36,7 @@ test.describe("command palette", () => {
   test("arrow keys and Enter navigate to a route and focus its heading", async ({ page }) => {
     await page.keyboard.press("Control+K");
     const options = page.getByRole("option");
-    // The disabled search row is skipped, so the first selection is Daily Pulse.
+    // With no query there are no search rows (UX-9 searches from 2 characters), so the first selection is Daily Pulse.
     await expect(options.filter({ hasText: "Daily Pulse" })).toHaveAttribute("aria-selected", "true");
 
     await page.keyboard.press("ArrowDown");
