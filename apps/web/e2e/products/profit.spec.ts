@@ -1,7 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 
 import { PRODUCT_ID } from "./fixtures";
-import { complete, incomplete, mockProfitApi, noFreight, noPrice, noSupplier, stale } from "./profit-fixtures";
+import { complete, incomplete, mockProfitApi, noFreight, noPrice, noSupplier, outOfStock, stale } from "./profit-fixtures";
 
 // p2-20 (UX-8 part b) Profit tab against fixture calc answers (the E2E auth bypass, never a database restore).
 const URL = `/products/${PRODUCT_ID}?tab=profit`;
@@ -133,6 +133,17 @@ test("no market price: the price input asks for one, and a typed price prices th
   await price.press("Enter");
   await expect(results(page)).toContainText("+$0.03");
   await expect(slider(page, "Sell price")).toHaveAttribute("aria-valuetext", "$29.99");
+});
+
+test("an out-of-stock default is marked beside the supplier, in text; an in-stock one is not (imp-351)", async ({ page }) => {
+  await mockProfitApi(page, { body: outOfStock });
+  await page.goto(URL);
+  const scenario = page.getByRole("region", { name: "Scenario" });
+  await expect(scenario).toContainText("Costed from the CJ Dropshipping listing Out of stock with the best complete margin; none is in stock.");
+  await mockProfitApi(page, { body: complete }); // the later route answers first
+  await page.reload();
+  await expect(scenario).toContainText("Costed from the CJ Dropshipping listing with the best complete margin.");
+  await expect(scenario).not.toContainText("Out of stock");
 });
 
 test("no supplier: no source yet, with the CSV fallback", async ({ page }) => {

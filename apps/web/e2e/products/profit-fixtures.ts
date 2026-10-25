@@ -21,7 +21,7 @@ const RATES = ["duty_bps", "customs_fee_minor", "payment_fee_bps", "payment_fee_
 /** The Profit note's worked example as the endpoint answers it. apps/api/tests/test_profit.py
  *  `test_the_profit_tab_gets_net_profit_rates_freight_days_and_named_sources` pins these numbers to the server. */
 export const complete: Calc = {
-  product_id: PRODUCT_ID, supplier_listing_id: 88123, variant_id: null, quantity: 1, method: "CJPacket", freight_min_days: 8,
+  product_id: PRODUCT_ID, supplier_listing_id: 88123, in_stock: true, variant_id: null, quantity: 1, method: "CJPacket", freight_min_days: 8,
   freight_max_days: 12, ddp: false, currency: "USD",
   price_minor: 2999, goods_minor: 620, freight_minor: 485, duty_minor: 124, customs_fee_minor: 0, payment_fee_minor: 117,
   shopify_fee_minor: 0, returns_minor: 150, landed_cost_minor: 1229, margin_minor: 1503, margin_bps: 5012, ad_cost_minor: 1500,
@@ -34,6 +34,10 @@ export const complete: Calc = {
     ...Object.fromEntries(RATES.map((name) => [name, settings])),
   },
 };
+
+/** No supplier is in stock, so the default costs the best out-of-stock listing (imp-289, DEC-291) and says so
+ *  (imp-351). `test_profit_and_discover_both_skip_a_known_out_of_stock_supplier` pins the flag to the server. */
+export const outOfStock: Calc = { ...complete, in_stock: false };
 
 /** One price-slider step up ($30.49), pinned by the same test. */
 export const step: Calc = {
