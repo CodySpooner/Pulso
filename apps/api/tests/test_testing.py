@@ -2,7 +2,9 @@
 CPA and ROAS, a start snapshot taken once, and kill-reason counts."""
 
 from collections.abc import Callable, Iterator
+from dataclasses import asdict
 from datetime import UTC, datetime, timedelta
+from fractions import Fraction
 from typing import Any, get_args
 from uuid import uuid4
 
@@ -16,8 +18,9 @@ from sqlalchemy.orm import Session
 
 from pulso_api.auth import Principal, current_principal
 from pulso_api.dependencies import get_db
-from pulso_api.routers.testing import KillReason, Stage
+from pulso_api.routers.testing import NO_BREAK_EVEN, KillReason, Stage, stop_loss
 from pulso_core.db import Base
+from pulso_core.landed_cost import Amount, Inputs, landed_cost
 from pulso_core.models import (
     CollectorRun,
     Image,
@@ -52,6 +55,59 @@ def test_cpa_and_roas_are_never_stored() -> None:
 
 def test_the_api_literals_match_the_table_checks() -> None:
     assert (get_args(Stage), get_args(KillReason)) == (TEST_STAGES, KILL_REASONS)
+
+
+# The vault's worked example through the one landed-cost function: $39.99, $14.20 landed,
+# 2.9% + $0.30 = $1.46 fees, so break-even CPA $24.33 and a $48.66 stop-loss.
+EXAMPLE = asdict(
+    landed_cost(
+        Inputs(price_minor=3999, unit_cost=Amount(1420, "USD"), freight=Amount(0, "USD"),
+               duty_bps=0, payment_fee_bps=290, payment_fee_fixed_minor=30)
+    )
+)  # fmt: skip
+
+
+def signal(spend: int, orders: int, snapshot: dict[str, Any] | None = EXAMPLE) -> Any:
+    cpa = round(Fraction(spend, orders)) if orders else None
+    return stop_loss("testing", snapshot, spend, orders, cpa)["signal"]
+
+
+def test_the_worked_example_to_the_cent() -> None:
+    assert pick(EXAMPLE, "landed_cost_minor", "payment_fee_minor", "margin_minor") == (
+        1420, 146, 2433
+    )  # fmt: skip
+    economics = stop_loss("testing", EXAMPLE, 0, 0, None)
+    assert economics == {"break_even_cpa_minor": 2433, "stop_loss_minor": 4866, "signal": None,
+                         "signal_reason": None}  # fmt: skip
+    assert (signal(4865, 0), signal(4866, 0)) == (None, "over_stop_loss")  # $48.66
+
+
+@pytest.mark.parametrize(
+    ("spend", "orders", "expected"),
+    [(4865, 0, None), (4866, 0, "over_stop_loss"), (10**6, 1, None),
+     (4 * 2434, 4, None), (4 * 2433, 4, None),  # N - 1 orders: no call either way
+     (5 * 2433, 5, "winner_candidate"), (5 * 2433 + 2, 5, "winner_candidate"),  # $24.334
+     (5 * 2433 + 3, 5, "over_stop_loss"), (5 * 2434, 5, "over_stop_loss"),  # $24.336, $24.34
+     (0, 5, "winner_candidate"), (2433 * 7, 7, "winner_candidate")],
+)  # fmt: skip
+def test_the_stop_loss_and_winner_boundaries(spend: int, orders: int, expected: Any) -> None:
+    assert signal(spend, orders) == expected
+
+
+def test_no_break_even_no_signal() -> None:
+    incomplete = landed_cost(Inputs(price_minor=None, unit_cost=None, freight=None, duty_bps=0))
+    economics = stop_loss("testing", asdict(incomplete), 10**6, 0, None)
+    assert economics == {"break_even_cpa_minor": None, "stop_loss_minor": None, "signal": None,
+                         "signal_reason": NO_BREAK_EVEN}  # fmt: skip
+    assert NO_BREAK_EVEN == "Set price and supplier to compute break-even."
+    # Only Testing gets a signal or a reason; before a snapshot there is none.
+    assert stop_loss("killed", EXAMPLE, 10**6, 0, None)["signal"] is None
+    assert stop_loss("idea", None, 0, 0, None)["signal_reason"] is None
+    # A break-even at or below zero: every spend is past it, and no budget is suggested.
+    loss = EXAMPLE | {"margin_minor": -150}
+    assert pick(stop_loss("testing", loss, 0, 0, None), "stop_loss_minor", "signal") == (
+        None, "over_stop_loss"
+    )  # fmt: skip
 
 
 @pytest.mark.parametrize(
@@ -244,6 +300,68 @@ def test_entering_testing_snapshots_the_profit_calc_once(
 
 
 @pytest.mark.db
+def test_changed_since_start_compares_a_fresh_calc_and_keeps_the_snapshot(
+    board: tuple[As, dict[str, Any]], db_engine: Engine
+) -> None:
+    as_, ids = board
+    api = as_("a")
+    url = f"/v1/tests/{create(api, ids['p0'])['id']}"
+    assert api.get(url).json()["since_start"] is None  # no snapshot yet
+    scenario = {"supplier_listing_id": ids["listing"], "variant_id": ids["variant"],
+                "ad_cost_minor": 1800}  # fmt: skip
+    test = api.patch(url, json={"stage": "testing", "scenario": scenario}).json()
+    economics = pick(test, "break_even_cpa_minor", "stop_loss_minor", "signal", "signal_reason")
+    assert economics == (2253, 4506, None, None)  # $22.53 break-even, 2 x = $45.06
+    assert api.get(url).json()["since_start"] == {"changes": [], "reason": None,
+                                                  "as_of": "2026-10-23T12:00:00Z"}  # fmt: skip
+    # Five orders at $22.54 each are past break-even; at $22.53 a winner candidate.
+    assert api.patch(url, json={"ad_spend_minor": 11270, "orders": 5}).json()["signal"] == (
+        "over_stop_loss"
+    )  # fmt: skip
+    assert api.patch(url, json={"ad_spend_minor": 11265}).json()["signal"] == "winner_candidate"
+    snap = test["start_snapshot"]
+    with Session(db_engine) as session:
+        stored = session.get(ProductTest, test["id"])
+        assert stored is not None and stored.start_snapshot == snap
+
+    # A new freight quote and a new duty rate; the owner's CPA estimate stays the scenario's.
+    with Session(db_engine) as session:
+        quote = observe(session, ShippingOption, CJ, DAY + timedelta(days=1),
+                        listing_id=ids["listing"], variant_id=ids["variant"],
+                        destination_country="US", quantity=1, method="CJPacket", cost_minor=500,
+                        currency="USD")  # fmt: skip
+        session.commit()
+        new_quote = quote.id
+    patch = {"duty_default_bps": 2500, "default_cpa_minor": 999}
+    assert api.patch("/v1/settings", json=patch).status_code == 200
+    body = api.get(url).json()
+    # $39.99 - ($10.00 + $5.00 + 25% duty $2.50) - $1.46 fees = $21.03
+    assert body["since_start"]["changes"] == [
+        {"input": "freight_quote_id", "old": ids["quote"], "new": new_quote},
+        {"input": "freight_minor", "old": 400, "new": 500},
+        {"input": "duty_bps", "old": 2000, "new": 2500},
+        {"input": "margin_minor", "old": 2253, "new": 2103},
+    ]
+    assert body["start_snapshot"] == snap and body["break_even_cpa_minor"] == 2253
+    with Session(db_engine) as session:
+        stored = session.get(ProductTest, test["id"])
+        assert stored is not None and stored.start_snapshot == snap
+
+    # A fresh calc that can't run says why, never a blank.
+    with Session(db_engine) as session:
+        session.execute(update(Listing).where(Listing.id == ids["listing"]).values(delisted_at=DAY))
+        session.commit()
+    assert api.get(url).json()["since_start"] == {
+        "changes": [], "reason": "Supplier listing not found on this product.", "as_of": None
+    }  # fmt: skip
+    # An incomplete snapshot: no break-even, no signal, and the reason.
+    other = create(api, ids["p1"], stage="testing", ad_spend_minor=10**6)
+    assert pick(other, "break_even_cpa_minor", "signal", "signal_reason") == (
+        None, None, NO_BREAK_EVEN
+    )  # fmt: skip
+
+
+@pytest.mark.db
 def test_list_pages_filters_and_counts_kill_reasons(board: tuple[As, dict[str, Any]]) -> None:
     as_, ids = board
     api = as_("a")
@@ -313,4 +431,4 @@ def test_two_workspace_isolation(board: tuple[As, dict[str, Any]]) -> None:
     theirs = create(b, ids["p1"])  # the open-test rule is per workspace
     assert [item["id"] for item in as_("a").get("/v1/tests").json()["items"]] == [mine["id"]]
     assert [item["id"] for item in as_("b").get("/v1/tests").json()["items"]] == [theirs["id"]]
-    assert as_("a").get(url).json() == mine
+    assert as_("a").get(url).json() == mine | {"since_start": None}

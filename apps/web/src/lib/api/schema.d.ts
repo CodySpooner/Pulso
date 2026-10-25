@@ -1662,6 +1662,18 @@ export interface components {
             /** Path */
             path: string;
         };
+        /** Change */
+        Change: {
+            /**
+             * Input
+             * @enum {string}
+             */
+            input: "price_minor" | "freight_quote_id" | "goods_minor" | "freight_minor" | "duty_bps" | "customs_fee_minor" | "payment_fee_bps" | "payment_fee_fixed_minor" | "shopify_fee_bps" | "returns_bps" | "ad_cost_minor" | "margin_minor";
+            /** New */
+            new: number | null;
+            /** Old */
+            old: number | null;
+        };
         /**
          * Cluster
          * @description A side's product: what a merge moves (listings) and what stays and follows (notes, tags).
@@ -2873,10 +2885,15 @@ export interface components {
              */
             started_on?: string | null;
         };
-        /** ProductTestOut */
-        ProductTestOut: {
+        /** ProductTestDetail */
+        ProductTestDetail: {
             /** Ad Spend Minor */
             ad_spend_minor: number;
+            /**
+             * Break Even Cpa Minor
+             * @description The start snapshot's margin before ads; null without a complete snapshot.
+             */
+            break_even_cpa_minor: number | null;
             /**
              * Cpa Minor
              * @description ad_spend_minor / orders, half-even to the cent; null with no orders.
@@ -2919,6 +2936,18 @@ export interface components {
              */
             roas: number | null;
             /**
+             * Signal
+             * @description While Testing: over_stop_loss when orders = 0 and spend >= k x break-even CPA, or orders >= N (N = 5) and cpa_minor > break-even CPA; winner_candidate when orders >= N and cpa_minor <= break-even CPA.
+             */
+            signal: ("over_stop_loss" | "winner_candidate") | null;
+            /**
+             * Signal Reason
+             * @description While Testing, why there is no break-even.
+             */
+            signal_reason: string | null;
+            /** @description The start snapshot against a fresh Profit calc of the same scenario (R-21); null before the test has a snapshot. */
+            since_start: components["schemas"]["SinceStart"] | null;
+            /**
              * Stage
              * @enum {string}
              */
@@ -2932,6 +2961,96 @@ export interface components {
             } | null;
             /** Started On */
             started_on: string | null;
+            /**
+             * Stop Loss Minor
+             * @description k x break-even CPA (k = 2): the no-order stop-loss line and the suggested test budget; null without a positive break-even CPA.
+             */
+            stop_loss_minor: number | null;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** ProductTestOut */
+        ProductTestOut: {
+            /** Ad Spend Minor */
+            ad_spend_minor: number;
+            /**
+             * Break Even Cpa Minor
+             * @description The start snapshot's margin before ads; null without a complete snapshot.
+             */
+            break_even_cpa_minor: number | null;
+            /**
+             * Cpa Minor
+             * @description ad_spend_minor / orders, half-even to the cent; null with no orders.
+             */
+            cpa_minor: number | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Currency
+             * @constant
+             */
+            currency: "USD";
+            /** Ended On */
+            ended_on: string | null;
+            /** Id */
+            id: number;
+            /** Kill Reason */
+            kill_reason: ("no_sales_over_stop_loss" | "cpa_above_break_even" | "low_ctr_creatives" | "supplier_issue" | "sample_quality" | "margin_too_thin" | "saturated" | "ad_account_rejection" | "other") | null;
+            /** Notes */
+            notes: string | null;
+            /** Orders */
+            orders: number;
+            /**
+             * Product Id
+             * Format: uuid
+             */
+            product_id: string;
+            /** Product Image Url */
+            product_image_url: string | null;
+            /** Product Title */
+            product_title: string;
+            /** Revenue Minor */
+            revenue_minor: number;
+            /**
+             * Roas
+             * @description revenue_minor / ad_spend_minor; null with no spend.
+             */
+            roas: number | null;
+            /**
+             * Signal
+             * @description While Testing: over_stop_loss when orders = 0 and spend >= k x break-even CPA, or orders >= N (N = 5) and cpa_minor > break-even CPA; winner_candidate when orders >= N and cpa_minor <= break-even CPA.
+             */
+            signal: ("over_stop_loss" | "winner_candidate") | null;
+            /**
+             * Signal Reason
+             * @description While Testing, why there is no break-even.
+             */
+            signal_reason: string | null;
+            /**
+             * Stage
+             * @enum {string}
+             */
+            stage: "idea" | "researching" | "testing" | "winner" | "killed";
+            /**
+             * Start Snapshot
+             * @description The Profit calc (ProfitCalc fields plus captured_at) when the test first entered Testing. Never rewritten; null until then.
+             */
+            start_snapshot: {
+                [key: string]: unknown;
+            } | null;
+            /** Started On */
+            started_on: string | null;
+            /**
+             * Stop Loss Minor
+             * @description k x break-even CPA (k = 2): the no-order stop-loss line and the suggested test budget; null without a positive break-even CPA.
+             */
+            stop_loss_minor: number | null;
             /**
              * Updated At
              * Format: date-time
@@ -3855,6 +3974,24 @@ export interface components {
             source: string;
             /** Title */
             title: string;
+        };
+        /** SinceStart */
+        SinceStart: {
+            /**
+             * As Of
+             * @description The fresh calc's oldest observation.
+             */
+            as_of: string | null;
+            /**
+             * Changes
+             * @description Each compared input the fresh calc differs on; empty: no changes since start.
+             */
+            changes: components["schemas"]["Change"][];
+            /**
+             * Reason
+             * @description Why the fresh calc couldn't run; `changes` is empty.
+             */
+            reason: string | null;
         };
         /** SourceHealth */
         SourceHealth: {
@@ -20280,7 +20417,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ProductTestOut"];
+                    "application/json": components["schemas"]["ProductTestDetail"];
                 };
             };
             /** @description Unauthorized */
