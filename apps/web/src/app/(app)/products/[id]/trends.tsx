@@ -88,19 +88,26 @@ function buildView(series: AnySeries[], start: string, end: string, rangeParam: 
       const lines = p.metrics.map((metric) => byMetric.get(metric)).filter((s): s is Series => !!s && hasData(s));
       return { key: p.key, label: p.label, color: p.color, ...FORMAT[p.key], bands: gapBands(lines, days), lines: lines.map((s) => ({ series: s, ...LINE[s.metric] })) };
     });
-  return { range, overlay, byMetric, withData, available, on, days, panes };
+  return { range, byMetric, withData, available, on, days, panes };
 }
 
 function Loaded({ series, start, end, params }: { series: AnySeries[]; start: string; end: string; params: URLSearchParams }) {
   const rangeParam = params.get("range");
   const overlayParam = params.get("overlay");
   const view = useMemo(() => buildView(series, start, end, rangeParam, overlayParam), [series, start, end, rangeParam, overlayParam]);
-  const { range, overlay, byMetric, withData, available, on, days, panes } = view;
+  const { range, byMetric, withData, available, on, days, panes } = view;
+  // Clicks build on the URL, not this render: Next syncs useSearchParams in a transition, so a quick second
+  // click can land before the re-render and would undo the first (imp-278).
+  const current = () => readState(new URLSearchParams(window.location.search));
   const set = (nextRange: Range, nextOverlay: PaneKey[] | null) => {
     const query = writeState(window.location.search, nextRange, nextOverlay, available);
     window.history.replaceState(null, "", query ? `?${query}` : window.location.pathname);
   };
-  const toggle = (key: PaneKey) => set(range, on.includes(key) ? on.filter((k) => k !== key) : PANES.map((p) => p.key).filter((k) => k === key || on.includes(k)));
+  const toggle = (key: PaneKey) => {
+    const now = current();
+    const shown = now.overlay ?? available;
+    set(now.range, shown.includes(key) ? shown.filter((k) => k !== key) : PANES.map((p) => p.key).filter((k) => k === key || shown.includes(k)));
+  };
 
   const observed = new Set(series.filter(hasData).flatMap((s) => s.points.map((p) => p.day))).size;
   const gapDays = new Set(panes.flatMap((p) => p.lines.flatMap((l) => l.series.gaps.map((g) => g.day))).filter((d) => days.includes(d))).size;
@@ -121,7 +128,7 @@ function Loaded({ series, start, end, params }: { series: AnySeries[]; start: st
                 key={r.value}
                 type="button"
                 aria-pressed={range === r.value}
-                onClick={() => set(r.value, overlay)}
+                onClick={() => set(r.value, current().overlay)}
                 className={cn(
                   "relative hit-area rounded-sm px-3 text-label font-medium transition-colors duration-(--duration-fast) ease-standard",
                   range === r.value ? "text-foreground" : "text-muted-foreground hover:text-foreground",
