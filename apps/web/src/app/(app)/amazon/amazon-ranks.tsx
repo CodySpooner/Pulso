@@ -204,8 +204,8 @@ function Table({ rows, page }: { rows: Row[]; page: Page }) {
             <tbody key={key}>
               <tr className="row-h">
                 <th scope="colgroup" colSpan={COLUMNS.length} className={cn(cell, "border-border bg-secondary text-left text-label font-medium text-foreground")}>
-                  {category} › {KINDS[kind]}
-                  <span className="ml-2 font-normal text-muted-foreground tabular-nums">
+                  {category} › {KINDS[kind]}{" "}
+                  <span className="ml-1 font-normal text-muted-foreground tabular-nums">
                     as of{" "}
                     <time dateTime={first.as_of} title={`Imported ${formatUtc(first.captured_at)}`}>
                       {day(first.as_of)}
