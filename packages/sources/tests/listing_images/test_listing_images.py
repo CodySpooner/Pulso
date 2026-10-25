@@ -224,11 +224,36 @@ def test_fresh_main_image_stored_once_then_rerun_sends_nothing(
     stored = len(net.objects)
     rerun = run(session, settings)
     assert len(net.calls) == 2 and rerun.http_requests == 0
-    # Nothing left to fetch still succeeds: one offline plan capture, so no catch-up run.
-    assert rerun.status == "success" and len(net.objects) == stored + 1
+    # Nothing fetchable left: one offline plan capture, and the due off-list images name it.
+    assert (rerun.status, rerun.error_code) == ("partial", "NoListedHost")
+    assert len(net.objects) == stored + 1
     manifest = session.scalars(select(RawPayload).order_by(RawPayload.id.desc())).first()
     assert manifest is not None
     assert manifest.request == {"pending": 2, "unlisted_host": 2, "backoff": 0}
+
+
+def test_due_images_on_no_listed_host_read_partial_and_nothing_due_reads_success(
+    session: Session, settings: Settings, net: Net
+) -> None:
+    assert run(session, settings).status == "success"  # XR-12: nothing due is a quiet day.
+    add_listing(session, "https://unlisted.test/x.png")
+    # XR-15: urllib would connect to the whole netloc, so these are not host A.
+    add_listing(session, f"https://x@{A}/a.png")
+    add_listing(session, f"https://x\\@{A}/b.png")
+    result = run(session, settings)
+    assert (result.status, result.error_code) == ("partial", "NoListedHost")
+    assert net.calls == []
+    manifest = session.scalars(select(RawPayload).order_by(RawPayload.id.desc())).first()
+    assert manifest is not None
+    assert manifest.request == {"pending": 3, "unlisted_host": 3, "backoff": 0}
+
+
+@pytest.mark.parametrize(
+    "url", [f"https://x@{A}/a.png", f"https://x:y@{A}/a.png", f"https://x\\@{A}/a.png"]
+)
+def test_userinfo_or_backslash_url_has_no_host(url: str) -> None:
+    assert listing_images.https_host(url) is None
+    assert listing_images.https_host(f"https://{A}/a.png") == A
 
 
 @pytest.mark.parametrize(

@@ -49,6 +49,10 @@ class ImageUndecodable(ValueError):
     pass
 
 
+class NoListedHost(ValueError):
+    pass
+
+
 def decode(body: bytes) -> PILImage.Image:
     image = PILImage.open(io.BytesIO(body), formats=["JPEG", "PNG", "WEBP", "GIF"])
     if image.width * image.height > MAX_PIXELS:
@@ -76,7 +80,9 @@ def check(response: Response) -> None:
 def https_host(url: str) -> str | None:
     try:
         parts = urlsplit(url)
-        return parts.hostname if parts.scheme == "https" and parts.port in {None, 443} else None
+        ok = parts.scheme == "https" and parts.port in {None, 443}
+        # urllib connects to the whole netloc, userinfo included, so those forms have no host.
+        return parts.hostname if ok and not {"@", "\\"} & set(parts.netloc) else None
     except ValueError:
         return None
 
@@ -259,6 +265,11 @@ def plan(session: Session, *, settings: Settings) -> tuple[ImageAdapter, list[Ta
             "unlisted_host": unlisted,
             "backoff": waiting,
         }
-        body = json.dumps(manifest).encode()
-        targets.append(Target(f"{SCOPE}_plan", "empty", [Request(manifest, "json", body)]))
+
+        def capture() -> Iterator[Request]:
+            yield Request(manifest, "json", json.dumps(manifest).encode())
+            if pending and unlisted == len(pending):
+                raise NoListedHost()  # Due images, none on a listed host: the run reads partial.
+
+        targets.append(Target(f"{SCOPE}_plan", "empty", capture()))
     return adapter, targets
