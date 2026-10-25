@@ -21,6 +21,7 @@ from pulso_api.routers import (
     product_series,
     products,
     profit,
+    search,
 )
 from pulso_core.logging import configure_logging, request_id
 
@@ -97,6 +98,7 @@ def create_app() -> FastAPI:
     app.include_router(profit.router)
     app.include_router(product_sellers.router)
     app.include_router(product_series.router)
+    app.include_router(search.router)
     app.dependency_overrides[admin.get_publisher] = get_publisher
     return app
 

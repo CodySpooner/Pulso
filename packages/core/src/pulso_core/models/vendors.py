@@ -18,11 +18,12 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from pulso_core.db import Base, BigId, Observation
+from pulso_core.models.catalog import trigram
 
 
 class Supplier(BigId, Base):
     __tablename__ = "suppliers"
-    __table_args__ = (UniqueConstraint("platform", "external_id"),)
+    __table_args__ = (UniqueConstraint("platform", "external_id"), trigram("name"))
     platform: Mapped[str] = mapped_column(String(30))
     external_id: Mapped[str] = mapped_column(Text)
     name: Mapped[str] = mapped_column(Text)
@@ -66,6 +67,7 @@ class ShippingOption(Observation, BigId, Base):
 
 class Store(BigId, Base):
     __tablename__ = "stores"
+    __table_args__ = (trigram("domain"), trigram("myshopify_domain"))
     domain: Mapped[str] = mapped_column(String(253), unique=True)
     platform: Mapped[str] = mapped_column(String(30))
     shop_id: Mapped[str | None] = mapped_column(Text)
