@@ -118,7 +118,7 @@ def test_duty_not_set_lowers_confidence_but_not_the_value() -> None:
     duty = opportunity(Stored(68.6, AT), Stored(73.3, AT), Margin(5275, False, AT))
     assert unset.value == duty.value == 65.7
     assert (duty.explanation.confidence, duty.explanation.cautions) == (0.9, ())
-    assert unset.explanation.confidence == pytest.approx(duty.explanation.confidence - 0.2)
+    assert unset.explanation.confidence == pytest.approx(0.9 - 0.2)
 
 
 def test_as_of_is_the_oldest_present_input() -> None:

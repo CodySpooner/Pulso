@@ -289,8 +289,8 @@ def test_history_is_range_bounded_and_keyset_paginated(api: TestClient, db_engin
     with Session(db_engine) as session:
         workspace_id = workspace(session, **LAMP_FEES)
         product_id = lamp(session)
-        for days in range(1, 41):
-            score(session, product_id, "trend", 50.0 + days / 10, day=TODAY - timedelta(days=days))
+        for n in range(1, 41):
+            score(session, product_id, "trend", 50.0 + n / 10, day=TODAY - timedelta(days=n))
         score(session, product_id, "trend", 61.0, model_version="001-fixture00000")  # a new version
         session.commit()
 
