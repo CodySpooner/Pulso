@@ -55,21 +55,11 @@ def test_the_api_literals_match_the_table_checks() -> None:
 
 @pytest.mark.parametrize(
     "field",
-    [
-        {"stage": "paused"},
-        {"stage": None},
-        {"ad_spend_minor": -1},
-        {"revenue_minor": 2**63},
-        {"orders": -1},
-        {"orders": "3"},
-        {"notes": "b\x00d"},
-        {"kill_reason": "bored"},
-        {"currency": "EUR"},
-        {"cpa_minor": 100},
-        {"start_snapshot": {}},
-        {"scenario": {"quantity": 0}},
-    ],
-)
+    [{"stage": "paused"}, {"stage": None}, {"ad_spend_minor": -1}, {"revenue_minor": 2**63},
+     {"orders": -1}, {"orders": "3"}, {"notes": "b\x00d"}, {"kill_reason": "bored"},
+     {"currency": "EUR"}, {"cpa_minor": 100}, {"start_snapshot": {}},
+     {"scenario": {"quantity": 0}}],
+)  # fmt: skip
 def test_create_validates_fields(client: TestClient, field: dict[str, Any]) -> None:
     assert isinstance(client.app, FastAPI)
     client.app.dependency_overrides[current_principal] = lambda: Principal(uuid4(), uuid4())
@@ -127,15 +117,8 @@ def board(client: TestClient, db_engine: Engine) -> tuple[As, dict[str, Any]]:
         products = [Product(name=f"Product {n}") for n in range(4)]
         session.add_all([*users.values(), *workspaces.values(), *products])
         session.flush()
-        session.add(
-            WorkspaceSettings(
-                workspace_id=workspaces["a"].id,
-                duty_default_bps=2000,
-                payment_fee_bps=290,
-                payment_fee_fixed_minor=30,
-                default_cpa_minor=1500,
-            )
-        )
+        fees = {"duty_default_bps": 2000, "payment_fee_bps": 290, "payment_fee_fixed_minor": 30}
+        session.add(WorkspaceSettings(workspace_id=workspaces["a"].id, **fees))
         ids: dict[str, Any] = priced(session, products[0])
         session.commit()
         ids |= {f"p{n}": str(product.id) for n, product in enumerate(products)}
@@ -162,29 +145,36 @@ def create(api: TestClient, product: str, **body: Any) -> Any:
     return response.json()
 
 
+def pick(body: dict[str, Any], *keys: str) -> tuple[Any, ...]:
+    return tuple(body[key] for key in keys)
+
+
+def problem(response: Any) -> tuple[int, str]:
+    return response.status_code, response.json()["code"]
+
+
+def today() -> str:
+    return datetime.now(UTC).date().isoformat()
+
+
 @pytest.mark.db
 def test_cpa_and_roas_match_a_hand_calculation(board: tuple[As, dict[str, Any]]) -> None:
     as_, ids = board
     api = as_("a")
     test = create(api, ids["p1"])
-    assert (test["stage"], test["currency"], test["cpa_minor"], test["roas"]) == (
-        "idea",
-        "USD",
-        None,
-        None,
-    )
+    assert pick(test, "stage", "currency", "cpa_minor", "roas") == ("idea", "USD", None, None)
     url = f"/v1/tests/{test['id']}"
-    body = api.patch(url, json={"ad_spend_minor": 20000, "revenue_minor": 25999, "orders": 3})
+
+    def metrics(**patch: int) -> tuple[Any, ...]:
+        return pick(api.patch(url, json=patch).json(), "cpa_minor", "roas")
+
     # $200.00 / 3 orders = $66.667 → $66.67; $259.99 / $200.00 = 1.29995
-    assert (body.json()["cpa_minor"], body.json()["roas"]) == (6667, 1.29995)
+    assert metrics(ad_spend_minor=20000, revenue_minor=25999, orders=3) == (6667, 1.29995)
     # $48.65 / 2 = $24.325: half-even keeps $24.32 where half-up would say $24.33
-    body = api.patch(url, json={"ad_spend_minor": 4865, "orders": 2})
-    assert (body.json()["cpa_minor"], body.json()["roas"]) == (2432, 25999 / 4865)
-    body = api.patch(url, json={"orders": 0})
-    assert (body.json()["cpa_minor"], body.json()["roas"]) == (None, 25999 / 4865)
-    body = api.patch(url, json={"ad_spend_minor": 0, "orders": 1})
-    assert (body.json()["cpa_minor"], body.json()["roas"]) == (0, None)
-    assert api.get(url).json() == body.json()
+    assert metrics(ad_spend_minor=4865, orders=2) == (2432, 25999 / 4865)
+    assert metrics(orders=0) == (None, 25999 / 4865)
+    assert metrics(ad_spend_minor=0, orders=1) == (0, None)
+    assert pick(api.get(url).json(), "cpa_minor", "roas") == (0, None)
 
 
 @pytest.mark.db
@@ -193,20 +183,18 @@ def test_killed_needs_a_kill_reason(board: tuple[As, dict[str, Any]]) -> None:
     api = as_("a")
     url = f"/v1/tests/{create(api, ids['p1'])['id']}"
     for patch in ({"stage": "killed"}, {"kill_reason": "saturated"}):
-        response = api.patch(url, json=patch)
-        assert (response.status_code, response.json()["code"]) == (422, "kill_reason"), patch
+        assert problem(api.patch(url, json=patch)) == (422, "kill_reason"), patch
     assert api.get(url).json()["stage"] == "idea"  # nothing saved
     body = api.patch(url, json={"stage": "killed", "kill_reason": "saturated"}).json()
-    today = datetime.now(UTC).date().isoformat()
-    assert (body["stage"], body["kill_reason"], body["ended_on"]) == ("killed", "saturated", today)
+    assert pick(body, "stage", "kill_reason", "ended_on") == ("killed", "saturated", today())
     assert api.patch(url, json={"kill_reason": None}).status_code == 422
     assert api.patch(url, json={"kill_reason": "other"}).json()["kill_reason"] == "other"
     body = api.patch(url, json={"stage": "researching"}).json()  # reopened: reason and end clear
-    assert (body["stage"], body["kill_reason"], body["ended_on"]) == ("researching", None, None)
+    assert pick(body, "stage", "kill_reason", "ended_on") == ("researching", None, None)
     response = api.post("/v1/tests", json={"product_id": ids["p2"], "stage": "killed"})
-    assert (response.status_code, response.json()["code"]) == (422, "kill_reason")
+    assert problem(response) == (422, "kill_reason")
     response = api.patch(url, json={"started_on": "2026-10-20", "ended_on": "2026-10-19"})
-    assert (response.status_code, response.json()["code"]) == (422, "date_order")
+    assert problem(response) == (422, "date_order")
 
 
 @pytest.mark.db
@@ -216,35 +204,19 @@ def test_entering_testing_snapshots_the_profit_calc_once(
     as_, ids = board
     api = as_("a")
     test = create(api, ids["p0"], notes="Sunset lamp")
-    assert (test["start_snapshot"], test["started_on"], test["notes"]) == (
-        None,
-        None,
-        "Sunset lamp",
-    )
+    assert pick(test, "start_snapshot", "started_on", "notes") == (None, None, "Sunset lamp")
     url = f"/v1/tests/{test['id']}"
     scenario = {"supplier_listing_id": ids["listing"], "variant_id": ids["variant"]}
     body = api.patch(url, json={"stage": "testing", "scenario": scenario | {"ad_cost_minor": 1800}})
-    assert body.status_code == 200, body.text
+    assert (body.status_code, body.json()["started_on"]) == (200, today()), body.text
     snap = body.json()["start_snapshot"]
-    assert body.json()["started_on"] == datetime.now(UTC).date().isoformat()
-    assert (snap["supplier_listing_id"], snap["variant_id"], snap["freight_quote_id"]) == (
-        ids["listing"],
-        ids["variant"],
-        ids["quote"],
-    )
-    assert [snap[key] for key in ("duty_bps", "payment_fee_bps", "payment_fee_fixed_minor")] == [
-        2000,
-        290,
-        30,
-    ]
-    assert (snap["ad_cost_minor"], snap["estimates"]) == (1800, ["ad_cost_minor"])
+    chosen = pick(snap, "supplier_listing_id", "variant_id", "freight_quote_id")
+    assert chosen == pick(ids, "listing", "variant", "quote")
+    rates = pick(snap, "duty_bps", "payment_fee_bps", "payment_fee_fixed_minor", "ad_cost_minor")
+    assert (rates, snap["estimates"]) == ((2000, 290, 30, 1800), ["ad_cost_minor"])
     # $39.99 - ($10.00 + $4.00 freight + 20% duty $2.00) - (2.9% $1.16 + $0.30) = $22.53
-    assert (snap["price_minor"], snap["landed_cost_minor"], snap["margin_minor"]) == (
-        3999,
-        1600,
-        2253,
-    )
-    assert snap["complete"] and snap["captured_at"]
+    economics = pick(snap, "price_minor", "landed_cost_minor", "margin_minor", "complete")
+    assert economics == (3999, 1600, 2253, True) and snap["captured_at"]
 
     # A fee, the supplier's price, metrics and a stage round trip leave it as it was.
     assert api.patch("/v1/settings", json={"payment_fee_bps": 500}).status_code == 200
@@ -259,21 +231,14 @@ def test_entering_testing_snapshots_the_profit_calc_once(
     ):
         assert api.patch(url, json=patch).json()["start_snapshot"] == snap, patch  # fmt: skip
     assert api.patch(url, json={"start_snapshot": {}}).status_code == 422
-    response = api.patch(url, json={"scenario": scenario})
-    assert (response.status_code, response.json()["code"]) == (422, "snapshot_locked")
+    assert problem(api.patch(url, json={"scenario": scenario})) == (422, "snapshot_locked")
     with Session(db_engine) as session, pytest.raises(DBAPIError, match="immutable"):
-        session.execute(
-            update(ProductTest).where(ProductTest.id == test["id"]).values(start_snapshot={})
-        )
+        session.execute(update(ProductTest).values(start_snapshot={}))
     assert api.get(url).json()["start_snapshot"] == snap
 
     # Without a scenario, the default one; missing inputs stay named, never guessed.
     snap = create(api, ids["p1"], stage="testing")["start_snapshot"]
-    assert (snap["complete"], snap["supplier_listing_id"], snap["margin_minor"]) == (
-        False,
-        None,
-        None,
-    )
+    assert pick(snap, "complete", "supplier_listing_id", "margin_minor") == (False, None, None)
     assert "price_missing" in snap["missing"]
 
 
@@ -281,36 +246,26 @@ def test_entering_testing_snapshots_the_profit_calc_once(
 def test_list_pages_filters_and_counts_kill_reasons(board: tuple[As, dict[str, Any]]) -> None:
     as_, ids = board
     api = as_("a")
-    created = [
-        create(api, ids[product], stage=stage, **extra)["id"]
-        for product, stage, extra in (
-            ("p1", "killed", {"kill_reason": "saturated"}),
-            ("p2", "killed", {"kill_reason": "saturated"}),
-            ("p3", "killed", {"kill_reason": "other"}),
-            ("p3", "idea", {}),
-            ("p1", "winner", {}),
-        )
-    ]
+    killed = [("p1", "saturated"), ("p2", "saturated"), ("p3", "other")]
+    created = [create(api, ids[p], stage="killed", kill_reason=why)["id"] for p, why in killed]
+    created += [create(api, ids["p3"])["id"], create(api, ids["p1"], stage="winner")["id"]]
+    counts = {"saturated": 2, "other": 1}
     seen, cursor = [], None
     while True:
         page = api.get("/v1/tests", params={"limit": 2} | ({"cursor": cursor} if cursor else {}))
         seen += [item["id"] for item in page.json()["items"]]
-        assert page.json()["kill_reasons"] == {"saturated": 2, "other": 1}
+        assert page.json()["kill_reasons"] == counts
         if (cursor := page.json()["next_cursor"]) is None:
             break
     assert seen == created[::-1]  # newest first, each once
     page = api.get("/v1/tests", params={"stage": "killed", "limit": 1}).json()
-    assert ([item["id"] for item in page["items"]], page["kill_reasons"]) == (
-        [created[2]],
-        {"saturated": 2, "other": 1},
-    )
+    assert ([item["id"] for item in page["items"]], page["kill_reasons"]) == ([created[2]], counts)
     # One open test per product: p3 already has one.
-    response = api.post("/v1/tests", json={"product_id": ids["p3"]})
-    assert (response.status_code, response.json()["code"]) == (409, "conflict")
+    assert problem(api.post("/v1/tests", json={"product_id": ids["p3"]})) == (409, "conflict")
     for params in ({"cursor": "x"}, {"cursor": 0}, {"limit": 101}, {"stage": "paused"}):
         assert api.get("/v1/tests", params=params).status_code == 422, params
-    for missing in (f"/v1/tests/{2**62}", f"/v1/tests/{2**63}"):
-        assert api.get(missing).status_code in (404, 422)
+    assert api.get(f"/v1/tests/{2**62}").status_code == 404
+    assert api.get(f"/v1/tests/{2**63}").status_code == 422
     assert api.post("/v1/tests", json={"product_id": str(uuid4())}).status_code == 404
 
 
