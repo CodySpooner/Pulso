@@ -2040,6 +2040,39 @@ Superseded review defaults, not given entries: default #0 (move the repo) is don
 - **Alternatives:** `infra/scripts/restore.py --latest` on the collector host. It's the documented drill, but it is a collector-host operation (Lead Playbook §6) and drops its scratch database before an upgrade could run. A drill helper under `infra/scripts/drills/`: `backup.py`'s `METADATA`, `parse_metadata` and `Manifest` already did the counting and comparing, so a one-off command was enough.
 - **Why:** the restore and both comparisons are exact (no tolerance). The upgrade is the same Alembic command the collector's `migrate` service runs, on the same image and server version (18.6) as the collector.
 
+### DEC-245 · Product Trends tab: `GET /v1/products/{id}/series` with points only on collected UTC days and coverage gap days; ECharts 6.1.0, loaded only with the tab
+**2026-10-24 · proposed (p2-09)** · Phase 2 task P2-09 (UX-5); vault `Features/Product Page - Trends`; DEC-007, DEC-024, DEC-026, DEC-028, DEC-031, DEC-040, DEC-239; SPEC §6.4; no migration; one dependency (`echarts` 6.1.0)
+- **Decision:**
+  - **(a) A point only on a day the source collected.** A series has a point for UTC day *d* only when `source_daily_coverage` reads `success` or `partial` for one of its sources on *d*. Listing snapshots are change-only, so the day's value carries each listing's newest snapshot captured before *d* + 1 00:00Z (DEC-031). A listing counts until its `delisted_at`. `store_count` is the number of distinct stores with a live listing. `price` is the lowest `price_min_minor` and the highest `price_max_minor` (or `price_min_minor`) over USD rows, sent as `value` and `high`. Each point's `as_of` is the newest capture it uses. Nothing is interpolated or filled.
+  - **(b) Gap days come from coverage.** `gaps` lists the days where the series' sources recorded `gap` or `failed` and the series has no point. A `running`, `queued`, `filled` or `unknown` day, or a day with no coverage row, gets neither a point nor a band: the line just breaks. The tab draws gap days as a hatched band from `--muted-foreground` across [*d* 00:00Z, *d* + 1 00:00Z), with a legend entry ("Collection gap · N days, no data"). It never uses colour alone.
+  - **(c) Velocity comes from `product_daily_features` only.** `velocity_js` reads family `shp_inv` (A, inventory drops) and `velocity_bumps` reads family `shp_bump` (B, `updated_at` bumps, a lower bound). Each day uses the newest `feature_version`, with value `round(velocity_7d)` and a point `as_of` of min(*d* + 1 00:00Z, `computed_at`), as in DEC-239. With no rows, the series is NoSource ("No velocity computed from … yet"), and the tab says "Insufficient signal" when both families are missing. The pane is "Order velocity". B is dashed and named a lower bound.
+  - **(d) Search is NoSource until Phase 3.** `search_trends` is keyword-level, and nothing links a product to a keyword until `product_keywords` (Phase 3). The reason says so. Matching on product titles would be a guessed link.
+  - **(e) Ads are always NoSource in Phase 2.** The reason is "No ad source yet. Ad counts arrive in Phase 8 or by CSV import." The tab shows a "No source yet" row, never a zero line.
+  - **(f) A merged id answers 308 to `../{survivor}/series` with the query kept**, a relative Location as in `GET /v1/products/{id}`, so it works behind `/api`. An unknown id is 404, and an unknown `metrics` entry is 422 `invalid_metrics`.
+  - **(g) One request, a client-side window.** The tab fetches `range=all` once. The range control (7D/30D/90D/All; default 90D) only moves the window over that response, so a switch is one click and never refetches. All starts at the real first date: the earliest point, or the first-seen day. The range and the panes that are on live in the URL (`range`, `overlay`); defaults are left out. Toggling a pane is one click. The API still takes `range` for other callers.
+  - **(h) The gap schema is `SeriesGap`.** Calling it `Gap` collides with Data Health's `Gap`, so FastAPI renames both and breaks the generated TS types the Data Health views use.
+  - **(i) ECharts 6.1.0, modular, lazy.** The chart uses `echarts/core` with only `LineChart`, grid, tooltip, axis pointer, mark area and the canvas renderer. It loads through `next/dynamic` (`ssr: false`) when the Trends tab renders, as one 523 KB (176 KB gzip) chunk that sits in the route's loadable manifest, not its initial chunks; full `echarts.min.js` is 1.12 MB (368 KB gzip). One theme module (`src/lib/charts/theme.ts`) reads the colour and font tokens at render time and again on a theme change. The panes share one canvas with linked x axes, one crosshair and one tooltip, and each tooltip row gives its source and as of. Every pane header shows its source and as of. The chart animates on its first draw only, and not at all under reduced motion. The keyboard steps through the days (←/→, Home/End, Esc), and an `aria-live` line reads each day.
+- **Alternatives:**
+  - (a) Forward-fill or interpolate across missing days: invents values (DEC-028, AGENTS.md §3).
+  - (b) Infer gaps from missing points: a quiet day and a failed day look alike. Coverage records which is which.
+  - (g) Fetch per range: a network wait on every click for a few hundred points.
+  - (i) A chart instance per pane joined with `echarts.connect`: more instances and more code for the same synced crosshair. Recharts: DEC-026 chose ECharts.
+- **Why:** API tests against Postgres fixtures (`apps/api/tests/test_product_series.py`):
+  - points only on `success`/`partial` days;
+  - gaps present and absent, with no point on an unobserved day;
+  - a capture at *d* + 1 00:00Z belongs to *d* + 1;
+  - the newest feature version;
+  - every NoSource reason;
+  - ranges, metrics, the 308, workspace isolation and the 401.
+  Mutating the cutoff to `<=`, or reading `gap` as observed, fails a test. Vitest covers the window, alignment, gap-band and URL-state helpers. Playwright under the E2E auth bypass with route fixtures covers:
+  - hatched bands on gap days (canvas pixels) and none on a day with no record;
+  - one click per range and per pane, with no refetch;
+  - source and as of per pane and per keyboard day;
+  - no source yet;
+  - the loading, error, no history, short history and stale states;
+  - 375 px with no horizontal scroll.
+- **Not here:** the forecast fan (Phase 6), an ads series (Phase 8 or CSV), event annotations, search via `product_keywords` (Phase 3), a "view as table" and CSV export, and zoom.
+
 ### DEC-246 · Landed cost: one pure function, half-even once per line, `complete` + `missing[]`, exact freight, FX on the rate's own date
 **2026-10-24 · proposed (p2-10)** · Phase 2 task UX-8 part a and its R-16 rows; DEC-030, DEC-036, DEC-040, DEC-088, DEC-237 (h); SPEC §6.4 Profit, §12; vault Features/Product Page - Profit, Features/Product Page - Suppliers; no migration, dependency or CI change
 - **Decision:**

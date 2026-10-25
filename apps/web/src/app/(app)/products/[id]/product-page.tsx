@@ -24,6 +24,7 @@ import { Overview } from "./overview";
 import { SellersTab } from "./sellers/sellers-tab";
 import { card, newest, StatCard } from "./stat-card";
 import { resolveTab, TAB_FLAGS, TABS, type Tab } from "./tabs";
+import { TrendsTab } from "./trends";
 
 // The header stats as a response carries them (openapi-fetch retypes a NoSource, see Stat).
 type Stats = Record<"store_count" | "supplier_count" | "price_min_minor" | "price_max_minor", Stat>;
@@ -223,6 +224,8 @@ function ProductTabs({ id }: { id: string }) {
                 <Overview id={id} goTo={goTo} />
               ) : t.value === "sellers" ? (
                 <SellersTab id={id} />
+              ) : t.value === "trends" ? (
+                <TrendsTab id={id} />
               ) : (
                 <EmptyState icon={t.icon} headingLevel="h2" title={`The ${t.label} tab arrives in Phase 2`}>
                   {t.summary} Task {t.task} builds it; nothing shows here until it comes from a real source.

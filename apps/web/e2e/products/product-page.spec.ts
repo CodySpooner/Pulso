@@ -17,7 +17,7 @@ for (const [value, label] of Object.entries(TAB_LABELS).filter(([value]) => valu
     await mockProductApi(page);
     await page.goto(`${URL}?tab=${value}`);
     await expect(page.getByRole("tab", { name: label })).toHaveAttribute("aria-selected", "true");
-    await expect(panelHeading(page, label)).toBeVisible();
+    await expect(value === "trends" ? page.getByRole("tabpanel").getByRole("group", { name: "Range" }) : panelHeading(page, label)).toBeVisible();
   });
 }
 
