@@ -25,7 +25,15 @@ from pulso_core.models import (
     Supplier,
 )
 from pulso_core.models.catalog import EMBEDDING_DIM
-from pulso_ml.matching.decisions import accept, membership, merge, reject, split
+from pulso_ml.matching.decisions import (
+    accept,
+    membership,
+    merge,
+    reject,
+    split,
+    undo,
+    unlink,
+)
 from pulso_ml.matching.matcher import GTIN_VERSION, MATCHING_LOCK, Counts, match, neighbours
 from pulso_ml.matching.score import CONFIG, combined
 
@@ -909,3 +917,108 @@ def test_xr29_manual_reads_the_move_that_took_the_lock_last(world: World) -> Non
         session.flush()
     world.run()
     assert products(session, held) == [None]
+
+
+def test_unlink_frees_listings_and_the_matcher_never_relinks_them(world: World) -> None:
+    session = world.session
+    cost = world.listing(world.supplier(), 0, price=1000, age_days=1)
+    retail = world.listing(world.store(), 0, price=2500)
+    world.run()
+    (product,) = set(products(session, cost, retail))
+    assert product is not None
+    with pytest.raises(ValueError):
+        unlink(session, [cost.id, retail.id], "owner", "empties the product")
+    session.rollback()
+    with pytest.raises(ValueError):
+        undo(session, latest(session, cost).id, "owner", "the matcher's link")
+    session.rollback()
+
+    unlink(session, [retail.id], "owner", "a different lamp")
+    session.commit()
+    row = latest(session, retail)
+    assert (row.actor, row.action, row.from_product_id, row.to_product_id) == (
+        "owner",
+        "unlink",
+        product,
+        None,
+    )
+    late = world.listing(world.store(), 0, price=2500)  # 1.0 with both
+    world.run()
+    assert products(session, cost, retail, late) == [product, None, product]
+
+
+def test_undo_writes_compensating_rows_and_reruns_keep_the_result(world: World) -> None:
+    session = world.session
+    old = Product(name="Older", first_seen_at=SEEN - timedelta(days=5))
+    young = Product(name="Newer", first_seen_at=SEEN)
+    session.add_all([old, young])
+    session.flush()
+    on_old = world.listing(world.store(), 0, product=old.id)
+    on_young = world.listing(world.store(), 0, product=young.id)
+    cheap = world.listing(world.supplier(), 1, price=100)  # 10x markup: pending at 1.0
+    retail = world.listing(world.store(), 1, age_days=1)
+    world.run()
+    two, insane = candidate(session, on_old, on_young), candidate(session, cheap, retail)
+    assert two is not None and insane is not None
+
+    def count() -> int:
+        return session.scalar(select(func.count()).select_from(MatchDecision)) or 0
+
+    def decide(call: Any, *args: Any) -> int:
+        call(session, *args, "owner", "queue")
+        session.commit()
+        return session.scalar(select(func.max(MatchDecision.id))) or 0
+
+    # Accept of two product-less listings, undone: unlink rows, the pair pending, both frozen.
+    before = count()
+    accepted = decide(accept, insane.id)
+    linked = products(session, cheap, retail)[0]
+    assert undo(session, accepted, "owner", "misclick") == sorted((cheap.id, retail.id))
+    session.commit()
+    assert count() == before + 4  # two accept rows, then two unlink rows: nothing is removed
+    assert products(session, cheap, retail) == [None, None]
+    for listing in (cheap, retail):
+        row = latest(session, listing)
+        assert (row.action, row.from_product_id, row.to_product_id, row.candidate_id) == (
+            "unlink",
+            linked,
+            None,
+            insane.id,
+        )
+        assert row.reason == f"undo #{accepted}: misclick"
+    assert (insane.status, insane.decided_at) == ("pending", None)
+    with pytest.raises(ValueError):
+        undo(session, accepted, "owner", "twice")  # superseded by its own undo
+    session.rollback()
+    with pytest.raises(ValueError):
+        undo(session, latest(session, cheap).id, "owner", "redo")  # an undo is never undone
+    session.rollback()
+
+    # Accept that merged two products, undone: the younger product is active again.
+    merged = decide(accept, two.id)
+    assert session.get_one(Product, young.id).status == "merged"
+    undo(session, merged, "owner", "not the same")
+    session.commit()
+    back = session.get_one(Product, young.id)
+    assert (back.merged_into_id, back.status) == (None, "active")
+    assert products(session, on_old, on_young) == [old.id, young.id]
+    assert latest(session, on_young).action == "merge"  # the reverse move, never a cannot-link
+    assert two.status == "pending"
+
+    # Reject and split, undone.
+    rejected = decide(reject, two.id)
+    undo(session, rejected, "owner", "misclick")
+    session.commit()
+    assert two.status == "pending" and latest(session, on_old).action == "reject"
+    third = world.listing(world.store(), 2, product=old.id)
+    session.commit()
+    splitted = decide(split, [third.id])
+    undo(session, splitted, "owner", "misclick")
+    session.commit()
+    assert products(session, on_old, third) == [old.id, old.id]
+
+    rows = [table(session, model) for model in (MatchCandidate, MatchDecision, Product)]
+    world.run()  # score and GTIN passes: the undone state holds
+    assert [table(session, model) for model in (MatchCandidate, MatchDecision, Product)] == rows
+    with pytest.raises(LookupError):
+        undo(session, 10**9, "owner", "missing")
