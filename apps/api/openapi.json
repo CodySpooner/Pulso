@@ -1397,13 +1397,35 @@
             ],
             "description": "Pass as `cursor` with the same sort for the next page.",
             "title": "Next Cursor"
+          },
+          "store": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Vendor"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "supplier": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Vendor"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
           "items",
           "next_cursor",
           "as_of",
-          "degraded"
+          "degraded",
+          "store",
+          "supplier"
         ],
         "title": "DiscoverPage",
         "type": "object"
@@ -6308,6 +6330,24 @@
           "gap"
         ],
         "title": "Velocity",
+        "type": "object"
+      },
+      "Vendor": {
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ],
+        "title": "Vendor",
         "type": "object"
       }
     },
@@ -16812,7 +16852,7 @@
     },
     "/v1/products": {
       "get": {
-        "description": "Discover (UX-2): products neither merged nor emptied by an undo, filtered, sorted and\nkeyset-paginated (DEC-239, DEC-271).",
+        "description": "Discover (UX-2): products neither merged nor emptied by an undo, filtered, sorted and\nkeyset-paginated (DEC-239, DEC-271). An unknown store or supplier lists nothing (DEC-300).",
         "operationId": "list_products",
         "parameters": [
           {
@@ -16942,6 +16982,46 @@
                 }
               ],
               "title": "Has Sellers"
+            }
+          },
+          {
+            "description": "A stores.id: its live listings",
+            "in": "query",
+            "name": "store",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maximum": 9223372036854775807,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "A stores.id: its live listings",
+              "title": "Store"
+            }
+          },
+          {
+            "description": "A suppliers.id: its live listings",
+            "in": "query",
+            "name": "supplier",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maximum": 9223372036854775807,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "A suppliers.id: its live listings",
+              "title": "Supplier"
             }
           },
           {

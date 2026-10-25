@@ -140,10 +140,11 @@ function Crawled({ store, asOf }: { store: Hits["StoreHit"]; asOf: number }) {
   );
 }
 
-const TOP = <span className="sr-only">(opens its top product)</span>;
+const LISTS = <span className="sr-only">(lists its products)</span>;
 
-/** A store's or supplier's rows. cmdk sorts only enabled rows and appends them after disabled ones, so the rows with
- *  nowhere to go sit in a second group just below, which takes the heading only when it is alone. */
+/** A store's or supplier's rows; one with no live product (no `top_product_id`) has nowhere to go. cmdk sorts only
+ *  enabled rows and appends them after disabled ones, so those rows sit in a second group just below, which takes the
+ *  heading only when it is alone. */
 function VendorGroups<T extends { id: number; top_product_id: string | null }>({
   heading,
   hits,
@@ -167,7 +168,7 @@ function VendorGroups<T extends { id: number; top_product_id: string | null }>({
 }
 
 // Global search (UX-9, DEC-252): products, stores and suppliers, then one status group. All of them mount together, so
-// cmdk keeps them in this order. A store or supplier opens its top product until Store Spy builds their pages.
+// cmdk keeps them in this order. A store or supplier opens Discover filtered to its products (imp-242, DEC-300).
 function SearchGroups({
   view,
   term,
@@ -213,13 +214,13 @@ function SearchGroups({
             label={
               <>
                 <Marked text={s.domain} term={term} />
-                {s.top_product_id && TOP}
+                {s.top_product_id && LISTS}
               </>
             }
             detail={s.match.field === "myshopify_domain" && <Marked text={s.match.text} term={term} />}
             hint={s.top_product_id ? <Crawled store={s} asOf={asOf} /> : "No products yet"}
             disabled={!s.top_product_id}
-            onSelect={() => go(`/products/${s.top_product_id}`)}
+            onSelect={() => go(`/discover?store=${s.id}`)}
           />
         )}
       />
@@ -235,12 +236,12 @@ function SearchGroups({
             label={
               <>
                 <Marked text={s.name} term={term} />
-                {s.top_product_id && TOP}
+                {s.top_product_id && LISTS}
               </>
             }
             hint={s.top_product_id ? (PLATFORMS[s.platform] ?? s.platform) : "No products yet"}
             disabled={!s.top_product_id}
-            onSelect={() => go(`/products/${s.top_product_id}`)}
+            onSelect={() => go(`/discover?supplier=${s.id}`)}
           />
         )}
       />
@@ -309,7 +310,7 @@ export function CommandPalette({
   const [asOf, setAsOf] = useState(0);
   if (search.dataUpdatedAt && search.dataUpdatedAt !== asOf) setAsOf(search.dataUpdatedAt);
   const busy = view.kind === "loading" || (view.kind === "results" && view.stale);
-  const opensTop = /^search:(store|supplier):/.test(selected);
+  const listsProducts = /^search:(store|supplier):/.test(selected);
 
   const setOpen = (next: boolean) => {
     if (!next) {
@@ -320,8 +321,9 @@ export function CommandPalette({
   };
   const run: Run = { close: () => setOpen(false) };
   const go = (href: string) => {
-    // A new route moves focus to its h1 (template.tsx), so don't pull it back to the old trigger.
-    if (href !== pathname) returnFocusRef.current = null;
+    // A new route moves focus to its h1 (template.tsx), so don't pull it back to the old trigger. A new query on the
+    // same route (Discover filtered from Discover) remounts nothing, so focus goes back.
+    if (href.split("?")[0] !== pathname) returnFocusRef.current = null;
     run.close();
     router.push(href);
   };
@@ -457,7 +459,7 @@ export function CommandPalette({
                       <Kbd>↓</Kbd> Navigate
                     </span>
                     <span className="inline-flex items-center gap-1.5">
-                      <Kbd>↵</Kbd> {opensTop ? "Open top product" : "Open"}
+                      <Kbd>↵</Kbd> {listsProducts ? "Show products" : "Open"}
                     </span>
                     <span className="inline-flex items-center gap-1.5">
                       <Kbd>Esc</Kbd> Close

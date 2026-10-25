@@ -1,37 +1,40 @@
 import { expect, test } from "@playwright/test";
 
-import { product, PRODUCT_ID } from "../products/fixtures";
+import { mockFeedApi } from "../products/fixtures";
 import { LONG_URL, mockSearchApi, openPalette, products } from "./fixtures";
 
 // p2-16 (UX-9): global search in the Ctrl+K palette, keyboard only, against fixtures (DEC-252).
 test.describe("palette search", () => {
-  test("a store domain is found as you type, once, and Enter opens its top product", async ({ page }) => {
+  test("a store domain is found as you type, once, and Enter lists its products in Discover", async ({ page }) => {
     const queries = await mockSearchApi(page);
+    await mockFeedApi(page);
     const input = await openPalette(page);
     await input.pressSequentially("glowbeam", { delay: 20 });
 
-    const store = page.getByRole("option", { name: /^glowbeam\.example\.test \(opens its top product\) Crawled 6h ago$/ });
+    const store = page.getByRole("option", { name: /^glowbeam\.example\.test \(lists its products\) Crawled 6h ago$/ });
     await expect(store).toHaveAttribute("aria-selected", "true");
     await expect(store).toContainText("Crawled 6h ago");
-    await expect(page.getByRole("dialog").getByText("Open top product")).toBeVisible(); // the footer names where Enter goes
+    await expect(page.getByRole("dialog").getByText("Show products")).toBeVisible(); // the footer names where Enter goes
     await expect(page.getByRole("dialog").getByRole("status")).toHaveText("1 store for “glowbeam”");
     expect(queries).toEqual(["glowbeam"]); // 8 keystrokes, one request (debounced)
 
     await page.keyboard.press("Enter");
-    await expect(page).toHaveURL(`/products/${PRODUCT_ID}`);
+    await expect(page).toHaveURL("/discover?store=4101");
     await expect(page.getByRole("dialog")).toBeHidden();
-    await expect(page.getByRole("heading", { level: 1, name: product.title })).toBeVisible();
+    await expect(page.getByRole("list", { name: "Store and supplier filters" })).toHaveText(/^Storeglowbeam\.example\.test$/);
   });
 
-  test("a supplier name is found and Enter opens its top product", async ({ page }) => {
+  test("a supplier name is found and Enter lists its products in Discover", async ({ page }) => {
     await mockSearchApi(page);
+    await mockFeedApi(page);
     const input = await openPalette(page);
     await input.fill("Shenzhen Glow");
     const supplier = page.getByRole("option", { name: /Shenzhen Glowtech Co\./ });
     await expect(supplier).toHaveAttribute("aria-selected", "true");
     await expect(supplier).toContainText("CJ Dropshipping");
     await page.keyboard.press("Enter");
-    await expect(page).toHaveURL(`/products/${PRODUCT_ID}`);
+    await expect(page).toHaveURL("/discover?supplier=88");
+    await expect(page.getByRole("list", { name: "Store and supplier filters" })).toHaveText(/^SupplierShenzhen Glowtech Co\.$/);
   });
 
   test("groups read products, stores, suppliers; arrows skip rows with nowhere to go; Enter opens a product", async ({ page }) => {
@@ -168,6 +171,7 @@ test.describe("palette search", () => {
 
     test("the bottom bar opens search; a tap opens a result with no sideways scroll", async ({ page }) => {
       await mockSearchApi(page);
+      await mockFeedApi(page);
       await page.goto("/");
       await page.locator("html[data-app-ready=true]").waitFor();
       await page.getByRole("button", { name: "Search", exact: true }).tap();
@@ -178,7 +182,7 @@ test.describe("palette search", () => {
         expect(await page.evaluate(`${el}.scrollWidth <= ${el}.clientWidth`), el).toBe(true);
       }
       await store.tap();
-      await expect(page).toHaveURL(`/products/${PRODUCT_ID}`);
+      await expect(page).toHaveURL("/discover?store=4101");
     });
   });
 });

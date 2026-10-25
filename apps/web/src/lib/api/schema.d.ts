@@ -413,7 +413,7 @@ export interface paths {
         /**
          * List Products
          * @description Discover (UX-2): products neither merged nor emptied by an undo, filtered, sorted and
-         *     keyset-paginated (DEC-239, DEC-271).
+         *     keyset-paginated (DEC-239, DEC-271). An unknown store or supplier lists nothing (DEC-300).
          */
         get: operations["list_products"];
         put?: never;
@@ -1180,6 +1180,8 @@ export interface components {
              * @description Pass as `cursor` with the same sort for the next page.
              */
             next_cursor: string | null;
+            store: components["schemas"]["Vendor"] | null;
+            supplier: components["schemas"]["Vendor"] | null;
         };
         /** Facets */
         Facets: {
@@ -2783,6 +2785,13 @@ export interface components {
             stale: boolean;
             /** Value */
             value: number;
+        };
+        /** Vendor */
+        Vendor: {
+            /** Id */
+            id: number;
+            /** Name */
+            name: string;
         };
     };
     responses: never;
@@ -8285,6 +8294,10 @@ export interface operations {
                 source?: string | null;
                 first_seen_days?: (7 | 30 | 90) | null;
                 has_sellers?: boolean | null;
+                /** @description A stores.id: its live listings */
+                store?: number | null;
+                /** @description A suppliers.id: its live listings */
+                supplier?: number | null;
                 cursor?: string | null;
                 limit?: number;
             };

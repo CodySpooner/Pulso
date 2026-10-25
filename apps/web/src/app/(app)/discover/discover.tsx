@@ -3,14 +3,16 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
+import { AnimatePresence, useReducedMotion } from "motion/react";
 import * as m from "motion/react-m";
-import { Compass, LayoutGrid, Rows3, SearchX, SlidersHorizontal, TriangleAlert, X } from "lucide-react";
+import { Compass, Factory, LayoutGrid, Rows3, SearchX, SlidersHorizontal, Store, TriangleAlert, X } from "lucide-react";
 
 import { useApiReady } from "@/components/data-health/api";
 import { PanelError, StaleLine } from "@/components/data-health/atoms";
 import { EmptyState } from "@/components/pulso/empty-state";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet";
+import { Skeleton } from "@/components/ui/skeleton";
 import { $api, isProblem } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
 import { formatUtc } from "@/lib/format";
@@ -91,10 +93,14 @@ export function Discover() {
     if (hasNextPage && !isFetchingNextPage && !isFetchNextPageError) void fetchNextPage();
   }, [hasNextPage, isFetchingNextPage, isFetchNextPageError, fetchNextPage]);
   const filters = activeFilters(state);
+  // The page names the filter's store or supplier; an id it doesn't know reads as such once it has answered.
+  const named: Named = (key) => first?.[key]?.name ?? `#${state[key]}${first ? ", not found" : ""}`;
 
   return (
     <div className="flex flex-col gap-4">
-      <Toolbar state={state} set={set} view={view} setView={setView} />
+      <Toolbar state={state} set={set} view={view} setView={setView}>
+        <VendorChips state={state} set={set} named={named} loading={!first && !feed.isError} />
+      </Toolbar>
       <p className="text-label text-subtle-foreground" aria-live="polite">
         {first ? (
           <>
@@ -135,7 +141,7 @@ export function Discover() {
             </>
           )
         ) : items.length === 0 ? (
-          <Empty state={state} set={set} filters={filters} />
+          <Empty state={state} set={set} filters={filters} named={named} />
         ) : view === "grid" ? (
           <Grid items={items} now={now} paused={paused} loadingMore={isFetchingNextPage} onNearEnd={more} />
         ) : (
@@ -201,7 +207,20 @@ function ViewToggle({ view, setView }: { view: View; setView: (v: View) => void 
   );
 }
 
-function Toolbar({ state, set, view, setView }: { state: FeedState; set: (next: Partial<FeedState>) => void; view: View; setView: (v: View) => void }) {
+function Toolbar({
+  state,
+  set,
+  view,
+  setView,
+  children,
+}: {
+  state: FeedState;
+  set: (next: Partial<FeedState>) => void;
+  view: View;
+  setView: (v: View) => void;
+  /** The store and supplier chips, a row of their own under the filters at every width. */
+  children: React.ReactNode;
+}) {
   const [sheet, setSheet] = useState(false);
   const n = activeFilters(state).length;
   return (
@@ -226,6 +245,7 @@ function Toolbar({ state, set, view, setView }: { state: FeedState; set: (next: 
       <div className="flex basis-full flex-wrap items-center gap-2 max-md:hidden">
         <FilterFields state={state} set={set} />
       </div>
+      {children}
       <Sheet open={sheet} onOpenChange={setSheet}>
         <SheetContent side="bottom" closeLabel="Close filters" className="gap-4 px-4 pt-4 pb-4 md:hidden">
           <SheetTitle className="text-title-3 font-semibold">Filters</SheetTitle>
@@ -337,16 +357,82 @@ function FilterFields({ state, set }: { state: FeedState; set: (next: Partial<Fe
   );
 }
 
-const FILTER_LABELS: Record<keyof Filters, (s: Filters) => string> = {
+type Vendor = "store" | "supplier";
+type Named = (key: Vendor) => string;
+
+const FILTER_LABELS: Record<keyof Filters, (s: Filters, named: Named) => string> = {
   category: () => "Category",
   price_min: (s) => `Price ≥ $${s.price_min}`,
   price_max: (s) => `Price ≤ $${s.price_max}`,
   source: (s) => `Source: ${s.source ? SOURCES[s.source] : ""}`,
   first_seen_days: (s) => `First seen in the last ${s.first_seen_days} days`,
   has_sellers: (s) => (s.has_sellers ? "Sold by stores" : "No stores yet"),
+  store: (_, named) => `Store: ${named("store")}`,
+  supplier: (_, named) => `Supplier: ${named("supplier")}`,
 };
 
-function Empty({ state, set, filters }: { state: FeedState; set: (next: Partial<FeedState>) => void; filters: (keyof Filters)[] }) {
+const VENDORS = { store: { label: "Store", icon: Store }, supplier: { label: "Supplier", icon: Factory } } as const;
+
+/** The store and supplier filters have no control (a palette row sets them, imp-242), so each shows as a removable chip
+ *  with its name; chips leave with the layout-reflow pattern (Motion System pattern 5). */
+function VendorChips({ state, set, named, loading }: { state: FeedState; set: (next: Partial<FeedState>) => void; named: Named; loading: boolean }) {
+  const list = useRef<HTMLUListElement>(null);
+  // Reduced motion keeps the fade only: MotionConfig would snap the scale, a one-frame jump in size.
+  const gone = useReducedMotion() ? { opacity: 0 } : { opacity: 0, scale: 0.9 };
+  const shown = (Object.keys(VENDORS) as Vendor[]).filter((key) => state[key] !== null);
+  const remove = (key: Vendor, button: HTMLButtonElement) => {
+    // Focus stays with the filters: the other chip's remove button, else the page heading, as after a navigation. The
+    // removed chip is still in the list while it exits, so it's skipped by reference.
+    const other = [...(list.current?.querySelectorAll("button") ?? [])].find((b) => b !== button);
+    (other ?? list.current?.closest("main")?.querySelector<HTMLElement>("h1"))?.focus({ preventScroll: true });
+    set({ [key]: null });
+  };
+  return (
+    <ul ref={list} aria-label="Store and supplier filters" className="flex basis-full flex-wrap gap-2 empty:hidden">
+      <AnimatePresence initial={false}>
+        {shown.map((key) => {
+          const { label, icon: Icon } = VENDORS[key];
+          return (
+            <m.li
+              key={key}
+              layout
+              layoutDependency={shown.join()} // reflow when a chip leaves, never when a name loads
+              initial={gone}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={gone}
+              transition={spring.smooth}
+              className="flex h-(--button-h-sm) max-w-full min-w-0 items-center gap-1.5 rounded-md border border-border bg-secondary pl-2.5 text-label"
+            >
+              <Icon className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
+              <span className="text-muted-foreground">{label}</span>
+              {loading ? (
+                <>
+                  {/* --skeleton is the chip's own --secondary in dark, so the bar takes a foreground tint. */}
+                  <Skeleton className="h-3 w-28 bg-foreground/10" />
+                  <span className="sr-only">loading</span>
+                </>
+              ) : (
+                <span className="min-w-0 truncate font-medium text-foreground" title={named(key)}>
+                  {named(key)}
+                </span>
+              )}
+              <button
+                type="button"
+                aria-label={`Remove “${FILTER_LABELS[key](state, named)}”`}
+                onClick={(e) => remove(key, e.currentTarget)}
+                className="relative hit-area grid h-full shrink-0 place-items-center rounded-r-md px-1.5 text-muted-foreground transition-colors duration-(--duration-fast) hover:bg-accent hover:text-foreground"
+              >
+                <X className="size-3.5" aria-hidden />
+              </button>
+            </m.li>
+          );
+        })}
+      </AnimatePresence>
+    </ul>
+  );
+}
+
+function Empty({ state, set, filters, named }: { state: FeedState; set: (next: Partial<FeedState>) => void; filters: (keyof Filters)[]; named: Named }) {
   const box = "rounded-xl border border-border bg-card shadow-card";
   if (filters.length === 0)
     return (
@@ -376,7 +462,7 @@ function Empty({ state, set, filters }: { state: FeedState; set: (next: Partial<
             {filters.map((key) => (
               <Button key={key} size="sm" onClick={() => set({ [key]: null })}>
                 <X aria-hidden />
-                Remove “{FILTER_LABELS[key](state)}”
+                Remove “{FILTER_LABELS[key](state, named)}”
               </Button>
             ))}
             {filters.length > 1 && (

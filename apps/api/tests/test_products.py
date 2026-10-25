@@ -368,6 +368,84 @@ def test_each_filter_narrows_the_feed(api: TestClient, feed: dict[str, str]) -> 
     assert names(has_sellers=True, category=7, sort="newest") == {"steady", "old"}
 
 
+@pytest.fixture
+def vendors(api: TestClient, db_engine: Engine) -> dict[str, Any]:
+    """Two stores and a supplier: the palette's rows open Discover filtered by them (imp-242)."""
+    with Session(db_engine) as session:
+        glow, quiet = (Store(domain=f"{n}.example.test", platform="shopify") for n in "ab")
+        supplier = Supplier(platform="cj", external_id="CJ9", name="Shenzhen Glowtech Co.")
+        session.add_all([glow, quiet, supplier])
+        session.flush()
+        lamp, mask, gone = (seed_product(session, name, 3) for name in ("Lamp", "Mask", "Gone"))
+        for product in (lamp, mask):
+            live = listing(session, product, 1, store_id=glow.id)
+            snapshot(session, live, 6, price_min_minor=900)
+        listing(session, gone, 1, store_id=glow.id, delisted_at=NOW)  # delisted: not the store's
+        listing(session, gone, 1, store_id=quiet.id, delisted_at=NOW)
+        listing(session, lamp, 2, supplier_id=supplier.id)
+        # A merged product's listing never lists it: Discover lists survivors only.
+        merged = Product(name="Merged", merged_into_id=lamp.id)
+        session.add(merged)
+        session.flush()
+        listing(session, merged, 2, supplier_id=supplier.id)
+        session.commit()
+        return {
+            "glow": glow.id,
+            "quiet": quiet.id,
+            "supplier": supplier.id,
+            "lamp": str(lamp.id),
+            "mask": str(mask.id),
+        }
+
+
+@pytest.mark.db
+def test_store_and_supplier_filters_list_the_vendors_live_products(
+    api: TestClient, vendors: dict[str, Any]
+) -> None:
+    def ids(**query: Any) -> set[str]:
+        return {item["id"] for item in walk(api, limit=1, **query)}  # one per page: the cursor too
+
+    assert ids(store=vendors["glow"]) == {vendors["lamp"], vendors["mask"]}
+    assert ids(supplier=vendors["supplier"]) == {vendors["lamp"]}
+    assert ids(store=vendors["glow"], supplier=vendors["supplier"]) == {vendors["lamp"]}
+    assert ids(store=vendors["glow"], has_sellers=False) == set()
+    # The page names the filter's vendor, for its chip: a store by domain, a supplier by name.
+    body = api.get("/v1/products", params={"store": vendors["glow"]}).json()
+    assert (body["store"], body["supplier"]) == (
+        {"id": vendors["glow"], "name": "a.example.test"},
+        None,
+    )
+    body = api.get("/v1/products", params={"supplier": vendors["supplier"]}).json()
+    assert body["supplier"] == {"id": vendors["supplier"], "name": "Shenzhen Glowtech Co."}
+
+
+@pytest.mark.db
+def test_a_vendor_with_no_live_product_or_an_unknown_id_lists_nothing(
+    api: TestClient, vendors: dict[str, Any]
+) -> None:
+    quiet = api.get("/v1/products", params={"store": vendors["quiet"]}).json()
+    assert (quiet["items"], quiet["next_cursor"]) == ([], None)
+    assert quiet["store"] == {"id": vendors["quiet"], "name": "b.example.test"}  # it exists
+    for query in ({"store": 987_654}, {"supplier": 987_654}):
+        body = api.get("/v1/products", params=query).json()
+        assert (body["items"], body["store"], body["supplier"]) == ([], None, None), query
+    for bad in ({"store": 0}, {"supplier": -1}, {"store": 2**63}, {"supplier": "glow"}):
+        assert api.get("/v1/products", params=bad).status_code == 422, bad
+
+
+@pytest.mark.db
+def test_vendor_filters_read_global_market_data_alike_in_every_workspace(
+    api: TestClient, vendors: dict[str, Any]
+) -> None:
+    query = {"store": vendors["glow"], "supplier": vendors["supplier"]}
+    assert isinstance(api.app, FastAPI)
+    api.app.dependency_overrides[current_principal] = lambda: Principal(uuid4(), uuid4())
+    first = api.get("/v1/products", params=query).json()
+    assert [item["id"] for item in first["items"]] == [vendors["lamp"]]
+    api.app.dependency_overrides[current_principal] = lambda: Principal(uuid4(), uuid4())
+    assert api.get("/v1/products", params=query).json() == first
+
+
 @pytest.mark.db
 def test_feed_items_trace_every_number(api: TestClient, feed: dict[str, str]) -> None:
     body = api.get("/v1/products", params={"limit": 100}).json()

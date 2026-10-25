@@ -43,6 +43,7 @@ EXEMPT = {
     "CategoryOption.id": "a taxonomy id (Google's), not a measurement",
     "StoreHit.id": "the stores row the palette opens, not a measurement",
     "SupplierHit.id": "the suppliers row the palette opens, not a measurement",
+    "Vendor.id": "the stores or suppliers row Discover's chip filters by, not a measurement",
 }
 
 
