@@ -134,7 +134,6 @@ export function ProductCard({ item, now, paused }: { item: Item; now: number; pa
       <div className="aspect-square overflow-hidden border-b border-border-subtle">
         <Thumb url={item.image_url} className="size-full transition-transform duration-(--duration-slow) ease-out group-hover:scale-[1.03]" />
       </div>
-      <StarButton product={item} className="absolute top-2 right-2 z-10 border-border bg-card/85 shadow-card backdrop-blur-sm hover:bg-card" />
       <div className="flex flex-1 flex-col gap-2 p-3 zone-data">
         <div className="flex min-w-0 flex-col gap-0.5">
           <h2 className="line-clamp-2 font-medium text-foreground" title={item.title}>
@@ -178,6 +177,8 @@ export function ProductCard({ item, now, paused }: { item: Item; now: number; pa
           <Freshness item={item} now={now} paused={paused} />
         </p>
       </div>
+      {/* After the card's link, so Tab reaches the product before its star. */}
+      <StarButton product={item} className="absolute top-2 right-2 z-10 border-border bg-card/85 shadow-card backdrop-blur-sm hover:bg-card" />
     </article>
   );
 }

@@ -56,7 +56,10 @@ test("every header number opens its provenance card by keyboard", async ({ page 
   const buttons = metrics(page);
   await expect(buttons).toHaveCount(4);
   await page.getByRole("heading", { level: 1 }).focus();
-  await page.keyboard.press("Tab"); // the header's Start a test (p4-08) comes first
+  await page.keyboard.press("Tab"); // the header's Watch and its lists menu (p4-13), then Start a test (p4-08), come first
+  await expect(page.getByRole("button", { name: "Watch", exact: true })).toBeFocused();
+  await page.keyboard.press("Tab");
+  await page.keyboard.press("Tab");
   await expect(page.getByRole("button", { name: "Start a test" })).toBeFocused();
   const sources = ["Shopify stores", "CJ Dropshipping", "Shopify stores", "Shopify stores"];
   for (const [i, source] of sources.entries()) {
