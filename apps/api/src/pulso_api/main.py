@@ -112,6 +112,7 @@ def create_app() -> FastAPI:
     app.include_router(health.router)
     app.include_router(account.router)
     app.include_router(admin.router)
+    app.include_router(alerts.router)
     app.include_router(alerts.rules_router)
     app.include_router(amazon.router)
     app.include_router(amazon.products_router)
