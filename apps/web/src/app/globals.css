@@ -110,6 +110,21 @@
     }
   }
 }
+/* A segmented control's pressed thumb (imp-313, DEC-290): the card thumb is 1.07:1 on the secondary track, so a 2 px
+   --segment-mark bar along its bottom carries the state (≥ 3:1 on thumb and track, contrast.test.ts). ::before, since
+   hit-area owns ::after; the host is positioned. */
+@utility segment-thumb {
+  background-color: var(--card);
+  box-shadow: var(--card-shadow);
+  &::before {
+    content: "";
+    position: absolute;
+    inset: auto 0.5rem 0;
+    height: 2px;
+    border-radius: 9999px;
+    background-color: var(--segment-mark);
+  }
+}
 /* Inline text links in running copy (imp-169, DEC-222): the focus ring (2 px at 2 px offset) reaches 4 px past the
    link, more than a space, so it met the word beside it. A 1 px offset and 2 px of side margin leave 2 px of air
    to a word behind a space; punctuation straight after the link needs `me-1` too. Still an outline (forced colors). */

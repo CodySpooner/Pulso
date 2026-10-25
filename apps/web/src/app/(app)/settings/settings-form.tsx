@@ -238,7 +238,7 @@ export function SettingsForm() {
             {[false, true].map((set) => (
               <label
                 key={String(set)}
-                className="relative hit-area flex h-full cursor-pointer items-center rounded-sm px-3 text-label font-medium text-muted-foreground transition-colors duration-(--duration-fast) select-none hover:text-foreground has-checked:bg-card has-checked:text-foreground has-checked:shadow-card has-focus-visible:outline-2 has-focus-visible:outline-offset-2 has-focus-visible:outline-ring"
+                className="relative hit-area flex h-full cursor-pointer items-center rounded-sm px-3 text-label font-medium text-muted-foreground transition-colors duration-(--duration-fast) select-none hover:text-foreground has-checked:text-foreground has-checked:segment-thumb has-focus-visible:outline-2 has-focus-visible:outline-offset-2 has-focus-visible:outline-ring"
               >
                 <input type="radio" name="duty-set" className="sr-only" checked={draft.dutySet === set} onChange={() => edit({}, set)} />
                 {set ? "Set a rate" : "Not set"}
