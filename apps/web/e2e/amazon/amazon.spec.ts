@@ -99,6 +99,7 @@ test.describe("states", () => {
     await page.goto("/amazon");
     await expect(page.getByText("The newest Amazon ranks here are from Oct 5, 2026, 17 days ago.")).toBeVisible();
     await expect(heads(page)).toHaveCount(3); // an overlay on real data, never a replacement
+    for (const head of await heads(page).all()) await expect(head).toContainText("Over 14 days old"); // each list says so (XR-51)
   });
 
   test("no source yet: the amazon source row is missing", async ({ page }) => {

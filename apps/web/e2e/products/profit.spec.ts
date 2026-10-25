@@ -170,6 +170,7 @@ test("a failed recompute keeps the last result with Retry", async ({ page }) => 
   await page.keyboard.press("ArrowRight");
   const line = page.getByRole("group", { name: "Couldn't recompute this scenario" });
   await expect(line).toContainText("The API is restarting.");
+  await expect(page.getByRole("tabpanel").locator("[aria-busy=true]")).toHaveCount(0); // nothing in flight (XR-53)
   await expect(line.getByRole("button", { name: "Retry" })).toBeVisible();
   await expect(results(page)).toContainText("+$0.03");
 });
