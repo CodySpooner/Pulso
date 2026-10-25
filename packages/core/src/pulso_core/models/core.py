@@ -203,6 +203,22 @@ class ProductTag(WorkspaceOwned, Base):
     tag: Mapped[str] = mapped_column(String(80))
 
 
+class PopularBrandRule(WorkspaceOwned, CreatedAt, Base):
+    """A brand this workspace hides from Google popular, or shows although the major-brand rule
+    would hide it (DEC-277). Current preference, not history: replaced and deleted in place."""
+
+    __tablename__ = "popular_brand_rules"
+    __table_args__ = (
+        PrimaryKeyConstraint("workspace_id", "brand_norm"),
+        CheckConstraint("action IN ('hide', 'show')", name="action"),
+        CheckConstraint("brand_norm = lower(brand)", name="brand_norm"),  # as DEC-272 b reads
+    )
+    brand_norm: Mapped[str] = mapped_column(Text)
+    brand: Mapped[str] = mapped_column(Text)  # the spelling hidden or shown, for the list
+    action: Mapped[str] = mapped_column(String(4))
+    created_by: Mapped[UUID] = mapped_column(ForeignKey("users.id"))
+
+
 # The default scenario's landed cost per workspace and product (migration 0010, DEC-265): a
 # view, so it sits outside Base.metadata and autogenerate never makes it a table.
 workspace_product_economics = Table(

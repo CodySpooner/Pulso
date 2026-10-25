@@ -1,20 +1,30 @@
 """Google popular (P2-29 b, DEC-267, DEC-272): the owner's weekly Merchant Center Popular products
-report, one country × category × week at a time, big brands hidden. Google allows internal use
-only, so no public page may ever show these rows (DEC-267 f)."""
+report, one country × category × week at a time, big brands hidden, plus the workspace's own
+brand list (DEC-277). Google allows internal use only, so no public page may ever show these rows
+(DEC-267 f)."""
 
 from datetime import UTC, date, datetime, timedelta
 from typing import Annotated, Any, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query
-from pydantic import AwareDatetime, BaseModel, Field, TypeAdapter, ValidationError
-from sqlalchemy import Row, func, or_, select
+from pydantic import (
+    AwareDatetime,
+    BaseModel,
+    ConfigDict,
+    Field,
+    StringConstraints,
+    TypeAdapter,
+    ValidationError,
+)
+from sqlalchemy import Row, delete, func, or_, select
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.sql import ColumnElement
 
-from pulso_api.auth import current_principal
+from pulso_api.auth import Principal, current_principal
 from pulso_api.errors import APIError
 from pulso_api.routers.products import DB
-from pulso_core.models import PopularProduct, Source
+from pulso_core.models import PopularBrandRule, PopularProduct, Source
 from pulso_sources.merchant_bestsellers import gtin_tokens, link_products
 
 router = APIRouter(prefix="/v1/popular-products", dependencies=[Depends(current_principal)])
@@ -25,7 +35,11 @@ MAJOR_BRAND_ROWS = 10
 STALE_DAYS = 14  # Google says new data can take up to 2 weeks (DEC-267)
 WEEK = timedelta(days=7)
 CURSOR = TypeAdapter(int)
+BRAND_CURSOR = TypeAdapter(str)
 P = PopularProduct
+R = PopularBrandRule
+CurrentPrincipal = Annotated[Principal, Depends(current_principal)]
+Brand = Annotated[str, StringConstraints(min_length=1, max_length=500)]
 
 
 class RankChange(BaseModel):
@@ -43,7 +57,9 @@ class PopularRow(BaseModel):
     change: RankChange
     title: str
     brand: str | None
-    major_brand: bool
+    major_brand: bool  # the brand has MAJOR_BRAND_ROWS or more rows in this report
+    # Why the default view leaves the row out: the major-brand rule, or your hide rule (DEC-277).
+    hidden_by: Literal["major", "you"] | None
     availability: str | None  # In stock, Out of stock, Product suggestion or Brand suggestion
     price_min_minor: int | None
     price_max_minor: int | None
@@ -62,7 +78,8 @@ class PopularPage(BaseModel):
     rows: list[PopularRow]
     next_cursor: str | None = Field(description="Pass as `cursor` with the same filters.")
     total: int  # rows in the report
-    hidden: int  # major-brand rows left out; 0 with include_major_brands
+    hidden: int  # rows left out, major brands' and yours; 0 with include_major_brands
+    hidden_by_you: int  # of those, rows your hidden brands left out
     major_brand_rows: int  # the threshold
     previous_week: date | None  # the imported week the change compares against
     source: str
@@ -87,6 +104,7 @@ def in_report(report: Row[Any]) -> list[ColumnElement[bool]]:
 @router.get("", response_model=PopularPage)
 def list_popular_products(
     session: DB,
+    principal: CurrentPrincipal,
     week: Annotated[date | None, Query(description="A report week's Monday; the newest")] = None,
     category: Annotated[
         str | None, Query(max_length=500, description="The shown week's first by default")
@@ -128,6 +146,7 @@ def list_popular_products(
         next_cursor=None,
         total=0,
         hidden=0,
+        hidden_by_you=0,
         major_brand_rows=MAJOR_BRAND_ROWS,
         previous_week=None,
         source=source.key,
@@ -146,9 +165,24 @@ def list_popular_products(
         .all()
     )
     majors = {b for b, n in sizes.items() if b is not None and n >= MAJOR_BRAND_ROWS}
+    rules = dict(
+        session.execute(
+            select(R.brand_norm, R.action).where(
+                R.workspace_id == principal.workspace_id,
+                R.brand_norm.in_([b for b in sizes if b is not None]),
+            )
+        )
+        .tuples()
+        .all()
+    )
+    # A show rule exempts a major brand; a hide rule hides any brand (DEC-277).
+    hidden_by: dict[str, Literal["major", "you"]] = {
+        **{b: "major" for b in majors if rules.get(b) != "show"},
+        **{b: "you" for b, action in rules.items() if action == "hide"},
+    }
     query = select(P).where(*in_report(report), P.rank > after)
-    if majors and not include_major_brands:
-        query = query.where(or_(P.brand.is_(None), brand.not_in(majors)))
+    if hidden_by and not include_major_brands:
+        query = query.where(or_(P.brand.is_(None), brand.not_in(hidden_by)))
     found = session.scalars(query.order_by(P.rank).limit(limit + 1)).all()
     rows = found[:limit]
 
@@ -190,6 +224,7 @@ def list_popular_products(
             title=row.title,
             brand=row.brand,
             major_brand=row.brand is not None and row.brand.lower() in majors,
+            hidden_by=hidden_by.get(row.brand.lower()) if row.brand is not None else None,
             availability=row.availability,
             price_min_minor=row.price_min_minor,
             price_max_minor=row.price_max_minor,
@@ -203,8 +238,95 @@ def list_popular_products(
     ]
     page.next_cursor = str(rows[-1].rank) if len(found) > limit else None
     page.total = sum(sizes.values())
-    page.hidden = 0 if include_major_brands else sum(sizes[b] for b in majors)
+    if not include_major_brands:
+        page.hidden = sum(sizes[b] for b in hidden_by)
+        page.hidden_by_you = sum(sizes[b] for b, why in hidden_by.items() if why == "you")
     page.previous_week = previous_week if previous is not None else None
     page.captured_at = report.captured_at
     page.as_of = report.observed_for
     return page
+
+
+# The workspace's brand list (DEC-277): current preference, so a rule is replaced or deleted in
+# place. Brands match as the major-brand rule reads them, lower(brand).
+class BrandRuleIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    brand: Brand  # as Google wrote it on a row
+    action: Literal["hide", "show"]  # show exempts a major brand from MAJOR_BRAND_ROWS
+
+
+class BrandRule(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    brand: str  # the spelling last hidden or shown
+    action: Literal["hide", "show"]
+    created_at: AwareDatetime  # when this action was set
+
+
+class BrandRulePage(BaseModel):
+    items: list[BrandRule]  # by brand, case-insensitive
+    next_cursor: str | None = Field(description="Pass as `cursor` for the next page.")
+
+
+@router.get("/brands", response_model=BrandRulePage)
+def list_popular_brand_rules(
+    principal: CurrentPrincipal,
+    session: DB,
+    cursor: str | None = None,
+    limit: Annotated[int, Query(ge=1, le=500)] = 200,
+) -> BrandRulePage:
+    query = select(R).where(R.workspace_id == principal.workspace_id)
+    if cursor is not None:
+        try:
+            query = query.where(R.brand_norm > BRAND_CURSOR.validate_json(cursor))
+        except ValidationError:
+            raise APIError(422, "invalid_cursor", "Invalid brand rule cursor.") from None
+    found = session.scalars(query.order_by(R.brand_norm).limit(limit + 1)).all()
+    last = found[limit - 1] if len(found) > limit else None
+    return BrandRulePage(
+        items=[BrandRule.model_validate(rule) for rule in found[:limit]],
+        next_cursor=BRAND_CURSOR.dump_json(last.brand_norm).decode() if last else None,
+    )
+
+
+@router.put("/brands", response_model=BrandRule)
+def put_popular_brand_rule(
+    body: BrandRuleIn, principal: CurrentPrincipal, session: DB
+) -> BrandRule:
+    """Hide or show a brand for this workspace, replacing its earlier rule."""
+    statement = insert(R).values(
+        workspace_id=principal.workspace_id,
+        brand_norm=func.lower(body.brand),
+        brand=body.brand,
+        action=body.action,
+        created_by=principal.user_id,
+    )
+    rule = session.scalars(
+        statement.on_conflict_do_update(
+            index_elements=[R.workspace_id, R.brand_norm],
+            set_={
+                "brand": statement.excluded.brand,
+                "action": statement.excluded.action,
+                "created_by": statement.excluded.created_by,
+                "created_at": func.now(),
+            },
+        ).returning(R)
+    ).one()
+    saved = BrandRule.model_validate(rule)
+    session.commit()
+    return saved
+
+
+@router.delete("/brands", response_model=BrandRule | None)
+def delete_popular_brand_rule(
+    brand: Annotated[Brand, Query()], principal: CurrentPrincipal, session: DB
+) -> BrandRule | None:
+    """Forget this workspace's rule for the brand: the major-brand rule applies again. Returns
+    the rule removed, or null when there was none."""
+    rule = session.scalars(
+        delete(R)
+        .where(R.workspace_id == principal.workspace_id, R.brand_norm == func.lower(brand))
+        .returning(R)
+    ).one_or_none()
+    removed = BrandRule.model_validate(rule) if rule else None
+    session.commit()
+    return removed
