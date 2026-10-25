@@ -280,7 +280,7 @@ function Table({ rows, page, apply }: { rows: Row[]; page: Page; apply: Apply })
                 </span>
               </td>
               <td className={cn(cell, "text-muted-foreground")}>{row.availability ?? <Missing reason="No availability in Google's report" />}</td>
-              <td className={cn(cell, "num")}>
+              <td className={cn(cell, "num")} title={source}>
                 <Price row={row} />
               </td>
             </tr>

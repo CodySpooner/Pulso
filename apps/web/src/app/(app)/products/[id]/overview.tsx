@@ -3,7 +3,7 @@
 import { Box, ChevronRight, Megaphone, Store } from "lucide-react";
 
 import { useApiReady } from "@/components/data-health/api";
-import { Panel, PanelError, StaleLine } from "@/components/data-health/atoms";
+import { Panel, PanelError, StaleLine, TapTooltip } from "@/components/data-health/atoms";
 import { Metric, type Stat } from "@/components/pulso/metric";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -114,9 +114,13 @@ export function Overview({ id, goTo }: { id: string; goTo: (tab: Tab) => void })
                 <span className={cn(chip, "border-border text-muted-foreground")}>Grade {velocity.grade === "unproven" ? "?" : velocity.grade}</span>
                 {velocity.grade === "B" && <span className={cn(chip, "border-border text-muted-foreground")}>lower bound</span>}
                 {velocity.gap && (
-                  <span className={cn(chip, "border-warning/40 bg-warning-muted text-foreground")} title="The 7-day window overlaps a collection gap">
+                  <TapTooltip
+                    hint="The 7-day window overlaps a collection gap"
+                    type="button"
+                    className={cn("relative hit-area cursor-help", chip, "border-warning/40 bg-warning-muted text-foreground")}
+                  >
                     gap
-                  </span>
+                  </TapTooltip>
                 )}
               </span>
             )}

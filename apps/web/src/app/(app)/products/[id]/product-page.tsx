@@ -213,7 +213,7 @@ function ProductTabs({ id }: { id: string }) {
             key={t.value}
             value={t.value}
             data-tab={t.value}
-            className="relative h-11 shrink-0 snap-start px-3 text-body font-medium text-muted-foreground transition-colors duration-(--duration-fast) ease-standard outline-offset-[-2px] hover:text-foreground data-[state=active]:text-foreground"
+            className="relative h-11 shrink-0 snap-start px-3 text-body font-medium text-muted-foreground transition-colors duration-(--duration-fast) ease-standard -outline-offset-2 hover:text-foreground data-[state=active]:text-foreground"
           >
             {t.label}
             {t.value === tab && <m.span layoutId="product-tab" transition={spring.snappy} className="absolute inset-x-3 -bottom-px h-0.5 rounded-full bg-brand" />}

@@ -58,7 +58,10 @@ export function TrendsTab({ id }: { id: string }) {
     return query.isError ? (
       <PanelError headingLevel="h2" size="md" title="Couldn't load the trends" error={error} retry={retry} />
     ) : (
-      <div className="flex flex-col gap-4 p-4" aria-busy="true" aria-label="Loading trends">
+      <div className="flex flex-col gap-4 p-4">
+        <span className="sr-only" role="status">
+          Loading trends…
+        </span>
         <Skeleton className="h-8 w-72 max-w-full" />
         <PaneSkeletons n={3} />
       </div>

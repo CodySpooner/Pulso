@@ -78,7 +78,7 @@ function Row({
     <Command.Item value={value} keywords={keywords} disabled={disabled} onSelect={onSelect} className={item}>
       {selected === value && (
         // The highlight is one shared element that slides between rows (pattern 8), snaps under reduced motion.
-        <m.span layoutId="palette-highlight" transition={spring.snappy} className="absolute inset-0 rounded-lg bg-accent" />
+        <m.span layoutId="palette-highlight" transition={spring.snappy} className="absolute inset-0 rounded-lg bg-accent before:absolute before:inset-y-2 before:left-0 before:w-0.5 before:rounded-full before:bg-brand" />
       )}
       <Icon className={cn("relative size-4 shrink-0", iconClassName)} strokeWidth={1.5} aria-hidden />
       {/* On a phone the detail drops under the label, so it isn't squeezed out. */}

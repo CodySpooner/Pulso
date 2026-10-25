@@ -140,7 +140,9 @@ export function ProductCard({ item, now, paused }: { item: Item; now: number; pa
             </Link>
           </h2>
           <p className="truncate text-label text-subtle-foreground" title={item.category ?? undefined}>
-            {leaf(item.category)} · <time dateTime={item.first_seen_at}>{day.format(new Date(item.first_seen_at))}</time>
+            {leaf(item.category)} · <time dateTime={item.first_seen_at} title={`First seen ${formatUtc(item.first_seen_at)}`}>
+              {day.format(new Date(item.first_seen_at))}
+            </time>
           </p>
         </div>
         <dl className="relative z-10 grid grid-cols-[auto_minmax(0,1fr)] items-baseline gap-x-3 gap-y-1 pointer-coarse:gap-y-6 [&_dd]:justify-self-end [&_dd]:text-right [&_dt]:text-muted-foreground">

@@ -115,8 +115,9 @@ export interface ProductMock {
   holdOverview?: boolean;
   notes?: S["Note"][];
   tags?: string[];
-  /** Answer the rail's GETs with a 503. */
+  /** Answer the rail's GETs with a 503, or never answer them. */
   railStatus?: number;
+  holdRail?: boolean;
   /** Answer every note POST and tags PUT with a 503, or never answer them. */
   failSaves?: boolean;
   holdSaves?: boolean;
@@ -152,6 +153,7 @@ export async function mockProductApi(page: Page, options: ProductMock = {}) {
       const write = request.method() !== "GET";
       if (write && options.holdSaves) return;
       if (write && options.failSaves) return route.fulfill(fail(503, `e2e-${part}-save`));
+      if (!write && options.holdRail) return;
       if (!write && options.railStatus) return route.fulfill(fail(options.railStatus, `e2e-${part}-${options.railStatus}`));
       if (part === "tags") {
         if (write) saved.tags = [...(request.postDataJSON() as S["Tags"]).tags].sort((a, b) => a.localeCompare(b, "en", { sensitivity: "base" }));

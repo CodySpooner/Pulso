@@ -136,7 +136,7 @@ function Scores({ detail }: { detail: Detail }) {
         </h3>
         <p className="text-label text-subtle-foreground">
           {isGtin(detail.scorer_version) ? "Shared GTIN: linked at 1.00" : `Auto-link ≥ ${score(t.auto_link)} · queue ≥ ${score(t.queue)}`} ·{" "}
-          <span className="font-mono">{detail.scorer_version}</span>
+          <span className="font-mono">{detail.scorer_version}</span> · scored <time dateTime={detail.created_at}>{formatUtc(detail.created_at)}</time>
           {!isGtin(detail.scorer_version) && detail.scorer_version !== t.version && <span className="text-warning"> · scored by an older version</span>}
         </p>
       </div>

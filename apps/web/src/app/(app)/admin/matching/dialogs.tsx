@@ -120,12 +120,12 @@ export function SplitDialog({
         <DialogTitle>Split a product</DialogTitle>
         <DialogDescription>Tick the listings that aren&apos;t this product. The matcher never pairs them with it again.</DialogDescription>
         {splittable.length > 1 && (
-          <div role="radiogroup" aria-label="Product" className="flex gap-1 rounded-md bg-secondary p-1">
+          <div role="group" aria-label="Product" className="flex gap-1 rounded-md bg-secondary p-1">
             {splittable.map((c, i) => (
               <button
                 key={c.product_id}
-                role="radio"
-                aria-checked={c === cluster}
+                type="button"
+                aria-pressed={c === cluster}
                 onClick={() => (setChosen(i), reset())}
                 className={cn("min-w-0 flex-1 truncate rounded-sm px-2 py-1 text-label", c === cluster ? "bg-card text-foreground shadow-card" : "text-muted-foreground")}
               >
