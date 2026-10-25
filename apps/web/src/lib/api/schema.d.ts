@@ -828,6 +828,8 @@ export interface components {
             rank_kind: "bsr" | "movers";
             /** Rows */
             rows: number;
+            /** Stale */
+            stale: boolean;
         };
         /** AmazonRankPage */
         AmazonRankPage: {

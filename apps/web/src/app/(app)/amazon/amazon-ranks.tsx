@@ -183,7 +183,7 @@ function Price({ row }: { row: Row }) {
 // Dense table: sticky header, tabular numbers, one body per list headed by its category, list and day. Rows never
 // animate (Motion System rule 2). A row whose GTIN reaches a live product links to it; the rest still show (DEC-267 c).
 function Table({ rows, page }: { rows: Row[]; page: Page }) {
-  const sizes = new Map(page.lists.map((l) => [`${l.category}\n${l.rank_kind}`, l.rows]));
+  const lists = new Map(page.lists.map((l) => [`${l.category}\n${l.rank_kind}`, l]));
   return (
     <div role="region" aria-label="Amazon ranks" tabIndex={0} className={cn(box, "relative max-h-[max(24rem,calc(100dvh-18rem))] overflow-auto overscroll-contain")}>
       <table className="w-full border-separate border-spacing-0 zone-data">
@@ -199,7 +199,8 @@ function Table({ rows, page }: { rows: Row[]; page: Page }) {
         {groupRows(rows).map(({ category, kind, rows: ranked }) => {
           const [first, key] = [ranked[0], `${category}\n${kind}`];
           const source = `${LABEL} · as of ${day(first.as_of)} · imported ${formatUtc(first.captured_at)}`;
-          const size = sizes.get(key) ?? ranked.length;
+          const list = lists.get(key);
+          const size = list?.rows ?? ranked.length;
           return (
             <tbody key={key}>
               <tr className="row-h">
@@ -212,6 +213,13 @@ function Table({ rows, page }: { rows: Row[]; page: Page }) {
                     </time>{" "}
                     · {count(size)} {size === 1 ? "rank" : "ranks"}
                   </span>
+                  {/* Each list's own age, so a fresh list never hides an old one (DEC-286 b, XR-51). */}
+                  {list?.stale && (
+                    <span className="ml-2 font-normal">
+                      <TriangleAlert className="mr-1 inline size-3.5 align-[-2px] text-warning" aria-hidden />
+                      Over 14 days old
+                    </span>
+                  )}
                 </th>
               </tr>
               {ranked.map((row) => (

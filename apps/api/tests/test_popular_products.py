@@ -382,6 +382,24 @@ def test_a_shown_brand_with_ten_rows_stays_visible(api: TestClient, db_engine: E
 
 
 @pytest.mark.db
+def test_row_flags_fold_brands_as_the_filter_does(api: TestClient, db_engine: Engine) -> None:
+    """XR-43: Postgres lower() reads "İPEK" as ipek and "ΟΔΟΣ" as οδοσ; Python's str.lower()
+    doesn't, so the flags come from the same lower() as the filter and counts."""
+    with Session(db_engine) as session:
+        major = [{"rank": r, "title": f"Example {r}", "brand": "İPEK"} for r in range(1, 11)]
+        report(session, LATEST, None, [*major, {"rank": 11, "title": "Example", "brand": "ΟΔΟΣ"}])
+        session.commit()
+    member(api, db_engine)
+    put(api, "ΟΔΟΣ", "hide")
+    assert (get(api)["hidden"], get(api)["hidden_by_you"]) == (11, 1)
+    shown = get(api, "?include_major_brands=true")
+    assert {(row["brand"], row["major_brand"], row["hidden_by"]) for row in shown["rows"]} == {
+        ("İPEK", True, "major"),
+        ("ΟΔΟΣ", False, "you"),  # so the page offers Unhide, not a second Hide
+    }
+
+
+@pytest.mark.db
 def test_brand_rules_list_by_brand_in_pages(api: TestClient, db_engine: Engine) -> None:
     member(api, db_engine)
     for brand, action in (("Zeta", "hide"), ("acme", "show"), ("Mid", "hide")):

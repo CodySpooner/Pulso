@@ -72,7 +72,7 @@ export function ProfitTab({ id }: { id: string }) {
   const shown = calc.data ?? last?.calc;
   const defaults = base.data ?? shown;
   const retry = () => void calc.refetch();
-  const recomputing = settled !== scenario || calc.isPlaceholderData || (calc.isError && !!last);
+  const recomputing = (settled !== scenario || calc.isPlaceholderData) && !calc.isError; // never after a failure (XR-53)
   const set = (change: Partial<Scenario>) => setScenario((s) => ({ ...s, ...change }));
   const reset = () => {
     setScenario(DEFAULTS);
@@ -109,12 +109,12 @@ export function ProfitTab({ id }: { id: string }) {
       ) : (
         <>
           {/* A 2 px hairline while a recompute is out: opacity only (vault Features/Product Page - Profit, Motion). The last
-              answer stays at full contrast, no dim (imp-314); aria-busy marks it for assistive tech. */}
+              answer stays at full contrast (imp-314); aria-busy marks the same wait for assistive tech. */}
           <span
             aria-hidden
             className={cn(
               "pointer-events-none absolute inset-x-4 top-0 h-0.5 rounded-full bg-brand opacity-0 transition-opacity duration-(--duration-fast)",
-              recomputing && !calc.isError && "opacity-100",
+              recomputing && "opacity-100",
             )}
           />
           {calc.isError && last && <StaleLine boxed what="Couldn't recompute this scenario" error={calc.error} asOf={last.at} retry={retry} />}

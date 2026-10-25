@@ -85,7 +85,7 @@ export async function mockAmazonApi(page: Page, options: AmazonOptions = {}) {
       const body: S["AmazonRankPage"] = {
         source: options.noSource ? null : "amazon",
         source_name: options.noSource ? null : "Amazon",
-        lists: lists.map(([c, k, n]) => ({ category: c, rank_kind: k, as_of, captured_at: CAPTURED, rows: n })),
+        lists: lists.map(([c, k, n]) => ({ category: c, rank_kind: k, as_of, captured_at: CAPTURED, rows: n, stale: options.stale === true })),
         rows: rows.slice(offset, end),
         next_cursor: end < rows.length ? String(end) : null,
         total: rows.length,
