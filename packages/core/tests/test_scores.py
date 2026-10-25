@@ -13,7 +13,16 @@ from sqlalchemy.exc import DBAPIError, IntegrityError
 from sqlalchemy.orm import Session
 
 from pulso_core.models import Product, Score
-from pulso_core.scores import Component, Explanation, ScoreRow, explain, latest, version, write
+from pulso_core.scores import (
+    Component,
+    Explanation,
+    Penalty,
+    ScoreRow,
+    explain,
+    latest,
+    version,
+    write,
+)
 
 ALEMBIC_INI = str(Path(__file__).resolve().parents[3] / "alembic.ini")
 AS_OF = datetime(2026, 12, 14, 6, 10, tzinfo=UTC)
@@ -96,6 +105,18 @@ def test_an_explanation_round_trips_and_keeps_missing_honest() -> None:
         Explanation.model_validate(explanation.model_dump() | {"missing": ()})
     with pytest.raises(ValidationError, match="prompt_version"):
         Component(name="refunds", family="reviews", source="ai", weight=1, ai_derived=True)
+
+
+def test_a_missing_penalty_is_named_in_missing_after_the_components() -> None:
+    _, explanation = explain(TrendConfig(), inputs("ads_growth"))
+    saturation = Penalty(name="saturation", source="shopify_stores", missing=True)
+    fields = explanation.model_dump() | {"penalties": [saturation.model_dump()]}
+    with pytest.raises(ValidationError, match="missing"):
+        Explanation.model_validate(fields)
+    named = Explanation.model_validate(fields | {"missing": ("ads_growth", "saturation")})
+    assert Explanation.model_validate(named.model_dump(mode="json")) == named
+    present = saturation.model_copy(update={"missing": False, "raw": 73.3, "points": 6.99})
+    Explanation.model_validate(fields | {"penalties": [present.model_dump()]})
 
 
 def make_product(connection: Connection) -> UUID:

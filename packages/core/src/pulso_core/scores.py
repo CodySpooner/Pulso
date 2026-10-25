@@ -67,6 +67,21 @@ class Component(BaseModel):
         return self
 
 
+class Penalty(BaseModel):
+    """Points taken off after the weighted inputs: Trend's saturation penalty.
+
+    Missing, it takes nothing off and is named in `missing` after the components.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    name: str  # e.g. "saturation"
+    source: str | None  # sources.key of its input; None while no source feeds it
+    raw: float | None = None  # the input, e.g. Saturation 0–100
+    points: float | None = Field(default=None, ge=0)  # taken off the score; None when missing
+    missing: bool = False
+
+
 class Explanation(BaseModel):
     """`scores.explanation`: every input, the missing ones by name, and the weight present."""
 
@@ -75,14 +90,16 @@ class Explanation(BaseModel):
     model_version: str
     config_digest: str  # the config's full SHA-256; model_version keeps 12 hex
     components: tuple[Component, ...]
-    missing: tuple[str, ...]
+    missing: tuple[str, ...]  # the missing components', then penalties', names
     coverage: float = Field(ge=0, le=1)  # present configured weight / all configured weight
     panel_size: int | None = Field(default=None, ge=0)  # Saturation: stores tracked since t−28
+    penalties: tuple[Penalty, ...] = ()  # Trend: points off after the weighted inputs
 
     @model_validator(mode="after")
     def _missing_names_the_missing_inputs(self) -> Self:
-        if self.missing != tuple(c.name for c in self.components if c.missing):
-            raise ValueError("missing must name exactly the missing components, in order")
+        names = [c.name for c in self.components if c.missing]
+        if self.missing != (*names, *(p.name for p in self.penalties if p.missing)):
+            raise ValueError("missing must name exactly the missing inputs, in order")
         return self
 
 
