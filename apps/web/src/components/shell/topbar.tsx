@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import type { FocusEvent } from "react";
 import { Menu, Search } from "lucide-react";
 
+import { AlertsBell } from "@/components/alerts/bell";
 import { DataHealthNavBadge } from "@/components/data-health/nav-badge";
 import { Logo } from "@/components/pulso/logo";
 import { ModKey } from "@/components/pulso/mod-key";
@@ -46,7 +47,7 @@ function keyboardFocusOnly(e: FocusEvent) {
 }
 
 // Top bar (vault Design/App Shell & Navigation): breadcrumbs, search trigger, market and freshness chips,
-// workspace chip (/v1/me), theme toggle and the Clerk user menu. Below 1024px: menu button and the logo (the page h1 names the page).
+// workspace chip (/v1/me), the alerts bell, theme toggle and the Clerk user menu. Below 1024px: menu button and the logo (the page h1 names the page).
 export function Topbar() {
   const { openPalette, openNav } = useShell();
 
@@ -108,6 +109,7 @@ export function Topbar() {
         </Tooltip>
         <WorkspaceChip />
 
+        <AlertsBell />
         <ThemeToggle />
         <UserMenu />
       </div>

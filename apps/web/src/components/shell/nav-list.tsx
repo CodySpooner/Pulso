@@ -6,6 +6,7 @@ import { useState } from "react";
 import { LayoutGroup } from "motion/react";
 import * as m from "motion/react-m";
 
+import { UnreadBadge } from "@/components/alerts/bell";
 import { DataHealthNavBadge } from "@/components/data-health/nav-badge";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { spring } from "@/lib/motion";
@@ -70,6 +71,9 @@ export function NavLink({
           <span aria-hidden>{item.noSource ? "No source yet" : `P${item.phase}`}</span>
           <span className="sr-only">{item.noSource ? ", no source yet" : `, arrives in Phase ${item.phase}`}</span>
         </span>
+      )}
+      {built && item.href === "/alerts" && (
+        <UnreadBadge spoken className={cn("relative ml-auto bg-secondary text-muted-foreground", variant === "sidebar" ? whenExpanded : "flex")} />
       )}
       {built && item.href === "/admin/data-health" && (
         <DataHealthNavBadge expandedClass={variant === "sidebar" ? whenExpanded : "flex"} railClass={variant === "sidebar" ? whenRail : undefined} />
