@@ -1,6 +1,7 @@
 import json
 from collections.abc import Callable, Iterator
 from datetime import UTC, datetime, timedelta
+from functools import partial
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -58,17 +59,19 @@ def api(client: TestClient, db_engine: Engine) -> TestClient:
     return client
 
 
-def observe[T: Base](session: Session, model: type[T], source_id: int, **values: Any) -> T:
+def observe[T: Base](
+    session: Session, model: type[T], source_id: int, at: datetime = AT, **values: Any
+) -> T:
     run = CollectorRun(source_id=source_id, trigger="manual", status="success")
     session.add(run)
     session.flush()
     payload = RawPayload(
-        source_id=source_id, run_id=run.id, captured_at=AT, request={}, bytes=1,
+        source_id=source_id, run_id=run.id, captured_at=at, request={}, bytes=1,
         sha256=uuid4().hex * 2,
     )  # fmt: skip
     session.add(payload)
     session.flush()
-    row = model(captured_at=AT, raw_payload_id=payload.id, observed_for=DAY, **values)
+    row = model(captured_at=at, raw_payload_id=payload.id, observed_for=at.date(), **values)
     session.add(row)
     session.flush()
     return row
@@ -124,9 +127,10 @@ def build(
         store = Store(domain=f"{uuid4().hex}.example.test", platform="shopify")
         session.add(store)
         session.flush()
+        shelf = listing(session, product, SHOPIFY, store_id=store.id)
         observe(
             session, ListingSnapshot, SHOPIFY, values_hash="h", currency="USD",
-            price_min_minor=price, listing_id=listing(session, product, SHOPIFY, store_id=store.id).id,
+            price_min_minor=price, listing_id=shelf.id,
         )  # fmt: skip
     if cost is not None:
         supplier = Supplier(
@@ -141,11 +145,16 @@ def build(
             rating=rating[0] and float(rating[0]), listing_id=offer.id,
         )  # fmt: skip
         if ship is not None:
-            observe(
-                session, ShippingOption, CJ, listing_id=offer.id, destination_country="US",
-                quantity=1, method="CJPacket", cost_minor=ship[0], currency="USD", min_days=3,
-                max_days=ship[1],
-            )  # fmt: skip
+            # A faster method quoted two days earlier and since dropped: never the fastest.
+            for at, method, days in (
+                (AT - timedelta(days=2), "Gone", 1),
+                (AT, "CJPacket", ship[1]),
+            ):
+                observe(
+                    session, ShippingOption, CJ, at, listing_id=offer.id, destination_country="US",
+                    quantity=1, method=method, cost_minor=ship[0], currency="USD", min_days=1,
+                    max_days=days,
+                )  # fmt: skip
     if growth is not None:
         v7, g7, before = growth
         session.add(feature(product, 0, v7, g7))
@@ -174,7 +183,7 @@ def catalog(session: Session) -> dict[str, UUID]:
         ]
     )
     lamp = dict(
-        price=2999, cost=740, ship=(410, 8), rating=("4.60", None), growth=(30.0, 0.40, 0.20),
+        price=2999, cost=740, ship=(410, 8), rating=("4.60", "3.00"), growth=(30.0, 0.40, 0.20),
         trend=70.0, saturation=40.0, stage="rising", category=1,
     )  # fmt: skip
     products = [
@@ -259,13 +268,14 @@ def names(body: Any, ids: dict[str, UUID]) -> set[str]:
         ({"margin_bps_max": 3000}, {"Mug"}),
         ({"velocity_min": 20}, {"Lamp"}),
         ({"velocity_max": 20}, {"Mug", "Duck"}),  # Fan has no demand family
+        ({"velocity_min": 30, "price_max": 2999}, {"Lamp"}),  # bounds are inclusive
         ({"acceleration_min": 0}, {"Lamp"}),  # +0.20; Mug −0.15; Duck has no G7 a week earlier
         ({"acceleration_max": 0}, {"Mug"}),
         ({"saturation_min": 50}, {"Mug"}),
         ({"saturation_max": 50}, {"Lamp"}),  # Fan and Duck have no saturation row
         ({"price_min": 2000}, {"Lamp", "Fan"}),  # Duck has no store listing
         ({"price_max": 2000}, {"Mug"}),
-        ({"supplier_rating_min": 450}, {"Lamp"}),  # the snapshot's 4.60
+        ({"supplier_rating_min": 450}, {"Lamp"}),  # the snapshot's 4.60 over its supplier's 3.00
         ({"supplier_rating_max": 450}, {"Mug"}),  # the supplier's own 4.00
         ({"ship_days_us_max": 10}, {"Lamp"}),
         ({"ship_days_us_min": 10}, {"Mug"}),  # Duck's quote gives no max days
@@ -328,10 +338,10 @@ def test_rows_trace_every_metric_and_name_each_missing_one(
 
 def metric(row: Any, key: str) -> float | None:
     """A row's value of a sort key, as the response shows it."""
-    if key == "margin_bps":
-        return row["margin"].get("margin_bps")
-    field = {"price": "price_minor"}.get(key, key)
-    value: float | None = row[field]["value"]
+    field, name = {"margin_bps": ("margin", "margin_bps"), "price": ("price_minor", "value")}.get(
+        key, (key, "value")
+    )
+    value: float | None = row[field].get(name)
     return value
 
 
@@ -471,7 +481,8 @@ def test_a_page_of_50_runs_as_many_queries_as_a_page_of_1(
             build(session, f"Filler {i}", **lamp)  # type: ignore[arg-type]
         session.commit()
     for sort in ("trend", "opportunity"):
-        one = statements(db_engine, lambda: screen(api, sort=sort, limit=1))
-        fifty = statements(db_engine, lambda: screen(api, sort=sort, limit=50))
+        one, fifty = (
+            statements(db_engine, partial(screen, api, sort=sort, limit=limit)) for limit in (1, 50)
+        )
         assert one == fifty, sort
         print(f"query count, sort={sort}: {fifty}")  # reported in docs/reports/p4-24.md

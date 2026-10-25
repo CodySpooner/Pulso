@@ -5,7 +5,7 @@ import json
 from typing import Annotated, Literal
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query, Response
+from fastapi import APIRouter, Depends, Query
 from pydantic import (
     AwareDatetime,
     BaseModel,
@@ -116,8 +116,11 @@ def get_screen(screen_id: UUID, principal: CurrentPrincipal, session: DB) -> Sav
     return read(owned(session, principal.workspace_id, screen_id))
 
 
-@router.delete("/{screen_id}", status_code=204)
-def delete_screen(screen_id: UUID, principal: CurrentPrincipal, session: DB) -> Response:
-    session.delete(owned(session, principal.workspace_id, screen_id))
+@router.delete("/{screen_id}", response_model=SavedScreen)
+def delete_screen(screen_id: UUID, principal: CurrentPrincipal, session: DB) -> SavedScreen:
+    """Delete a screen; returns it as it was."""
+    row = owned(session, principal.workspace_id, screen_id)
+    removed = read(row)
+    session.delete(row)
     session.commit()
-    return Response(status_code=204)
+    return removed

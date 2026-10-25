@@ -81,7 +81,7 @@ def test_a_screen_saves_reads_lists_and_deletes(as_: As, db_engine: Engine) -> N
     listed = [item["name"] for item in first["items"] + rest["items"]]
     assert listed == ["Early & profitable", "Fast US shipping", "Margin floor"]
     assert rest["next_cursor"] is None
-    assert a.delete(f"/v1/screens/{screen['id']}").status_code == 204
+    assert a.delete(f"/v1/screens/{screen['id']}").json() == screen
     assert a.get(f"/v1/screens/{screen['id']}").status_code == 404
     assert a.delete(f"/v1/screens/{screen['id']}").status_code == 404
 
