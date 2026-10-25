@@ -2515,3 +2515,58 @@ Superseded review defaults, not given entries: default #0 (move the repo) is don
   - a stored matcher-run summary (the empty state reads the latest `algo` decision instead);
   - impact from watchlists, boards and tests;
   - cleaning up a product emptied by undoing an accept or split, which stays `active` with no listings.
+
+### DEC-269 · OpenCLIP embeddings (M-2 part b): ViT-B-32 `laion2b_s34b_b79k` pinned to one Hugging Face commit, `ml.embed` behind `EMBEDDINGS_ENABLED=off`, idempotent through the immutable stored copy and `title_norm`, torch only in an optional `clip` extra
+**2026-10-25 · proposed (p2-31)** · Phase 2 task M-2 part b; DEC-040, DEC-237 (a), DEC-240 (g, h), DEC-249, DEC-260 (e); AGENTS.md §3, §7; vault Data/Product Matching; `docs/reports/p2-31.md`; no migration; new free optional dependencies
+- **Decision:**
+  - **(a) Checkpoint.** OpenCLIP `ViT-B-32` with the `laion2b_s34b_b79k` weights, as DEC-237 (a) sized the columns for. The weights are pinned to Hugging Face `laion/CLIP-ViT-B-32-laion2B-s34B-b79K` at commit `1a25a446712ba5ee05982a381eed697ef9b435cf`, file `open_clip_model.safetensors` (605,143,316 bytes, sha256 `ac4f8c4b88af6d963118cbf40ad93176d092abbedfcb752601ae1866352656e6`, MIT licence). Both encoders give 512 dimensions, so the job writes the existing `images.embedding` and `listings.title_embedding` (`vector(512)`, HNSW cosine) with no migration. `pulso_ml.embeddings.MODEL_VERSION` (`ViT-B-32/laion2b_s34b_b79k@1a25a44`) is in every run's log line.
+    - **Why this checkpoint:** the columns already fit it. It is the smallest standard OpenCLIP ViT, which matters on a concurrency-1 CPU queue on the owner's PC. Its LAION-2B training pairs are web images with their alt text, close to shop photos with product titles. Images and titles share one space (M-3 compares each within its own kind). The file is safetensors (no pickle) under MIT.
+  - **(b) Job.** `ml.embed` (`pulso_workers.ml.embed_listings`) on the `ml` queue: concurrency 1, `--pool=solo` locally. Its flag is `EMBEDDINGS_ENABLED` (Settings `embeddings_enabled`, default off). Off, the task logs `embeddings_disabled` and never opens the database or loads the model.
+    - **Lazy imports.** torch, open_clip and huggingface_hub are imported only inside `pulso_ml.embeddings.openclip()`, the only code that loads the model.
+    - **Passed in.** `embed(session, encoder, read)` takes the encoder and the capture reader. pulso-sources depends on pulso-ml, so the worker passes `pulso_sources.storage.read_capture`, as it passes `rate_as_of` to the matcher.
+    - **Images.** Every `images` row with a `storage_key` and no `embedding`. The raw payload is found through the indexed `sha256`, which the key names, and read back by `read_capture`, which checks the hash (DEC-240 g).
+    - **Titles.** Every listing whose `title_embedding` is NULL or whose `title_norm` differs from `title`. The job writes the vector and `title_norm = title` together.
+    - **Batches and log.** Batches of 32, keyset by id, one commit each. The run ends with `embeddings_done model=… images=… titles=… image_missing=… image_unreadable=…`.
+  - **(c) Idempotent with no key column.** The key is the stored content plus the model version, and existing state already holds each part:
+    - **Image content.** An image row's stored copy never changes once set (DEC-240 h: a stored image is never planned again, and a replaced image is a new row). So a NULL embedding means "no vector for this content".
+    - **Title content.** `title_norm` holds the exact text its vector came from. A re-titled listing (CJ rewrites `title` in place) is embedded again, and an unchanged one isn't.
+    - **Model version.** The schema fixes it (DEC-237 a): another checkpoint means a migration that clears both columns, then a re-embed.
+
+    A re-run encodes nothing and updates no row.
+  - **(d) Missing and unreadable images.**
+    - **Missing.** A listing without a stored image gets its title vector only. Its image vector stays NULL, never a zero vector: pgvector's cosine with a zero vector is NaN (DEC-260 e). It counts in `image_missing`, the same set as the matcher's `skipped_no_embedding`: a missing input with weight 0 (DEC-040).
+    - **Unreadable.** A missing object, a hash mismatch or bytes that don't decode is logged as `embedding_image_unreadable image_id=…` and counted in `image_unreadable`. The image stays NULL and is retried next run, and the rest of its batch still embeds.
+  - **(e) `title_norm` until normalisation exists.** `title_norm` is the title exactly as embedded. OpenCLIP's tokenizer already lower-cases, cleans whitespace and cuts at 77 tokens. When title normalisation (vault Product Matching, step 2) lands, it writes `normalize(title)` and compares against that, which re-embeds each title once.
+  - **(f) Dependencies.** The optional extra `pulso-ml[clip]` holds `open-clip-torch>=3.3,<4` (MIT), `torch>=2.9,<3` and `torchvision>=0.24,<1` (BSD-style), all free. The lock has `open-clip-torch 3.3.0`, `torch 2.14.1+cpu` and `torchvision 0.29.1+cpu`, plus their dependencies (timm, huggingface-hub, safetensors, …). `pulso-workers[ml]` is `pulso-ml[clip]`.
+    - **Index.** torch and torchvision come only from the explicit `pytorch-cpu` index (`https://download.pytorch.org/whl/cpu`), because PyPI's Linux torch pulls the CUDA stack.
+    - **CI and worktrees.** `uv sync --locked --all-packages` installs no extra, so CI and every worktree stay torch-free; `--locked` still checks the lock. mypy ignores the three missing modules.
+    - **Tests.** They inject a weight-free fake encoder. No test, CI job or worktree downloads weights.
+  - **(g) Worker image (not changed here).** The ml consumer's image installs with `uv sync --locked --no-dev --no-editable --package pulso-workers --extra ml`.
+    - **Weights.** It bakes the pinned file at build with `hf_hub_download(WEIGHTS_REPO, WEIGHTS_FILE, revision=WEIGHTS_REVISION)` and sets `HF_HUB_OFFLINE=1` at run time, so the job never reaches the network.
+    - **Scope.** Only an `ml` image or service gets torch; the `collect,default` image stays as it is.
+    - **Schedule.** That is an infra and collector-host change for a later task. Until it lands, `ml.embed` has no Beat entry, like `ml.match`.
+  - **(h) Retention.** DEC-240 (g)'s future retention job must clear `images.embedding` along with `storage_key` and `phash`, or exempt image captures.
+- **Alternatives:**
+  - (c) `embedding_key` and `title_embedding_key` columns (sha256 plus model version per row): a migration for state the stored copy and `title_norm` already hold, and DEC-237 (a) ruled out a per-row model column. Re-encoding every title each night and writing only the changed vectors: a full text-encoder pass over every listing, every night.
+  - (d) A zero vector for a missing image: NaN cosines in the matcher.
+  - (f) torch as a plain dependency: about 1 GB in every CI job and worktree, and the CUDA stack on Linux from PyPI. A dependency group: groups are for development tools (PEP 735), and this is an optional runtime dependency.
+  - (a) ViT-B-16 or ViT-L-14: better zero-shot scores at several times the CPU per image, and ViT-L-14 is 768-d (a migration). A separate text model: DEC-237's alternative, to revisit on Phase 2 title precision.
+  - (b) Reading S3 inside pulso-ml: a second copy of `read_capture`'s hash check.
+- **Why:**
+  - **Postgres tests.** `packages/ml/tests/test_embeddings.py` runs on `pgvector/pgvector:0.8.7-pg18-trixie` with generated PNG bytes and a fake encoder, so nothing touches the network:
+    - a stored image, an unfetched image and an imageless listing give 1 image and 3 title vectors, with the two missing images NULL;
+    - a second run encodes nothing and leaves every `images` and `listings` row's `xmin` unchanged;
+    - a changed title alone is embedded again;
+    - a missing object and undecodable bytes are each counted and logged while the other image embeds;
+    - the matcher finds nothing before the run, then queues exactly the near pair, with `image_cos` = cos 10° from the new vectors and `title_cos` 1.
+  - **Worker tests.** `apps/workers/tests/test_ml.py`:
+    - `ml.embed` routes to `ml` with no Beat entry;
+    - flag off touches neither the database nor the model;
+    - flag on passes `read_capture` and logs the counts;
+    - a fresh interpreter importing `pulso_workers.ml` and `pulso_ml.embeddings` has no torch, open_clip or huggingface_hub in `sys.modules`.
+  - **Mutations.** Breaking any of these fails a test: the `title_norm` write, the NULL-embedding filter, the title-change filter, a top-level model import, or the missing count.
+  - **Local smoke.** `openclip()` with randomly initialised weights (no download; sockets limited to localhost) gave `(n, 512)` float32 unit vectors and wrote norm-1 vectors to pgvector. Loading the real pinned file is unverified until the worker image bakes it.
+- **Not here:**
+  - the ml worker image, the `ml` consumer and a Beat entry (g);
+  - title normalisation;
+  - the M-2 verify (95 % of listings with an image embedded within one nightly run), which needs `listing_images` enabled (an owner decision) and real data on the collector host.
