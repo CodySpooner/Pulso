@@ -20,6 +20,7 @@ COVERED_OPERATIONS = {
     "create_product_note",
     "list_product_tags",
     "put_product_tags",
+    "search",
     "calc_profit",
     "list_categories",
 }
@@ -27,6 +28,8 @@ COVERED_OPERATIONS = {
 # the check no longer flags must be removed.
 EXEMPT = {
     "CategoryOption.id": "a taxonomy id (Google's), not a measurement",
+    "StoreHit.id": "the stores row the palette opens, not a measurement",
+    "SupplierHit.id": "the suppliers row the palette opens, not a measurement",
 }
 
 
