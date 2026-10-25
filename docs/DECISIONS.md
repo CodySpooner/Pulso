@@ -3246,3 +3246,41 @@ Superseded review defaults, not given entries: default #0 (move the repo) is don
   - **A typed `start_snapshot` (ProfitCalc) in the response:** a later ProfitCalc field would make older snapshots fail validation; a JSON object stays readable.
 - **Why:** `apps/api/tests/test_testing.py` (20 tests) and `packages/core/tests/test_product_tests_schema.py` on `pgvector/pgvector:0.8.7-pg18-trixie`: CPA and ROAS against hand calculations ($200.00 / 3 = $66.67, $48.65 / 2 = $24.32 half-even, ROAS 1.29995), null on 0 orders and 0 spend; Killed without a reason 422; the snapshot holds the chosen variant, the quote row id and the 20% duty, 2.9% + $0.30 fees and $18.00 CPA, with a $22.53 break-even CPA, and survives a fee change, a new supplier price, metrics and a stage round trip, while PATCH and SQL can't change it; kill-reason counts equal the killed tests across pages and filters; workspace B sees none of A's tests. 14 one-line mutations each fail a test (`docs/reports/p4-05.md`).
 - **Not here (the board UI task):** the stop-loss and winner-candidate chips with k and N in Settings, "changed since start" in the drawer, `POST /v1/tests/{id}/snapshot-economics`, card ordering (`position`), product title and image on the list, CSV export, and Phase 7's auto-filled metrics.
+
+### DEC-313 · /methodology (MT-1, first part): a JSON export of the scoring code's docstrings, signatures and config, committed beside the web app and checked against a fresh export by pytest; the route renders it on the server with no API
+**2026-10-25 · proposed (p4-06)** · Phase 4 task MT-1 (first part); SPEC §1, §7; DEC-040, DEC-261, DEC-284, DEC-306, DEC-307, DEC-310; vault Features/Methodology & Confidence, Intelligence/Score Definitions; `docs/reports/p4-06.md`; no migration, endpoint, flag or dependency
+- **Decision:**
+  - **(a) The export.** `pulso_ml.scores.methodology.build()` reads every built score listed in `BUILT` (anchor, title, module, function, task):
+    - the function's docstring, as paragraphs and bullet lists with wrapped lines rejoined;
+    - its parameters with their annotations as written (`inspect.signature(annotation_format=STRING)`);
+    - each `CONFIG` field with its value, its type and its line comment, read from the class source;
+    - `pulso_core.scores.version(CONFIG)`: the model_version and the full digest.
+
+    Today that's Velocity & Acceleration (SC-1), then Lifecycle Stage (SC-4). Scores with no code are listed in `PLANNED` and carry only an id, a title, the status `not built yet`, a phase and a task: Trend Score v0 (4, SC-2), Saturation (4, SC-3), Opportunity (4, SC-5), Risk & Refund Risk (5) and Supplier Reliability (7). Nothing else is written for them, and no number.
+  - **(b) The contract part** reads `pulso_core.scores`: the Explanation and Component fields with their comments, the Component docstring's missing-input paragraph ("no source yet", never 0), and the docstrings of `explain()` and `version()`. Confidence is `coverage × freshness` with the status `not built yet`: coverage is on every explanation, but freshness isn't in the code yet. The only text the export writes itself is the two known limitations (DEC-001 home-PC gaps, DEC-261 Shopify off).
+  - **(c) Format and command.** `uv run python -m pulso_ml.scores.methodology` writes `apps/web/src/lib/methodology.json` as `json.dumps(indent=2, ensure_ascii=False)` in reading order, UTF-8, LF. The top-level keys are `scores[]`, `contract` and `limitations[]`. A built score has `id, title, status, task, code, definition[], inputs[], config[], model_version, config_digest`. A block is `{text}` or `{items}`.
+  - **(d) The drift check.** `test_the_committed_export_is_the_code` (`packages/ml/tests/test_methodology.py`) runs in the normal pytest run. It compares the committed file's text with a fresh export, so a threshold, weight, docstring or field-comment change without regenerating fails CI, and the failure names the command. No `.github` change. Velocity's config pins `FEATURE_VERSION`, so a new feature version regenerates this file too.
+  - **(e) The version shown** is what a score row carries: `pulso_core.scores.version()`'s `{revision:03d}-{hash12}` (DEC-306 d). Lifecycle's own `lifecycle_v0-<hash8>` (DEC-307 d) hashes the same JSON, so `000-7674a25d473a` starts with the same 8 hex as `lifecycle_v0-7674a25d`.
+  - **(f) The page.** `/methodology` in the (app) group is a server component that imports the JSON statically (typed in `methodology/model.ts`). It sends no request and needs no endpoint.
+    - One card per built score (`#velocity`, `#lifecycle-stage`): the definition, a Config table (four decimals, with the exact value, the field's path and the model_version on hover), an Inputs table and the missing-input rule.
+    - One "Not built yet" card with a row per planned score; each row is its own anchor.
+    - Then `#explanation`, `#confidence` and `#limitations`.
+    - The "On this page" list is a sticky column at `lg` and one swipeable row on a phone.
+  - **(g) The entry point.** The existing Methodology item in the sidebar's Trust group gets `built: true` (DEC-284), which also makes the Ctrl+K row navigate. One click from anywhere.
+- **Alternatives:**
+  - **`GET /v1/methodology`** (the vault's API table): a request, an OpenAPI change and loading and error states for data that is fixed at build time. The brief rules it out.
+  - **Running the export inside `next build`:** it couples the web build to uv. A committed file plus the drift test fails at the same point (CI), with a diff someone can review.
+  - **Parsing docstrings in TypeScript:** the web app would then hold parsing rules. The export ships blocks ready to render.
+  - **Discovering score modules automatically:** a new module would make `main`'s committed JSON stale the moment a branch that didn't regenerate it merged. The registry makes adding a score a one-line change that gets reviewed.
+  - **SPEC §7's one-liners for the planned scores:** that's text the code doesn't hold yet. Each score gets its definition when its code ships.
+  - **One card per planned score:** five identical cards. One dense card reads faster (design review, fix round 1).
+  - **Smooth scrolling on anchor jumps** (the vault's Motion line): `main` is the scroll container at `lg`, so it needs a shell CSS change. Instant jumps are already safe under reduced motion. It's a backlog row.
+- **Why:**
+  - `test_methodology.py` has 7 cases: the drift check, a threshold change that moves the export and the version, Lifecycle's docstring, signature and config, Velocity coming first with `velocity.VERSION`, planned scores carrying no numbers, unique anchors, and the contract's fields and missing rule. Editing `young_days` 28 → 29 failed the drift test; regenerating made it pass, and the diff moved the value and the model_version.
+  - `methodology.test.ts` has 7 vitest cases.
+  - `e2e/methodology/methodology.spec.ts` has 6 Playwright cases: the sidebar and the palette each in one step, the anchors, keyboard focus, AA contrast in both themes, and 375 px.
+- **Not here:**
+  - The vault outline's data-source, landed-cost and forecasting sections.
+  - Freshness and confidence in explanations (MT-1's next part).
+  - "How this is computed" links from score displays, since no score renders in the app yet.
+  - Version history, which needs `model_versions` (Phase 6).
