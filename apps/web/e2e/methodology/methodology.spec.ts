@@ -53,3 +53,18 @@ test("no horizontal page scroll at 375px", async ({ page }) => {
   await expect(page.locator("section#lifecycle-stage")).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });
+
+// fix-ci-2b87388: the page check above passed locally with the Saturation inputs table 1px from the edge and failed on
+// CI's fonts, so every table and code path is measured against its own box: none spills out or is cut off.
+test("at 375px every table and code path wraps inside its card", async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.goto("/methodology");
+  await expect(page.locator("section#saturation")).toBeVisible();
+  const spills = await page
+    .locator("main table, main h3 + code")
+    .evaluateAll((els) =>
+      els.filter((el) => el.getBoundingClientRect().width > el.parentElement!.clientWidth + 0.5 || el.scrollWidth > el.clientWidth).map((el) => el.getAttribute("aria-label") ?? el.textContent),
+    );
+  expect(spills).toEqual([]);
+  await expect(page.locator("section#saturation h3 + code", { hasText: "pulso_ml.scores.saturation.saturation_scores" })).toBeVisible();
+});
