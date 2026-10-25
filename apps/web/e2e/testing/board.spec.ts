@@ -1,5 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 
+import { contrastMisses } from "../p2-39/screens";
 import { mockProductApi, PRODUCT_ID } from "../products/fixtures";
 import { mockTestingApi } from "./fixtures";
 
@@ -260,3 +261,18 @@ test("changed since start: nothing changed, a calc that can't run, and a failed 
   await page.goto("/testing?test=7"); // no snapshot yet: no comparison
   await expect(page.getByRole("dialog", { name: "Sunset projection lamp" })).not.toContainText("Changed since start");
 });
+
+for (const theme of ["dark", "light"] as const)
+  test(`AA contrast on the Testing cards and the drawer's comparison (${theme})`, async ({ page }) => {
+    await page.emulateMedia({ colorScheme: theme, reducedMotion: "reduce" });
+    await page.addInitScript((t) => localStorage.setItem("theme", t), theme);
+    await mockTestingApi(page);
+    await page.goto("/testing");
+    await expect(card(page, "Testing", "LED strip lights").getByText("Over stop-loss")).toBeVisible();
+    await page.waitForTimeout(300); // past the chip's fade-in
+    expect(await page.evaluate(contrastMisses, '[aria-labelledby="column-testing"]')).toEqual([]);
+    await page.goto("/testing?test=9");
+    await expect(page.getByRole("list", { name: "Changed inputs" })).toBeVisible();
+    await page.waitForTimeout(400); // past the sheet's slide-in
+    expect(await page.evaluate(contrastMisses, '[aria-labelledby="since-start"]')).toEqual([]);
+  });
