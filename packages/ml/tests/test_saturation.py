@@ -111,13 +111,14 @@ def test_without_a_usable_seller_count_there_is_no_score_never_0(
 
 
 def test_only_the_products_asked_for_are_scored_and_normalised_over() -> None:
-    rows, categories = lamps()
-    del categories[UUID(int=40)]
-    scores = saturation_scores(rows, categories)
-    assert set(scores) == set(categories)
-    explanation = scores[LAMP].explanation
-    assert explanation is not None
-    assert explanation.components[0].normalization == Normalization(category_id=LAMPS, n=40)
+    rows, lineage = lamps()
+    for categories, used in [(lineage, LAMPS), (dict.fromkeys(lineage, ()), None)]:
+        del categories[UUID(int=40)]  # a row for a product not asked for: merged away, say
+        scores = saturation_scores(rows, categories)
+        assert set(scores) == set(categories)
+        explanation = scores[LAMP].explanation
+        assert explanation is not None
+        assert explanation.components[0].normalization == Normalization(category_id=used, n=40)
 
 
 def test_a_missed_run_flags_the_growth_window_not_the_level() -> None:
