@@ -162,6 +162,12 @@ def lookup(
         return Answer(status="disabled")
 
     def call(method: str, business: dict[str, str]) -> bytes:
+        session.refresh(source)  # The owner or another lookup may have changed it (XR-46).
+        if not source.enabled:
+            raise _Stop("disabled")
+        if source.retry_not_before is not None and source.retry_not_before > now():
+            raise _Stop("throttled")
+        session.commit()  # Nothing stays open across the HTTPS call (DEC-099).
         calls = f"pulso:aliexpress:calls:{at.date().isoformat()}"
         used = cache.incr(calls)  # Counted before the call, never refunded.
         cache.expire(calls, 2 * TTL_SECONDS)
@@ -193,7 +199,7 @@ def lookup(
         kind, ban_seconds = found
         if kind == "failed":
             raise _Stop("error")
-        _block(session, source, settings, response, kind, ban_seconds, at)
+        _block(session, source, settings, response, kind, ban_seconds, now())  # answered (XR-45)
         raise _Stop("throttled" if source.enabled else "disabled")
 
     try:

@@ -11,7 +11,18 @@ from urllib.parse import parse_qsl
 import pytest
 from pydantic import SecretStr
 from redis import Redis
-from sqlalchemy import JSON, Engine, Integer, MetaData, create_engine, event, func, inspect, select
+from sqlalchemy import (
+    JSON,
+    Engine,
+    Integer,
+    MetaData,
+    create_engine,
+    event,
+    func,
+    inspect,
+    select,
+    update,
+)
 from sqlalchemy import table as sql_table
 from sqlalchemy import text as sql_text
 from sqlalchemy.orm import Session, attributes
@@ -403,3 +414,46 @@ def test_off_unconfigured_or_live_guarded_lookups_make_no_call(
     assert len(gateway.calls) == 1
     with pytest.raises(ValueError, match="digits"):
         run(session, cache, settings, gateway, clock, product_id="1:2")
+
+
+def test_retry_after_counts_from_the_answer_not_the_lookup_start(
+    session: Session, settings: Settings
+) -> None:
+    """XR-45: a 429 that lands 5 s after the lookup began, asking for 3 s, bans until 8 s in."""
+    clock = Clock()
+    cache = FakeRedis(clock)
+
+    def slow(method: str, body: bytes) -> Response:
+        clock.at += timedelta(seconds=5)
+        return Response(b"", 429, headers={"Retry-After": "3"})
+
+    answer = service.lookup(
+        session, cast(Redis, cache), PID, SKU, settings=settings, transport=slow, now=clock
+    )
+    assert answer.status == "throttled"
+    source = session.scalars(select(Source).filter_by(key="aliexpress")).one()
+    assert source.retry_not_before == AT + timedelta(seconds=8)
+    assert run(session, cache, settings, Gateway(), clock).status == "throttled"  # no call
+
+
+def test_no_transaction_spans_a_call_and_each_call_rereads_the_source(
+    session: Session, settings: Settings
+) -> None:
+    """XR-46: nothing is held open across an HTTPS call (DEC-099), and an owner's disable between
+    the product and freight calls stops the freight call."""
+    clock = Clock()
+    gateway = Gateway(Response(fixture("product"), 200))
+
+    def owner_disables(method: str, body: bytes) -> Response:
+        assert not session.in_transaction()
+        answer = gateway(method, body)
+        disable = update(Source).filter_by(key="aliexpress").values(enabled=False)
+        session.execute(disable.execution_options(synchronize_session=False))
+        session.commit()
+        return answer
+
+    answer = service.lookup(
+        session, cast(Redis, FakeRedis(clock)), PID, SKU, settings=settings,
+        transport=owner_disables, now=clock,
+    )  # fmt: skip
+    assert (answer.status, len(gateway.calls)) == ("disabled", 1)
