@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 from pulso_api.auth import current_principal
 from pulso_api.keywords import Gram, Key, grams, key, normalize, suggest
 from pulso_api.routers.products import DB, CurrentPrincipal, live_product, with_merged
+from pulso_api.schemas.text import NoNulStr
 from pulso_core.models import Listing, Product, ProductKeyword
 from pulso_core.settings import Settings, get_settings
 from pulso_sources.google_trends import WeeklySet, normal, weekly_set
@@ -35,7 +36,7 @@ def searchable(keyword: str) -> str:
 class KeywordIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
     keyword: Annotated[
-        str,
+        NoNulStr,
         StringConstraints(strip_whitespace=True, min_length=1, max_length=100),
         AfterValidator(searchable),
     ]

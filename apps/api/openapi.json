@@ -1563,6 +1563,7 @@
           "keyword": {
             "maxLength": 100,
             "minLength": 1,
+            "pattern": "^[^\\x00]*$",
             "title": "Keyword",
             "type": "string"
           },
