@@ -81,6 +81,8 @@ class Settings(BaseSettings):
     # Listing images (DEC-240): only these exact https hosts, each checked before it is listed.
     image_hosts: CommaList = []
     image_requests_per_minute: Annotated[int, Field(gt=0, le=30)] = 30  # per host
+    # Product matcher (DEC-249); its weights and thresholds are code config, never env.
+    matcher_enabled: bool = False
 
     @model_validator(mode="after")
     def _collector_limits(self) -> Self:
