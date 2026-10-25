@@ -58,7 +58,7 @@ export default function DailyPulsePage() {
               Your first pulse arrives once collectors run
             </h2>
             <p className="max-w-[64ch] text-body text-muted-foreground">
-              Collectors start in Phase 1 on your PC. Pulso needs about 7 days of snapshots before movers and lifecycle stages mean
+              Collectors run on your PC. Pulso needs about 7 days of snapshots before movers and lifecycle stages mean
               anything, so this page shows nothing it can&apos;t source.
             </p>
           </div>

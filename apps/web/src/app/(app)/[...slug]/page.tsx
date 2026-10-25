@@ -23,6 +23,7 @@ export default async function ComingSoonPage({ params }: PageProps<"/[...slug]">
   const route = routeFor((await params).slug);
   if (!route) notFound();
   const { item } = route;
+  const now = item.phase === CURRENT_PHASE; // DEC-284: the phase in progress, whose task hasn't shipped this page yet
 
   return (
     <div className="flex w-full max-w-280 flex-col gap-6">
@@ -38,7 +39,9 @@ export default async function ComingSoonPage({ params }: PageProps<"/[...slug]">
             </Button>
           }
         >
-          Phase {item.phase}, {PHASES[item.phase]}, builds this page. Pulso is in Phase {CURRENT_PHASE}, {PHASES[CURRENT_PHASE]}.
+          {now
+            ? `Phase ${item.phase}, ${PHASES[item.phase]}, is under way and builds this page.`
+            : `Phase ${item.phase}, ${PHASES[item.phase]}, builds this page. Pulso is in Phase ${CURRENT_PHASE}, ${PHASES[CURRENT_PHASE]}.`}{" "}
           Nothing here is shown until it comes from a real source.
         </EmptyState>
         <div className="border-t border-border-subtle px-6 py-5">
@@ -64,10 +67,12 @@ export default async function ComingSoonPage({ params }: PageProps<"/[...slug]">
               <span className="size-2 rounded-full bg-brand" />
               Now: Phase {CURRENT_PHASE} · {PHASES[CURRENT_PHASE]}
             </span>
-            <span className="inline-flex items-center gap-1.5">
-              <span className="size-2 rounded-full bg-muted-foreground" />
-              This page: Phase {item.phase} · {PHASES[item.phase]}
-            </span>
+            {!now && (
+              <span className="inline-flex items-center gap-1.5">
+                <span className="size-2 rounded-full bg-muted-foreground" />
+                This page: Phase {item.phase} · {PHASES[item.phase]}
+              </span>
+            )}
           </div>
         </div>
       </section>
