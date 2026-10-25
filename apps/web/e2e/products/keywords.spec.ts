@@ -134,6 +134,29 @@ test("375px: the keyword rows wrap with no horizontal page scroll", async ({ pag
   expect(overflow).toBeLessThanOrEqual(0);
 });
 
+// imp-343: on phones the relevance helper keeps to one line; what relevance means moves into each number's tooltip.
+test.describe("375px, touch", () => {
+  test.use({ viewport: { width: 375, height: 812 }, hasTouch: true });
+
+  test("the relevance helper is one line, and each number explains itself on a tap and on keyboard focus", async ({ page }) => {
+    await open(page);
+    const helper = section(page).getByText("Titles as of", { exact: false });
+    const [height, line] = await helper.evaluate((el) => [el.getBoundingClientRect().height, parseFloat(getComputedStyle(el).lineHeight)]);
+    expect(height).toBeLessThan(line * 1.5);
+    const number = suggested(page).getByRole("button", { name: "Relevance 0.83" });
+    const hint = page.getByRole("tooltip");
+    await number.tap();
+    await expect(hint).toContainText("Relevance 0.83: how many titles use the phrase and its words");
+    await section(page).getByRole("heading", { name: "Search keywords" }).tap();
+    await expect(hint).toBeHidden();
+    await field(page).focus();
+    await page.keyboard.press("Tab"); // Add
+    await page.keyboard.press("Tab"); // the first suggestion's number
+    await expect(number).toBeFocused();
+    await expect(hint).toContainText("Relevance 0.83: how many titles use the phrase and its words");
+  });
+});
+
 // p3-06 (KW-2): what confirming costs, from the API's count of the weekly Trends set, and each keyword's place in it.
 test("the SerpApi cost shows before confirming, and the confirmed keyword is marked tracked, still in one click", async ({ page }) => {
   await open(page);
@@ -160,10 +183,11 @@ test("a full weekly set: the keyword is saved but not tracked until a slot frees
   await expect(section(page).getByRole("heading", { name: "Confirmed · 3 · 1 tracked" })).toBeVisible();
 });
 
-test("tracking off: nothing is fetched for confirmed keywords, and no slot count shows", async ({ page }) => {
+test("tracking off: nothing is fetched for confirmed keywords, and no slot count or tracked legend shows", async ({ page }) => {
   await open(page, { body: trackingOff });
   await expect(section(page).getByText("Trends tracking is off. Confirmed keywords are saved, but nothing is fetched for them.")).toBeVisible();
   await expect(section(page).getByText(/weekly slots/)).toHaveCount(0);
   await expect(chips(page).getByRole("img", { name: "Not tracked: tracking is off" })).toHaveCount(2);
-  await expect(section(page).getByRole("heading", { name: "Confirmed · 2 · 0 tracked" })).toBeVisible();
+  // The off line already says nothing is fetched, so the heading drops its "· ● 0 tracked" legend (imp-355).
+  await expect(section(page).getByRole("heading", { name: "Confirmed · 2", exact: true })).toBeVisible();
 });
