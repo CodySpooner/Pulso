@@ -7,7 +7,7 @@ from uuid import UUID
 
 import pytest
 
-from pulso_core.scores import Normalization, version
+from pulso_core.scores import Explanation, Normalization, version
 from pulso_ml.features.daily import cutoff
 from pulso_ml.features.demand import FEATURE_VERSION
 from pulso_ml.features.market import Seller, seller_inputs
@@ -68,6 +68,7 @@ def test_the_vault_lamp_without_cj_scores_73_7_high() -> None:
     assert explanation.missing == ("ads_active",)
     assert explanation.coverage == pytest.approx(0.65 / 0.90)  # CJ listings aren't configured
     assert explanation.panel_size == 12
+    assert Explanation.model_validate(explanation.model_dump(mode="json")) == explanation
     assert explanation.model_version == saturation.VERSION == version(saturation.CONFIG)[0]
     points = sum(50 / 3 * (c.contribution or 0) for c in explanation.components)
     assert 50 + points == pytest.approx(score.value)
