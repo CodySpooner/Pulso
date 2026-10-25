@@ -117,7 +117,7 @@ export function KeywordsSection({ id }: { id: string }) {
         <>
           <div className="flex flex-col gap-2">
             <h3 className="flex flex-wrap items-center gap-x-1.5 text-label font-medium text-foreground">
-              Confirmed <span className="font-normal text-subtle-foreground">· {confirmed.length}</span>
+              Confirmed <span className="font-normal text-subtle-foreground">· {confirmed.length}</span>{" "}
               {/* The chips' marker, explained once: a filled dot is in the weekly Trends set. */}
               {confirmed.length > 0 && (
                 <span className="inline-flex items-center gap-1 font-normal text-subtle-foreground">
@@ -181,10 +181,12 @@ export function KeywordsSection({ id }: { id: string }) {
                 Add
               </Button>
             </form>
-            <p id="keyword-hint" aria-live="polite" className={cn("text-micro", message ? "text-foreground" : "text-subtle-foreground")}>
-              {message ?? "Press Enter to add. A keyword you add is confirmed."}
-            </p>
-            <TrendsCost budget={query.data.trends} />
+            <div className="flex flex-col gap-1">
+              <p id="keyword-hint" aria-live="polite" className={cn("text-micro", message ? "text-foreground" : "text-subtle-foreground")}>
+                {message ?? "Press Enter to add. A keyword you add is confirmed."}
+              </p>
+              <TrendsCost budget={query.data.trends} />
+            </div>
             {failure != null && <Failed what="Couldn't save the keyword. Your change was undone" error={failure} />}
           </div>
 
@@ -255,14 +257,15 @@ export function KeywordsSection({ id }: { id: string }) {
   );
 }
 
-/** In the weekly Trends set or not: a filled or a hollow dot, so shape carries it, not colour alone. */
+/** In the weekly Trends set or not: a filled or a hollow neutral dot. Shape carries it, and tracked is the normal state,
+ *  so neither takes a status colour. */
 function Marker({ tracked, label }: { tracked: boolean; label?: string }) {
   return (
     <span
       role={label ? "img" : undefined}
       aria-label={label}
       aria-hidden={label ? undefined : true}
-      className={cn("size-1.5 shrink-0 rounded-full", tracked ? "bg-brand" : "border border-muted-foreground")}
+      className={cn("size-2 shrink-0 rounded-full border border-muted-foreground", tracked && "bg-muted-foreground")}
     />
   );
 }
@@ -289,7 +292,7 @@ function TrendsCost({ budget }: { budget: TrendsBudget }) {
       title={`Counted ${formatUtc(budget.as_of)} from the approved seed keywords and every workspace's confirmed keywords. The fetch runs Mondays at 05:00 UTC, within ${budget.monthly_limit} SerpApi searches a month.`}
     >
       <span aria-hidden className="mt-1.5 h-1 w-14 shrink-0 overflow-hidden rounded-full bg-secondary">
-        <span className={cn("block h-full rounded-full", full ? "bg-warning" : "bg-brand")} style={{ width: `${cap ? Math.min(used / cap, 1) * 100 : 100}%` }} />
+        <span className={cn("block h-full rounded-full", full ? "bg-warning" : "bg-muted-foreground")} style={{ width: `${cap ? Math.min(used / cap, 1) * 100 : 100}%` }} />
       </span>
       {full ? (
         <span>{slots} A keyword you confirm now is saved but not tracked until a slot frees.</span>

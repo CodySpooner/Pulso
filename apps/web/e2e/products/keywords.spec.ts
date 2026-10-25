@@ -1,7 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 
 import { mockProductApi, PRODUCT_ID } from "./fixtures";
-import { decided, empty, mockKeywordsApi, type KeywordsMock } from "./keywords-fixtures";
+import { decided, empty, mockKeywordsApi, setFull, trackingOff, type KeywordsMock } from "./keywords-fixtures";
 
 // p3-02 (KW-1) the Trends tab's search keywords against fixture responses (the E2E auth bypass, never a database
 // restore). The keywords mock keeps what the page decides, as the API does.
@@ -10,6 +10,7 @@ const section = (page: Page) => page.getByRole("region", { name: "Search keyword
 const chips = (page: Page) => section(page).getByRole("list", { name: "Confirmed keywords" }).getByRole("listitem");
 const suggested = (page: Page) => section(page).getByRole("list", { name: "Suggested keywords" });
 const field = (page: Page) => section(page).getByRole("textbox", { name: "Add a keyword" });
+const chip = (page: Page, keyword: string) => chips(page).filter({ hasText: keyword });
 
 async function open(page: Page, options: KeywordsMock = {}, url = URL) {
   await mockProductApi(page);
@@ -131,4 +132,38 @@ test("375px: the keyword rows wrap with no horizontal page scroll", async ({ pag
   await expect(chips(page)).toHaveCount(2);
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   expect(overflow).toBeLessThanOrEqual(0);
+});
+
+// p3-06 (KW-2): what confirming costs, from the API's count of the weekly Trends set, and each keyword's place in it.
+test("the SerpApi cost shows before confirming, and the confirmed keyword is marked tracked, still in one click", async ({ page }) => {
+  await open(page);
+  const cost = "Each tracked keyword is 1 SerpApi search a week, about 4–5 of the 250 a month. 12 of 50 weekly slots used.";
+  await expect(section(page).getByText(cost)).toBeVisible();
+  const confirm = suggested(page).getByRole("button", { name: "Confirm sunset projection lamp" });
+  await expect(confirm).toHaveAccessibleDescription(cost); // heard before the click, not only seen
+  await expect(field(page)).toHaveAccessibleDescription(`Press Enter to add. A keyword you add is confirmed. ${cost}`);
+  await confirm.click();
+  await expect(chip(page, "sunset projection lamp").getByRole("img", { name: "Tracked" })).toBeVisible();
+  await expect(chip(page, "sunset projection lamp")).toHaveAttribute("title", /^Tracked: fetched from Google Trends every Monday/);
+  await expect(section(page).getByText("13 of 50 weekly slots used.")).toBeVisible();
+  await expect(section(page).getByRole("heading", { name: "Confirmed · 1 · 1 tracked" })).toBeVisible();
+});
+
+test("a full weekly set: the keyword is saved but not tracked until a slot frees", async ({ page }) => {
+  await open(page, { body: setFull });
+  await expect(section(page).getByText("50 of 50 weekly slots used. A keyword you confirm now is saved but not tracked until a slot frees.")).toBeVisible();
+  await expect(chip(page, "sunset lamp for bedroom").getByRole("img", { name: "Not tracked: weekly set full" })).toBeVisible();
+  await field(page).fill("moon lamp");
+  await field(page).press("Enter");
+  await expect(chip(page, "moon lamp").getByRole("img", { name: "Not tracked: weekly set full" })).toBeVisible();
+  await expect(chip(page, "moon lamp")).toHaveAttribute("title", /^Not tracked: all 50 weekly slots are used\. It's saved, and joins when a slot frees\./);
+  await expect(section(page).getByRole("heading", { name: "Confirmed · 3 · 1 tracked" })).toBeVisible();
+});
+
+test("tracking off: nothing is fetched for confirmed keywords, and no slot count shows", async ({ page }) => {
+  await open(page, { body: trackingOff });
+  await expect(section(page).getByText("Trends tracking is off. Confirmed keywords are saved, but nothing is fetched for them.")).toBeVisible();
+  await expect(section(page).getByText(/weekly slots/)).toHaveCount(0);
+  await expect(chips(page).getByRole("img", { name: "Not tracked: tracking is off" })).toHaveCount(2);
+  await expect(section(page).getByRole("heading", { name: "Confirmed · 2 · 0 tracked" })).toBeVisible();
 });
