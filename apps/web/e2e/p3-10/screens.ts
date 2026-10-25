@@ -79,6 +79,20 @@ export const SCREENS: Screen[] = [
       await settled(page);
     },
   },
+  // p3-12 (Phase 3 end): the coming-soon page once CURRENT_PHASE is 4, for a Phase 4 page and a later one.
+  ...([
+    ["coming-soon-phase-4", "/screener", "Screener arrives in Phase 4"],
+    ["coming-soon-later", "/ask", "Ask Pulso arrives in Phase 5"],
+  ] as const).map(
+    ([name, url, heading]): Screen => ({
+      name,
+      scope: "main",
+      open: async (page) => {
+        await page.goto(url);
+        await expect(page.getByRole("heading", { name: heading })).toBeVisible();
+      },
+    }),
+  ),
   // The store views Shopify being off keeps at 'no source yet' (DEC-261), the Sellers tab with CSV rows, and Data
   // Health's AliExpress (off, pending approval) and Amazon (no import yet) rows.
   ...STATES.map(
