@@ -119,7 +119,7 @@ export function ProductCard({ item, now, paused }: { item: Item; now: number; pa
             {leaf(item.category)} · <time dateTime={item.first_seen_at}>{day.format(new Date(item.first_seen_at))}</time>
           </p>
         </div>
-        <dl className="relative z-10 grid grid-cols-[auto_minmax(0,1fr)] items-baseline gap-x-3 gap-y-1 [&_dd]:justify-self-end [&_dd]:text-right [&_dt]:text-muted-foreground">
+        <dl className="relative z-10 grid grid-cols-[auto_minmax(0,1fr)] items-baseline gap-x-3 gap-y-1 pointer-coarse:gap-y-6 [&_dd]:justify-self-end [&_dd]:text-right [&_dt]:text-muted-foreground">
           <dt className="max-md:hidden">Price</dt>
           <dd className="max-md:hidden">
             <Price item={item} now={now} />
@@ -249,13 +249,13 @@ export function ProductTable({
               }}
             >
               <th scope="row" className={cn(cell, "sticky left-0 z-10 max-w-80 bg-card text-left font-normal group-hover:bg-(--table-row-hover)")}>
-                <span className="flex items-center gap-2">
+                <span className="flex items-center gap-2 max-md:w-40">
                   <Thumb url={item.image_url} className="size-6 shrink-0 rounded-sm" />
                   <span className="flex min-w-0 items-baseline gap-2">
                     <Link href={href(item)} title={item.title} className="truncate rounded-sm font-medium text-foreground hover:underline">
                       {item.title}
                     </Link>
-                    <span className="truncate text-label text-subtle-foreground" title={item.category ?? undefined}>
+                    <span className="truncate text-label text-subtle-foreground max-md:hidden" title={item.category ?? undefined}>
                       {leaf(item.category)}
                     </span>
                   </span>

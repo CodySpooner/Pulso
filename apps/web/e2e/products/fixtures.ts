@@ -112,11 +112,14 @@ export function discoverItem(i: number): S["DiscoverItem"] {
     velocity,
     best_margin_minor: none("The landed-cost engine arrives with UX-8."),
     as_of: noStores ? at(9) : at(staleShop ? 74 : 9),
-    stale: staleShop,
+    stale: staleShop && !noStores,
   };
 }
 
-export const feedItems = (n: number) => Array.from({ length: n }, (_, i) => discoverItem(i));
+/** Momentum order, as the API serves it: insufficient signal sinks to the end. */
+export const feedItems = (n: number) =>
+  Array.from({ length: n }, (_, i) => discoverItem(i)).sort((a, b) => growth(b) - growth(a));
+const growth = (item: S["DiscoverItem"]) => ("growth" in item.velocity ? item.velocity.growth : -Infinity);
 export const FEED_PATH = (url: URL) => url.pathname === "/api/v1/products";
 
 export interface FeedOptions {

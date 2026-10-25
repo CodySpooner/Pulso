@@ -112,7 +112,7 @@ test("a card's numbers open their provenance; insufficient signal and no source 
   await card.getByRole("button", { name: /^Stores selling it/ }).focus();
   await expect(page.locator('[role="tooltip"]')).toContainText("Shopify stores");
   await expect(page.locator('[role="tooltip"]')).toContainText("Raw payload");
-  const noSignal = cards(page).nth(4);
+  const noSignal = cards(page).last(); // insufficient signal sorts last
   await expect(noSignal.getByRole("button", { name: "Velocity: Insufficient signal" })).toBeVisible();
   await expect(noSignal.getByRole("button", { name: "Best landed margin: No source yet" })).toBeVisible();
 });
@@ -172,5 +172,13 @@ test.describe("phone", () => {
       await expect(page.getByRole("main").getByRole(view === "grid" ? "article" : "row").first()).toBeVisible();
       expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(375);
     }
+  });
+
+  test("each number on a card is its own 44px tap target: tapping velocity opens velocity", async ({ page }) => {
+    await mockFeedApi(page);
+    await page.goto("/discover");
+    await cards(page).first().getByRole("button", { name: /^Velocity, / }).tap(); // the momentum row below once took this tap
+    await expect(page.locator('[role="tooltip"]')).toContainText("Velocity");
+    await expect(page.locator('[role="tooltip"]')).not.toContainText("Momentum");
   });
 });
