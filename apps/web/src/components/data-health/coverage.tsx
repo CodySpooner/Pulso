@@ -8,7 +8,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { formatUtc } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
-import { useCoreDown, useCoverage, useHost, useOlderGaps, useSources } from "./api";
+import { useCoreDown, useCoreSettling, useCoverage, useHost, useOlderGaps, useSources } from "./api";
 import { Panel, PanelError, StaleLine, WaitsLine } from "./atoms";
 import { LoadMore } from "./load-more";
 import { coverageRows, gapReasons, gapsNote, mergeGaps, openGapsView, plural, utcDays, type CoverageDay, type CoverageRow, type MissedSlot } from "./model";
@@ -72,6 +72,7 @@ export function CoveragePanel({ now }: { now: number }) {
   const sources = useSources();
   const host = useHost();
   const coreDown = useCoreDown();
+  const settling = useCoreSettling();
   const days = utcDays(COVERAGE_DAYS, now);
   const firstPhoneDay = COVERAGE_DAYS - PHONE_DAYS;
 
@@ -80,7 +81,7 @@ export function CoveragePanel({ now }: { now: number }) {
       {coverage.isRefetchError && !coreDown && (
         <StaleLine what="Couldn't refresh coverage" error={coverage.error} asOf={coverage.dataUpdatedAt} retry={() => coverage.refetch()} />
       )}
-      {coverage.isPending || sources.isPending ? (
+      {coverage.isPending || sources.isPending || settling ? (
         // The loaded layout (imp-082): a row per seeded source (the Sources skeleton's five, imp-372), the axis
         // line and the legend, so nothing below moves when the data lands. Open gaps keep their own skeleton below.
         <div className="flex flex-col gap-3 px-4 pt-4 pb-3">
@@ -195,7 +196,8 @@ function OpenGaps({ names, host }: { names: Map<string, string> | null; host: Re
   const ranges = mergeGaps(gaps);
   const shown = older.on ? ranges : ranges.slice(0, SHOWN_GAPS);
   const hidden = ranges.length - shown.length;
-  const view = openGapsView(host, ranges.length);
+  const settling = useCoreSettling(); // the host card holds its error too, so this line can't point at a skeleton
+  const view = openGapsView(settling ? { isPending: true } : host, ranges.length);
   if (view === "loading" || (view === "ranges" && !names)) {
     // Sized for the heading and two ranges (imp-082); below sm the heading wraps to two lines (imp-372).
     return (

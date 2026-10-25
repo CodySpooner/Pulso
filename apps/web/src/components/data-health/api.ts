@@ -111,6 +111,16 @@ export function useCoreDown(): boolean {
   return sources.isError && host.isError;
 }
 
+/**
+ * Neither core call has data and one is still in flight, so the page may yet become "Can't reach the API": a panel
+ * keeps its skeleton rather than flash its own load error and Retry first (imp-372, DEC-305).
+ */
+export function useCoreSettling(): boolean {
+  const sources = useSources();
+  const host = useHost();
+  return !sources.data && !host.data && (sources.isFetching || host.isFetching);
+}
+
 /** Refetches every admin query after a toggle or a Run now. */
 export function useRefreshAdmin(): () => Promise<void> {
   const queryClient = useQueryClient();

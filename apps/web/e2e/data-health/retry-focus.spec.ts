@@ -107,6 +107,37 @@ for (const [width, height] of [
   });
 }
 
+// imp-372: CI's runner once failed the sources call seconds before the host call. Until both settle the page may yet
+// read "Can't reach the API", so no panel shows its own error and Retry in between (DEC-305).
+test("page-level Retry: no panel error flashes while the other core call is still in flight", async ({ page }) => {
+  await page.addInitScript(() => {
+    const flashed: string[] = [];
+    Object.assign(window, { flashed });
+    new MutationObserver(() => {
+      const down = [...document.querySelectorAll("h2")].some((h) => h.textContent === "Can't reach the API");
+      const retry = [...document.querySelectorAll("button")].find((b) => b.textContent === "Retry");
+      if (retry && !down) flashed.push(retry.closest("section")?.querySelector("h2")?.textContent ?? "?");
+    }).observe(document, { subtree: true, childList: true });
+  });
+  await mockAdminApi(page);
+  await apiDown(page);
+  const slowHost = { on: false };
+  await page.route("**/api/v1/admin/host", async (route) => {
+    if (slowHost.on) await new Promise((resolve) => setTimeout(resolve, 1500));
+    await route.fallback();
+  });
+  await page.goto(PAGE);
+  const down = page.getByRole("heading", { level: 2, name: "Can't reach the API" });
+  await expect(down).toBeVisible();
+  await tabTo(page, page.getByRole("button", { name: "Retry" }), h1(page));
+
+  slowHost.on = true;
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("button", { name: "Refreshing…" })).toBeVisible();
+  await expect(down).toBeVisible({ timeout: 15_000 }); // both core calls failed again
+  expect(await page.evaluate(() => (window as unknown as { flashed: string[] }).flashed)).toEqual([]);
+});
+
 test("coverage Retry success: focus moves to the Coverage heading and nothing is announced", async ({ page }) => {
   await recordAnnouncements(page);
   await mockAdminApi(page);
