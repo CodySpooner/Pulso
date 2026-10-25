@@ -72,9 +72,11 @@ class Feature(NamedTuple):
 
 
 class AsOf:
-    """What was known before `cutoff`: captures, target evidence and match decisions (DEC-031).
+    """What was known before `cutoff`: captures, target evidence and match decisions (DEC-031),
+    and the gaps, keywords and sightings the gap audit, workspaces and crawls had recorded.
 
     Never reads listings.product_id or merged_into_id (today's state) or observed_for.
+    listings.delisted_at is a time, judged against each cutoff in `market.live()`.
     """
 
     def __init__(self, session: Session, cutoff: datetime) -> None:
@@ -202,8 +204,8 @@ class AsOf:
             .add_columns(st.value, st.is_partial)
             .where(st.geo == "US", st.captured_at < self.cutoff)
             # A capture's rows share its captured_at, so this keeps one row per parse.
-            .order_by(st.captured_at.desc(), st.raw_payload_id.desc(), st.keyword)
-            .order_by(st.observed_for, st.id.desc())
+            .order_by(st.captured_at.desc(), st.raw_payload_id.desc(), st.keyword, st.observed_for)
+            .order_by(st.id.desc())
             .distinct(st.captured_at, st.raw_payload_id, st.keyword, st.observed_for)
         )
         captures: dict[str, dict[int, tuple[datetime, list[TrendPoint]]]] = defaultdict(dict)
