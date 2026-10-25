@@ -20,6 +20,7 @@ import { duration, spring } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 
 import { StartTest } from "../../testing/start-test";
+import { WatchControl } from "../../watchlists/star";
 
 import { ContextRail } from "./context-rail";
 import { Overview } from "./overview";
@@ -94,7 +95,12 @@ export function ProductPage({ id }: { id: string }) {
             )
           )}
         </div>
-        {data && <StartTest productId={data.id} className="col-span-2 sm:col-span-1" />}
+        {data && (
+          <div className="col-span-2 flex flex-wrap items-start gap-2 sm:col-span-1 sm:justify-end">
+            <WatchControl product={data} />
+            <StartTest productId={data.id} />
+          </div>
+        )}
       </header>
       {data ? (
         <Loaded product={data} now={product.dataUpdatedAt} />

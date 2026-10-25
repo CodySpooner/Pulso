@@ -12,6 +12,8 @@ import type { components } from "@/lib/api/schema";
 import { formatAgo, formatDelta, formatUtc } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
+import { StarButton } from "../watchlists/star";
+
 // openapi-fetch drops a key typed only `null` from responses, so each NoSource arrives as `{reason}` (DEC-238 g).
 type Loose<T> = T extends { reason: string } ? Omit<T, "value"> & { value?: null } : T;
 export type Item = { [K in keyof components["schemas"]["DiscoverItem"]]: Loose<components["schemas"]["DiscoverItem"][K]> };
@@ -132,6 +134,7 @@ export function ProductCard({ item, now, paused }: { item: Item; now: number; pa
       <div className="aspect-square overflow-hidden border-b border-border-subtle">
         <Thumb url={item.image_url} className="size-full transition-transform duration-(--duration-slow) ease-out group-hover:scale-[1.03]" />
       </div>
+      <StarButton product={item} className="absolute top-2 right-2 z-10 border-border bg-card/85 shadow-card backdrop-blur-sm hover:bg-card" />
       <div className="flex flex-1 flex-col gap-2 p-3 zone-data">
         <div className="flex min-w-0 flex-col gap-0.5">
           <h2 className="line-clamp-2 font-medium text-foreground" title={item.title}>
@@ -279,6 +282,7 @@ export function ProductTable({
             >
               <th scope="row" className={cn(cell, "sticky left-0 z-10 max-w-80 bg-card text-left font-normal group-hover:bg-(--table-row-hover)")}>
                 <span className="flex items-center gap-2 max-md:w-40">
+                  <StarButton product={item} className="-ml-1.5" />
                   <Thumb url={item.image_url} className="size-6 shrink-0 rounded-sm" />
                   <span className="flex min-w-0 items-baseline gap-2">
                     <Link href={href(item)} title={item.title} className="truncate rounded-sm font-medium text-foreground hover:underline">
