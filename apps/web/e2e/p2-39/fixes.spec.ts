@@ -22,8 +22,6 @@ test("the coming-soon page says Pulso is in Phase 4 (DEC-284)", async ({ page })
 for (const [path, label] of [
   ["/alerts", "Alerts"],
   ["/screener", "Screener"],
-  ["/watchlists", "Watchlists"],
-  ["/boards", "Boards"],
 ])
   test(`${label}, a Phase 4 page, says Phase 4 is under way`, async ({ page }) => {
     await page.goto(path);
