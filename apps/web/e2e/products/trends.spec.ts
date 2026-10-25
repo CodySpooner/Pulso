@@ -100,7 +100,7 @@ test("each pane shows its source and as of; the keyboard reads any day with its 
 test("search and ads have no source yet and never draw a zero line", async ({ page }) => {
   await open(page);
   await expect(missing(page).getByRole("listitem")).toHaveText([
-    /Search interest· No source yetNo search keyword is linked to this product yet\./,
+    /Search interest· No source yetNo search interest is collected for this product's keywords yet\./,
     /Ad count· No source yetNo ad source yet\. Ad counts arrive in Phase 8 or by CSV import\./,
   ]);
   await expect(canvas(page)).not.toHaveAttribute("aria-label", /Search interest|Ad count/);

@@ -249,7 +249,10 @@ def test_series_nothing_backs_say_why(api: TestClient, db_engine: Engine) -> Non
     assert [s.get("reason") for s in got.values()] == [
         "No store listing matched yet.",
         "No store listing matched yet.",
-        "No search keyword is linked to this product yet. Keywords arrive in Phase 3.",
+        (
+            "No search interest is collected for this product's keywords yet. Confirmed keywords "
+            "join the weekly Google Trends fetch in a later step."
+        ),
         "No velocity computed from Shopify inventory drops yet.",
         "No velocity computed from Shopify updated_at bumps yet.",
         "No ad source yet. Ad counts arrive in Phase 8 or by CSV import.",

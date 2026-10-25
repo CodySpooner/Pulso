@@ -2,6 +2,7 @@ import type { Page } from "@playwright/test";
 
 import type { components } from "../../src/lib/api/schema";
 import { healthySources, mockAdminApi, NOW, problem } from "../data-health/fixtures";
+import { decided } from "./keywords-fixtures";
 import { trendsSeries } from "./trends-fixtures";
 
 // Fixture GET /v1/products/{id} responses for the product page e2e tests and screenshots, never a database restore.
@@ -171,6 +172,7 @@ export async function mockProductApi(page: Page, options: ProductMock = {}) {
     if (options.hold) return; // never answers: the first-load skeleton stays
     if (options.status) return route.fulfill(fail(options.status, `e2e-product-${options.status}`, options.code));
     if (part === "series") return route.fulfill({ json: trendsSeries }); // the Trends tab (p2-09)
+    if (part === "keywords") return route.fulfill({ json: decided }); // its keywords (p3-02); that spec keeps POSTs
     if (part === "suppliers") return route.fulfill({ json: noSuppliers }); // the Suppliers tab (p2-26); its spec mocks rows
     return route.fulfill({ json: options.body ?? product });
   });

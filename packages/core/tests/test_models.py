@@ -106,7 +106,8 @@ def test_single_migration_head_and_offline_sql(
     output = StringIO()
     config = Config(str(Path(__file__).resolve().parents[3] / "alembic.ini"), output_buffer=output)
     scripts = ScriptDirectory.from_config(config)
-    assert scripts.get_heads() == ["0012"]
+    assert scripts.get_heads() == ["0013"]
+    assert scripts.get_revision("0013").down_revision == "0012"
     assert scripts.get_revision("0012").down_revision == "0011"
     assert scripts.get_revision("0011").down_revision == "0010"
     assert scripts.get_revision("0010").down_revision == "0009"
@@ -144,6 +145,7 @@ def test_single_migration_head_and_offline_sql(
         ) in sql
         assert f"ALTER TABLE {table} ADD COLUMN {column} VECTOR(512)" in sql
     assert "BEFORE UPDATE OR DELETE ON match_decisions" in sql
+    assert "BEFORE DELETE ON product_keywords" in sql
 
 
 def test_queue_and_import_identity_contract() -> None:
