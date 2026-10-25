@@ -24,6 +24,7 @@ from pulso_core.models import (
     Product,
     RawPayload,
     ShippingOption,
+    Source,
     Store,
     Supplier,
     VariantSnapshot,
@@ -62,6 +63,8 @@ def test_the_missing_literal_matches_landed_cost() -> None:
         {"method": ""},
         {"ddp": "yes"},
         {"cpa_minor": 1500},
+        {"ad_cost_minor": -1},
+        {"ad_cost_minor": 2**63},
     ],
 )
 def test_calc_validates_bounds(client: TestClient, field: dict[str, Any]) -> None:
@@ -157,6 +160,8 @@ def quote(
     variant_id: int | None = None,
     quantity: int = 1,
     currency: str = "USD",
+    min_days: int | None = None,
+    max_days: int | None = None,
 ) -> ShippingOption:
     return observe(
         session,
@@ -169,6 +174,8 @@ def quote(
         method="CJPacket",
         cost_minor=cost,
         currency=currency,
+        min_days=min_days,
+        max_days=max_days,
     )
 
 
@@ -273,6 +280,7 @@ def test_duty_not_set_is_incomplete_until_ddp_or_an_estimate(
 
     ddp = calc(api, ws, product_id=product_id, ddp=True)
     assert (ddp["complete"], ddp["missing"], ddp["duty_minor"]) == (True, [], 0)
+    assert body["duty_bps"] is None  # not set
     assert ddp["margin_minor"] == 2999 - 620 - 485 - 117 - 150
 
     estimate = calc(api, ws, product_id=product_id, duty_bps=2000)
@@ -284,8 +292,10 @@ def test_duty_not_set_is_incomplete_until_ddp_or_an_estimate(
     assert estimate["estimates"] == ["duty_bps"]
     assert estimate["sources"]["duty_bps"] == {
         "source": "owner_estimate",
+        "source_name": "Your estimate",
         "as_of": None,
         "raw_payload_id": None,
+        "stale": False,
     }
 
 
@@ -409,6 +419,13 @@ def test_an_unquoted_cheap_supplier_cannot_be_best(api: TestClient, db_engine: E
     chosen = calc(api, ws, product_id=product_id, supplier_listing_id=cheap)
     assert (chosen["missing"], chosen["margin_minor"]) == (["freight_missing"], None)
 
+    with Session(db_engine) as session:  # a later listing with only another method wins
+        other = supplier_listing(session, session.get_one(Product, product_id), 500)
+        capture(session, other, DAY, YunExpress=300)
+        session.commit()
+    body = calc(api, ws, product_id=product_id)
+    assert (body["supplier_listing_id"], body["method"]) == (other, "YunExpress")
+
 
 @pytest.mark.db
 def test_unknown_inputs_are_not_found(api: TestClient, db_engine: Engine) -> None:
@@ -506,6 +523,7 @@ def test_ddp_drops_unused_estimates_and_amounts_past_bigint_are_named(
         0,
     )
     assert {"duty_bps", "customs_fee_minor"}.isdisjoint(ddp["sources"])
+    assert ddp["duty_bps"] is None  # the 25% estimate is unused under DDP
     top = 2**63 - 1
     huge = calc(
         api,
@@ -627,3 +645,58 @@ def test_a_quote_from_before_the_newest_day_is_not_priced(
         api, ws, product_id=paired_product, supplier_listing_id=paired, variant_id=older
     )  # each variant has its own newest day
     assert (each["method"], each["freight_minor"]) == ("CJPacket", 400)
+
+
+@pytest.mark.db
+def test_the_profit_tab_gets_net_profit_rates_freight_days_and_named_sources(
+    api: TestClient, db_engine: Engine
+) -> None:
+    """The worked example end to end; apps/web/e2e/products/profit-fixtures.ts shows these."""
+    with Session(db_engine) as session:
+        ws = workspace(session, duty_default_bps=2000, default_cpa_minor=1500, **FEES)
+        product = lamp(session)
+        cj = supplier_listing(session, product, 620)
+        quote(session, cj, 485, min_days=8, max_days=12)
+        session.get_one(Source, SHOPIFY).config = {}  # no interval: never stale
+        session.get_one(Source, CJ).config = {"expected_interval": 3600}  # DAY is long past 2 h
+        session.commit()
+        product_id = product.id
+
+    lines = ("price_minor", "landed_cost_minor", "margin_minor", "margin_bps")
+    nets = ("ad_cost_minor", "net_minor", "net_bps")
+    rates = ("duty_bps", "payment_fee_bps", "payment_fee_fixed_minor", "shopify_fee_bps")
+    body = calc(api, ws, product_id=product_id)
+    assert [body[key] for key in lines + nets] == [2999, 1229, 1503, 5012, 1500, 3, 10]
+    assert [body[key] for key in (*rates, "returns_bps")] == [2000, 290, 30, 0, 500]
+    assert (body["method"], body["freight_min_days"], body["freight_max_days"]) == (
+        "CJPacket",
+        8,
+        12,
+    )
+    assert body["sources"]["ad_cost_minor"] == {
+        "source": "settings",
+        "source_name": "Workspace settings",
+        "as_of": None,
+        "raw_payload_id": None,
+        "stale": False,
+    }
+    price, unit, freight = (body["sources"][key] for key in ("price_minor", "unit_cost", "freight"))
+    assert (price["source_name"], price["stale"]) == ("Shopify stores", False)
+    assert (unit["source_name"], unit["stale"], freight["stale"]) == ("CJ Dropshipping", True, True)
+
+    # One price-slider step ($0.50) and an ad cost estimate.
+    step = calc(api, ws, product_id=product_id, price_minor=3049)
+    assert [step[key] for key in lines + nets] == [3049, 1229, 1550, 5084, 1500, 50, 164]
+    ads = calc(api, ws, product_id=product_id, price_minor=3049, ad_cost_minor=2000)
+    assert [ads[key] for key in nets] == [2000, -450, -1476]
+    assert ads["estimates"] == ["ad_cost_minor", "price_minor"]
+    assert ads["sources"]["ad_cost_minor"]["source_name"] == "Your estimate"
+
+    # R-16: without freight the margin and the net are withheld, whatever the ad cost.
+    q2 = calc(api, ws, product_id=product_id, quantity=2, price_minor=5499)
+    assert (q2["missing"], q2["freight_min_days"], q2["margin_minor"], q2["net_minor"]) == (
+        ["freight_missing"],
+        None,
+        None,
+        None,
+    )

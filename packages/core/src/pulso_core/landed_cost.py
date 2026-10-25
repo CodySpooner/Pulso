@@ -48,6 +48,7 @@ class Inputs:
     payment_fee_fixed_minor: int = 0  # USD per order
     shopify_fee_bps: int = 0
     returns_bps: int = 0  # share of revenue refunded; goods and freight are not recovered
+    ad_cost_minor: int = 0  # USD ad cost per order (CPA) the scenario assumes
     freight_gap: str = "freight_missing"  # the loader's reason when `freight` is None
     estimates: tuple[str, ...] = ()  # inputs that are labelled owner estimates
 
@@ -65,6 +66,9 @@ class LandedCost:
     landed_cost_minor: int | None
     margin_minor: int | None  # contribution before ads: break-even CPA
     margin_bps: int | None
+    ad_cost_minor: int
+    net_minor: int | None  # margin after the ad cost: net profit per order
+    net_bps: int | None
     complete: bool
     missing: tuple[str, ...]
     estimates: tuple[str, ...]
@@ -133,7 +137,7 @@ def landed_cost(inputs: Inputs) -> LandedCost:
     lines = (goods, freight, duty)
     landed = None if None in lines else fit(sum(line or 0 for line in lines) + customs)
 
-    payment = shopify = returns = margin = margin_bps = None
+    payment = shopify = returns = margin = margin_bps = net = net_bps = None
     if price is not None:
         payment = fit(bps_of(price, inputs.payment_fee_bps) + inputs.payment_fee_fixed_minor)
         shopify = bps_of(price, inputs.shopify_fee_bps)  # at most the price: bps <= 10000
@@ -142,8 +146,10 @@ def landed_cost(inputs: Inputs) -> LandedCost:
         if None not in costs:
             margin = fit(price - sum(cost or 0 for cost in costs))
             margin_bps = None if margin is None else fit(round(Fraction(margin * BPS, price)))
+            net = None if margin is None else fit(margin - inputs.ad_cost_minor)
+            net_bps = None if net is None else fit(round(Fraction(net * BPS, price)))
     if missing:  # R-16: only a complete row has a margin, so only it can rank
-        margin = margin_bps = None
+        margin = margin_bps = net = net_bps = None
     return LandedCost(
         price_minor=price,
         goods_minor=goods,
@@ -156,6 +162,9 @@ def landed_cost(inputs: Inputs) -> LandedCost:
         landed_cost_minor=landed,
         margin_minor=margin,
         margin_bps=margin_bps,
+        ad_cost_minor=inputs.ad_cost_minor,
+        net_minor=net,
+        net_bps=net_bps,
         complete=not missing,
         missing=tuple(sorted(set(missing), key=MISSING.index)),
         estimates=tuple(sorted(set(inputs.estimates) - (DDP_ZEROED if inputs.ddp else set()))),

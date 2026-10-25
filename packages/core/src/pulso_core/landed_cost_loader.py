@@ -42,6 +42,7 @@ SETTINGS = {  # landed_cost() input: its settings column
     "payment_fee_fixed_minor": "payment_fee_fixed_minor",
     "shopify_fee_bps": "shopify_fee_bps",
     "returns_bps": "returns_bps",
+    "ad_cost_minor": "default_cpa_minor",
 }
 
 
@@ -58,6 +59,8 @@ class Calc:
     method: str | None  # the freight quote's shipping method
     cost: LandedCost
     sources: dict[str, Provenance]
+    inputs: Inputs  # what landed_cost() was given: the rates the lines use
+    days: tuple[int | None, int | None] = (None, None)  # the freight quote's min and max days
 
 
 def traced(session: Session, row: Row[Any], name: str) -> tuple[Amount, dict[str, Provenance]]:
@@ -132,6 +135,8 @@ def freight_quotes(
             ShippingOption.variant_id,
             ShippingOption.origin_country,
             ShippingOption.method,
+            ShippingOption.min_days,
+            ShippingOption.max_days,
             ShippingOption.cost_minor.label("minor"),
             ShippingOption.currency,
             ShippingOption.captured_at,
@@ -179,7 +184,7 @@ def freight_quotes(
     return list(latest.values()), "freight_missing"
 
 
-def cheapest(option: tuple[str, Amount, dict[str, Provenance]]) -> tuple[bool, int]:
+def cheapest(option: tuple[Any, Amount, dict[str, Provenance]]) -> tuple[bool, int]:
     """Without a chosen method, the cheapest quote in USD; one without FX sorts last."""
     try:
         usd = to_usd(option[1])
@@ -253,15 +258,17 @@ def calculate(
             unit, traces = traced(session, row, "unit_cost")
             found |= traces
         quotes, gap = freight_quotes(session, listing, variant_id, quantity, method)
-        options = [(quote.method, *traced(session, quote, "freight")) for quote in quotes]
+        options = [(quote, *traced(session, quote, "freight")) for quote in quotes]
         chosen, freight = None, None
         if options:
             chosen, freight, traces = min(options, key=cheapest)
             found |= traces
-        cost = landed_cost(replace(base, unit_cost=unit, freight=freight, freight_gap=gap))
-        calcs[listing] = Calc(listing, chosen, cost, found)
+        inputs = replace(base, unit_cost=unit, freight=freight, freight_gap=gap)
+        days = (chosen.min_days, chosen.max_days) if chosen else (None, None)
+        quoted = chosen.method if chosen else None  # never `method`: the next listing asks for it
+        calcs[listing] = Calc(listing, quoted, landed_cost(inputs), found, inputs, days)
     if not calcs:
-        return Calc(None, None, landed_cost(base), sources)
+        return Calc(None, None, landed_cost(base), sources, base)
     pick = best({listing: calc.cost for listing, calc in calcs.items()})
     if pick is None:  # nothing complete: the fewest missing inputs, then the lowest id
         pick = min(calcs, key=lambda listing: len(calcs[listing].cost.missing))

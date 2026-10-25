@@ -1,20 +1,22 @@
 """Profit calculator (UX-8 part a): landed_cost() over workspace settings and owner estimates."""
 
 from dataclasses import asdict
+from datetime import UTC, datetime
 from typing import Annotated, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from pulso_api.auth import Principal, current_principal
 from pulso_api.dependencies import get_db
 from pulso_api.errors import APIError
 from pulso_api.routers.account import BasisPoints, MinorUnits, workspace_settings
-from pulso_api.routers.products import latest_snapshots
+from pulso_api.routers.products import is_stale, latest_snapshots
 from pulso_core.landed_cost_loader import Provenance, calculate
-from pulso_core.models import Product
+from pulso_core.models import Product, Source
 
 router = APIRouter(prefix="/v1/profit")
 Id = Annotated[int, Field(ge=1, le=2**63 - 1, strict=True)]
@@ -36,7 +38,9 @@ OVERRIDES = {
     "payment_fee_fixed_minor",
     "shopify_fee_bps",
     "returns_bps",
+    "ad_cost_minor",
 }
+OWNER = {"settings": "Workspace settings", "owner_estimate": "Your estimate"}  # source_name
 
 
 class ProfitCalcRequest(BaseModel):
@@ -62,12 +66,17 @@ class ProfitCalcRequest(BaseModel):
     payment_fee_fixed_minor: MinorUnits | None = None
     shopify_fee_bps: BasisPoints | None = None
     returns_bps: BasisPoints | None = None
+    ad_cost_minor: MinorUnits | None = Field(
+        None, description="USD ad cost per order (CPA). Omitted: settings.default_cpa_minor."
+    )
 
 
 class InputSource(BaseModel):
     source: str = Field(description="sources.key, or `settings` / `owner_estimate`.")
+    source_name: str
     as_of: AwareDatetime | None  # the observation's capture; null for owner input
     raw_payload_id: int | None
+    stale: bool  # as_of is older than twice the source's expected interval (DEC-238)
 
 
 class ProfitCalc(BaseModel):
@@ -76,6 +85,8 @@ class ProfitCalc(BaseModel):
     variant_id: int | None
     quantity: int
     method: str | None  # the freight quote's shipping method
+    freight_min_days: int | None  # the freight quote's delivery days
+    freight_max_days: int | None
     ddp: bool
     currency: Literal["USD"]  # of every *_minor line
     price_minor: int | None
@@ -89,6 +100,15 @@ class ProfitCalc(BaseModel):
     landed_cost_minor: int | None
     margin_minor: int | None = Field(description="Before ads: the break-even CPA. Complete only.")
     margin_bps: int | None
+    ad_cost_minor: int
+    net_minor: int | None = Field(description="After `ad_cost_minor`: net profit per order.")
+    net_bps: int | None
+    # The rates the lines use, from settings or the request; duty null: not set, or unused (DDP).
+    duty_bps: int | None
+    payment_fee_bps: int
+    payment_fee_fixed_minor: int
+    shopify_fee_bps: int
+    returns_bps: int
     complete: bool
     missing: list[Missing]
     estimates: list[str]  # inputs that are labelled owner estimates
@@ -142,15 +162,38 @@ def calc_profit(
         )
     except LookupError as exc:
         raise APIError(404, "not_found", str(exc)) from exc
+    now = datetime.now(UTC)
+    observed = {trace.source for trace in calc.sources.values()} - OWNER.keys()
+    rows = session.execute(
+        select(Source.key, Source.name, Source.config).where(Source.key.in_(observed))
+    )
+    names = {row.key: row for row in rows}
+
+    def source(trace: Provenance) -> InputSource:
+        row = names.get(trace.source)
+        return InputSource(
+            **asdict(trace),
+            source_name=row.name if row else OWNER.get(trace.source, trace.source),
+            stale=bool(row and trace.as_of and is_stale(row.config, trace.as_of, now)),
+        )
+
+    inputs = calc.inputs
     return ProfitCalc(
         product_id=product.id,
         supplier_listing_id=calc.listing_id,
         variant_id=body.variant_id,
         quantity=body.quantity,
         method=calc.method,
+        freight_min_days=calc.days[0],
+        freight_max_days=calc.days[1],
         ddp=body.ddp,
         currency="USD",
         **asdict(calc.cost),
-        sources={name: InputSource(**asdict(trace)) for name, trace in calc.sources.items()},
+        duty_bps=None if body.ddp else inputs.duty_bps,
+        payment_fee_bps=inputs.payment_fee_bps,
+        payment_fee_fixed_minor=inputs.payment_fee_fixed_minor,
+        shopify_fee_bps=inputs.shopify_fee_bps,
+        returns_bps=inputs.returns_bps,
+        sources={name: source(trace) for name, trace in calc.sources.items()},
         as_of=min((trace.as_of for trace in calc.sources.values() if trace.as_of), default=None),
     )

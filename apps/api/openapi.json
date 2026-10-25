@@ -813,12 +813,22 @@
             "description": "sources.key, or `settings` / `owner_estimate`.",
             "title": "Source",
             "type": "string"
+          },
+          "source_name": {
+            "title": "Source Name",
+            "type": "string"
+          },
+          "stale": {
+            "title": "Stale",
+            "type": "boolean"
           }
         },
         "required": [
           "source",
+          "source_name",
           "as_of",
-          "raw_payload_id"
+          "raw_payload_id",
+          "stale"
         ],
         "title": "InputSource",
         "type": "object"
@@ -1342,6 +1352,10 @@
       },
       "ProfitCalc": {
         "properties": {
+          "ad_cost_minor": {
+            "title": "Ad Cost Minor",
+            "type": "integer"
+          },
           "as_of": {
             "anyOf": [
               {
@@ -1372,6 +1386,17 @@
             "title": "Ddp",
             "type": "boolean"
           },
+          "duty_bps": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duty Bps"
+          },
           "duty_minor": {
             "anyOf": [
               {
@@ -1389,6 +1414,28 @@
             },
             "title": "Estimates",
             "type": "array"
+          },
+          "freight_max_days": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Freight Max Days"
+          },
+          "freight_min_days": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Freight Min Days"
           },
           "freight_minor": {
             "anyOf": [
@@ -1473,6 +1520,37 @@
             "title": "Missing",
             "type": "array"
           },
+          "net_bps": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Net Bps"
+          },
+          "net_minor": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "After `ad_cost_minor`: net profit per order.",
+            "title": "Net Minor"
+          },
+          "payment_fee_bps": {
+            "title": "Payment Fee Bps",
+            "type": "integer"
+          },
+          "payment_fee_fixed_minor": {
+            "title": "Payment Fee Fixed Minor",
+            "type": "integer"
+          },
           "payment_fee_minor": {
             "anyOf": [
               {
@@ -1504,6 +1582,10 @@
             "title": "Quantity",
             "type": "integer"
           },
+          "returns_bps": {
+            "title": "Returns Bps",
+            "type": "integer"
+          },
           "returns_minor": {
             "anyOf": [
               {
@@ -1514,6 +1596,10 @@
               }
             ],
             "title": "Returns Minor"
+          },
+          "shopify_fee_bps": {
+            "title": "Shopify Fee Bps",
+            "type": "integer"
           },
           "shopify_fee_minor": {
             "anyOf": [
@@ -1562,6 +1648,8 @@
           "variant_id",
           "quantity",
           "method",
+          "freight_min_days",
+          "freight_max_days",
           "ddp",
           "currency",
           "price_minor",
@@ -1575,6 +1663,14 @@
           "landed_cost_minor",
           "margin_minor",
           "margin_bps",
+          "ad_cost_minor",
+          "net_minor",
+          "net_bps",
+          "duty_bps",
+          "payment_fee_bps",
+          "payment_fee_fixed_minor",
+          "shopify_fee_bps",
+          "returns_bps",
           "complete",
           "missing",
           "estimates",
@@ -1587,6 +1683,20 @@
       "ProfitCalcRequest": {
         "additionalProperties": false,
         "properties": {
+          "ad_cost_minor": {
+            "anyOf": [
+              {
+                "maximum": 9.223372036854776e+18,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "USD ad cost per order (CPA). Omitted: settings.default_cpa_minor.",
+            "title": "Ad Cost Minor"
+          },
           "customs_fee_minor": {
             "anyOf": [
               {

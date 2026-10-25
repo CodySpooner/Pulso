@@ -213,6 +213,7 @@ def test_fees_and_totals_past_bigint_are_named_not_returned() -> None:
     ratio = landed_cost(replace(EXAMPLE, price_minor=1, unit_cost=Amount(BIG, "USD"), duty_bps=0))
     assert ratio.landed_cost_minor == BIG + 485  # margin_bps would be ~ -4.6e22
     assert (ratio.margin_minor, ratio.margin_bps, ratio.complete) == (None, None, False)
+    assert ratio.net_minor is None  # the net fits, but an incomplete row has none
 
 
 def test_missing_codes_keep_the_dec_order() -> None:
@@ -232,3 +233,39 @@ def test_a_freight_past_bigint_sorts_last_and_is_named() -> None:
     freight = Amount(2**63 - 1, "GBP", Decimal("0.5"))  # 1.8e19 USD cents
     assert cheapest(("A", freight, {})) == (True, 0)
     assert landed_cost(replace(EXAMPLE, freight=freight)).missing == ("amount_out_of_range",)
+
+
+def test_ad_cost_turns_the_break_even_cpa_into_net_profit() -> None:
+    cost = landed_cost(replace(EXAMPLE, ad_cost_minor=1500))  # the Profit note's CPA $15.00
+    assert (cost.margin_minor, cost.ad_cost_minor, cost.net_minor, cost.net_bps) == (
+        1503,
+        1500,
+        3,
+        10,  # 3 / 2999 = 0.1%
+    )
+    loss = landed_cost(replace(EXAMPLE, ad_cost_minor=2000))
+    assert (loss.net_minor, loss.net_bps) == (-497, -1657)  # -16.572%
+    assert (landed_cost(EXAMPLE).net_minor, landed_cost(EXAMPLE).net_bps) == (1503, 5012)
+
+
+def test_an_incomplete_row_has_no_net_profit() -> None:
+    cost = landed_cost(replace(EXAMPLE, duty_bps=None, ad_cost_minor=1500))
+    assert (cost.ad_cost_minor, cost.net_minor, cost.net_bps) == (1500, None, None)
+
+
+def test_a_net_past_bigint_is_named() -> None:
+    top = 2**63 - 1  # a $10,000 price keeps margin_bps in range, so only the net falls out
+    near = replace(
+        EXAMPLE,
+        price_minor=1_000_000,
+        unit_cost=Amount(top - 2000, "USD"),
+        freight=Amount(0, "USD"),
+        duty_bps=0,
+    )
+    assert landed_cost(near).margin_minor == -top + 922_970
+    cost = landed_cost(replace(near, ad_cost_minor=1_000_000))  # net = -top - 77_030
+    assert (cost.net_minor, cost.margin_minor, cost.missing) == (
+        None,
+        None,
+        ("amount_out_of_range",),
+    )
