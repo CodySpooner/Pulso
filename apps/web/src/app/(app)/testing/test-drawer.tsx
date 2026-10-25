@@ -3,7 +3,6 @@
 import { useId, useState } from "react";
 import Link from "next/link";
 import { useQueryClient } from "@tanstack/react-query";
-import { Package } from "lucide-react";
 
 import { Missing } from "@/components/data-health/atoms";
 import { Button } from "@/components/ui/button";
@@ -12,6 +11,7 @@ import { fetchClient } from "@/lib/api/client";
 import { formatUtc } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
+import { Thumb as ListingThumb } from "../admin/matching/compare";
 import { money, parseMinor, toInput } from "../products/[id]/profit/model";
 import { breakEven, KILL_REASONS, listKey, reasonOf, stageLabel, type Test } from "./model";
 
@@ -164,6 +164,10 @@ function Body({ test }: { test: Test }) {
   );
 }
 
+export const Thumb = ({ url, className }: { url: string | null; className?: string }) => (
+  <ListingThumb url={url} className={cn("size-9 shrink-0 rounded-md border border-border object-cover", className)} />
+);
+
 function Figure({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
   return (
     <div className="flex flex-col gap-0.5 rounded-lg border border-border-subtle bg-secondary/60 px-3 py-2" title={hint}>
@@ -205,17 +209,4 @@ function Input({ label, invalid, money: isMoney, className, ...props }: React.Co
       </div>
     </div>
   );
-}
-
-export function Thumb({ url, className }: { url: string | null; className?: string }) {
-  const [broken, setBroken] = useState(false);
-  const box = cn("size-9 shrink-0 rounded-md border border-border bg-secondary", className);
-  if (!url || broken)
-    return (
-      <div className={cn(box, "grid place-items-center text-subtle-foreground")}>
-        <Package className="size-4" aria-hidden />
-      </div>
-    );
-  // eslint-disable-next-line @next/next/no-img-element -- listing images come from any store or supplier CDN; next/image would need each host allow-listed
-  return <img src={url} alt="" width={36} height={36} onError={() => setBroken(true)} className={cn(box, "object-cover")} />;
 }
