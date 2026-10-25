@@ -25,7 +25,8 @@ from pulso_core.models import (
     Supplier,
 )
 from pulso_core.models.catalog import EMBEDDING_DIM
-from pulso_ml.matching.matcher import GTIN_VERSION, Counts, match, neighbours
+from pulso_ml.matching.decisions import accept, membership, merge, reject, split
+from pulso_ml.matching.matcher import GTIN_VERSION, MATCHING_LOCK, Counts, match, neighbours
 from pulso_ml.matching.score import CONFIG
 
 pytestmark = pytest.mark.db
@@ -478,3 +479,238 @@ def test_gtin_pairs_honour_manual_decisions_and_outrank_image_scores(
     rows = [table(session, model) for model in (MatchCandidate, MatchDecision, Product)]
     world.run()
     assert [table(session, model) for model in (MatchCandidate, MatchDecision, Product)] == rows
+
+
+GTIN = "4006381333931"
+
+
+def latest(session: Session, listing: Listing) -> MatchDecision:
+    return session.scalars(
+        select(MatchDecision)
+        .where(MatchDecision.listing_id == listing.id)
+        .order_by(MatchDecision.id.desc())
+        .limit(1)
+    ).one()
+
+
+def test_split_stays_split_through_score_and_gtin_reruns(world: World) -> None:
+    session = world.session
+    cost = world.listing(world.supplier(), 0, price=1000, age_days=2)
+    kept = world.listing(world.store(), 0, price=2500, age_days=1)
+    odd = world.listing(world.store(), 0, price=2500)  # 1.0 by image, title, pHash and GTIN
+    for listing in (cost, kept, odd):
+        world.barcode(listing, GTIN)
+    world.run()
+    (product,) = set(products(session, cost, kept, odd))
+    assert product is not None
+
+    new = split(session, [odd.id], "owner", "different colourway")
+    session.commit()
+    assert products(session, cost, kept, odd) == [product, product, new]
+    created = session.get_one(Product, new)
+    assert (created.name, created.first_seen_at) == (odd.title, odd.first_seen_at)
+    row = latest(session, odd)
+    assert (row.actor, row.action, row.from_product_id, row.to_product_id, row.reason) == (
+        "owner",
+        "split",
+        product,
+        new,
+        "different colourway",
+    )
+    assert session.get_one(Listing, odd.id).match_confidence is None
+    # The pair the GTIN pass linked through is marked; no placeholder row for the other.
+    assert candidate(session, cost, odd).status == "split"  # type: ignore[union-attr]
+    assert candidate(session, kept, odd) is None
+
+    rows = [table(session, model) for model in (MatchCandidate, MatchDecision, Product)]
+    world.run()  # every pair scores 1.0 above auto, and shares the GTIN
+    assert [table(session, model) for model in (MatchCandidate, MatchDecision, Product)] == rows
+
+    # A listing that joins the old product later isn't paired with the split one either.
+    late = world.listing(world.store(), 0, price=2500)
+    world.barcode(late, GTIN)
+    world.run()
+    assert products(session, odd, late) == [new, product]
+    assert candidate(session, odd, late) is None
+    assert latest(session, odd).id == row.id
+
+
+def test_split_refuses_mixed_or_emptying_sets(world: World) -> None:
+    session = world.session
+    one, other = world.product(), world.product()
+    a = world.listing(world.store(), 0, product=one)
+    b = world.listing(world.store(), 1, product=other)
+    c = world.listing(world.store(), 2)
+    session.commit()
+    for listing_ids in ([a.id, b.id], [a.id], [c.id], []):
+        with pytest.raises(ValueError):
+            split(session, listing_ids, "owner", "bad")
+        session.rollback()
+
+
+def test_merge_moves_every_listing_with_one_decision_each(world: World) -> None:
+    session = world.session
+    survivor, loser = world.product(), world.product()
+    leftover = world.product(merged_into=loser)  # merged without the service; a listing stayed
+    stays = world.listing(world.store(), 0, product=survivor)
+    moves = [
+        world.listing(world.store(), 1, product=loser),
+        world.listing(world.store(), 2, product=loser),
+        world.listing(world.store(), 3, product=leftover),
+    ]
+    low, high = sorted((stays.id, moves[0].id))
+    session.add(
+        MatchCandidate(
+            listing_a_id=low, listing_b_id=high, score=Decimal("0.8"), scorer_version="v"
+        )
+    )
+    session.commit()
+
+    assert merge(session, loser, survivor, "owner", "same lamp") == survivor
+    session.commit()
+    gone = session.get_one(Product, loser)
+    assert (gone.merged_into_id, gone.status) == (survivor, "merged")
+    assert products(session, stays, *moves) == [survivor] * 4
+    decisions = session.scalars(select(MatchDecision).order_by(MatchDecision.listing_id)).all()
+    assert [
+        (d.listing_id, d.actor, d.action, d.from_product_id, d.to_product_id, d.reason)
+        for d in decisions
+    ] == [
+        (listing.id, "owner", "merge", was, survivor, "same lamp")
+        for listing, was in zip(moves, (loser, loser, leftover), strict=True)
+    ]
+    settled = candidate(session, stays, moves[0])
+    assert settled is not None and settled.status == "merged" and settled.decided_at is not None
+
+    rows = [table(session, model) for model in (MatchCandidate, MatchDecision, Product)]
+    world.run()
+    assert [table(session, model) for model in (MatchCandidate, MatchDecision, Product)] == rows
+    with pytest.raises(ValueError):
+        merge(session, leftover, survivor, "owner", "again")  # leftover resolves to survivor
+
+
+def test_accept_merges_two_products_or_links_product_less_listings(world: World) -> None:
+    session = world.session
+    old = Product(name="Older", first_seen_at=SEEN - timedelta(days=5))
+    young = Product(name="Newer", first_seen_at=SEEN)
+    session.add_all([old, young])
+    session.flush()
+    on_old = world.listing(world.store(), 0, product=old.id)
+    on_young = world.listing(world.store(), 0, product=young.id)
+    cheap = world.listing(world.supplier(), 1, price=100)  # 10x markup: pending at 1.0
+    retail = world.listing(world.store(), 1, age_days=1)
+    world.run()
+    two, insane = candidate(session, on_old, on_young), candidate(session, cheap, retail)
+    assert two is not None and insane is not None
+    assert {two.status, insane.status} == {"pending"}
+
+    assert accept(session, two.id, "owner", "same lamp") == old.id  # the older product survives
+    linked = accept(session, insane.id, "owner", "CJ sells a 10-pack")
+    session.commit()
+    assert session.get_one(Product, young.id).merged_into_id == old.id
+    assert products(session, on_old, on_young) == [old.id, old.id]
+    row = latest(session, on_young)
+    assert (row.actor, row.action, row.from_product_id, row.to_product_id, row.candidate_id) == (
+        "owner",
+        "merge",
+        young.id,
+        old.id,
+        two.id,
+    )
+    assert products(session, cheap, retail) == [linked, linked]
+    assert session.get_one(Product, linked).name == retail.title  # named after the older one
+    for listing in (cheap, retail):
+        row = latest(session, listing)
+        assert (row.action, row.from_product_id, row.to_product_id, row.candidate_id) == (
+            "accept",
+            None,
+            linked,
+            insane.id,
+        )
+    statuses = [candidate(session, *p) for p in ((on_old, on_young), (cheap, retail))]
+    assert [row.status for row in statuses if row is not None] == ["merged", "accepted"]
+    rows = [table(session, model) for model in (MatchCandidate, MatchDecision, Product)]
+    world.run()
+    assert [table(session, model) for model in (MatchCandidate, MatchDecision, Product)] == rows
+    with pytest.raises(ValueError):
+        accept(session, two.id, "owner", "twice")
+
+
+def test_reject_holds_its_pair_but_frees_each_side(world: World) -> None:
+    session = world.session
+    x, y = world.listing(world.store(), 0), world.listing(world.store(), 0)
+    low, high = sorted((x.id, y.id))
+    pair = MatchCandidate(
+        listing_a_id=low, listing_b_id=high, score=Decimal("0.8"), scorer_version="v"
+    )
+    session.add(pair)
+    session.flush()
+    reject(session, pair.id, "owner", "different lamp")
+    session.commit()
+    for listing in (x, y):
+        row = latest(session, listing)
+        assert (row.actor, row.action, row.from_product_id, row.to_product_id) == (
+            "owner",
+            "reject",
+            None,
+            None,
+        )
+    z = world.listing(world.store(), 0)  # 1.0 with both sides of the rejected pair
+    world.run()
+    # x isn't frozen by its reject: it links with z. y never joins x's product.
+    first, other, third = products(session, x, y, z)
+    assert first is not None and first == third and other is None
+    assert candidate(session, x, y).status == "rejected"  # type: ignore[union-attr]
+    assert candidate(session, y, z).status == "pending"  # type: ignore[union-attr]
+    with pytest.raises(ValueError):
+        reject(session, pair.id, "owner", "twice")
+
+
+def test_membership_replays_decisions_before_t(world: World) -> None:
+    session = world.session
+    a = world.listing(world.supplier(), 0, price=1000, age_days=1)
+    b = world.listing(world.store(), 0, price=2500)
+    placed = world.product()
+    world.listing(world.store(), 1, product=placed)  # placed with no decision: never replayed
+    world.run()
+    (first,) = set(products(session, a, b))
+    assert first is not None
+
+    def now() -> datetime:
+        moment = session.scalar(select(func.now()))
+        session.commit()
+        assert moment is not None
+        return moment
+
+    linked = now()
+    before_link = latest(session, a).decided_at
+    assert membership(session, linked) == {a.id: first, b.id: first}
+    second = split(session, [b.id], "owner", "not the same")
+    session.commit()
+    after_split = now()
+    survivor = merge(session, first, placed, "owner", "same lamp")
+    session.commit()
+
+    assert membership(session, before_link) == {}
+    assert membership(session, linked) == {a.id: first, b.id: first}
+    assert membership(session, after_split) == {a.id: first, b.id: second}
+    final = membership(session, now())
+    assert final == {a.id: survivor, b.id: second}
+    current = dict(session.execute(select(Listing.id, Listing.product_id)).tuples().all())
+    assert {listing_id: current[listing_id] for listing_id in final} == final  # R-15
+
+
+def test_decisions_and_the_matcher_share_one_transaction_lock(
+    world: World, db_engine: Engine
+) -> None:
+    session = world.session
+    product = world.product()
+    world.listing(world.store(), 0, product=product)
+    stray = world.listing(world.store(), 1, product=product)
+    session.commit()
+    split(session, [stray.id], "owner", "held")
+    with db_engine.connect() as other:
+        assert other.scalar(select(func.pg_try_advisory_xact_lock(MATCHING_LOCK))) is False
+    session.commit()
+    with db_engine.connect() as other:
+        assert other.scalar(select(func.pg_try_advisory_xact_lock(MATCHING_LOCK))) is True
