@@ -1,6 +1,7 @@
 """ml-queue jobs: concurrency 1, lazy imports, each behind its own flag (AGENTS.md §7)."""
 
 import logging
+from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
 from pulso_core.db import get_session
@@ -61,3 +62,29 @@ def embed_listings(task: Any) -> None:
 
 
 app.task(name="ml.embed", bind=True)(embed_listings)
+
+
+def compute_features(task: Any, start: str | None = None, end: str | None = None) -> None:
+    """Feature store (DEC-275, DEC-278): yesterday (UTC) by default; ISO start..end backfills
+    inclusive, one commit per day. ponytail: no Beat entry until the collector host consumes ml."""
+    with job_id.set(task.request.id):
+        if not get_settings().features_enabled:
+            logger.info("features_disabled")
+            return
+        from pulso_ml.features import daily
+
+        today = datetime.now(UTC).date()
+        last = date.fromisoformat(end) if end else today - timedelta(days=1)
+        first = date.fromisoformat(start) if start else last
+        # Rows are append-only: a day computed before its cutoff would keep a partial row.
+        if not first <= last < today:
+            raise ValueError(f"features need {first} <= {last} < today ({today}, UTC)")
+        with get_session() as session:
+            for offset in range((last - first).days + 1):
+                day = first + timedelta(days=offset)
+                written = daily.run(session, day)
+                session.commit()
+                logger.info("features_done day=%s written=%s", day, written)
+
+
+app.task(name="ml.features", bind=True)(compute_features)
