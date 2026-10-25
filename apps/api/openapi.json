@@ -2324,6 +2324,19 @@
             ],
             "title": "Currency"
           },
+          "customs_fee_minor": {
+            "anyOf": [
+              {
+                "maximum": 9.223372036854776e+18,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Customs Fee Minor"
+          },
           "default_country": {
             "anyOf": [
               {
@@ -2348,6 +2361,20 @@
               }
             ],
             "title": "Default Cpa Minor"
+          },
+          "duty_default_bps": {
+            "anyOf": [
+              {
+                "maximum": 100000.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Null: duty not set, so margins that need it stay incomplete (never 0).",
+            "title": "Duty Default Bps"
           },
           "payment_fee_bps": {
             "anyOf": [
@@ -2374,6 +2401,19 @@
               }
             ],
             "title": "Payment Fee Fixed Minor"
+          },
+          "returns_bps": {
+            "anyOf": [
+              {
+                "maximum": 10000.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Returns Bps"
           },
           "shopify_fee_bps": {
             "anyOf": [
@@ -2412,6 +2452,12 @@
             "title": "Currency",
             "type": "string"
           },
+          "customs_fee_minor": {
+            "maximum": 9.223372036854776e+18,
+            "minimum": 0.0,
+            "title": "Customs Fee Minor",
+            "type": "integer"
+          },
           "default_country": {
             "const": "US",
             "title": "Default Country",
@@ -2423,6 +2469,20 @@
             "title": "Default Cpa Minor",
             "type": "integer"
           },
+          "duty_default_bps": {
+            "anyOf": [
+              {
+                "maximum": 100000.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Null: duty not set, so margins that need it stay incomplete (never 0).",
+            "title": "Duty Default Bps"
+          },
           "payment_fee_bps": {
             "maximum": 10000.0,
             "minimum": 0.0,
@@ -2433,6 +2493,12 @@
             "maximum": 9.223372036854776e+18,
             "minimum": 0.0,
             "title": "Payment Fee Fixed Minor",
+            "type": "integer"
+          },
+          "returns_bps": {
+            "maximum": 10000.0,
+            "minimum": 0.0,
+            "title": "Returns Bps",
             "type": "integer"
           },
           "shopify_fee_bps": {
@@ -2461,7 +2527,10 @@
           "payment_fee_fixed_minor",
           "shopify_fee_bps",
           "default_cpa_minor",
-          "target_margin_bps"
+          "target_margin_bps",
+          "duty_default_bps",
+          "returns_bps",
+          "customs_fee_minor"
         ],
         "title": "SettingsResponse",
         "type": "object"
