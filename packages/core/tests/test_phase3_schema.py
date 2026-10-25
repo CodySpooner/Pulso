@@ -49,7 +49,7 @@ def test_a_keyword_decision_changes_but_its_row_is_never_deleted(db_engine: Engi
                 connection.execute(statement)
         with pytest.raises(DBAPIError, match="lossy downgrade"), connection.begin_nested():
             command.downgrade(config, "0012")
-        assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "0020"
+        assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "0021"
         assert connection.scalar(text("SELECT status FROM product_keywords")) == "rejected"
 
 

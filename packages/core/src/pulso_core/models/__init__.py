@@ -24,6 +24,8 @@ from pulso_core.models.collection import (
     SourceEvent,
 )
 from pulso_core.models.core import (
+    Alert,
+    AlertRule,
     Board,
     BoardItem,
     CollectorRun,
@@ -48,6 +50,8 @@ from pulso_core.models.core import (
 from pulso_core.models.vendors import ShippingOption, Store, Supplier, SupplierOffer
 
 __all__ = [
+    "Alert",
+    "AlertRule",
     "AmazonRank",
     "Board",
     "BoardItem",
