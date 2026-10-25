@@ -77,6 +77,8 @@ class Settings(BaseSettings):
     trends_monthly_search_limit: Annotated[int, Field(ge=0, le=250)] = 250
     trends_hourly_search_limit: Annotated[int, Field(ge=1, le=50)] = 50
     trends_wall_time_seconds: PositiveInt = 10 * 60
+    # KW-2 (DEC-292): confirmed product keywords join the weekly Trends set; the owner turns it on.
+    trends_confirmed_keywords: bool = False
     fx_wall_time_seconds: PositiveInt = 5 * 60
     # Listing images (DEC-240): only these exact https hosts, each checked before it is listed.
     image_hosts: CommaList = []

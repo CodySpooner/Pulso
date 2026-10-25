@@ -1,16 +1,26 @@
-"""Trends capture parsing, approved targets and conservative monthly/hourly reservations."""
+"""Trends capture parsing, the weekly keyword set and conservative monthly/hourly reservations."""
 
 import json
+from collections import defaultdict
 from collections.abc import Sequence
 from datetime import UTC, date, datetime, time, timedelta
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Literal, NamedTuple
+from uuid import UUID
 
 from pydantic import BaseModel, Field, StrictBool
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from pulso_core.models import CollectorRun, CollectorRunTarget, RawPayload, SearchTrend, Source
-from pulso_core.settings import get_settings
+from pulso_core.models import (
+    CollectorRun,
+    CollectorRunTarget,
+    Product,
+    ProductKeyword,
+    RawPayload,
+    SearchTrend,
+    Source,
+)
+from pulso_core.settings import Settings, get_settings
 from pulso_core.worktree import is_linked_worktree
 from pulso_sources.framework import (
     CollectorsLiveDisabled,
@@ -98,13 +108,72 @@ def reserve_hourly(source: Source, limit: int, at: datetime) -> None:
     source.config = {**source.config, "trends_hourly": [*recent, at.isoformat()]}
 
 
-def plan(session: Session) -> list[Target]:
-    entries = approved_targets(session, "google_trends")
-    if any("," in row["keyword"] for row in entries):
+class WeeklySet(NamedTuple):
+    """One Monday run's keywords and the budget they sit in (KW-2, DEC-292)."""
+
+    keywords: list[str]  # plan order: the approved seeds, then confirmed product keywords
+    cap: int  # keywords a week: monthly_limit // 5, since a month has at most five Mondays
+    monthly_limit: int  # TRENDS_MONTHLY_SEARCH_LIMIT; `reserve` still enforces it per attempt
+    confirmed: bool  # TRENDS_CONFIRMED_KEYWORDS: off, only the seeds, as before KW-2
+
+
+def normal(keyword: str) -> str:
+    """Two keywords are one search when they match casefolded with spacing collapsed."""
+    return " ".join(keyword.casefold().split())
+
+
+def confirmed_keywords(session: Session) -> list[str]:
+    """Every workspace's confirmed keywords: the most workspaces first, then the earliest
+    confirmation, then A to Z. A workspace's newest decision on a product or one merged into it
+    counts, as the Trends tab reads them (DEC-263, DEC-281), so a later rejection wins."""
+    merged = dict(
+        session.execute(
+            select(Product.id, Product.merged_into_id).where(Product.merged_into_id.is_not(None))
+        ).tuples().all()
+    )
+
+    def live(product_id: UUID) -> UUID:
+        while (into := merged.get(product_id)) is not None:
+            product_id = into
+        return product_id
+
+    # ponytail: every decision in one read; fine at v1's hundreds, aggregate in SQL past that.
+    # Variants differ here by spelling only: the tab's plural folding (`lamps` is `lamp`) stays
+    # in the API, so plural twins decided apart on two products before a merge both count.
+    newest: dict[tuple[UUID, UUID, str], ProductKeyword] = {}
+    for row in session.scalars(select(ProductKeyword).order_by(ProductKeyword.decided_at)):
+        newest[row.workspace_id, live(row.product_id), normal(row.keyword)] = row
+    workspaces: defaultdict[str, set[UUID]] = defaultdict(set)
+    first: dict[str, datetime] = {}
+    for (workspace, _, keyword), row in newest.items():
+        if row.status == "confirmed":
+            workspaces[keyword].add(workspace)
+            first[keyword] = min(first.get(keyword, row.decided_at), row.decided_at)
+    return sorted(workspaces, key=lambda k: (-len(workspaces[k]), first[k], k))
+
+
+def weekly_set(session: Session, settings: Settings) -> WeeklySet:
+    """The approved seeds, then (setting on) the confirmed keywords not already in the set, cut
+    at the weekly cap. One past the cap, or holding a comma, is left out this week: never queued,
+    never retried. The Trends tab counts with this function, so it never disagrees with `plan`."""
+    seeds = [row["keyword"] for row in approved_targets(session, "google_trends")]
+    if any("," in keyword for keyword in seeds):
         raise ValueError("Trends requires one keyword per search")
+    limit = settings.trends_monthly_search_limit
+    week = WeeklySet(seeds, limit // 5, limit, settings.trends_confirmed_keywords)
+    if not week.confirmed:
+        return week
+    chosen: dict[str, str] = {}
+    for keyword in [*seeds, *confirmed_keywords(session)]:
+        if "," not in keyword:
+            chosen.setdefault(normal(keyword), keyword)  # a seed keeps its spelling and place
+    return week._replace(keywords=list(chosen.values())[: week.cap])
+
+
+def plan(session: Session) -> list[Target]:
     return [
-        Target("trends", row["keyword"], [Request(params={**PARAMS, "q": row["keyword"]})])
-        for row in entries
+        Target("trends", keyword, [Request(params={**PARAMS, "q": keyword})])
+        for keyword in weekly_set(session, get_settings()).keywords
     ]
 
 

@@ -30,6 +30,7 @@ def test_defaults_keep_scheduler_and_live_collectors_off(monkeypatch: pytest.Mon
     s = Settings()
     assert s.pulso_scheduler is False
     assert s.collectors_live is False
+    assert s.trends_confirmed_keywords is False  # KW-2 (DEC-292): the owner turns it on
     assert s.redis_url.get_secret_value() == "redis://localhost:6379/0"
     assert s.s3_bucket_raw == "pulso-raw"
     assert s.api_port == 8000
@@ -40,9 +41,11 @@ def test_flags_parse_on(monkeypatch: pytest.MonkeyPatch) -> None:
     set_required(monkeypatch)
     monkeypatch.setenv("PULSO_SCHEDULER", "on")
     monkeypatch.setenv("COLLECTORS_LIVE", "on")
+    monkeypatch.setenv("TRENDS_CONFIRMED_KEYWORDS", "on")
     s = Settings()
     assert s.pulso_scheduler is True
     assert s.collectors_live is True
+    assert s.trends_confirmed_keywords is True
 
 
 def test_comma_separated_lists(monkeypatch: pytest.MonkeyPatch) -> None:
