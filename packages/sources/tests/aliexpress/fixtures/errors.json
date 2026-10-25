@@ -1,0 +1,39 @@
+{
+  "not_found": {
+    "aliexpress_ds_product_get_response": {
+      "rsp_code": 605,
+      "rsp_msg": "ITEM_ID_NOT_FOUND",
+      "request_id": "fixture-request-not-found"
+    }
+  },
+  "freight_unavailable": {
+    "aliexpress_ds_freight_query_response": {
+      "result": {"msg": "DELIVERY_NOT_AVAILABLE_TO_YOUR_ADDRESS", "code": 505, "success": false},
+      "request_id": "fixture-request-unavailable"
+    }
+  },
+  "throttled": {
+    "error_response": {
+      "type": "ISP",
+      "code": "FixtureCallLimit",
+      "msg": "Api access frequency exceeds the limit. this ban will last 1 seconds",
+      "request_id": "fixture-request-throttled"
+    }
+  },
+  "auth_rejected": {
+    "error_response": {
+      "type": "SYSTEM",
+      "code": "FixtureIllegalAccessToken",
+      "msg": "The specified access token is invalid or expired",
+      "request_id": "fixture-request-auth"
+    }
+  },
+  "backend_error": {
+    "error_response": {
+      "type": "ISP",
+      "code": "FixtureServiceUnavailable",
+      "msg": "Remote service error",
+      "request_id": "fixture-request-isp"
+    }
+  }
+}

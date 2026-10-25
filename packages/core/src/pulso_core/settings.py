@@ -87,6 +87,11 @@ class Settings(BaseSettings):
     embeddings_enabled: bool = False
     # product_daily_features job (DEC-275, DEC-278): yesterday's rows, append-only.
     features_enabled: bool = False
+    # AliExpress live lookup (DEC-037, DEC-283): Redis only, nothing durable; owner-set keys.
+    aliexpress_enabled: bool = False
+    aliexpress_app_key: str | None = None
+    aliexpress_app_secret: SecretStr | None = None
+    aliexpress_access_token: SecretStr | None = None
 
     @model_validator(mode="after")
     def _collector_limits(self) -> Self:
