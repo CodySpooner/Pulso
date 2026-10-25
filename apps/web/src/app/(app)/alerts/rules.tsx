@@ -28,7 +28,7 @@ const menu =
 const menuItem = "flex h-8 cursor-pointer items-center gap-2 rounded-md px-2 text-data outline-none select-none pointer-coarse:h-(--hit-target) data-highlighted:bg-accent";
 const link = "relative hit-area rounded-sm font-medium text-foreground hover:underline";
 const tones = { ok: "text-subtle-foreground", muted: "text-subtle-foreground", warning: "text-foreground" };
-const COLUMNS = ["Rule", "Type", "Target", "Threshold", "Last fired", "Notifies"];
+const COLUMNS = ["Rule", "Type", "Target", "Last fired", "Notifies"];
 const noSubscribe = () => () => {};
 const reason = (error: unknown) => (isProblem(error) ? error.detail : "The Pulso API didn’t answer. When it runs on your PC, this also means the PC is off.");
 
@@ -101,7 +101,7 @@ function RulesTab() {
               <thead className="sticky top-0 z-20 bg-card max-md:hidden">
                 <tr className="row-h text-label text-muted-foreground">
                   {COLUMNS.map((name) => (
-                    <th key={name} scope="col" className={cn(cell, "border-border bg-card font-medium", name === "Threshold" || name === "Last fired" ? "num" : "text-left")}>
+                    <th key={name} scope="col" className={cn(cell, "border-border bg-card font-medium", name === "Last fired" ? "num" : "text-left")}>
                       {name}
                     </th>
                   ))}
@@ -160,8 +160,8 @@ function Row({
   const limit = threshold(rule);
   const testing = rule.target_type === "test";
   return (
-    <tr className="hover:bg-(--table-row-hover) max-md:grid max-md:grid-cols-[minmax(0,1fr)_auto] max-md:gap-x-3 max-md:gap-y-1 max-md:rounded-lg max-md:border max-md:border-border max-md:bg-card max-md:p-3">
-      <th scope="row" className={cn(cell, "max-w-80 text-left font-normal max-md:max-w-none")}>
+    <tr className="hover:bg-(--table-row-hover) max-md:grid max-md:grid-cols-[minmax(0,1fr)_auto_auto] max-md:items-center max-md:gap-x-2 max-md:gap-y-1 max-md:rounded-lg max-md:border max-md:border-border max-md:bg-card max-md:p-3">
+      <th scope="row" className={cn(cell, "max-w-78 text-left font-normal max-md:col-span-3 max-md:max-w-none")}>
         <span className="flex min-w-0 items-center gap-2">
           <span className="truncate font-medium text-foreground">{rule.name}</span>
           {testing && (
@@ -172,19 +172,20 @@ function Row({
         </span>
         <span className={cn("mt-0.5 flex items-center gap-1 text-label", tones[status.tone])}>
           {status.tone === "warning" && <SkipForward className="size-3.5 shrink-0 text-warning" aria-hidden />}
-          <span className="truncate" title={rule.last_evaluated_at ? `Last evaluated ${formatUtc(rule.last_evaluated_at)}` : undefined}>
+          <span className="truncate" title={rule.last_evaluated_at ? `${status.text} · last evaluated ${formatUtc(rule.last_evaluated_at)}` : status.text}>
             {status.text}
           </span>
         </span>
+        {muted && rule.enabled && <span className="mt-0.5 block text-label text-foreground md:hidden">{muted}</span>}
       </th>
-      <td className={cn(cell, "text-muted-foreground max-md:col-start-1")}>
+      <td className={cn(cell, "text-muted-foreground max-md:col-span-3")}>
         <span className="flex items-center gap-1.5">
           {type && <type.icon className="size-4 shrink-0" strokeWidth={1.5} aria-hidden />}
           {type?.label ?? rule.type}
-          {limit && <span className="md:hidden">· {limit}</span>}
+          {limit && <span className="text-foreground tabular-nums">{limit}</span>}
         </span>
       </td>
-      <td className={cn(cell, "max-w-72 truncate max-md:col-start-1 max-md:max-w-none")}>
+      <td className={cn(cell, "max-w-64 truncate max-md:col-span-3 max-md:max-w-none")}>
         {target.href ? (
           <Link href={target.href} className={link}>
             {target.label}
@@ -194,21 +195,19 @@ function Row({
         )}
         <span className="text-muted-foreground"> · {target.detail}</span>
       </td>
-      <td className={cn(cell, "num text-foreground max-md:hidden")}>{limit ?? <span className="text-subtle-foreground">—</span>}</td>
-      <td className={cn(cell, "num text-muted-foreground max-md:col-start-1 max-md:text-left max-md:text-label")}>
+      <td className={cn(cell, "num text-muted-foreground max-md:text-left max-md:text-label")}>
         <span className="md:hidden">Last fired </span>
         {rule.last_fired_at ? <Ago iso={rule.last_fired_at} now={now} source={rule.name} /> : "never"}
       </td>
-      <td className={cn(cell, "max-md:col-start-2 max-md:row-start-1 max-md:justify-self-end")}>
+      <td className={cell}>
         <span className="flex items-center gap-2">
           <Switch checked={rule.enabled} onCheckedChange={onEnabled} aria-label={`Notify: ${rule.name}`} />
           <span className={cn("text-label max-md:sr-only", muted && rule.enabled ? "text-foreground" : "text-muted-foreground")}>
             {!rule.enabled ? "Off" : (muted ?? "On")}
           </span>
         </span>
-        {muted && rule.enabled && <span className="block text-label text-foreground md:hidden">{muted}</span>}
       </td>
-      <td className={cn(cell, "w-28 max-md:col-start-2 max-md:row-start-2 max-md:row-span-3 max-md:self-end")}>
+      <td className={cn(cell, "w-28 max-md:w-auto")}>
         <span className="flex justify-end gap-1">
           <DropdownMenu.Root>
             <Tooltip>
