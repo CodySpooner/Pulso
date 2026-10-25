@@ -60,7 +60,7 @@ for (const theme of ["dark", "light"] as const) {
         await page.keyboard.press("Shift"); // a key press: the keyboard focus ring shows, as after Tab
         if (state) {
           await page.keyboard.press("Enter");
-          await expect(drawer.getByRole("button", { name: "Retry" })).toBeFocused();
+          await expect(drawer.getByRole("button", { name: "Retry loading older runs" })).toBeFocused();
           await expect(drawer).toContainText("Couldn't load older runs.");
         }
         if (state === "offline") {

@@ -4,7 +4,7 @@ import { manyGaps, manyTargets, mockAdminApi, NOW, problem, sources } from "./fi
 
 // imp-075 (DEC-166): Load more reaches every open gap and run target past the first bounded page, once each,
 // only when asked, with focus kept on the control. 260 items: the first page (50), one Load more page (200),
-// then the last 10.
+// then the last 10. imp-112: a failed page's Retry says what it retries, and "loaded" is said only by the footer note.
 
 const PAGE = "/admin/data-health";
 
@@ -46,8 +46,10 @@ test("open gaps: Load more traverses 260 gaps once each, keeping keyboard focus"
   const rows = panel.getByRole("region", { name: "Open gaps" }).getByRole("row");
   await expect(rows).toHaveCount(1 + 8);
   await expect(panel).toContainText("Showing 8 of 50 ranges · 50 missed slots loaded, older gaps not loaded yet");
+  await expect(panel.getByRole("heading", { name: /^Open gaps/ })).toHaveText(/^Open gaps · 50 ranges, newest first/);
+  await expect(panel.getByText(/loaded/)).toHaveCount(1); // the footer note only
 
-  const more = panel.getByRole("button", { name: /^(Load older gaps|Loading…|Retry)$/ }); // its label follows its state
+  const more = panel.getByRole("button", { name: /^(Load older gaps|Loading…|Retry loading older gaps)$/ }); // its label follows its state
   await expect(more).toHaveText("Load older gaps");
   await more.focus();
   await page.keyboard.press("Enter");
@@ -87,7 +89,8 @@ test("open gaps: a failed page retries in place; Refresh keeps pages unless the 
   await expect(panel).toContainText("Error ID req-load-more");
   await expect(rows).toHaveCount(1 + 50); // the press still shows every loaded range; nothing older is claimed
   await expect(panel).toContainText("Showing 50 ranges · 50 missed slots loaded, older gaps not loaded yet");
-  await panel.getByRole("button", { name: "Retry" }).click();
+  await expect(panel.getByRole("button", { name: "Retry", exact: true })).toHaveCount(0);
+  await panel.getByRole("button", { name: "Retry loading older gaps" }).click();
   await expect(rows).toHaveCount(1 + 250);
   await expect(panel).not.toContainText("Couldn't load older gaps");
 
@@ -130,7 +133,7 @@ test("run targets: Load more traverses 260 targets once each; reopening starts o
   await expect(rows).toHaveCount(1 + 50);
   await expect(drawer).toContainText("Showing 50 of 260 targets");
 
-  const more = drawer.getByRole("button", { name: /^(Load more targets|Loading…|Retry)$/ });
+  const more = drawer.getByRole("button", { name: /^(Load more targets|Loading…|Retry loading targets)$/ });
   await expect(more).toHaveText("Load more targets");
   await more.focus();
   await page.keyboard.press("Enter");
@@ -144,7 +147,7 @@ test("run targets: Load more traverses 260 targets once each; reopening starts o
   // The next page fails: the rows stay, and the same button retries it.
   await page.keyboard.press("Enter");
   await expect(drawer).toContainText("Couldn't load more targets.");
-  await expect(more).toHaveText("Retry");
+  await expect(more).toHaveText("Retry loading targets");
   await expect(more).toBeFocused();
   await page.keyboard.press("Enter");
   await expect(rows).toHaveCount(1 + 260);
@@ -205,12 +208,12 @@ for (const [width, height] of [
     await expect(runs).toHaveCount(20);
     await expect(drawer).toContainText("Showing 20 runs · older runs not loaded yet");
 
-    const more = drawer.getByRole("button", { name: /^(Load older runs|Loading…|Retry)$/ });
+    const more = drawer.getByRole("button", { name: /^(Load older runs|Loading…|Retry loading older runs)$/ });
     await expect(more).toHaveText("Load older runs");
     await more.focus();
     await page.keyboard.press("Enter");
     await expect(drawer).toContainText("Couldn't load older runs. The API is restarting. Try again. Error ID req-load-more");
-    await expect(more).toHaveText("Retry");
+    await expect(more).toHaveText("Retry loading older runs");
     await expect(more).toBeFocused();
     await expect(more).toBeInViewport({ ratio: 1 }); // the error line above didn't push it out of the drawer's view
     await expect(drawer.getByRole("button", { name: "Copy error ID" })).toBeVisible();
