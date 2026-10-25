@@ -66,6 +66,7 @@ for (const theme of ["dark", "light"] as const) {
         await open(page, { body: undecided });
         await section(page).getByRole("textbox", { name: "Add a keyword" }).focus();
         await page.keyboard.press("Tab"); // Add
+        await page.keyboard.press("Tab"); // the first suggestion's relevance number (imp-343)
         await page.keyboard.press("Tab"); // the first Confirm, described by the cost line
         await expect(section(page).getByRole("button", { name: "Confirm sunset projection lamp" })).toBeFocused();
         await shot(page, "focus");

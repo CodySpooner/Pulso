@@ -26,7 +26,7 @@ const shortDay = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeri
 const provenance = (k: Keyword) =>
   k.relevance === null
     ? `Added by you · no listing title holds it${k.decided_at ? ` · confirmed ${formatUtc(k.decided_at)}` : ""}`
-    : `Relevance ${k.relevance.toFixed(2)}: how many titles use the phrase and its words · listing titles as of ${formatUtc(k.as_of)}`;
+    : `Relevance ${k.relevance.toFixed(2)}: how many titles use the phrase and its words\nListing titles as of ${formatUtc(k.as_of)}`;
 
 // KW-1 (vault Features/Product Page - Trends, DEC-281): the owner confirms the search keywords for this product.
 // Candidates are phrases from its listing titles, never a link until confirmed (DEC-245 d). One click confirms or
@@ -325,7 +325,7 @@ function Relevance({ k }: { k: Keyword }) {
       </span>
       <TapTooltip
         hint={provenance(k)}
-        contentClassName="max-w-64"
+        contentClassName="max-w-64 whitespace-pre-line"
         type="button"
         data-numeric
         className="relative hit-area cursor-help rounded-sm font-mono text-data text-foreground decoration-border-strong decoration-dotted underline-offset-4 hover:underline"
