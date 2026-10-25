@@ -50,13 +50,14 @@ export function ScoreValue({ score, label, now }: { score: Score; label: string;
   );
 }
 
-// Colours per vault Intelligence/Lifecycle Stage; the label and icon carry the stage, never colour alone.
+// The Daily Pulse's LifecyclePill (p4-29, DEC-342): only Emerging is filled, the rest outlined with the stage's colour;
+// the label and icon carry the stage, never colour alone. ponytail: a copy; share one component once a third page shows it.
 const CHIPS: Record<Stage, { icon: LucideIcon; tone: string }> = {
-  emerging: { icon: Sprout, tone: "bg-positive-muted text-positive" },
-  rising: { icon: TrendingUp, tone: "bg-positive-muted text-positive" },
-  peaking: { icon: Mountain, tone: "bg-warning-muted text-warning" },
-  declining: { icon: TrendingDown, tone: "bg-negative-muted text-negative" },
-  dead: { icon: CircleOff, tone: "border border-dashed border-border-strong text-subtle-foreground" },
+  emerging: { icon: Sprout, tone: "border-positive/40 bg-positive-muted text-positive" },
+  rising: { icon: TrendingUp, tone: "border-border text-positive" },
+  peaking: { icon: Mountain, tone: "border-border text-warning" },
+  declining: { icon: TrendingDown, tone: "border-border text-negative" },
+  dead: { icon: CircleOff, tone: "border-border text-muted-foreground" },
 };
 
 /** The Lifecycle chip; without a stage, the score's words ("Insufficient signal", "No source yet"). */
@@ -72,7 +73,7 @@ export function Lifecycle({ item, now }: { item: Item; now: number }) {
       contentClassName="pointer-events-auto max-w-72 px-3 py-2"
       type="button"
       aria-label={`Lifecycle stage: ${STAGES[stage]}`}
-      className={cn("relative hit-area inline-flex h-5.5 cursor-help items-center gap-1 rounded-sm px-1.5 text-label font-medium whitespace-nowrap", tone)}
+      className={cn("relative hit-area inline-flex h-5.5 cursor-help items-center gap-1 rounded-sm border px-1.5 text-label font-medium whitespace-nowrap", tone)}
     >
       <Icon className="size-3.5" aria-hidden />
       {STAGES[stage]}
