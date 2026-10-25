@@ -16,7 +16,7 @@ from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
-from pulso_core.models import Listing, ListingVariant, PopularProduct, RawPayload
+from pulso_core.models import AmazonRank, Listing, ListingVariant, PopularProduct, RawPayload
 from pulso_core.money import to_minor
 from pulso_ml.matching.gtin import gtin14
 from pulso_ml.matching.matcher import canonical, redirects
@@ -110,7 +110,9 @@ def gtin_tokens(gtins: str | None) -> list[str]:
     return [token for token in re.split(r"[\s,;]+", gtins or "") if token]
 
 
-def link_products(session: Session, rows: Sequence[PopularProduct]) -> dict[int, UUID | None]:
+def link_products(
+    session: Session, rows: Sequence[PopularProduct | AmazonRank]
+) -> dict[int, UUID | None]:
     """Each row's one live product sharing a valid GTIN, read now and never stored (DEC-267 c).
 
     M-4's gtin14 normalises both sides and merges are followed to the live product.

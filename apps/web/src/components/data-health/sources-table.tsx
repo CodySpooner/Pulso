@@ -42,7 +42,6 @@ const SOURCES_API = "GET /v1/admin/sources";
 // "No source yet" rows (vault Features/Data Health, States): later-phase sources, greyed out with their phase.
 const planned = [
   { name: "AliExpress", phase: 3, why: "Live lookup only, cached 24 h and never stored (DEC-037)" },
-  { name: "Amazon", phase: 3, why: "Marketplace prices and seller counts" },
   { name: "Meta Ad Library", phase: 8, why: "Ads linked to the products they promote" },
   { name: "TikTok ads", phase: 8, why: "Ads linked to the products they promote" },
 ];

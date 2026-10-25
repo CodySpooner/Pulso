@@ -77,6 +77,27 @@ class PopularProduct(Observation, BigId, Base):
     currency: Mapped[str | None] = mapped_column(CHAR(3), ForeignKey("currencies.code"))
 
 
+class AmazonRank(Observation, BigId, Base):
+    """One ASIN's rank in one Amazon list on one day, from the owner's CSV (DEC-279).
+
+    rank_kind is `bsr` (Best Sellers rank in the category) or `movers` (Movers & Shakers).
+    """
+
+    __tablename__ = "amazon_ranks"
+    observation_keys = ("asin", "category", "rank_kind", "observed_for")
+    asin: Mapped[str] = mapped_column(String(10))
+    category: Mapped[str] = mapped_column(Text)
+    rank_kind: Mapped[str] = mapped_column(String(20))
+    rank: Mapped[int]
+    title: Mapped[str] = mapped_column(Text)
+    price_minor: Mapped[int | None] = mapped_column(BigInteger)
+    currency: Mapped[str] = mapped_column(CHAR(3), ForeignKey("currencies.code"))
+    rating: Mapped[Decimal | None] = mapped_column(Numeric(3, 2))
+    review_count: Mapped[int | None] = mapped_column(BigInteger)
+    # As the file wrote them; products resolve on read like Merchant Center rows (DEC-267 c).
+    gtins: Mapped[str | None] = mapped_column(Text)
+
+
 class CollectorRunTarget(Base):
     __tablename__ = "collector_run_targets"
     __table_args__ = (

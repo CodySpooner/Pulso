@@ -73,6 +73,19 @@ SAMPLE_ROWS = {
         "price_range_max": "20",
         "price_range_currency": "USD",
     },
+    "amazon": {
+        "asin": "B0EXAMPLE1",
+        "title": "Example only",
+        "category": "Example category",
+        "rank": "1",
+        "rank_kind": "bsr",
+        "price": "19.99",
+        "currency": "USD",
+        "rating": "4.5",
+        "review_count": "10",
+        "gtins": "5901234123457",
+        "observed_for": "2026-01-01",
+    },
 }
 
 

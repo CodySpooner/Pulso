@@ -75,6 +75,7 @@ SOURCES = {
     "backup": "internal",
     "listing_images": "public_endpoint",
     "merchant_bestsellers": "csv",
+    "amazon": "csv",
 }
 ROUTES = [
     ("GET", "/v1/admin/sources"),
@@ -788,6 +789,7 @@ def test_import_template_and_preview_write_nothing(admin: TestClient, engine: En
         "backup": None,
         "listing_images": None,
         "merchant_bestsellers": "ready",
+        "amazon": "ready",
     }
 
     def preview(key: str, body: bytes) -> dict[str, Any]:
