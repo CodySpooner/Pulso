@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from pulso_core.models import Source
 from pulso_core.settings import get_settings
-from pulso_sources import google_trends, shopify_stores
+from pulso_sources import google_trends, listing_images, shopify_stores
 from pulso_sources.fx_frankfurter import FrankfurterAdapter, plan
 from pulso_sources.google_trends.live import GoogleTrendsAdapter
 from pulso_workers.tasks import PLANS, Plan
@@ -51,6 +51,15 @@ def trends_plan(session: Session, source: Source, job: str) -> Plan:
     )
 
 
+def images_plan(session: Session, source: Source, job: str) -> Plan:
+    if job != "images":
+        raise ValueError("Unsupported listing images job")
+    settings = get_settings()
+    adapter, targets = listing_images.plan(session, settings=settings)
+    return Plan(adapter, targets, settings.collector_wall_time_seconds)
+
+
 PLANS["fx_frankfurter"] = fx_plan
 PLANS["shopify_stores"] = shopify_plan
 PLANS["google_trends"] = trends_plan
+PLANS["listing_images"] = images_plan

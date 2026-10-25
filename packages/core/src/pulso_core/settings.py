@@ -73,6 +73,9 @@ class Settings(BaseSettings):
     trends_hourly_search_limit: Annotated[int, Field(ge=1, le=50)] = 50
     trends_wall_time_seconds: PositiveInt = 10 * 60
     fx_wall_time_seconds: PositiveInt = 5 * 60
+    # Listing images (DEC-240): only these exact https hosts, each checked before it is listed.
+    image_hosts: CommaList = []
+    image_requests_per_minute: Annotated[int, Field(gt=0, le=30)] = 30  # per host
 
     @model_validator(mode="after")
     def _collector_limits(self) -> Self:
@@ -103,7 +106,9 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     log_format: Literal["json", "text"] = "json"
 
-    @field_validator("clerk_authorized_parties", "platform_admin_user_ids", mode="before")
+    @field_validator(
+        "clerk_authorized_parties", "platform_admin_user_ids", "image_hosts", mode="before"
+    )
     @classmethod
     def _split_commas(cls, value: object) -> object:
         if isinstance(value, str):

@@ -73,6 +73,7 @@ SOURCES = {
     "google_trends": "vendor",
     "fx_frankfurter": "official_api",
     "backup": "internal",
+    "listing_images": "public_endpoint",
 }
 ROUTES = [
     ("GET", "/v1/admin/sources"),
@@ -784,6 +785,7 @@ def test_import_template_and_preview_write_nothing(admin: TestClient, engine: En
         "google_trends": "ready",
         "fx_frankfurter": "ready",
         "backup": None,
+        "listing_images": None,
     }
 
     def preview(key: str, body: bytes) -> dict[str, Any]:

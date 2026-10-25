@@ -53,7 +53,9 @@ def run_job(source_key: str, slot: str | None) -> str:
     return (
         slot.split(":", 1)[0]
         if slot
-        else {"google_trends": "trends", "fx_frankfurter": "fx"}.get(source_key, "catalog")
+        else {"google_trends": "trends", "fx_frankfurter": "fx", "listing_images": "images"}.get(
+            source_key, "catalog"
+        )
     )
 
 

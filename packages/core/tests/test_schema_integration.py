@@ -72,6 +72,8 @@ def test_migration_roundtrip_and_metadata(
         assert session.scalar(select(func.count()).select_from(Source).where(Source.enabled)) == 0
         backup = session.scalar(select(Source).where(Source.key == "backup"))
         assert backup is not None and not backup.enabled
+        images = session.scalar(select(Source).where(Source.key == "listing_images"))
+        assert images is not None and not images.enabled
 
 
 def test_connected_database_is_a_test_database(db_engine: Engine) -> None:
@@ -179,7 +181,7 @@ def test_phase1_downgrade_refuses_evidence(db_engine: Engine, evidence_sql: str)
             connection.begin_nested(),
         ):
             command.downgrade(config, "0001")
-        assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "0005"
+        assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "0006"
         assert connection.scalar(text("SELECT to_regclass('source_daily_coverage')")) is not None
 
 

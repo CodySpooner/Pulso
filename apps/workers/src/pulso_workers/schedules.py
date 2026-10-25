@@ -8,6 +8,7 @@ COLLECTION_SLOTS = (
     ("cj", "catalog", 0, 4, "*"),
     ("cj", "freight", 30, 4, "1"),
     ("google_trends", "trends", 0, 5, "1"),
+    ("listing_images", "images", 0, 6, "*"),  # after the day's new listings (DEC-240)
     ("fx_frankfurter", "fx", 0, 17, "*"),
 )
 
