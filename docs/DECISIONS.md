@@ -2565,9 +2565,9 @@ Superseded review defaults, not given entries: default #0 (move the repo) is don
   - a GTIN-14 written with a dash links to its product, a merged product's GTIN links to the live one, a wrong check digit never links, and the same GTIN on two live products links neither.
 
 ### DEC-265 · Workspace product economics: `landed_cost()` in SQL held to the Python by golden vectors, a default-scenario view per workspace, and Discover's best margin from its complete rows
-**2026-10-25 · proposed (p2-27)** · Phase 2 task UX-8 part c; R-16; DEC-031, DEC-238, DEC-239, DEC-246, DEC-250, DEC-251, DEC-256, DEC-258, DEC-259, DEC-261; SPEC §6.4 Profit; vault Features/Product Page - Profit, Features/Discover; `docs/reports/p2-27.md`; migration 0009; no flag, dependency or CI change
+**2026-10-25 · proposed (p2-27)** · Phase 2 task UX-8 part c; R-16; DEC-031, DEC-238, DEC-239, DEC-246, DEC-250, DEC-251, DEC-256, DEC-258, DEC-259, DEC-261; SPEC §6.4 Profit; vault Features/Product Page - Profit, Features/Discover; `docs/reports/p2-27.md`; migration 0010; no flag, dependency or CI change
 - **Decision:**
-  - **(a) One SQL twin of `landed_cost()`.** Migration 0009 adds four Postgres functions: `half_even()`, `usd_line()`, `usd_rate()` and `landed_cost()`. `landed_cost()` follows `pulso_core.landed_cost.landed_cost` line by line:
+  - **(a) One SQL twin of `landed_cost()`.** Migration 0010 adds four Postgres functions: `half_even()`, `usd_line()`, `usd_rate()` and `landed_cost()`. `landed_cost()` follows `pulso_core.landed_cost.landed_cost` line by line:
     - exact numeric arithmetic, rounded half-even once per line (DEC-246 a), at the currency's exponent from `currencies`;
     - every line and total checked against BIGINT (DEC-250 c), and `missing` in `MISSING` order;
     - margin, `margin_bps`, net and `net_bps` null unless the row is complete (R-16).

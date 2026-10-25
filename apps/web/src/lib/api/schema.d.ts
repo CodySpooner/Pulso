@@ -785,7 +785,8 @@ export interface components {
         DiscoverItem: {
             /** As Of */
             as_of: string | null;
-            best_margin_minor: components["schemas"]["NoSource"];
+            /** Best Margin Minor */
+            best_margin_minor: components["schemas"]["Margin"] | components["schemas"]["Incomplete"];
             /** Category */
             category: string | null;
             /**
@@ -959,6 +960,18 @@ export interface components {
             raw_payload_id: number | null;
             run: components["schemas"]["Run"];
         };
+        /**
+         * Incomplete
+         * @description No complete cost row: R-16 withholds the margin and names what it needs.
+         */
+        Incomplete: {
+            /** Missing */
+            missing: string[];
+            /** Reason */
+            reason: string;
+            /** Value */
+            value: null;
+        };
         /** InputSource */
         InputSource: {
             /** As Of */
@@ -1005,6 +1018,34 @@ export interface components {
             vendor: string | null;
             /** Vendor Kind */
             vendor_kind: ("store" | "supplier") | null;
+        };
+        /**
+         * Margin
+         * @description The best complete supplier's margin in the default scenario (DEC-265): the break-even CPA.
+         *     As of its oldest input, whose source it names (DEC-259 e); stale when any input is.
+         */
+        Margin: {
+            /**
+             * As Of
+             * Format: date-time
+             */
+            as_of: string;
+            /** Margin Bps */
+            margin_bps: number;
+            /** Method */
+            method?: string | null;
+            /** Raw Payload Id */
+            raw_payload_id: number | null;
+            /** Source */
+            source: string;
+            /** Source Name */
+            source_name: string;
+            /** Stale */
+            stale: boolean;
+            /** Supplier Listing Id */
+            supplier_listing_id: number;
+            /** Value */
+            value: number;
         };
         /** Match */
         Match: {

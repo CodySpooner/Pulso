@@ -203,7 +203,7 @@ class ProductTag(WorkspaceOwned, Base):
     tag: Mapped[str] = mapped_column(String(80))
 
 
-# The default scenario's landed cost per workspace and product (migration 0009, DEC-265): a
+# The default scenario's landed cost per workspace and product (migration 0010, DEC-265): a
 # view, so it sits outside Base.metadata and autogenerate never makes it a table.
 workspace_product_economics = Table(
     "workspace_product_economics",

@@ -607,7 +607,15 @@
             "title": "As Of"
           },
           "best_margin_minor": {
-            "$ref": "#/components/schemas/NoSource"
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Margin"
+              },
+              {
+                "$ref": "#/components/schemas/Incomplete"
+              }
+            ],
+            "title": "Best Margin Minor"
           },
           "category": {
             "anyOf": [
@@ -1053,6 +1061,33 @@
         "title": "ImportResult",
         "type": "object"
       },
+      "Incomplete": {
+        "description": "No complete cost row: R-16 withholds the margin and names what it needs.",
+        "properties": {
+          "missing": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Missing",
+            "type": "array"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "value": {
+            "title": "Value",
+            "type": "null"
+          }
+        },
+        "required": [
+          "value",
+          "reason",
+          "missing"
+        ],
+        "title": "Incomplete",
+        "type": "object"
+      },
       "InputSource": {
         "properties": {
           "as_of": {
@@ -1217,6 +1252,74 @@
           "product_id"
         ],
         "title": "ListingDetail",
+        "type": "object"
+      },
+      "Margin": {
+        "description": "The best complete supplier's margin in the default scenario (DEC-265): the break-even CPA.\nAs of its oldest input, whose source it names (DEC-259 e); stale when any input is.",
+        "properties": {
+          "as_of": {
+            "format": "date-time",
+            "title": "As Of",
+            "type": "string"
+          },
+          "margin_bps": {
+            "title": "Margin Bps",
+            "type": "integer"
+          },
+          "method": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Method"
+          },
+          "raw_payload_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Raw Payload Id"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "source_name": {
+            "title": "Source Name",
+            "type": "string"
+          },
+          "stale": {
+            "title": "Stale",
+            "type": "boolean"
+          },
+          "supplier_listing_id": {
+            "title": "Supplier Listing Id",
+            "type": "integer"
+          },
+          "value": {
+            "title": "Value",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "value",
+          "source",
+          "source_name",
+          "as_of",
+          "raw_payload_id",
+          "stale",
+          "margin_bps",
+          "supplier_listing_id"
+        ],
+        "title": "Margin",
         "type": "object"
       },
       "Match": {
