@@ -31,9 +31,9 @@ from pulso_ml.features.daily import compute, cutoff, run
 
 START = date(2026, 9, 1)
 P = {name: UUID(int=n) for n, name in enumerate(["p1", "p2", "p3", "p4", "p5", "p6", "p7"], 1)}
-HOMES = {"L1": "p1", "L2": "p1", "L3": "p2", "L4": "p3", "L5": "p4"}  # one Shopify store
+HOMES = {"L1": "p1", "L2": "p1", "L3": "p2", "L4": "p3", "L5": "p4", "L6": "p4"}  # one store
 HOMES |= {"C1": "p1", "C2": "p5", "C3": "p6"}  # CJ
-PERIOD = {"L1": 1, "L2": 2, "L3": 3, "L4": 5, "L5": 7}  # each sells one unit every n days
+PERIOD = {"L1": 1, "L2": 2, "L3": 3, "L4": 5, "L5": 7, "L6": 1}  # one unit every n days
 
 
 def on(i: int, hour: int = 0, minute: int = 0) -> datetime:
@@ -147,24 +147,30 @@ def build(session: Session) -> None:
                         continue  # change-only snapshots: an unchanged level writes no row
                     last[variant] = level
                     late = (variant, i) == ("C2a", 22)  # captured 2 days after it describes
-                    session.add(
-                        VariantSnapshot(
-                            variant_id=variants[variant].id,
-                            captured_at=at,
-                            observed_for=(at - timedelta(days=2 if late else 0)).date(),
-                            raw_payload_id=payload.id,
-                            values_hash=str(level),
-                            currency="USD",
-                            inventory_quantity=level,
-                            inventory_management="shopify" if key != "cj" else None,
-                            # L3's store lets it oversell from day 36: its level means nothing.
-                            inventory_policy=None
-                            if key == "cj"
-                            else "continue"
-                            if variant == "L3a" and i >= 36
-                            else "deny",
+                    # Day 17's C1a capture was misread by parser 0, then re-parsed by parser 1.
+                    for parser, read in [("0", level - 20)] * ((variant, i) == ("C1a", 17)) + [
+                        ("1", level)
+                    ]:
+                        session.add(
+                            VariantSnapshot(
+                                variant_id=variants[variant].id,
+                                captured_at=at,
+                                observed_for=(at - timedelta(days=2 if late else 0)).date(),
+                                raw_payload_id=payload.id,
+                                parser_version=parser,
+                                values_hash=str(read),
+                                currency="USD",
+                                inventory_quantity=read,
+                                inventory_management="shopify" if key != "cj" else None,
+                                # Overselling L6, and L3 from day 36: their level means nothing.
+                                inventory_policy=None
+                                if key == "cj"
+                                else "continue"
+                                if variant == "L6a" or (variant == "L3a" and i >= 36)
+                                else "deny",
+                            )
                         )
-                    )
+                        session.flush()  # ids follow the parses' order
     session.flush()
 
 
@@ -206,11 +212,14 @@ def test_membership_follows_the_decisions_known_at_the_cutoff(db_engine: Engine)
         after = {(f.product_id, f.family): f for f in compute(session, START + timedelta(45))}
     # Day 15's crawl dropped all 5 of the store's listings: a sync, so it adds nothing.
     assert sync[P["p1"], "shp_inv"].velocity_7d == 6 + 4  # L1 and L2 over days 14 to 20
+    # C1a sells 3 a day but restocks on day 20, C1b sells 4; day 17's misread is superseded.
+    assert sync[P["p1"], "cj_stock"].velocity_7d == 6 * 3 + 4
     assert (P["p6"], "cj_stock") in before and (P["p7"], "shp_inv") not in before
     assert (P["p6"], "cj_stock") not in after
     assert after[P["p1"], "shp_inv"].velocity_7d == 7 and after[P["p7"], "shp_inv"].velocity_7d == 3
     assert after[P["p1"], "shp_inv"].growth_7d is None  # t−14 fell in the Shopify outage
     assert after[P["p2"], "shp_inv"][4:] == (None, None, Decimal(0), True)  # unknown, not 0
+    assert after[P["p4"], "shp_inv"].coverage == 1  # L6 never showed a level: not tracked
     cj = after[P["p5"], "cj_stock"]
     assert cj.growth_7d is not None and cj.has_gap  # no CJ evidence on day 41
     assert cj.coverage == Decimal("0.75")  # C2 and C3 7 of 8 days, C4 (new) 4: 18 of 24

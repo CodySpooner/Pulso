@@ -69,6 +69,7 @@ def test_a_rounded_count_below_its_step_is_unknown() -> None:
     assert parse_count("2.25M+") == (2_250_000, 10_000)
     assert parse_count("1,234") == (1234, 1)
     assert cumulative_units("1.2K", "1.2K") == (None, frozenset({"below_precision"}))
+    assert cumulative_units("1.2K", "1.25K") == (None, frozenset({"below_precision"}))
     assert cumulative_units("1.2K", "1.4K") == (200, frozenset())
     with pytest.raises(ValueError):
         parse_count("lots")
