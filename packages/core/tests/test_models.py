@@ -106,7 +106,8 @@ def test_single_migration_head_and_offline_sql(
     output = StringIO()
     config = Config(str(Path(__file__).resolve().parents[3] / "alembic.ini"), output_buffer=output)
     scripts = ScriptDirectory.from_config(config)
-    assert scripts.get_heads() == ["0019"]
+    assert scripts.get_heads() == ["0020"]
+    assert scripts.get_revision("0020").down_revision == "0019"
     assert scripts.get_revision("0019").down_revision == "0018"
     assert scripts.get_revision("0018").down_revision == "0017"
     assert scripts.get_revision("0017").down_revision == "0016"

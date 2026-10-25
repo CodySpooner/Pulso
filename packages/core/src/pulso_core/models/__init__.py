@@ -24,6 +24,8 @@ from pulso_core.models.collection import (
     SourceEvent,
 )
 from pulso_core.models.core import (
+    Board,
+    BoardItem,
     CollectorRun,
     Currency,
     FxRate,
@@ -47,6 +49,8 @@ from pulso_core.models.vendors import ShippingOption, Store, Supplier, SupplierO
 
 __all__ = [
     "AmazonRank",
+    "Board",
+    "BoardItem",
     "Category",
     "CategoryMapping",
     "CollectorRun",
