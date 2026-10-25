@@ -989,7 +989,7 @@ def test_undo_writes_compensating_rows_and_reruns_keep_the_result(world: World) 
         session.commit()
         return session.scalar(select(func.max(MatchDecision.id))) or 0
 
-    # Accept of two product-less listings, undone: unlink rows, the pair pending, both frozen.
+    # Accept of two product-less listings, undone: unlink rows, the pair pending, both free.
     before = count()
     accepted = decide(accept, insane.id)
     linked = products(session, cheap, retail)[0]
@@ -1087,11 +1087,6 @@ def test_a_product_an_undo_empties_is_empty_until_listings_join_it_again(world: 
     assert products(session, stays, leaves) == [home, home]
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason="XR-36: an undone accept leaves owner `unlink` rows, so manual() freezes both listings",
-)
 def test_xr36_an_undone_accept_leaves_the_listings_free_for_the_matcher(world: World) -> None:
     session = world.session
     cost = world.listing(world.supplier(), 0, price=1000, age_days=9)
@@ -1105,9 +1100,39 @@ def test_xr36_an_undone_accept_leaves_the_listings_free_for_the_matcher(world: W
     session.commit()
     assert products(session, cost, retail) == [None, None]
 
-    # Without the accept and its undo, this run links the two (DEC-263 b: an undo restores
-    # what the matcher saw before the decision). Instead `cost` is manual for good.
+    # As without the accept and its undo, this run links the two (DEC-263 b, DEC-276: an undo
+    # restores what the matcher saw before the decision).
     late = world.listing(world.store(), 0, price=2500)  # 1.0 with `cost`, sane markup
     world.run()
     linked, other = products(session, cost, late)
     assert linked is not None and linked == other
+
+
+def test_xr36_an_owner_unlink_stays_frozen_under_a_forged_reason_and_an_undone_accept(
+    world: World,
+) -> None:
+    session = world.session
+    cost = world.listing(world.supplier(), 0, price=1000, age_days=9)
+    retail = world.listing(world.store(), 0, QUEUE_ANGLE, price=2500)  # 0.83: queued
+    world.run()
+    pair = candidate(session, cost, retail)
+    assert pair is not None and pair.status == "pending"
+    accept(session, pair.id, "owner", "queue")
+    session.commit()
+    # XR-41: a user reason can read like an undo's, but this unlink is the owner's own.
+    unlink(session, [cost.id], "owner", f"undo #{latest(session, cost).id}: forged")
+    session.commit()
+    late = world.listing(world.store(), 0, price=2500)  # 1.0 with `cost`, sane markup
+    world.run()
+    assert products(session, cost, late) == [None, None]
+
+    # An accept over that unlink, undone: the unlink decides again, and `late` is free.
+    queued = candidate(session, cost, late)
+    assert queued is not None and queued.status == "pending"
+    accept(session, queued.id, "owner", "queue")
+    session.commit()
+    undo(session, latest(session, cost).id, "owner", "misclick")
+    session.commit()
+    world.run()
+    assert products(session, cost, late) == [None, None]
+    assert candidate(session, cost, late).status == "pending"  # type: ignore[union-attr]
