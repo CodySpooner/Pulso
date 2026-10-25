@@ -1,23 +1,27 @@
 """Amazon ranks (AMZ-1b, DEC-286): the owner's imported Best Sellers and Movers & Shakers lists
 (DEC-279), each category × rank kind at its newest day by default. A rank only means something in
-its own list, so rows are ordered and paged list by list and never ranked across lists."""
+its own list, so rows are ordered and paged list by list and never ranked across lists. AMZ-1c
+(DEC-293) reads the same captures for one product's Trends tab."""
 
+from collections.abc import Iterable
 from datetime import UTC, date, datetime, timedelta
 from typing import Annotated, Any, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query
 from pydantic import AwareDatetime, BaseModel, Field, TypeAdapter, ValidationError
-from sqlalchemy import Row, func, literal, select, tuple_
+from sqlalchemy import Row, Select, func, literal, select, tuple_
+from sqlalchemy.orm import Session
 
 from pulso_api.auth import current_principal
 from pulso_api.errors import APIError
-from pulso_api.routers.products import DB
+from pulso_api.routers.products import DB, live_product
 from pulso_core.models import AmazonRank, Source
 from pulso_sources.merchant_bestsellers import link_products
 
 # Global market data (no workspace_id), signed-in only like Google popular (DEC-272).
 router = APIRouter(prefix="/v1/amazon", dependencies=[Depends(current_principal)])
+products_router = APIRouter(prefix="/v1/products", dependencies=[Depends(current_principal)])
 STALE_DAYS = 14
 A = AmazonRank
 RankKind = Literal["bsr", "movers"]  # Best Sellers, Movers & Shakers (DEC-279)
@@ -62,6 +66,67 @@ class AmazonRankPage(BaseModel):
     stale: bool  # the shown lists' newest day is over 14 days old; never with observed_for
 
 
+class ProductAmazonRanks(BaseModel):
+    """The lists one product is ranked in, through a shared GTIN (DEC-293)."""
+
+    source: str | None  # null when the amazon source row is missing: no source yet
+    source_name: str | None
+    imported: bool  # any Amazon list imported at all; false reads as no source yet
+    rows: list[AmazonRankRow]  # one per list: its newest day ranking the product, best rank
+    as_of: date | None  # the rows' newest day; null without rows
+    captured_at: AwareDatetime | None  # the rows' newest import
+    stale: bool  # the rows' newest day is over 14 days old
+
+
+def newest_captures(session: Session) -> dict[tuple[str, str, date], Row[Any]]:
+    """The newest capture of each list and day: a corrected file imported again adds one.
+    ponytail: groups the whole table per request (one row per ranked ASIN and day); a migration
+    adding a (category, rank_kind, observed_for) index when imports make this slow."""
+    captures: dict[tuple[str, str, date], Row[Any]] = {}
+    for capture in session.execute(
+        select(A.category, A.rank_kind, A.observed_for, A.raw_payload_id, A.parser_version)
+        .add_columns(func.max(A.captured_at).label("captured_at"), func.count().label("rows"))
+        .group_by(A.category, A.rank_kind, A.observed_for, A.raw_payload_id, A.parser_version)
+        .order_by(func.max(A.captured_at), A.raw_payload_id, A.parser_version)
+    ):
+        captures[capture.category, capture.rank_kind, capture.observed_for] = capture  # newest wins
+    return captures
+
+
+def rows_of(captures: Iterable[Row[Any]]) -> Select[tuple[AmazonRank]]:
+    """The rank rows of these captures."""
+    return select(A).where(
+        tuple_(A.category, A.rank_kind, A.observed_for, A.raw_payload_id, A.parser_version).in_(
+            [
+                (c.category, c.rank_kind, c.observed_for, c.raw_payload_id, c.parser_version)
+                for c in captures
+            ]
+        )
+    )
+
+
+def rank_row(row: AmazonRank, product_id: UUID | None) -> AmazonRankRow:
+    return AmazonRankRow(
+        asin=row.asin,
+        title=row.title,
+        category=row.category,
+        rank_kind=row.rank_kind,  # the import allows only bsr and movers
+        rank=row.rank,
+        price_minor=row.price_minor,
+        currency=row.currency,
+        rating=None if row.rating is None else float(row.rating),
+        review_count=row.review_count,
+        product_id=product_id,
+        as_of=row.observed_for,
+        captured_at=row.captured_at,
+        raw_payload_id=row.raw_payload_id,
+    )
+
+
+def is_stale(as_of: date) -> bool:
+    return datetime.now(UTC).date() - as_of > timedelta(days=STALE_DAYS)
+
+
 @router.get("/ranks", response_model=AmazonRankPage)
 def list_amazon_ranks(
     session: DB,
@@ -91,17 +156,7 @@ def list_amazon_ranks(
         captured_at=None,
         stale=False,
     )
-    # The newest capture of each list and day: a corrected file imported again adds one.
-    # ponytail: groups the whole table per request (one row per ranked ASIN and day); a migration
-    # adding a (category, rank_kind, observed_for) index when imports make this slow.
-    captures: dict[tuple[str, str, date], Row[Any]] = {}
-    for capture in session.execute(
-        select(A.category, A.rank_kind, A.observed_for, A.raw_payload_id, A.parser_version)
-        .add_columns(func.max(A.captured_at).label("captured_at"), func.count().label("rows"))
-        .group_by(A.category, A.rank_kind, A.observed_for, A.raw_payload_id, A.parser_version)
-        .order_by(func.max(A.captured_at), A.raw_payload_id, A.parser_version)
-    ):
-        captures[capture.category, capture.rank_kind, capture.observed_for] = capture  # newest wins
+    captures = newest_captures(session)
     newest = {key[:2]: captures[key] for key in sorted(captures)}  # the newest day wins
     page.lists = [
         AmazonList(
@@ -124,37 +179,13 @@ def list_amazon_ranks(
         return page
 
     order = (A.category, A.rank_kind, A.rank, A.asin)
-    query = select(A).where(
-        tuple_(A.category, A.rank_kind, A.observed_for, A.raw_payload_id, A.parser_version).in_(
-            [
-                (c.category, c.rank_kind, c.observed_for, c.raw_payload_id, c.parser_version)
-                for c in shown
-            ]
-        )
-    )
+    query = rows_of(shown)
     if after is not None:
         query = query.where(tuple_(*order) > tuple_(*map(literal, after)))
     found = session.scalars(query.order_by(*order).limit(limit + 1)).all()
     rows = found[:limit]
     linked = link_products(session, rows)
-    page.rows = [
-        AmazonRankRow(
-            asin=row.asin,
-            title=row.title,
-            category=row.category,
-            rank_kind=row.rank_kind,  # the import allows only bsr and movers
-            rank=row.rank,
-            price_minor=row.price_minor,
-            currency=row.currency,
-            rating=None if row.rating is None else float(row.rating),
-            review_count=row.review_count,
-            product_id=linked[row.id],
-            as_of=row.observed_for,
-            captured_at=row.captured_at,
-            raw_payload_id=row.raw_payload_id,
-        )
-        for row in rows
-    ]
+    page.rows = [rank_row(row, linked[row.id]) for row in rows]
     if len(found) > limit:
         last = rows[-1]
         page.next_cursor = CURSOR.dump_json(
@@ -163,7 +194,39 @@ def list_amazon_ranks(
     page.total = sum(c.rows for c in shown)
     page.as_of = max(c.observed_for for c in shown)
     page.captured_at = max(c.captured_at for c in shown)
-    page.stale = observed_for is None and datetime.now(UTC).date() - page.as_of > timedelta(
-        days=STALE_DAYS
+    page.stale = observed_for is None and is_stale(page.as_of)
+    return page
+
+
+@products_router.get("/{product_id}/amazon-ranks", response_model=ProductAmazonRanks)
+def list_product_amazon_ranks(product_id: UUID, session: DB) -> ProductAmazonRanks:
+    product = live_product(session, product_id)
+    source = session.scalars(select(Source).where(Source.key == "amazon")).one_or_none()
+    captures = newest_captures(session)
+    page = ProductAmazonRanks(
+        source=source.key if source else None,
+        source_name=source.name if source else None,
+        imported=bool(captures),
+        rows=[],
+        as_of=None,
+        captured_at=None,
+        stale=False,
     )
+    if not captures:
+        return page
+    # Every day's newest capture, so a list the product dropped out of still shows its last ranked
+    # day, dated (DEC-293). ponytail: links every GTIN-carrying row per call, like the list page;
+    # a normalised GTIN column when imports grow.
+    rows = session.scalars(rows_of(captures.values()).where(A.gtins.is_not(None))).all()
+    linked = link_products(session, rows)
+    best: dict[tuple[str, str], AmazonRank] = {}
+    for row in sorted(rows, key=lambda r: (-r.observed_for.toordinal(), r.rank, r.asin)):
+        if linked[row.id] == product.id:
+            best.setdefault((row.category, row.rank_kind), row)  # newest day, then best rank
+    if not best:
+        return page
+    page.rows = [rank_row(best[key], product.id) for key in sorted(best)]
+    page.as_of = max(r.as_of for r in page.rows)
+    page.captured_at = max(r.captured_at for r in page.rows)
+    page.stale = is_stale(page.as_of)
     return page

@@ -108,6 +108,7 @@ def create_app() -> FastAPI:
     app.include_router(account.router)
     app.include_router(admin.router)
     app.include_router(amazon.router)
+    app.include_router(amazon.products_router)
     app.include_router(matching.router)
     app.include_router(popular_products.router)
     app.include_router(products.router)

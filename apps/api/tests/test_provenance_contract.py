@@ -35,6 +35,7 @@ COVERED_OPERATIONS = {
     "list_categories",
     "list_popular_products",
     "list_amazon_ranks",
+    "list_product_amazon_ranks",
 }
 # Numbers that are not observations, so no capture time applies. Each needs a reason, and one
 # the check no longer flags must be removed.

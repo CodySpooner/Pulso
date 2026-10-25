@@ -93,7 +93,7 @@ def imported(
                 currency="USD",
                 rating=4.6 if rank == 1 else None,
                 review_count=1532 if rank == 1 else None,
-                gtins=GTIN if title == "Lamp" else None,
+                gtins=GTIN if title.startswith("Lamp") else None,
                 observed_for=day,
                 captured_at=captured_at,
                 raw_payload_id=payload.id,
@@ -241,3 +241,124 @@ def test_stale_when_the_newest_day_is_over_14_days_old(
         session.commit()
     assert get(api)["stale"] is stale
     assert get(api, f"?observed_for={day}")["stale"] is False  # an earlier day picked on purpose
+
+
+# GET /v1/products/{id}/amazon-ranks (AMZ-1c, DEC-293): the lists one product is ranked in.
+def ranked(api: TestClient, product: UUID) -> Any:
+    response = api.get(f"/v1/products/{product}/amazon-ranks")
+    assert response.status_code == 200, response.text
+    return response.json()
+
+
+def lists(page: Any) -> list[tuple[str, str, int, str, str]]:
+    return [
+        (r["category"], r["rank_kind"], r["rank"], r["title"], r["as_of"]) for r in page["rows"]
+    ]
+
+
+def test_product_amazon_ranks_require_a_session(client: TestClient) -> None:
+    assert client.get(f"/v1/products/{uuid4()}/amazon-ranks").status_code == 401
+
+
+@pytest.mark.db
+def test_a_linked_product_shows_its_rank_in_each_list(api: TestClient, db_engine: Engine) -> None:
+    product = seed(db_engine)
+    page = ranked(api, product)
+    assert (page["source"], page["source_name"], page["imported"]) == ("amazon", "Amazon", True)
+    # Lamp's rank in each of Home's lists, never Home's other rows or Toys.
+    assert lists(page) == [
+        ("Home", "bsr", 1, "Lamp", str(TODAY)),
+        ("Home", "movers", 2, "Lamp", str(TODAY)),
+    ]
+    assert all(r["product_id"] == str(product) for r in page["rows"])
+    assert (page["as_of"], page["stale"]) == (str(TODAY), False)
+    assert page["captured_at"] == page["rows"][0]["captured_at"]
+    assert page["rows"][0]["raw_payload_id"] and page["rows"][0]["asin"]
+
+
+@pytest.mark.db
+def test_each_list_shows_its_newest_ranked_day_and_best_rank(
+    api: TestClient, db_engine: Engine
+) -> None:
+    with Session(db_engine) as session:
+        product = product_with_gtin(session)
+        earlier = datetime.now(UTC) - timedelta(hours=2)
+        imported(session, EARLIER, [("Toys", "bsr", 5, "Lamp"), ("Garden", "movers", 9, "Lamp")])
+        # Two ASINs share the product's GTIN: the better rank stands for it.
+        imported(session, TODAY, [("Toys", "bsr", 7, "Lamp"), ("Toys", "bsr", 3, "Lamp XL")])
+        # Garden's newest day no longer ranks it: its last ranked day shows, dated.
+        imported(session, TODAY, [("Garden", "movers", 1, "Fan")])
+        # A corrected file replaces the day: the superseded capture's rank never shows.
+        imported(session, TODAY, [("Home", "bsr", 2, "Lamp")], earlier)
+        imported(session, TODAY, [("Home", "bsr", 1, "Mug")])
+        session.commit()
+    page = ranked(api, product)
+    assert lists(page) == [
+        ("Garden", "movers", 9, "Lamp", str(EARLIER)),
+        ("Toys", "bsr", 3, "Lamp XL", str(TODAY)),
+    ]
+    assert (page["as_of"], page["stale"]) == (str(TODAY), False)
+
+
+@pytest.mark.db
+def test_an_unlinked_product_reads_empty(api: TestClient, db_engine: Engine) -> None:
+    seed(db_engine)
+    with Session(db_engine) as session:
+        other = Product(name="Kite")
+        session.add(other)
+        session.commit()
+        other_id = other.id
+    page = ranked(api, other_id)
+    assert (page["imported"], page["rows"], page["as_of"], page["stale"]) == (True, [], None, False)
+
+
+@pytest.mark.db
+def test_no_import_or_no_source_row_reads_as_no_source_yet(
+    api: TestClient, db_engine: Engine
+) -> None:
+    with Session(db_engine) as session:
+        product = product_with_gtin(session)
+        session.commit()
+    page = ranked(api, product)
+    assert (page["source"], page["imported"], page["rows"]) == ("amazon", False, [])
+    with Session(db_engine) as session:
+        session.execute(text("DELETE FROM sources WHERE key = 'amazon'"))
+        session.commit()
+    page = ranked(api, product)
+    assert (page["source"], page["source_name"], page["imported"]) == (None, None, False)
+
+
+@pytest.mark.db
+def test_unknown_and_merged_products(api: TestClient, db_engine: Engine) -> None:
+    with Session(db_engine) as session:
+        survivor = product_with_gtin(session)
+        merged = Product(name="Merged", merged_into_id=survivor)
+        session.add(merged)
+        session.commit()
+        merged_id = merged.id
+    assert api.get(f"/v1/products/{uuid4()}/amazon-ranks").status_code == 404
+    assert api.get(f"/v1/products/{merged_id}/amazon-ranks").status_code == 409
+
+
+@pytest.mark.db
+@pytest.mark.parametrize(("days", "stale"), [(14, False), (15, True)])
+def test_product_ranks_stale_when_their_newest_day_is_over_14_days_old(
+    api: TestClient, db_engine: Engine, days: int, stale: bool
+) -> None:
+    with Session(db_engine) as session:
+        product = product_with_gtin(session)
+        imported(session, TODAY - timedelta(days=days), [("Home", "bsr", 4, "Lamp")])
+        session.commit()
+    page = ranked(api, product)
+    assert (len(page["rows"]), page["stale"]) == (1, stale)
+
+
+@pytest.mark.db
+def test_another_workspace_sees_the_same_ranks(api: TestClient, db_engine: Engine) -> None:
+    product = seed(db_engine)
+    first = ranked(api, product)
+    assert len(first["rows"]) == 2
+    # Global market data (DEC-279 c): no workspace reads differently.
+    assert isinstance(api.app, FastAPI)
+    api.app.dependency_overrides[current_principal] = lambda: Principal(uuid4(), uuid4())
+    assert ranked(api, product) == first
