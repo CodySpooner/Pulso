@@ -172,13 +172,12 @@ function ViewToggle({ view, setView }: { view: View; setView: (v: View) => void 
     { value: "table", label: "Table", icon: Rows3 },
   ] as const;
   return (
-    <div role="radiogroup" aria-label="View (V)" className="relative flex h-(--button-h-md) shrink-0 rounded-md border border-border bg-secondary p-0.5">
+    <div role="group" aria-label="View, V switches" className="relative flex h-(--button-h-md) shrink-0 rounded-md border border-border bg-secondary p-0.5">
       {options.map(({ value, label, icon: Icon }) => (
         <button
           key={value}
           type="button"
-          role="radio"
-          aria-checked={view === value}
+          aria-pressed={view === value}
           onClick={() => setView(value)}
           className={cn(
             "relative hit-area flex items-center gap-1.5 rounded-sm px-2.5 text-label font-medium transition-colors duration-(--duration-fast)",
@@ -200,7 +199,7 @@ function Toolbar({ state, set, view, setView }: { state: FeedState; set: (next: 
   return (
     <div className="flex flex-wrap items-center gap-2">
       <Field label="Sort">
-        <select className={control} value={state.sort} onChange={(e) => set({ sort: e.target.value as FeedState["sort"] })}>
+        <select aria-label="Sort" className={control} value={state.sort} onChange={(e) => set({ sort: e.target.value as FeedState["sort"] })}>
           {Object.entries(SORTS).map(([value, label]) => (
             <option key={value} value={value}>
               {label}
@@ -239,10 +238,14 @@ function Toolbar({ state, set, view, setView }: { state: FeedState; set: (next: 
   );
 }
 
+/** A visible label beside its control; each control names itself with aria-label, since a label wrapping a select
+ *  would add the selected option to its name. */
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <label className="flex items-center gap-2">
-      <span className="text-label text-muted-foreground">{label}</span>
+      <span aria-hidden className="text-label text-muted-foreground">
+        {label}
+      </span>
       {children}
     </label>
   );
@@ -268,7 +271,8 @@ function FilterFields({ state, set }: { state: FeedState; set: (next: Partial<Fe
       className={cn(control, "w-20 tabular-nums placeholder:text-subtle-foreground")}
     />
   );
-  const choose = <K extends keyof Filters>(key: K, parse: (raw: string) => Filters[K]) => ({
+  const choose = <K extends keyof Filters>(key: K, label: string, parse: (raw: string) => Filters[K]) => ({
+    "aria-label": label,
     className: control,
     value: String(state[key] ?? ""),
     onChange: (e: React.ChangeEvent<HTMLSelectElement>) => set({ [key]: e.target.value === "" ? null : parse(e.target.value) }),
@@ -276,7 +280,7 @@ function FilterFields({ state, set }: { state: FeedState; set: (next: Partial<Fe
   return (
     <>
       <Field label="Category">
-        <select {...choose("category", Number)} className={cn(control, "max-w-56")}>
+        <select {...choose("category", "Category", Number)} className={cn(control, "max-w-56")}>
           <option value="">All</option>
           {categories.data?.map((c) => (
             <option key={c.id} value={c.id}>
@@ -294,7 +298,7 @@ function FilterFields({ state, set }: { state: FeedState; set: (next: Partial<Fe
         </span>
       </Field>
       <Field label="Source">
-        <select {...choose("source", (v) => v as Filters["source"])}>
+        <select {...choose("source", "Source", (v) => v as Filters["source"])}>
           <option value="">All</option>
           {Object.entries(SOURCES).map(([value, label]) => (
             <option key={value} value={value}>
@@ -304,7 +308,7 @@ function FilterFields({ state, set }: { state: FeedState; set: (next: Partial<Fe
         </select>
       </Field>
       <Field label="First seen">
-        <select {...choose("first_seen_days", (v) => Number(v) as Filters["first_seen_days"])}>
+        <select {...choose("first_seen_days", "First seen", (v) => Number(v) as Filters["first_seen_days"])}>
           <option value="">Any time</option>
           {FIRST_SEEN.map((d) => (
             <option key={d} value={d}>
@@ -314,7 +318,7 @@ function FilterFields({ state, set }: { state: FeedState; set: (next: Partial<Fe
         </select>
       </Field>
       <Field label="Sellers">
-        <select {...choose("has_sellers", (v) => v === "true")}>
+        <select {...choose("has_sellers", "Sellers", (v) => v === "true")}>
           <option value="">Any</option>
           <option value="true">Has sellers</option>
           <option value="false">No sellers yet</option>

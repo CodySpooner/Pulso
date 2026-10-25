@@ -66,3 +66,93 @@ export async function mockProductApi(page: Page, options: { body?: S["ProductHea
   });
   return calls;
 }
+
+// p2-03 (UX-2): fixture GET /v1/products feed pages and GET /v1/categories, for the Discover e2e tests and screenshots.
+
+const NAMES = [
+  "Sunset projection lamp", "Magnetic car phone mount", "Posture corrector brace", "Portable USB blender", "Cloud pillow slides",
+  "Mini waffle maker", "Smart LED strip lights", "Pet hair remover roller", "Facial ice roller", "Electric scalp massager",
+  "Car seat gap filler", "Silicone stretch lids", "Galaxy star projector", "Self-stirring mug", "Foldable laptop stand",
+  "Cordless wax melter", "Heated eye mask", "Wireless charging pad", "Reusable lint roller", "Ergonomic seat cushion",
+];
+const CATEGORIES: S["CategoryOption"][] = [
+  { id: 7, path: "Home & Garden > Lighting > Lamps" },
+  { id: 12, path: "Health & Beauty > Personal Care" },
+  { id: 31, path: "Vehicles & Parts > Vehicle Accessories" },
+];
+
+/** Product `i` of a feed: a mix of sourced numbers, gaps, stale data and stats nothing backs yet. */
+export function discoverItem(i: number): S["DiscoverItem"] {
+  const id = `00000000-0000-4000-8000-${String(i).padStart(12, "0")}`;
+  const staleShop = i % 9 === 8;
+  const shop = (value: number, raw: number): S["Sourced"] => ({
+    value, source: "shopify_stores", source_name: "Shopify stores", as_of: at(staleShop ? 74 : 6 + (i % 4)), raw_payload_id: raw, method: null, stale: staleShop,
+  });
+  const noStores = i % 6 === 5;
+  const low = 1200 + ((i * 731) % 4800);
+  const velocity: S["DiscoverItem"]["velocity"] =
+    i % 5 === 4
+      ? none("No demand family has a 7-day growth yet.")
+      : {
+          value: 80 - ((i * 7) % 70), source: "shopify_stores", source_name: "Shopify stores", as_of: at(14), raw_payload_id: null,
+          method: "Shopify updated_at bumps, a lower bound", stale: false, family: "shp_bump", grade: "B",
+          growth: 1.2 - i * 0.07, gap: i % 7 === 3,
+        };
+  return {
+    id,
+    title: `${NAMES[i % NAMES.length]}${i >= NAMES.length ? ` ${Math.floor(i / NAMES.length) + 1}` : ""}`,
+    image_url: `https://cdn.example.test/p/${i}.svg`,
+    category: i % 8 === 6 ? null : CATEGORIES[i % CATEGORIES.length].path,
+    first_seen_at: at(24 * (1 + ((i * 5) % 80))),
+    currency: "USD",
+    store_count: noStores ? none("No store listing matched yet.") : shop(1 + ((i * 3) % 14), 903000 + i),
+    supplier_count: { value: 1 + (i % 4), source: "cj", source_name: "CJ Dropshipping", as_of: at(9), raw_payload_id: 904000 + i, method: null, stale: false },
+    price_min_minor: noStores ? none("No USD retail price observed yet.") : shop(low, 905000 + i),
+    price_max_minor: noStores ? none("No USD retail price observed yet.") : shop(low + 1500 + (i % 3) * 1000, 906000 + i),
+    velocity,
+    best_margin_minor: none("The landed-cost engine arrives with UX-8."),
+    as_of: noStores ? at(9) : at(staleShop ? 74 : 9),
+    stale: staleShop,
+  };
+}
+
+export const feedItems = (n: number) => Array.from({ length: n }, (_, i) => discoverItem(i));
+export const FEED_PATH = (url: URL) => url.pathname === "/api/v1/products";
+
+export interface FeedOptions {
+  items?: S["DiscoverItem"][];
+  pageSize?: number;
+  degraded?: S["Degraded"][];
+  /** Answer the first page with this error status. */
+  status?: number;
+  /** Answer every later page with a 503. */
+  failMore?: boolean;
+  /** Never answer: the first-load skeleton stays. */
+  hold?: boolean;
+}
+
+/** The shell's admin calls, GET /v1/categories and GET /v1/products in pages of `pageSize` (cursor = offset). Returns
+ *  the feed requests' URLs. Product photo stand-ins are SVGs in a hue per product, so no request leaves the test. */
+export async function mockFeedApi(page: Page, options: FeedOptions = {}) {
+  const { items = feedItems(20), pageSize = 48, degraded = [] } = options;
+  const calls: URL[] = [];
+  await mockAdminApi(page, { sources: healthySources });
+  await page.route("https://cdn.example.test/p/**", (route) => {
+    const hue = (Number(route.request().url().match(/(\d+)\.svg$/)?.[1] ?? 0) * 47) % 360;
+    const body = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 72"><defs><linearGradient id="g" x2="1" y2="1"><stop offset="0" stop-color="hsl(${hue} 60% 72%)"/><stop offset="1" stop-color="hsl(${(hue + 40) % 360} 45% 34%)"/></linearGradient></defs><rect width="72" height="72" fill="url(#g)"/><rect x="22" y="20" width="28" height="34" rx="6" fill="hsl(${hue} 30% 96%)" opacity=".85"/><circle cx="36" cy="33" r="7" fill="hsl(${hue} 55% 45%)"/></svg>`;
+    return route.fulfill({ contentType: "image/svg+xml", body });
+  });
+  await page.route("**/api/v1/categories", (route) => route.fulfill({ json: CATEGORIES }));
+  await page.route(FEED_PATH, async (route) => {
+    const url = new URL(route.request().url());
+    calls.push(url);
+    if (options.hold) return;
+    const offset = Number(url.searchParams.get("cursor") ?? 0);
+    const status = offset ? (options.failMore ? 503 : 0) : options.status;
+    if (status) return route.fulfill({ status, contentType: "application/problem+json", json: problem(status, `e2e-feed-${status}`) });
+    const end = offset + pageSize;
+    const body: S["DiscoverPage"] = { items: items.slice(offset, end), next_cursor: end < items.length ? String(end) : null, as_of: at(6), degraded };
+    return route.fulfill({ json: body });
+  });
+  return calls;
+}
