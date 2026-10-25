@@ -49,6 +49,8 @@ export interface NavItem {
   phase: number;
   /** What the page will show; used by the palette and the coming-soon page. */
   summary: string;
+  /** Built ahead of `CURRENT_PHASE`: a task of the running phase shipped it. */
+  built?: true;
 }
 
 export interface NavGroup {
@@ -67,7 +69,7 @@ export const navGroups: NavGroup[] = [
   {
     label: "Research",
     items: [
-      { label: "Discover", href: "/discover", icon: Compass, phase: 2, summary: "Trending products with lifecycle stage, trend score, margin and freshness on every row." },
+      { label: "Discover", href: "/discover", icon: Compass, phase: 2, built: true, summary: "Trending products with lifecycle stage, trend score, margin and freshness on every row." },
       { label: "Screener", href: "/screener", icon: SlidersHorizontal, phase: 4, summary: "Filter every tracked product by any metric and save the screens you reuse." },
       { label: "Compare", href: "/compare", icon: Columns3, phase: 8, summary: "Up to four products side by side: demand, suppliers, margin and risk." },
       { label: "Niches", href: "/niches", icon: LayoutGrid, phase: 8, summary: "Categories ranked by growth, saturation and margin." },
@@ -135,8 +137,8 @@ const detailRoutes = [
 
 export const allNavItems: NavItem[] = [...navGroups.flatMap((g) => g.items), settingsItem];
 
-export function isBuilt(item: Pick<NavItem, "phase">): boolean {
-  return item.phase <= CURRENT_PHASE;
+export function isBuilt(item: Pick<NavItem, "phase" | "built">): boolean {
+  return item.built === true || item.phase <= CURRENT_PHASE;
 }
 
 export interface ResolvedRoute {

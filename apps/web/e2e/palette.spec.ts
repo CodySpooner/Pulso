@@ -50,7 +50,7 @@ test.describe("command palette", () => {
     await expect(page).toHaveURL(/\/discover$/);
     await expect(page.getByRole("dialog")).toBeHidden();
     await expect(page.getByRole("heading", { level: 1, name: "Discover" })).toBeFocused();
-    await expect(page.getByText("Discover arrives in Phase 2")).toBeVisible();
+    await expect(page.getByText("Products across your sources.")).toBeVisible(); // built in UX-2 (p2-03)
   });
 
   test("typing filters the commands", async ({ page }) => {

@@ -1,24 +1,66 @@
-"""Product resources (UX-3). Products are global market data: auth applies, no workspace filter."""
+"""Product resources (UX-3, UX-2): global market data, so auth applies and no workspace filter."""
 
-from collections.abc import Callable
-from datetime import UTC, datetime, timedelta
+import json
+from collections import defaultdict
+from collections.abc import Callable, Sequence
+from datetime import UTC, datetime, time, timedelta
 from typing import Annotated, Any, Literal
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Request
-from pydantic import AwareDatetime, BaseModel
-from sqlalchemy import Row, select
+from fastapi import APIRouter, Depends, Query, Request
+from pydantic import (
+    AwareDatetime,
+    BaseModel,
+    BeforeValidator,
+    Field,
+    TypeAdapter,
+    ValidationError,
+)
+from sqlalchemy import (
+    Double,
+    Row,
+    and_,
+    case,
+    distinct,
+    exists,
+    func,
+    literal,
+    select,
+    true,
+    tuple_,
+)
 from sqlalchemy.orm import Session
+from sqlalchemy.sql import ColumnElement
 from starlette.responses import RedirectResponse, Response
 
 from pulso_api.auth import current_principal
 from pulso_api.dependencies import get_db
 from pulso_api.errors import APIError
 from pulso_api.schemas.provenance import NoSource, Sourced, Stat
-from pulso_core.models import Category, Image, Listing, ListingSnapshot, Product, Source
+from pulso_core.models import (
+    Category,
+    Image,
+    Listing,
+    ListingSnapshot,
+    Product,
+    ProductDailyFeature,
+    RawPayload,
+    Source,
+)
 
 router = APIRouter(prefix="/v1/products", dependencies=[Depends(current_principal)])
+categories_router = APIRouter(prefix="/v1/categories", dependencies=[Depends(current_principal)])
+DB = Annotated[Session, Depends(get_db)]
 NO_PRICE = "No USD retail price observed yet."
+NO_SIGNAL = "No demand family has a 7-day growth yet."  # the UI reads "Insufficient signal"
+NO_MARGIN = "The landed-cost engine arrives with UX-8."
+# Demand families that carry units, best grade first (vault Intelligence/Demand Signals).
+# gt_slope is keyword-level, never a velocity.
+FAMILIES = {
+    "shp_inv": ("A", "shopify_stores", "Shopify inventory drops"),
+    "shp_bump": ("B", "shopify_stores", "Shopify updated_at bumps, a lower bound"),
+    "cj_stock": ("unproven", "cj", "CJ warehouse stock drops"),
+}
 
 
 class ProductHeader(BaseModel):
@@ -34,42 +76,69 @@ class ProductHeader(BaseModel):
     price_max_minor: Stat
 
 
+class Velocity(Sourced):
+    """V7 (units/7d) of the product's best-graded demand family on its latest feature day."""
+
+    family: str  # product_daily_features.family, e.g. "shp_bump"
+    grade: Literal["A", "B", "unproven"]
+    growth: float  # G7 = ln((V7 + 5) / (V7 a week earlier + 5)): the momentum sort key (DEC-040)
+    gap: bool  # the window overlaps a collection gap
+
+
+class DiscoverItem(ProductHeader):
+    velocity: Velocity | NoSource
+    best_margin_minor: NoSource
+    as_of: AwareDatetime | None  # the oldest family feeding the card; null when nothing does
+    stale: bool  # some family feeding the card is past twice its source's interval
+
+
+class Degraded(BaseModel):
+    source: str
+    source_name: str
+    state: Literal["blocked", "disabled", "stale"]
+    since: AwareDatetime | None  # disabled_at, or the last capture of a stale source
+
+
+class DiscoverPage(BaseModel):
+    items: list[DiscoverItem]
+    next_cursor: str | None = Field(
+        description="Pass as `cursor` with the same sort for the next page."
+    )
+    as_of: AwareDatetime | None  # the newest capture of a source feeding the feed
+    degraded: list[Degraded]  # sources feeding the feed that are blocked, disabled or stale
+
+
+class CategoryOption(BaseModel):
+    id: int
+    path: str
+
+
+def is_stale(config: dict[str, Any], as_of: datetime, now: datetime) -> bool:
+    interval = config.get("expected_interval")  # seconds; without one a source is never stale
+    return isinstance(interval, int) and now - as_of > timedelta(seconds=2 * interval)
+
+
 def stat(
     row: Row[Any] | None, value: Callable[[Row[Any]], int], reason: str, now: datetime
 ) -> Stat:
     """The value from `row`, a listing's latest snapshot, with that snapshot's provenance."""
     if row is None:
         return NoSource(value=None, reason=reason)
-    interval = row.config.get("expected_interval")  # seconds; without one a source is never stale
     return Sourced(
         value=value(row),
         source=row.key,
         source_name=row.name,
         as_of=row.captured_at,
         raw_payload_id=row.raw_payload_id,
-        stale=isinstance(interval, int) and now - row.captured_at > timedelta(seconds=2 * interval),
+        stale=is_stale(row.config, row.captured_at, now),
     )
 
 
-@router.get(
-    "/{product_id}",
-    response_model=ProductHeader,
-    responses={308: {"description": "Merged: the survivor's URL, query string kept."}},
-)
-def get_product(
-    product_id: UUID, request: Request, session: Annotated[Session, Depends(get_db)]
-) -> Response | ProductHeader:
-    product = session.get(Product, product_id)
-    if product is None:
-        raise APIError(404, "not_found", "Product not found.")
-    if product.merged_into_id is not None:
-        # Relative, so it resolves under the web app's /api rewrite too. A chained merge
-        # redirects again.
-        query = f"?{request.url.query}" if request.url.query else ""
-        return RedirectResponse(f"{product.merged_into_id}{query}", status_code=308)
-    # The latest snapshot of each live listing: the observations every header stat comes from.
+def latest_snapshots(session: Session, product_ids: Sequence[UUID]) -> dict[UUID, list[Row[Any]]]:
+    """The latest snapshot of each live listing of these products: what every listing stat uses."""
     rows = session.execute(
         select(
+            Listing.product_id,
             Listing.store_id,
             Listing.supplier_id,
             ListingSnapshot.captured_at,
@@ -83,7 +152,7 @@ def get_product(
         )
         .join(Listing, Listing.id == ListingSnapshot.listing_id)
         .join(Source, Source.id == Listing.source_id)
-        .where(Listing.product_id == product.id, Listing.delisted_at.is_(None))
+        .where(Listing.product_id.in_(product_ids), Listing.delisted_at.is_(None))
         .order_by(
             ListingSnapshot.listing_id,
             ListingSnapshot.captured_at.desc(),
@@ -91,7 +160,13 @@ def get_product(
         )
         .distinct(ListingSnapshot.listing_id)
     ).all()
-    now = datetime.now(UTC)
+    grouped: dict[UUID, list[Row[Any]]] = defaultdict(list)
+    for row in rows:
+        grouped[row.product_id].append(row)
+    return grouped
+
+
+def listing_stats(rows: list[Row[Any]], now: datetime) -> dict[str, Stat]:
     stores = [row for row in rows if row.store_id is not None]
     suppliers = [row for row in rows if row.supplier_id is not None]
     # ponytail: USD-listed stores only (US market, owner decision 3); others wait for an FX basis.
@@ -106,6 +181,283 @@ def get_product(
     def high(row: Row[Any]) -> int:
         return int(row.price_max_minor if row.price_max_minor is not None else row.price_min_minor)
 
+    return {
+        "store_count": stat(
+            newest(stores),
+            lambda _: len({row.store_id for row in stores}),
+            "No store listing matched yet.",
+            now,
+        ),
+        "supplier_count": stat(
+            newest(suppliers),
+            lambda _: len({row.supplier_id for row in suppliers}),
+            "No supplier listing matched yet.",
+            now,
+        ),
+        "price_min_minor": stat(min(priced, key=low, default=None), low, NO_PRICE, now),
+        "price_max_minor": stat(max(priced, key=high, default=None), high, NO_PRICE, now),
+    }
+
+
+Sort = Literal["momentum", "newest", "fewest_sellers"]
+CURSORS: dict[str, TypeAdapter[Any]] = {
+    "momentum": TypeAdapter(tuple[float | None, UUID]),  # null: insufficient signal
+    "newest": TypeAdapter(tuple[AwareDatetime, UUID]),
+    "fewest_sellers": TypeAdapter(tuple[int, UUID]),
+}
+
+
+@router.get("", response_model=DiscoverPage)
+def list_products(
+    session: DB,
+    sort: Sort = "momentum",
+    category: Annotated[int | None, Query(ge=1)] = None,
+    price_min: Annotated[int | None, Query(ge=0, description="USD minor units")] = None,
+    price_max: Annotated[int | None, Query(ge=0, description="USD minor units")] = None,
+    source: Annotated[str | None, Query(max_length=80, description="A sources.key")] = None,
+    # A query string arrives as text; the Literal needs the int.
+    first_seen_days: Annotated[Literal[7, 30, 90] | None, BeforeValidator(int), Query()] = None,
+    has_sellers: bool | None = None,
+    cursor: str | None = None,
+    limit: Annotated[int, Query(ge=1, le=100)] = 48,
+) -> DiscoverPage:
+    """Discover (UX-2): non-merged products, filtered, sorted and keyset-paginated (DEC-239)."""
+    now = datetime.now(UTC)
+    snap = (
+        select(
+            ListingSnapshot.price_min_minor,
+            ListingSnapshot.price_max_minor,
+            ListingSnapshot.currency,
+        )
+        .where(ListingSnapshot.listing_id == Listing.id)
+        .order_by(ListingSnapshot.captured_at.desc(), ListingSnapshot.id.desc())
+        .limit(1)
+        .lateral()
+    )
+    usd_store = and_(Listing.store_id.is_not(None), snap.c.currency == "USD")
+    # The same rows as latest_snapshots, aggregated for filters and sorts over the whole set.
+    listings = (
+        select(
+            func.count(distinct(Listing.store_id)).label("store_count"),
+            func.min(snap.c.price_min_minor).filter(usd_store).label("price_low"),
+            func.max(func.coalesce(snap.c.price_max_minor, snap.c.price_min_minor))
+            .filter(usd_store)
+            .label("price_high"),
+        )
+        .select_from(Listing)
+        .join(snap, true())
+        .where(Listing.product_id == Product.id, Listing.delisted_at.is_(None))
+        .lateral()
+    )
+    pdf = ProductDailyFeature
+    rank = case({family: i for i, family in enumerate(FAMILIES)}, value=pdf.family)
+    # The latest feature day with a growth, then the best-graded family on it.
+    feature = (
+        select(
+            pdf.family,
+            pdf.velocity_7d,
+            pdf.growth_7d,
+            pdf.has_gap,
+            pdf.feature_date,
+            pdf.computed_at,
+        )
+        .where(
+            pdf.product_id == Product.id,
+            pdf.family.in_(FAMILIES),
+            pdf.velocity_7d.is_not(None),
+            pdf.growth_7d.is_not(None),
+        )
+        .order_by(pdf.feature_date.desc(), rank, pdf.feature_version.desc())
+        .limit(1)
+        .lateral()
+    )
+    where: list[ColumnElement[bool]] = [Product.merged_into_id.is_(None)]
+    if category is not None:
+        where.append(Product.category_id == category)
+    if first_seen_days is not None:
+        where.append(Product.first_seen_at >= now - timedelta(days=first_seen_days))
+    if source is not None:
+        where.append(
+            exists().where(
+                Listing.product_id == Product.id,
+                Listing.delisted_at.is_(None),
+                Listing.source_id
+                == select(Source.id).where(Source.key == source).scalar_subquery(),
+            )
+        )
+    feed = (
+        select(
+            Product.id,
+            Product.name,
+            Product.first_seen_at,
+            Image.url.label("image_url"),
+            Category.path.label("category"),
+            listings.c.store_count,
+            listings.c.price_low,
+            listings.c.price_high,
+            feature.c.family,
+            feature.c.velocity_7d,
+            feature.c.growth_7d.label("growth"),
+            feature.c.has_gap,
+            feature.c.feature_date,
+            feature.c.computed_at,
+        )
+        .select_from(Product)
+        .join(listings, true())
+        .outerjoin(feature, true())
+        .outerjoin(Image, Image.id == Product.main_image_id)
+        .outerjoin(Category, Category.id == Product.category_id)
+        .where(*where)
+        .subquery()
+    )
+    filters: list[ColumnElement[bool]] = []
+    if price_min is not None:
+        filters.append(feed.c.price_high >= price_min)  # the price band overlaps the range
+    if price_max is not None:
+        filters.append(feed.c.price_low <= price_max)
+    if has_sellers is not None:
+        filters.append(feed.c.store_count > 0 if has_sellers else feed.c.store_count == 0)
+    key = {
+        "momentum": func.coalesce(feed.c.growth, literal(float("-inf"), Double)),
+        "newest": feed.c.first_seen_at,
+        "fewest_sellers": feed.c.store_count,
+    }[sort]
+    ascending = sort == "fewest_sellers"
+    if cursor is not None:
+        try:
+            after, after_id = CURSORS[sort].validate_json(cursor)
+        except ValidationError:
+            raise APIError(422, "invalid_cursor", "Invalid product cursor.") from None
+        after = float("-inf") if after is None else after
+        position = tuple_(key, feed.c.id)
+        filters.append(position > (after, after_id) if ascending else position < (after, after_id))
+    order = (key.asc(), feed.c.id.asc()) if ascending else (key.desc(), feed.c.id.desc())
+    rows = session.execute(select(feed).where(*filters).order_by(*order).limit(limit + 1)).all()
+    page = rows[:limit]
+
+    sources = session.execute(
+        select(
+            Source,
+            select(func.max(RawPayload.captured_at))
+            .where(RawPayload.source_id == Source.id)
+            .scalar_subquery()
+            .label("last_capture"),
+            exists()
+            .where(Listing.source_id == Source.id, Listing.product_id.is_not(None))
+            .label("feeding"),
+        ).order_by(Source.id)
+    ).all()
+    next_cursor = None
+    if len(rows) > limit:
+        last = rows[limit - 1]
+        value = {
+            "momentum": last.growth,
+            "newest": last.first_seen_at.isoformat(),
+            "fewest_sellers": last.store_count,
+        }[sort]
+        next_cursor = json.dumps([value, str(last.id)])
+    snapshots = latest_snapshots(session, [row.id for row in page])
+    by_key = {row.Source.key: row.Source for row in sources}
+    feeding = [row for row in sources if row.feeding]
+    degraded = []
+    for row in feeding:
+        source_row: Source = row.Source
+        if source_row.status == "blocked" or not source_row.enabled:
+            state: Literal["blocked", "disabled", "stale"] = (
+                "blocked" if source_row.status == "blocked" else "disabled"
+            )
+            degraded.append(
+                Degraded(
+                    source=source_row.key,
+                    source_name=source_row.name,
+                    state=state,
+                    since=source_row.disabled_at,
+                )
+            )
+        elif row.last_capture is not None and is_stale(source_row.config, row.last_capture, now):
+            degraded.append(
+                Degraded(
+                    source=source_row.key,
+                    source_name=source_row.name,
+                    state="stale",
+                    since=row.last_capture,
+                )
+            )
+    return DiscoverPage(
+        items=[item(row, snapshots[row.id], by_key, now) for row in page],
+        next_cursor=next_cursor,
+        as_of=max((row.last_capture for row in feeding if row.last_capture), default=None),
+        degraded=degraded,
+    )
+
+
+def item(
+    row: Row[Any], snapshots: list[Row[Any]], sources: dict[str, Source], now: datetime
+) -> DiscoverItem:
+    stats = listing_stats(snapshots, now)
+    velocity: Velocity | NoSource = NoSource(value=None, reason=NO_SIGNAL)
+    if row.family is not None:
+        grade, key, method = FAMILIES[row.family]
+        # Features for day d use only captures before d+1 00:00Z (DEC-031).
+        as_of = min(
+            datetime.combine(row.feature_date + timedelta(days=1), time(), UTC), row.computed_at
+        )
+        velocity = Velocity(
+            value=round(row.velocity_7d),
+            source=key,
+            source_name=sources[key].name,
+            as_of=as_of,
+            raw_payload_id=None,
+            method=method,
+            stale=is_stale(sources[key].config, as_of, now),
+            family=row.family,
+            grade=grade,
+            growth=row.growth,
+            gap=row.has_gap,
+        )
+    # Each family's newest capture: stores (and their prices), suppliers, demand.
+    fed = [
+        s
+        for s in (stats["store_count"], stats["supplier_count"], velocity)
+        if isinstance(s, Sourced)
+    ]
+    return DiscoverItem(
+        id=row.id,
+        title=row.name,
+        image_url=row.image_url,
+        category=row.category,
+        first_seen_at=row.first_seen_at,
+        currency="USD",
+        **stats,
+        velocity=velocity,
+        best_margin_minor=NoSource(value=None, reason=NO_MARGIN),
+        as_of=min((s.as_of for s in fed), default=None),
+        stale=any(s.stale for s in fed),
+    )
+
+
+@categories_router.get("", response_model=list[CategoryOption])
+def list_categories(session: DB) -> list[CategoryOption]:
+    """Categories that hold at least one non-merged product: Discover's category filter."""
+    used = exists().where(Product.category_id == Category.id, Product.merged_into_id.is_(None))
+    rows = session.execute(select(Category.id, Category.path).where(used).order_by(Category.path))
+    return [CategoryOption(id=row.id, path=row.path) for row in rows]
+
+
+@router.get(
+    "/{product_id}",
+    response_model=ProductHeader,
+    responses={308: {"description": "Merged: the survivor's URL, query string kept."}},
+)
+def get_product(product_id: UUID, request: Request, session: DB) -> Response | ProductHeader:
+    product = session.get(Product, product_id)
+    if product is None:
+        raise APIError(404, "not_found", "Product not found.")
+    if product.merged_into_id is not None:
+        # Relative, so it resolves under the web app's /api rewrite too. A chained merge
+        # redirects again.
+        query = f"?{request.url.query}" if request.url.query else ""
+        return RedirectResponse(f"{product.merged_into_id}{query}", status_code=308)
     return ProductHeader(
         id=product.id,
         title=product.name,
@@ -113,18 +465,5 @@ def get_product(
         category=session.scalar(select(Category.path).where(Category.id == product.category_id)),
         first_seen_at=product.first_seen_at,
         currency="USD",
-        store_count=stat(
-            newest(stores),
-            lambda _: len({row.store_id for row in stores}),
-            "No store listing matched yet.",
-            now,
-        ),
-        supplier_count=stat(
-            newest(suppliers),
-            lambda _: len({row.supplier_id for row in suppliers}),
-            "No supplier listing matched yet.",
-            now,
-        ),
-        price_min_minor=stat(min(priced, key=low, default=None), low, NO_PRICE, now),
-        price_max_minor=stat(max(priced, key=high, default=None), high, NO_PRICE, now),
+        **listing_stats(latest_snapshots(session, [product.id])[product.id], datetime.now(UTC)),
     )

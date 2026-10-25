@@ -24,10 +24,10 @@ describe("nav config", () => {
     for (const path of ["/nope", "/products", "/products/1/extra", "/admin"]) expect(resolveRoute(path)).toBeUndefined();
   });
 
-  test("hrefs are unique and Phase 1 builds Data Health on top of Phase 0", () => {
+  test("hrefs are unique; Phase 1 builds Data Health on Phase 0, and UX-2 ships Discover in Phase 2", () => {
     const hrefs = allNavItems.map((i) => i.href);
     expect(new Set(hrefs).size).toBe(hrefs.length);
-    expect(allNavItems.filter(isBuilt).map((i) => i.href)).toEqual(["/", "/admin/data-health", "/admin/ui"]);
+    expect(allNavItems.filter(isBuilt).map((i) => i.href)).toEqual(["/", "/discover", "/admin/data-health", "/admin/ui"]);
     expect(resolveRoute("/admin/ui")).toMatchObject({ group: "Admin", item: { label: "UI gallery" } });
   });
 

@@ -20,6 +20,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     func,
+    text,
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -56,6 +57,14 @@ class CategoryMapping(Base):
 
 class Product(Base):
     __tablename__ = "products"
+    __table_args__ = (  # Discover's newest sort, scanned backward (DEC-239)
+        Index(
+            "ix_products_first_seen_at_id",
+            "first_seen_at",
+            "id",
+            postgresql_where=text("merged_into_id IS NULL"),
+        ),
+    )
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
     name: Mapped[str] = mapped_column(Text)
     category_id: Mapped[int | None] = mapped_column(ForeignKey("categories.id"), index=True)

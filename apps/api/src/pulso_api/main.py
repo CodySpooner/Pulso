@@ -85,6 +85,7 @@ def create_app() -> FastAPI:
     app.include_router(account.router)
     app.include_router(admin.router)
     app.include_router(products.router)
+    app.include_router(products.categories_router)
     app.dependency_overrides[admin.get_publisher] = get_publisher
     return app
 

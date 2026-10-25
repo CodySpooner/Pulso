@@ -1,11 +1,13 @@
+import math
 from collections.abc import Iterator
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from typing import Any
 from uuid import UUID, uuid4
 
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from sqlalchemy import event, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session
 
@@ -19,6 +21,7 @@ from pulso_core.models import (
     Listing,
     ListingSnapshot,
     Product,
+    ProductDailyFeature,
     RawPayload,
     Source,
     Store,
@@ -231,3 +234,291 @@ def test_merged_product_redirects_to_the_survivor(api: TestClient, db_engine: En
     assert followed.status_code == 200
     assert followed.json()["id"] == str(ids[1])
     assert followed.url.query == b"tab=profit&supplier=99102"
+
+
+# The Discover feed (UX-2, DEC-239).
+
+
+def seed_product(
+    session: Session,
+    name: str,
+    days_old: float,
+    *,
+    stores: tuple[tuple[int, int | None], ...] = (),
+    suppliers: int = 0,
+    features: tuple[
+        tuple[str, int, float, float | None, bool], ...
+    ] = (),  # family, days ago, V7, G7, gap
+    category_id: int | None = None,
+) -> Product:
+    product = Product(
+        name=name, first_seen_at=NOW - timedelta(days=days_old), category_id=category_id
+    )
+    session.add(product)
+    session.flush()
+    for low, high in stores:
+        store = Store(domain=f"{uuid4().hex}.example.test", platform="shopify")
+        session.add(store)
+        session.flush()
+        row = listing(session, product, 1, store_id=store.id)
+        snapshot(session, row, 6, price_min_minor=low, price_max_minor=high)
+    for _ in range(suppliers):
+        supplier = Supplier(platform="cj", external_id=uuid4().hex, name="CJ supplier")
+        session.add(supplier)
+        session.flush()
+        snapshot(
+            session, listing(session, product, 2, supplier_id=supplier.id), 9, price_min_minor=800
+        )
+    for family, days_ago, v7, growth, gap in features:
+        session.add(
+            ProductDailyFeature(
+                product_id=product.id,
+                feature_date=(NOW - timedelta(days=days_ago)).date(),
+                family=family,
+                feature_version="1",
+                velocity_7d=v7,
+                growth_7d=growth,
+                coverage=1,
+                has_gap=gap,
+            )
+        )
+    session.flush()
+    return product
+
+
+def g7(v7: float, v7_prev: float) -> float:
+    """Velocity & Acceleration step 3 with k = 5: what the feature job stores as growth_7d."""
+    return math.log((v7 + 5) / (v7_prev + 5))
+
+
+@pytest.fixture
+def feed(api: TestClient, db_engine: Engine) -> dict[str, str]:
+    with Session(db_engine) as session:
+        session.add(Category(id=7, name="Lamps", path="Home & Garden > Lighting > Lamps"))
+        session.flush()
+        products = {
+            # 1 → 3 units/7d is +200% raw but G7 0.288; 20 → 35 is +75% raw but G7 0.470.
+            "small_base": seed_product(
+                session,
+                "Small base",
+                1,
+                stores=((2400, 3900),),
+                features=(("shp_bump", 1, 3, g7(3, 1), False),),
+            ),
+            "steady": seed_product(
+                session,
+                "Steady",
+                5,
+                stores=((1500, None), (2000, 2500)),
+                suppliers=1,
+                category_id=7,
+                features=(
+                    ("shp_bump", 1, 35, g7(35, 20), True),
+                    ("cj_stock", 1, 90, 2.5, False),  # same day, worse grade
+                    ("shp_inv", 3, 50, 3.0, False),  # better grade, older day
+                ),
+            ),
+            "supplier_only": seed_product(
+                session,
+                "Supplier only",
+                40,
+                suppliers=2,
+                features=(("cj_stock", 2, 12, g7(12, 30), False),),
+            ),
+            # A gapped window: V7 and G7 NULL, so no family qualifies.
+            "no_signal": seed_product(
+                session,
+                "No signal",
+                5,
+                stores=((6000, 9000),),
+                features=(("shp_bump", 1, 4, None, True),),
+            ),
+            "old": seed_product(session, "Old", 120, stores=((900, 1200),), category_id=7),
+            "unmatched": seed_product(session, "Unmatched", 5),
+        }
+        session.add(Product(name="Merged", merged_into_id=products["steady"].id, first_seen_at=NOW))
+        session.commit()
+        return {key: str(product.id) for key, product in products.items()}
+
+
+def walk(api: TestClient, limit: int = 2, **query: Any) -> list[dict[str, Any]]:
+    """Every item of one query, following next_cursor page by page."""
+    items: list[dict[str, Any]] = []
+    cursor = None
+    while True:
+        params = {**query, "limit": limit} | ({"cursor": cursor} if cursor else {})
+        response = api.get("/v1/products", params=params)
+        assert response.status_code == 200, response.json()
+        body = response.json()
+        items += body["items"]
+        cursor = body["next_cursor"]
+        if cursor is None:
+            return items
+
+
+@pytest.mark.db
+def test_every_sort_pages_every_product_exactly_once(api: TestClient, feed: dict[str, str]) -> None:
+    names = {value: key for key, value in feed.items()}
+    orders = {}
+    for sort in ("momentum", "newest", "fewest_sellers"):
+        ids = [item["id"] for item in walk(api, sort=sort)]
+        assert sorted(ids) == sorted(feed.values()), (
+            sort
+        )  # the merged product never appears; none twice
+        assert ids == [item["id"] for item in walk(api, limit=100, sort=sort)], sort
+        orders[sort] = [names[i] for i in ids]
+    # Latest day first, then the best grade on it; G7 ranks 20 → 35 above 1 → 3 (raw % would not).
+    assert orders["momentum"][:3] == ["steady", "small_base", "supplier_only"]
+    assert set(orders["momentum"][3:]) == {
+        "no_signal",
+        "old",
+        "unmatched",
+    }  # insufficient signal sinks
+    assert orders["newest"][0] == "small_base"
+    assert orders["newest"][-2:] == ["supplier_only", "old"]
+    stores = {item["id"]: item["store_count"]["value"] or 0 for item in walk(api, limit=100)}
+    assert [stores[feed[name]] for name in orders["fewest_sellers"]] == [0, 0, 1, 1, 1, 2]
+
+
+@pytest.mark.db
+def test_each_filter_narrows_the_feed(api: TestClient, feed: dict[str, str]) -> None:
+    def names(**query: Any) -> set[str]:
+        ids = {item["id"] for item in walk(api, limit=100, **query)}
+        return {key for key, value in feed.items() if value in ids}
+
+    assert names() == set(feed)
+    assert names(category=7) == {"steady", "old"}
+    assert names(price_min=3000) == {"small_base", "no_signal"}  # the band reaches $30
+    assert names(price_max=1600) == {"steady", "old"}  # the band starts at or under $16
+    assert names(price_min=1300, price_max=2000) == {"steady"}
+    assert names(source="cj") == {"steady", "supplier_only"}
+    assert names(source="google_trends") == set()
+    assert names(first_seen_days=7) == {"small_base", "steady", "no_signal", "unmatched"}
+    assert names(first_seen_days=90) == set(feed) - {"old"}
+    assert names(has_sellers=True) == {"small_base", "steady", "no_signal", "old"}
+    assert names(has_sellers=False) == {"supplier_only", "unmatched"}
+    assert names(has_sellers=True, category=7, sort="newest") == {"steady", "old"}
+
+
+@pytest.mark.db
+def test_feed_items_trace_every_number(api: TestClient, feed: dict[str, str]) -> None:
+    body = api.get("/v1/products", params={"limit": 100}).json()
+    items = {item["id"]: item for item in body["items"]}
+    steady = items[feed["steady"]]
+    assert steady["velocity"] | {"as_of": None} == {
+        "value": 35,
+        "source": "shopify_stores",
+        "source_name": "Shopify stores",
+        "as_of": None,
+        "raw_payload_id": None,
+        "method": "Shopify updated_at bumps, a lower bound",
+        "stale": False,
+        "family": "shp_bump",
+        "grade": "B",
+        "growth": pytest.approx(math.log(40 / 25)),
+        "gap": True,
+    }
+    # A feature day's data ends at the next 00:00Z (DEC-031), or earlier if computed sooner.
+    day_end = datetime.combine((NOW - timedelta(days=1)).date() + timedelta(days=1), time(), UTC)
+    assert datetime.fromisoformat(steady["velocity"]["as_of"]) <= day_end
+    assert (steady["store_count"]["value"], steady["supplier_count"]["value"]) == (2, 1)
+    assert (steady["price_min_minor"]["value"], steady["price_max_minor"]["value"]) == (1500, 2500)
+    assert steady["category"] == "Home & Garden > Lighting > Lamps"
+    # The card's freshness is its oldest feeding family: the CJ snapshot, 9 h ago.
+    assert datetime.fromisoformat(steady["as_of"]) == NOW - timedelta(hours=9)
+    for each in items.values():
+        assert each["best_margin_minor"] == {
+            "value": None,
+            "reason": "The landed-cost engine arrives with UX-8.",
+        }
+    for key in ("no_signal", "old", "unmatched"):
+        assert items[feed[key]]["velocity"] == {
+            "value": None,
+            "reason": "No demand family has a 7-day growth yet.",
+        }
+    assert items[feed["unmatched"]]["as_of"] is None
+    assert items[feed["unmatched"]]["store_count"] == {
+        "value": None,
+        "reason": "No store listing matched yet.",
+    }
+    # The seeded sources are disabled: both feeding sources say so; Trends feeds nothing.
+    assert [(d["source"], d["state"]) for d in body["degraded"]] == [
+        ("shopify_stores", "disabled"),
+        ("cj", "disabled"),
+    ]
+    assert datetime.fromisoformat(body["as_of"]) > NOW - timedelta(
+        minutes=5
+    )  # the newest raw payload
+
+
+@pytest.mark.db
+def test_feed_rejects_bad_queries(api: TestClient, feed: dict[str, str]) -> None:
+    for query in (
+        {"limit": 101},
+        {"limit": 0},
+        {"first_seen_days": 14},
+        {"sort": "trend"},
+        {"price_min": -1},
+        {"cursor": "nope"},
+        {"cursor": '["x", "y"]'},
+        {"sort": "newest", "cursor": "[1, 2]"},
+    ):
+        assert api.get("/v1/products", params=query).status_code == 422, query
+
+
+@pytest.mark.db
+def test_categories_lists_categories_in_use(api: TestClient, db_engine: Engine) -> None:
+    with Session(db_engine) as session:
+        session.add_all(
+            [
+                Category(id=1, name="Lamps", path="Home > Lamps"),
+                Category(id=2, name="Rugs", path="Home > Rugs"),
+            ]
+        )
+        session.flush()
+        session.add(Product(name="Lamp", category_id=1))
+        session.commit()
+    assert api.get("/v1/categories").json() == [{"id": 1, "path": "Home > Lamps"}]
+
+
+@pytest.mark.db
+def test_newest_pages_scan_the_first_seen_index_backward(
+    api: TestClient, db_engine: Engine
+) -> None:
+    with db_engine.begin() as connection:
+        connection.execute(
+            text("""
+            INSERT INTO products (id, name, first_seen_at, merged_into_id)
+            SELECT gen_random_uuid(), 'p' || i, now() - i * interval '1 minute', NULL
+            FROM generate_series(1, 20000) i
+        """)
+        )
+        connection.execute(text("ANALYZE products"))
+    queries: list[tuple[str, Any]] = []
+
+    def capture(conn: Any, cursor: Any, statement: str, parameters: Any, *_: Any) -> None:
+        if "ORDER BY" in statement and "anon_1.first_seen_at DESC" in statement:
+            queries.append((statement, parameters))
+
+    event.listen(db_engine, "before_cursor_execute", capture)
+    try:
+        first = api.get("/v1/products", params={"sort": "newest"}).json()
+        api.get("/v1/products", params={"sort": "newest", "cursor": first["next_cursor"]})
+    finally:
+        event.remove(db_engine, "before_cursor_execute", capture)
+    assert len(queries) == 2
+    with db_engine.connect() as connection:
+        for sql, params in queries:
+            plan = connection.exec_driver_sql(
+                "EXPLAIN (ANALYZE, FORMAT JSON) " + sql, params
+            ).scalar_one()[0]["Plan"]
+            # The outer chain down to the products scan: no sort of the feed. A lateral's own few
+            # rows (count DISTINCT per product) may sort; those hang off the inner side.
+            outer = [plan]
+            while outer[-1].get("Plans"):
+                outer.append(outer[-1]["Plans"][0])
+            assert [step["Node Type"] for step in outer if step["Node Type"] == "Sort"] == []
+            scan = outer[-1]
+            assert scan["Index Name"] == "ix_products_first_seen_at_id"
+            assert scan["Scan Direction"] == "Backward"
+            assert scan["Actual Rows"] == 49  # one page plus the probe row, never the table

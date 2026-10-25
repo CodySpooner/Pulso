@@ -129,3 +129,9 @@ This file holds deferred ideas and research extras that are **not** in the §11 
 | Data Health keyboard shortcuts (J/K, Enter, R with confirm, G, /) | vault Data Health, Keyboard | UI polish pass | The page is fully Tab-operable today |
 | Feed the top-bar "Data as of" chip and the Daily Pulse host chip and copy from DH-1 | App Shell & Navigation; imp-001 | Next shell task | Both still show Phase 0 placeholders; outside P1-12's file ownership |
 | Default `/api/v1/admin/*` stub for e2e specs that don't mock it | P1-12 | CI hygiene | The shell's badge and host footer call the API on every page, so unmocked specs log proxy errors (tests still pass) |
+
+## P2-03 Discover feed follow-ups (2026-10-24)
+
+| Deferred work | Evidence | When | Notes |
+|---|---|---|---|
+| Revisit Discover's aggregate sorts (momentum, fewest stores) and the price / has-stores filters | DEC-239 (g), DEC-041; lead answer on p2-03 | When unmerged products pass about 50k | Today each page runs LATERAL aggregates over the filtered set, then ORDER BY + keyset in SQL. Options then: a materialized per-product sort row refreshed by the feature job, or indexes on a denormalized store count. Only `newest` has an index (0006) |
