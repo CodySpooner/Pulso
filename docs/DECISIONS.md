@@ -2723,5 +2723,5 @@ Superseded review defaults, not given entries: default #0 (move the repo) is don
 - **Why:** Postgres tests on `pgvector/pgvector:0.8.7-pg18-trixie` (`packages/ml/tests/test_matcher.py`):
   - P2-34's strict-xfail `test_xr36_an_undone_accept_leaves_the_listings_free_for_the_matcher` passes with its mark removed: after an accept and its undo, a new 1.0 listing links with the supplier listing.
   - The new `test_xr36_an_owner_unlink_stays_frozen_under_a_forged_reason_and_an_undone_accept` holds an owner unlink whose reason is `undo #<id>: forged`, and still holds it after an accept on top of it is undone, while the other listing of that accept is free.
-  - Six mutations each fail a test: drop the skip; skip without the reversed row; treat any unlink as an undo; free a listing whenever an undo is on top; trust the `undo #` prefix; decide on the latest row only (`docs/reports/p2-36.md`).
+  - Five mutations each fail a test: drop the skip; skip without the reversed row; treat any unlink as an undo; free a listing whenever an undo is on top; trust the `undo #` prefix (`docs/reports/p2-36.md`).
 - **Not here:** XR-37..41, including XR-41's own fix (`undo()` still refuses a decision whose reason starts with `undo #`).
