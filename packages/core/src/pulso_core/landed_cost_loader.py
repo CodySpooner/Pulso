@@ -62,6 +62,7 @@ class Calc:
     inputs: Inputs  # what landed_cost() was given: the rates the lines use
     days: tuple[int | None, int | None] = (None, None)  # the freight quote's min and max days
     in_stock: bool = True  # stocked(): not known to be out of stock; True with no listing (DEC-295)
+    quote_id: int | None = None  # the shipping_options row the freight line uses (R-21)
 
 
 def traced(session: Session, row: Row[Any], name: str) -> tuple[Amount, dict[str, Provenance]]:
@@ -285,7 +286,10 @@ def calculate(
         days = (chosen.min_days, chosen.max_days) if chosen else (None, None)
         quoted = chosen.method if chosen else None  # never `method`: the next listing asks for it
         stock = stocked(session, listing)
-        calcs[listing] = Calc(listing, quoted, landed_cost(inputs), found, inputs, days, stock)
+        quote = chosen.id if chosen else None
+        calcs[listing] = Calc(
+            listing, quoted, landed_cost(inputs), found, inputs, days, stock, quote
+        )
     if not calcs:
         return Calc(None, None, landed_cost(base), sources, base)
     # In stock first, as Suppliers' Best margin (DEC-264 b); with none, the out-of-stock ones.

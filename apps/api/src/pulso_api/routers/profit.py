@@ -44,9 +44,10 @@ OVERRIDES = {
 OWNER = {"settings": "Workspace settings", "owner_estimate": "Your estimate"}  # source_name
 
 
-class ProfitCalcRequest(BaseModel):
+class ProfitScenario(BaseModel):
+    """A Profit calc's inputs for a product named elsewhere (the Testing Board's snapshot)."""
+
     model_config = ConfigDict(extra="forbid")
-    product_id: UUID
     supplier_listing_id: Id | None = Field(
         None,
         description="A supplier listing of the product (supplier_offers.listing_id). "
@@ -72,6 +73,10 @@ class ProfitCalcRequest(BaseModel):
     )
 
 
+class ProfitCalcRequest(ProfitScenario):
+    product_id: UUID
+
+
 class InputSource(BaseModel):
     source: str = Field(description="sources.key, or `settings` / `owner_estimate`.")
     source_name: str
@@ -91,6 +96,7 @@ class ProfitCalc(BaseModel):
     variant_id: int | None
     quantity: int
     method: str | None  # the freight quote's shipping method
+    freight_quote_id: int | None = Field(description="The shipping_options row freight uses.")
     freight_min_days: int | None  # the freight quote's delivery days
     freight_max_days: int | None
     ddp: bool
@@ -191,6 +197,7 @@ def calc_profit(
         variant_id=body.variant_id,
         quantity=body.quantity,
         method=calc.method,
+        freight_quote_id=calc.quote_id,
         freight_min_days=calc.days[0],
         freight_max_days=calc.days[1],
         ddp=body.ddp,

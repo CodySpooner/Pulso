@@ -22,7 +22,7 @@ const RATES = ["duty_bps", "customs_fee_minor", "payment_fee_bps", "payment_fee_
  *  `test_the_profit_tab_gets_net_profit_rates_freight_days_and_named_sources` pins these numbers to the server. */
 export const complete: Calc = {
   product_id: PRODUCT_ID, supplier_listing_id: 88123, in_stock: true, variant_id: null, quantity: 1, method: "CJPacket", freight_min_days: 8,
-  freight_max_days: 12, ddp: false, currency: "USD",
+  freight_max_days: 12, freight_quote_id: 901881, ddp: false, currency: "USD",
   price_minor: 2999, goods_minor: 620, freight_minor: 485, duty_minor: 124, customs_fee_minor: 0, payment_fee_minor: 117,
   shopify_fee_minor: 0, returns_minor: 150, landed_cost_minor: 1229, margin_minor: 1503, margin_bps: 5012, ad_cost_minor: 1500,
   net_minor: 3, net_bps: 10, duty_bps: 2000, payment_fee_bps: 290, payment_fee_fixed_minor: 30, shopify_fee_bps: 0, returns_bps: 500,

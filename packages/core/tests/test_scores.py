@@ -184,7 +184,7 @@ def test_phase4_round_trip_refuses_to_drop_scores(db_engine: Engine) -> None:
         command.downgrade(config, "0015")
         assert connection.scalar(text("SELECT to_regclass('scores')")) is None
         command.upgrade(config, "head")
-        assert connection.scalar(version_num) == "0016"
+        assert connection.scalar(version_num) == "0017"
         lifecycle = ScoreRow(
             make_product(connection),
             date(2026, 12, 14),
@@ -196,4 +196,4 @@ def test_phase4_round_trip_refuses_to_drop_scores(db_engine: Engine) -> None:
         write(Session(connection), [lifecycle])
         with pytest.raises(DBAPIError, match="lossy downgrade"), connection.begin_nested():
             command.downgrade(config, "0015")
-        assert connection.scalar(version_num) == "0016"
+        assert connection.scalar(version_num) == "0017"
