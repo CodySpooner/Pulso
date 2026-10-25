@@ -2144,3 +2144,45 @@ Superseded review defaults, not given entries: default #0 (move the repo) is don
 - **Alternatives:** moving the listing with fewer snapshots (it moves listings off established products, and can empty a product or split a group); capping the score on an insane price (hides the real score); per-value env config (unversioned); a pinned version string plus a fingerprint test (two things to keep in step); the vault's title top-10 and pHash ≤ 8 candidate arms (left until M-2 part b gives real embeddings to tune them on).
 - **Why:** fixed-vector tests cover both thresholds exactly and one step below each, renormalised missing components, an insane price that only queues, and JPY (exponent 0) and KWD (exponent 3) prices that raw minor units would misjudge. Postgres tests on `pgvector/pgvector:0.8.7-pg18-trixie` show the neighbour query planned as `Index Scan using ix_images_embedding`, the same-store and same-product (merged included) exclusions, pending-only re-scoring, a rejected pair and a manual decision surviving re-runs, and an R-15 universe where every changed `listings.product_id` has exactly one decision and a second run writes nothing.
 - **Not in this task:** OpenCLIP embeddings (M-2 part b; every real row's embedding is NULL today, so the matcher has no work yet), GTIN (M-4), the merge/split service and membership(t) replay (M-5), the queue UI and admin endpoints (UX-1), new singleton products for unmatched listings, an `ml` worker service and schedule on the collector host, and calibration on the owner's labels.
+
+### DEC-253 · Categories: Google Product Taxonomy 2021-09-21 vendored in `pulso_core`, an idempotent loader keyed on Google's id, and a reviewed rules file plus a title fallback for `category_source='rule'`
+**2026-10-25 · proposed (p2-17)** · Phase 2 task M-6; DEC-040, DEC-237; SPEC §4.4, §6.17; vault Data/Product Matching, Data/Data Model (categories); no migration, dependency, Celery task or CI change
+- **Decision:**
+  - **(a) Reference data, not a source.** `packages/core/src/pulso_core/data/google_product_taxonomy.txt` is Google's en-US file with ids (`https://www.google.com/basepages/producttype/taxonomy-with-ids.en-US.txt`). It was fetched once on 2026-10-25 and kept unmodified: version `2021-09-21`, 5,595 categories, sha256 `30039729…478fce`. No licence or reuse terms are stated on the file or on its Merchant Center help page (`support.google.com/merchants/answer/6324436`); only Google's generic Terms of Service apply. We use it inside Pulso to classify products, attributed in `docs/DATA_SOURCES.md` § Reference data. It is not under `infra/seeds/` (a protected path), and it ships in the `pulso-core` wheel.
+  - **(b) Loader** (`python -m pulso_core.taxonomy load`). Google's numeric id is `categories.id` (INTEGER; the largest is 543703). `parent_id` is the parent path's id, `name` the last segment, `path` the full ` > ` path. One `INSERT … ON CONFLICT (id) DO UPDATE … WHERE (parent_id, name, path) IS DISTINCT FROM excluded` returns only rows added or changed, so a rerun changes 0. Parsing raises on an orphan or a duplicate id or path. The loader never deletes: a category a future version drops stays for the products that point at it.
+  - **(c) Rules** (`pulso_core/data/category_rules.toml`, reviewed configuration). Values are Google paths, not ids, so a reviewer reads them. Loading raises on any path the vendored file lacks. A source category (today `listings.product_type`) resolves in this order:
+    1. its source's table (`[sources.shopify_stores]`, `[sources.cj]`);
+    2. any Google path or Google category name used only once ("Dog Beds", "Necklaces");
+    3. both steps again on the value's last `›` / `>` segment, so CJ's "Sports & Outdoors › Fitness" resolves through "fitness".
+
+    Matching is case-insensitive with spacing collapsed. Each table is per source.
+  - **(d) Title fallback.** `[keywords]` holds phrases matched as whole words in listing titles, then the product name. A trailing plural folds away on both sides. The longest phrase wins, then the earliest in the title. The keys cover the 50 seed niches and common product nouns; a single word is used only when it rarely means anything else (no bare "cat", "dog", "ring" or "cap").
+  - **(e) Refinement.** A title category that sits under the source category refines it: "Home" + "Sunset lamp" gives Lamps. A title category elsewhere in the tree never overrides the source category: "Pet Supplies" + "Sunset lamp" stays Pet Supplies.
+  - **(f) Products** (`python -m pulso_core.taxonomy map` loads, then applies, in one transaction). For each non-merged product with `category_source` NULL or `'rule'`:
+    - the source category is the first one that resolves among its listings, by id;
+    - the title category is the first title that matches, the product name last;
+    - the result of (e) is written with `category_source='rule'`;
+    - a product with no match is set to NULL / NULL. Rule categories are re-derived each run, so a removed rule clears its own guesses.
+
+    `manual` and `ai` products are never selected, and the UPDATE's WHERE checks again, so a manual category set mid-run still wins.
+  - **(g) Mappings.** Each distinct (source, normalised source category) that the rules resolve is upserted into `category_mappings` with `mapping_source='rule'`. A `manual` or `ai` mapping row wins over the rules when resolving, and is never overwritten: the upsert's `WHERE mapping_source='rule'`. Rule rows that stop resolving are left in place, since nothing reads rule rows back.
+  - **(h) No Celery task yet.** The task brief made one optional. The one-shot command covers M-6 until the mapper should run after each collector run. Unresolved products stay NULL, and the UI already reads them as a muted "Uncategorised" (Discover card and table, product header), so no UI changed.
+- **Alternatives:**
+  - (a) Shopify's open product taxonomy: newer and openly published, but its ids are not Google's, and the data model fixes Google ids (Data Model §Catalog). Downloading at load time: a network call from the loader, and an unpinned version.
+  - (c) Ids in the rules file: shorter, but a reviewer can't read them. YAML: a new dependency, where TOML is stdlib (`tomllib`).
+  - (d) Tags as a rule family: store tags are mostly merchandising noise ("sale", "new", collection names). Product type plus title keep the rules smaller; add tags if the collector-host coverage report shows a gap.
+  - (f) First match only, without refinement: broad product types such as "Home" would leave Discover's category filter coarse. Writing only NULL products: a fixed rule could never correct its own earlier guess.
+- **Why:** `packages/core/tests/test_taxonomy.py` (pure, plus Postgres `pgvector/pgvector:0.8.7-pg18-trixie`):
+  - parsing and parent integrity on a trimmed copy and on the vendored file (5,595 rows, every parent present);
+  - the loader is idempotent (9 rows, then 0, then 1 after a rename), and all 5,595 rows' parents match their paths;
+  - each rule family: Shopify product type (a rule, a unique Google name, a full path, a last segment), CJ category (the `›` path), per-source tables, title fallback (plural folding, longest wins), refinement, no match;
+  - every seed niche has a title rule;
+  - the apply job writes `rule` categories and mappings, clears a stale rule guess, uses the product name, and changes 0 on a rerun;
+  - a manual or AI category survives; a manual mapping wins and is kept;
+  - mutation checked: removing both `category_source` guards fails the manual test.
+
+  `packages/sources/tests/test_category_coverage.py` passes the existing fixture payloads through `shopify_stores.records.parse` and `cj.parse` (253 distinct products) into the mapper: 252 get a category (99.6 %), and "Fixture bowl" stays NULL / NULL.
+- **Not here:**
+  - CJ listings store no category today: CJ's `parse()` drops it and the listing has no `product_type`. CJ's rules wait for the CJ adapter to keep the panel's category name (a BACKLOG row), so until then CJ products rely on the title fallback.
+  - The fixture coverage figure is weak evidence: every Shopify fixture product is typed "Home". Real coverage is measured by `map` on the collector host.
+  - AI categorisation (`ai`), a manual-mapping UI, a Celery task, and pruning stale rule mappings.
