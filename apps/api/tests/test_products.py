@@ -7,6 +7,7 @@ from uuid import UUID, uuid4
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from sqlalchemy import event, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session
 
@@ -431,7 +432,10 @@ def test_feed_items_trace_every_number(api: TestClient, feed: dict[str, str]) ->
             "reason": "The landed-cost engine arrives with UX-8.",
         }
     for key in ("no_signal", "old", "unmatched"):
-        assert items[feed[key]]["velocity"] == {"value": None, "reason": "No demand family has a 7-day growth yet."}
+        assert items[feed[key]]["velocity"] == {
+            "value": None,
+            "reason": "No demand family has a 7-day growth yet.",
+        }
     assert items[feed["unmatched"]]["as_of"] is None
     assert items[feed["unmatched"]]["store_count"] == {
         "value": None,
@@ -475,3 +479,46 @@ def test_categories_lists_categories_in_use(api: TestClient, db_engine: Engine) 
         session.add(Product(name="Lamp", category_id=1))
         session.commit()
     assert api.get("/v1/categories").json() == [{"id": 1, "path": "Home > Lamps"}]
+
+
+@pytest.mark.db
+def test_newest_pages_scan_the_first_seen_index_backward(
+    api: TestClient, db_engine: Engine
+) -> None:
+    with db_engine.begin() as connection:
+        connection.execute(
+            text("""
+            INSERT INTO products (id, name, first_seen_at, merged_into_id)
+            SELECT gen_random_uuid(), 'p' || i, now() - i * interval '1 minute', NULL
+            FROM generate_series(1, 20000) i
+        """)
+        )
+        connection.execute(text("ANALYZE products"))
+    queries: list[tuple[str, Any]] = []
+
+    def capture(conn: Any, cursor: Any, statement: str, parameters: Any, *_: Any) -> None:
+        if "ORDER BY" in statement and "anon_1.first_seen_at DESC" in statement:
+            queries.append((statement, parameters))
+
+    event.listen(db_engine, "before_cursor_execute", capture)
+    try:
+        first = api.get("/v1/products", params={"sort": "newest"}).json()
+        api.get("/v1/products", params={"sort": "newest", "cursor": first["next_cursor"]})
+    finally:
+        event.remove(db_engine, "before_cursor_execute", capture)
+    assert len(queries) == 2
+    with db_engine.connect() as connection:
+        for sql, params in queries:
+            plan = connection.exec_driver_sql(
+                "EXPLAIN (ANALYZE, FORMAT JSON) " + sql, params
+            ).scalar_one()[0]["Plan"]
+            # The outer chain down to the products scan: no sort of the feed. A lateral's own few
+            # rows (count DISTINCT per product) may sort; those hang off the inner side.
+            outer = [plan]
+            while outer[-1].get("Plans"):
+                outer.append(outer[-1]["Plans"][0])
+            assert [step["Node Type"] for step in outer if step["Node Type"] == "Sort"] == []
+            scan = outer[-1]
+            assert scan["Index Name"] == "ix_products_first_seen_at_id"
+            assert scan["Scan Direction"] == "Backward"
+            assert scan["Actual Rows"] == 49  # one page plus the probe row, never the table
