@@ -242,6 +242,15 @@ def test_query_bounds(api: TestClient, catalog: dict[str, Any]) -> None:
 
 
 @pytest.mark.db
+def test_xr32_a_nul_byte_in_the_query_is_a_422_not_a_500(
+    api: TestClient, catalog: dict[str, Any]
+) -> None:
+    response = api.get("/v1/search", params={"q": "ab\x00cd"})  # Postgres text can't hold NUL
+    assert response.status_code == 422
+    assert search(api, "ab\tcd")["products"] == []  # other control characters still search
+
+
+@pytest.mark.db
 def test_an_empty_catalog_says_so(api: TestClient, db_engine: Engine) -> None:
     assert search(api, "lamp")["catalog_empty"] is True
     with Session(db_engine) as session:

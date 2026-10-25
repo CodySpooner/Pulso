@@ -10242,7 +10242,7 @@ export interface operations {
     search: {
         parameters: {
             query: {
-                /** @description Trimmed; under 2 characters returns no results. */
+                /** @description Trimmed; under 2 characters returns no results. No NUL character. */
                 q: string;
                 /** @description Per group */
                 limit?: number;
