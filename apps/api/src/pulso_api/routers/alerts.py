@@ -1,5 +1,6 @@
-"""Alerts (WF-4 parts a and a2, DEC-324, DEC-330): the in-app inbox and the workspace's rules.
-`pulso_core.alerts.evaluate()` fires the alerts; the bell and /alerts UI are WF-4b."""
+"""Alerts (WF-4 parts a, a2 and b, DEC-324, DEC-330, DEC-333): the in-app inbox, its archive and
+the workspace's rules. `pulso_core.alerts.evaluate()` fires the alerts; the web shows them in the
+top bar's bell and on /alerts."""
 
 from typing import Annotated, Any, Literal, Self
 from uuid import UUID
@@ -52,7 +53,7 @@ class AlertOut(BaseModel):
 
 
 class AlertPage(BaseModel):
-    items: list[AlertOut]  # newest first; archived alerts never list
+    items: list[AlertOut]  # newest first; archived alerts list only with archived=true
     next_cursor: str | None = Field(description="Pass as `cursor` with the same filters.")
 
 
@@ -134,6 +135,28 @@ def unread(session: Session, workspace_id: UUID) -> UnreadCount:
     return UnreadCount(count=count or 0)
 
 
+def mine(session: Session, workspace_id: UUID, ids: list[int]) -> None:
+    """404 unless every id is one of the workspace's alerts, so a write changes all or nothing."""
+    found = session.scalars(
+        select(Alert.id).where(Alert.workspace_id == workspace_id, Alert.id.in_(ids))
+    ).all()
+    if len(found) != len(set(ids)):
+        raise APIError(404, "not_found", "Alert not found.")
+
+
+def archive(session: Session, workspace_id: UUID, ids: list[int], on: bool) -> UnreadCount:
+    """Archive (keeping the first archive time) or unarchive; read state stays as it was."""
+    mine(session, workspace_id, ids)
+    session.execute(
+        update(Alert)
+        .where(Alert.workspace_id == workspace_id, Alert.id.in_(ids))
+        .where(Alert.archived_at.is_(None) if on else Alert.archived_at.is_not(None))
+        .values(archived_at=func.now() if on else None)
+    )
+    session.commit()
+    return unread(session, workspace_id)
+
+
 def view(row: AlertRule) -> RuleOut:
     last = row.last_value or {}
     fields = RuleOut.model_fields.keys() - {"status", "skipped"}
@@ -169,12 +192,14 @@ def list_alerts(
     principal: CurrentPrincipal,
     session: DB,
     unread: bool | None = None,
+    archived: bool = False,
     kind: Annotated[str | None, Query(alias="type", max_length=40)] = None,
     cursor: str | None = None,
     limit: Limit = 50,
 ) -> AlertPage:
     query = select(Alert).where(
-        Alert.workspace_id == principal.workspace_id, Alert.archived_at.is_(None)
+        Alert.workspace_id == principal.workspace_id,
+        Alert.archived_at.is_not(None) if archived else Alert.archived_at.is_(None),
     )
     if unread is not None:
         query = query.where(Alert.read_at.is_(None) if unread else Alert.read_at.is_not(None))
@@ -209,6 +234,7 @@ def read_alerts(body: ReadIn, principal: CurrentPrincipal, session: DB) -> Unrea
         Alert.workspace_id == principal.workspace_id, Alert.read_at.is_(None)
     )
     if body.ids is not None:
+        mine(session, principal.workspace_id, body.ids)
         query = query.where(Alert.id.in_(body.ids))
     session.execute(query.values(read_at=func.now()))
     session.commit()
@@ -217,14 +243,13 @@ def read_alerts(body: ReadIn, principal: CurrentPrincipal, session: DB) -> Unrea
 
 @router.post("/archive", response_model=UnreadCount)
 def archive_alerts(body: ArchiveIn, principal: CurrentPrincipal, session: DB) -> UnreadCount:
-    session.execute(
-        update(Alert)
-        .where(Alert.workspace_id == principal.workspace_id, Alert.archived_at.is_(None))
-        .where(Alert.id.in_(body.ids))
-        .values(archived_at=func.now())
-    )
-    session.commit()
-    return unread(session, principal.workspace_id)
+    return archive(session, principal.workspace_id, body.ids, on=True)
+
+
+@router.post("/unarchive", response_model=UnreadCount)
+def unarchive_alerts(body: ArchiveIn, principal: CurrentPrincipal, session: DB) -> UnreadCount:
+    """Move archived alerts back to the inbox; returns the unread count."""
+    return archive(session, principal.workspace_id, body.ids, on=False)
 
 
 @rules_router.get("", response_model=RulePage)

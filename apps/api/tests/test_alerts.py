@@ -105,11 +105,23 @@ def test_inbox_pages_filters_reads_and_archives(setup: tuple[As, dict[str, objec
     assert client.get("/v1/alerts?cursor=nope").json()["code"] == "invalid_cursor"
     assert inbox(client, "?type=supplier_stock_out") == [a2]
     assert unread(client) == 4
-    assert client.post("/v1/alerts/read", json={"ids": [a1, b1]}).json() == {"count": 3}
+    for path in ("read", "archive", "unarchive"):  # B's or an unknown id: 404, nothing changes
+        for foreign in (b1, 2**62):
+            response = client.post(f"/v1/alerts/{path}", json={"ids": [a1, foreign]})
+            assert response.json()["code"] == "not_found", (path, foreign)
+    assert (unread(client), inbox(client, "?archived=true")) == (4, [])
+    assert client.post("/v1/alerts/read", json={"ids": [a1, a1]}).json() == {"count": 3}
     assert inbox(client, "?unread=true") == [a4, a3, a2]
     assert inbox(client, "?unread=false") == [a1]
     read_at = client.get("/v1/alerts?unread=false").json()["items"][0]["read_at"]
-    assert client.post("/v1/alerts/archive", json={"ids": [a2, b1]}).json() == {"count": 2}
+    assert client.post("/v1/alerts/archive", json={"ids": [a2, a3]}).json() == {"count": 1}
+    assert inbox(client) == [a4, a1]
+    assert inbox(client, "?archived=true") == [a3, a2]  # the same keyset, archived only
+    assert inbox(client, "?archived=true&type=supplier_stock_out&unread=true") == [a2]
+    archived = client.get("/v1/alerts?archived=true&limit=1").json()
+    assert inbox(client, f"?archived=true&limit=1&cursor={archived['next_cursor']}") == [a2]
+    assert client.post("/v1/alerts/unarchive", json={"ids": [a3, a1]}).json() == {"count": 2}
+    assert inbox(client, "?archived=true") == [a2]
     assert inbox(client) == [a4, a3, a1]
     assert inbox(client, "?unread=true") == [a4, a3]
     assert client.post("/v1/alerts/read", json={"all": True}).json() == {"count": 0}
@@ -120,9 +132,11 @@ def test_inbox_pages_filters_reads_and_archives(setup: tuple[As, dict[str, objec
     for body in bad:
         assert client.post("/v1/alerts/read", json=body).status_code == 422
     assert client.post("/v1/alerts/archive", json={"ids": []}).status_code == 422
+    assert client.post("/v1/alerts/unarchive", json={"ids": []}).status_code == 422
     client = as_("b")  # A's reads and archives never touched B's alert
     assert inbox(client) == [b1]
     assert unread(client) == 1
+    assert client.post("/v1/alerts/unarchive", json={"ids": [a2]}).status_code == 404
 
 
 @pytest.mark.db
