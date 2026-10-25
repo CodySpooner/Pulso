@@ -64,7 +64,7 @@ def stored(row: Score | None) -> Stored | None:
     return Stored(value, min(cutoff(row.date), row.computed_at))
 
 
-def margin_of(row: Mapping[str, Any] | None, settings: WorkspaceSettings | None) -> Margin | None:
+def margin_of(row: Mapping[Any, Any] | None, settings: WorkspaceSettings | None) -> Margin | None:
     """The economics row's margin; with duty the only gap, landed_cost() of its USD lines at duty
     0, so the one landed-cost function prices both (DEC-246). None: no settings row yet."""
     if row is None or settings is None:
