@@ -8,7 +8,14 @@ from pulso_api.main import create_app
 
 # Product-facing prefixes: every 2xx response under them is walked, so a new endpoint joins on
 # arrival. Settings, account, admin (Data Health) and health return no product data.
-COVERED = ("/v1/products", "/v1/search", "/v1/profit", "/v1/categories", "/v1/popular-products")
+COVERED = (
+    "/v1/products",
+    "/v1/search",
+    "/v1/profit",
+    "/v1/categories",
+    "/v1/popular-products",
+    "/v1/amazon",
+)
 # At least these operations; a test fails if a prefix stops reaching one of them.
 COVERED_OPERATIONS = {
     "list_products",
@@ -25,6 +32,7 @@ COVERED_OPERATIONS = {
     "calc_profit",
     "list_categories",
     "list_popular_products",
+    "list_amazon_ranks",
 }
 # Numbers that are not observations, so no capture time applies. Each needs a reason, and one
 # the check no longer flags must be removed.
