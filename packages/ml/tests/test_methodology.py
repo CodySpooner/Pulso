@@ -6,7 +6,7 @@ from typing import Any
 import pytest
 
 from pulso_core.scores import version
-from pulso_ml.scores import lifecycle, methodology, velocity
+from pulso_ml.scores import lifecycle, methodology, trend, velocity
 
 COMMITTED = Path(__file__).resolve().parents[3] / methodology.OUT
 
@@ -73,7 +73,6 @@ def test_velocity_comes_first_with_its_own_version() -> None:
 def test_unbuilt_scores_name_their_phase_and_carry_no_numbers() -> None:
     planned = [s for s in methodology.build()["scores"] if s["status"] == "not built yet"]
     assert [s["id"] for s in planned] == [
-        "trend-score",
         "opportunity",
         "risk",
         "supplier-reliability",
@@ -97,8 +96,28 @@ def test_the_contract_names_its_fields_and_the_missing_rule() -> None:
         "missing",
         "coverage",
         "panel_size",
+        "penalties",
     ]
     coverage = contract["explanation"]["fields"][4]
     assert coverage["note"] == "present configured weight / all configured weight"
     assert "no source yet" in contract["missing_inputs"]["text"]
     assert contract["confidence"]["status"] == "not built yet"
+
+
+def test_trend_reads_its_weights_normalisation_and_version() -> None:
+    entry = score(methodology.build(), "trend-score")
+    assert (entry["title"], entry["task"]) == ("Trend Score v0", "SC-2")
+    assert entry["code"] == "pulso_ml.scores.trend.trend_scores"
+    config = {c["name"]: c["value"] for c in entry["config"]}
+    assert {k: config[k] for k in ("g7", "acc", "gt_slope", "ads_growth", "penalty")} == {
+        "g7": 0.40,
+        "acc": 0.20,
+        "gt_slope": 0.25,
+        "ads_growth": 0.15,
+        "penalty": 15.0,
+    }
+    assert (config["min_n"], config["cap"]) == (30, 3.0)
+    items = [i for b in entry["definition"] if "items" in b for i in b["items"]]
+    assert any(i.startswith("ads_growth: no source yet") for i in items)
+    assert any("n < 30 or MAD = 0" in b.get("text", "") for b in entry["definition"])
+    assert entry["model_version"] == trend.VERSION
