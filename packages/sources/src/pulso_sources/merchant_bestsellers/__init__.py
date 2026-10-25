@@ -105,6 +105,11 @@ class ImportAdapter:
         return UpsertStats(inserted=len(ids), unchanged=len(records) - len(ids))
 
 
+def gtin_tokens(gtins: str | None) -> list[str]:
+    """A row's GTINs as Google wrote them: space-separated (BigQuery), or by comma or semicolon."""
+    return [token for token in re.split(r"[\s,;]+", gtins or "") if token]
+
+
 def link_products(session: Session, rows: Sequence[PopularProduct]) -> dict[int, UUID | None]:
     """Each row's one live product sharing a valid GTIN, read now and never stored (DEC-267 c).
 
@@ -123,7 +128,7 @@ def link_products(session: Session, rows: Sequence[PopularProduct]) -> dict[int,
             products[code].add(canonical(merged, product_id))
     linked: dict[int, UUID | None] = {}
     for row in rows:
-        codes = {gtin14(token) for token in re.split(r"[\s,;]+", row.gtins or "")} - {None}
+        codes = {gtin14(token) for token in gtin_tokens(row.gtins)} - {None}
         found = set().union(*(products.get(code, set()) for code in codes if code))
         linked[row.id] = found.pop() if len(found) == 1 else None
     return linked
