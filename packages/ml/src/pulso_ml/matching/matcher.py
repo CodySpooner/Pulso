@@ -475,12 +475,20 @@ def manual(session: Session, listing_id: int) -> bool:
     """The listing's latest move is by an owner or user: the matcher never moves it.
 
     A reject moves nothing: it holds only its pair, through the candidate's status. Latest
-    is the highest id, the order moves took the lock (XR-29, DEC-266).
+    is the highest id, the order moves took the lock (XR-29, DEC-266). An undone accept is
+    skipped with its undo, so the matcher sees what it saw before (DEC-276): only undo()
+    writes an unlink that names a candidate, and the accept it reverses is the row before.
     """
-    actor = session.scalar(
-        select(MatchDecision.actor)
-        .where(MatchDecision.listing_id == listing_id, MatchDecision.action != "reject")
-        .order_by(MatchDecision.id.desc())
-        .limit(1)
+    rows = iter(
+        session.execute(
+            select(MatchDecision.actor, MatchDecision.action, MatchDecision.candidate_id)
+            .where(MatchDecision.listing_id == listing_id, MatchDecision.action != "reject")
+            .order_by(MatchDecision.id.desc())
+        ).tuples()
     )
-    return actor not in (None, "algo")
+    for actor, action, candidate_id in rows:
+        if action == "unlink" and candidate_id is not None:
+            next(rows, None)  # the accept it undoes
+            continue
+        return actor != "algo"
+    return False

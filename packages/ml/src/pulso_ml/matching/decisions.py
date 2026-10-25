@@ -142,6 +142,7 @@ def unlink(session: Session, listing_ids: Collection[int], actor: str, reason: s
     lock(session)
     listings, _, _ = one_product(session, redirects(session), listing_ids)
     for listing in listings:
+        # No candidate: manual() reads an unlink that names one as an undone accept (DEC-276).
         record(session, listing, None, actor, "unlink", reason, None)
 
 
