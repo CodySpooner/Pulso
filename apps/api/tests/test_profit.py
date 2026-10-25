@@ -344,6 +344,10 @@ def test_freight_matches_the_variant_and_quantity(api: TestClient, db_engine: En
     double = ask(variant_id=ids["a"], quantity=2, price_minor=5000)
     assert (double["goods_minor"], double["freight_minor"]) == (1240, None)
     assert double["missing"] == ["freight_missing"]  # never 2 x F(1)
+    assert (double["estimates"], double["sources"]["price_minor"]["source"]) == (
+        ["price_minor"],
+        "owner_estimate",
+    )
     assert ask(variant_id=ids["a"], quantity=2)["missing"] == ["price_missing", "freight_missing"]
     assert calc(api, ws, product_id=ids["single_product"])["freight_minor"] == 485
 

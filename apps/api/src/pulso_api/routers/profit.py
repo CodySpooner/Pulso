@@ -125,7 +125,9 @@ def calc_profit(
             workspace_settings(session, principal),
             product.id,
             # A single-unit price never stands in for a q-unit order.
-            reference_price=reference_price(session, product.id) if body.quantity == 1 else None,
+            reference_price=reference_price(session, product.id)
+            if body.quantity == 1 and body.price_minor is None
+            else None,
             overrides=body.model_dump(include=OVERRIDES, exclude_none=True),
             listing_id=body.supplier_listing_id,
             variant_id=body.variant_id,
