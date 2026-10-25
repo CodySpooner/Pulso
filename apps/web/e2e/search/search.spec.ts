@@ -10,7 +10,7 @@ test.describe("palette search", () => {
     const input = await openPalette(page);
     await input.pressSequentially("glowbeam", { delay: 20 });
 
-    const store = page.getByRole("option", { name: /glowbeam\.example\.test, opens its top product/ });
+    const store = page.getByRole("option", { name: /^glowbeam\.example\.test \(opens its top product\) Crawled 6h ago$/ });
     await expect(store).toHaveAttribute("aria-selected", "true");
     await expect(store).toContainText("Crawled 6h ago");
     await expect(page.getByRole("dialog").getByText("Open top product")).toBeVisible(); // the footer names where Enter goes
@@ -52,6 +52,10 @@ test.describe("palette search", () => {
       await expect(row).toHaveAttribute("aria-disabled", "true");
       await expect(row).toContainText("No products yet");
     }
+    // The API's order holds in each group, with the rows that have nowhere to go last.
+    const names = async (pattern: RegExp) => (await dialog.getByRole("option").allTextContents()).flatMap((t) => t.match(pattern) ?? []);
+    expect(await names(/[\w-]+\.example\.test/)).toEqual(["glowbeam.example.test", "nightglow.example.test", "glowlane.example.test"]);
+    expect(await names(/Shenzhen Glowtech Co\.|Glow Supply Trading/)).toEqual(["Shenzhen Glowtech Co.", "Glow Supply Trading"]);
 
     const selected = dialog.locator('[cmdk-item][aria-selected="true"]');
     await expect(selected).toContainText(products[0].title);
@@ -70,7 +74,7 @@ test.describe("palette search", () => {
 
   test("the first query shows a loading row; later ones keep the last results under a spinner", async ({ page }) => {
     await page.emulateMedia({ reducedMotion: "reduce" });
-    await mockSearchApi(page, { hold: ["gl", "glowx"] });
+    const queries = await mockSearchApi(page, { hold: ["gl", "glowx"] });
     const input = await openPalette(page);
     const dialog = page.getByRole("dialog");
     const busy = dialog.getByTestId("palette-busy");
@@ -87,6 +91,8 @@ test.describe("palette search", () => {
     await input.fill("glowx");
     await expect(busy).toBeVisible();
     await expect(page.getByRole("option", { name: /Shenzhen Glowtech/ })).toBeVisible(); // stale, kept
+    await expect.poll(() => queries.at(-1)).toBe("glowx"); // past the debounce: the new query is in flight
+    await expect(page.getByRole("option", { name: /glowbeam/ })).toContainText("Crawled 6h ago"); // still timed from its answer
     await expect(dialog.getByText(/No matches/)).toBeHidden();
     await expect(dialog.getByRole("status")).toHaveText(""); // nothing announced until it settles
     // Reduced motion: the spinner holds still.

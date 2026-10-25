@@ -107,7 +107,8 @@ function SignOutRow({ selected, run }: { selected: string; run: Run }) {
 type Hits = components["schemas"];
 const PLATFORMS: Record<string, string> = { cj: "CJ Dropshipping" };
 
-// Search rows show for any query, under the commands that match it: cmdk orders groups by their best score.
+// Every search row gets the same tiny score: it shows for any query, keeps the API's order inside its group, and its
+// group sorts under the commands that match (cmdk orders groups by their best score, ties in mount order).
 const paletteFilter = (value: string, search: string, keywords?: string[]) =>
   value.startsWith(SEARCH_VALUE) ? SEARCH_SCORE : defaultFilter(value, search, keywords);
 
@@ -136,9 +137,33 @@ function Crawled({ store, asOf }: { store: Hits["StoreHit"]; asOf: number }) {
   );
 }
 
-const TOP = <span className="sr-only">, opens its top product</span>;
+const TOP = <span className="sr-only">(opens its top product)</span>;
 
-// Global search (UX-9, DEC-252): products, stores and suppliers, then one status group. All four mount together, so
+/** A store's or supplier's rows. cmdk sorts only enabled rows and appends them after disabled ones, so the rows with
+ *  nowhere to go sit in a second group just below, which takes the heading only when it is alone. */
+function VendorGroups<T extends { id: number; top_product_id: string | null }>({
+  heading,
+  hits,
+  row,
+}: {
+  heading: string;
+  hits: T[];
+  row: (hit: T) => React.ReactNode;
+}) {
+  const open = hits.filter((hit) => hit.top_product_id);
+  return (
+    <>
+      <Command.Group heading={heading} className={group}>
+        {open.map(row)}
+      </Command.Group>
+      <Command.Group heading={open.length ? undefined : heading} className={group}>
+        {hits.filter((hit) => !hit.top_product_id).map(row)}
+      </Command.Group>
+    </>
+  );
+}
+
+// Global search (UX-9, DEC-252): products, stores and suppliers, then one status group. All of them mount together, so
 // cmdk keeps them in this order. A store or supplier opens its top product until Store Spy builds their pages.
 function SearchGroups({
   view,
@@ -173,8 +198,10 @@ function SearchGroups({
           />
         ))}
       </Command.Group>
-      <Command.Group heading="Stores" className={group}>
-        {results?.stores.map((s) => (
+      <VendorGroups
+        heading="Stores"
+        hits={results?.stores ?? []}
+        row={(s) => (
           <Row
             key={s.id}
             value={row("store", s.id)}
@@ -191,10 +218,12 @@ function SearchGroups({
             disabled={!s.top_product_id}
             onSelect={() => go(`/products/${s.top_product_id}`)}
           />
-        ))}
-      </Command.Group>
-      <Command.Group heading="Suppliers" className={group}>
-        {results?.suppliers.map((s) => (
+        )}
+      />
+      <VendorGroups
+        heading="Suppliers"
+        hits={results?.suppliers ?? []}
+        row={(s) => (
           <Row
             key={s.id}
             value={row("supplier", s.id)}
@@ -210,8 +239,8 @@ function SearchGroups({
             disabled={!s.top_product_id}
             onSelect={() => go(`/products/${s.top_product_id}`)}
           />
-        ))}
-      </Command.Group>
+        )}
+      />
       <Command.Group heading="Search" className={group}>
         {view.kind === "loading" && (
           <Row value={row("status", "loading")} selected={selected} icon={LoaderCircle} iconClassName="motion-safe:animate-spin" label="Searching products, stores and suppliers…" disabled />
@@ -270,6 +299,9 @@ export function CommandPalette({
     },
   );
   const view = searchView(term, debounced, search);
+  // Kept results are timed from their own answer: a placeholder's dataUpdatedAt is 0 until the new query answers.
+  const [asOf, setAsOf] = useState(0);
+  if (search.dataUpdatedAt && search.dataUpdatedAt !== asOf) setAsOf(search.dataUpdatedAt);
   const busy = view.kind === "loading" || (view.kind === "results" && view.stale);
   const opensTop = /^search:(store|supplier):/.test(selected);
 
@@ -409,7 +441,7 @@ export function CommandPalette({
                       )}
 
                       {view.kind !== "off" && (
-                        <SearchGroups view={view} term={term} selected={selected} asOf={search.dataUpdatedAt} go={go} retry={() => void search.refetch()} />
+                        <SearchGroups view={view} term={term} selected={selected} asOf={asOf} go={go} retry={() => void search.refetch()} />
                       )}
                     </Command.List>
                   </LayoutGroup>
