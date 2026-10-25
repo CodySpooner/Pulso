@@ -13,12 +13,12 @@ export type Stat = components["schemas"]["Sourced"] | { reason: string; value?: 
 
 /** Where a number came from (vault Features/Methodology & Confidence): source, UTC as-of, the method of an estimate
  *  and the raw payload. `now` is when the data was fetched, so "ago" never ticks (no fake liveness). */
-export function ProvenanceCard({ stat, label, now }: { stat: Stat; label: string; now: number }) {
+export function ProvenanceCard({ stat, label, now, missing = "No source yet" }: { stat: Stat; label: string; now: number; missing?: string }) {
   return (
     <div className="flex flex-col gap-1.5 py-0.5">
       <p className="font-medium text-foreground">{label}</p>
       {"reason" in stat ? (
-        <p className="text-muted-foreground">No source yet. {stat.reason}</p>
+        <p className="text-muted-foreground">{missing}. {stat.reason}</p>
       ) : (
         <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
           <dt className="text-muted-foreground">Source</dt>
@@ -57,6 +57,7 @@ export function Metric({
   format,
   now,
   side = "bottom",
+  missing = "No source yet",
   className,
 }: {
   stat: Stat;
@@ -64,12 +65,14 @@ export function Metric({
   format: (value: number) => string;
   now: number;
   side?: "top" | "bottom";
+  /** What a stat nothing backs reads, e.g. "Insufficient signal" where a source exists but no series qualifies. */
+  missing?: string;
   className?: string;
 }) {
-  const text = "reason" in stat ? "No source yet" : format(stat.value);
+  const text = "reason" in stat ? missing : format(stat.value);
   return (
     <TapTooltip
-      hint={<ProvenanceCard stat={stat} label={label} now={now} />}
+      hint={<ProvenanceCard stat={stat} label={label} now={now} missing={missing} />}
       side={side}
       contentClassName="pointer-events-auto max-w-72 px-3 py-2"
       type="button"

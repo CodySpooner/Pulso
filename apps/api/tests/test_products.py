@@ -431,7 +431,7 @@ def test_feed_items_trace_every_number(api: TestClient, feed: dict[str, str]) ->
             "reason": "The landed-cost engine arrives with UX-8.",
         }
     for key in ("no_signal", "old", "unmatched"):
-        assert items[feed[key]]["velocity"]["reason"].startswith("Insufficient signal")
+        assert items[feed[key]]["velocity"] == {"value": None, "reason": "No demand family has a 7-day growth yet."}
     assert items[feed["unmatched"]]["as_of"] is None
     assert items[feed["unmatched"]]["store_count"] == {
         "value": None,

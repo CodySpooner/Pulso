@@ -52,7 +52,7 @@ router = APIRouter(prefix="/v1/products", dependencies=[Depends(current_principa
 categories_router = APIRouter(prefix="/v1/categories", dependencies=[Depends(current_principal)])
 DB = Annotated[Session, Depends(get_db)]
 NO_PRICE = "No USD retail price observed yet."
-NO_SIGNAL = "Insufficient signal: no demand family has a 7-day growth yet."
+NO_SIGNAL = "No demand family has a 7-day growth yet."  # the UI reads "Insufficient signal"
 NO_MARGIN = "The landed-cost engine arrives with UX-8."
 # Demand families that carry units, best grade first (vault Intelligence/Demand Signals).
 # gt_slope is keyword-level, never a velocity.
