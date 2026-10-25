@@ -66,6 +66,19 @@ test("range and pane toggles take one click each, live in the URL and never refe
   expect(calls.map((u) => u.searchParams.get("range"))).toEqual(["all", "all"]); // one per page load, the whole history
 });
 
+test("a second click before the tab re-renders still builds on the first", async ({ page }) => {
+  await open(page);
+  const range = page.getByRole("button", { name: "7D" });
+  const pane = page.getByRole("group", { name: "Panes" }).getByRole("button", { name: "Stores selling it" });
+  await expect(pane).toBeVisible();
+  // imp-278: Next syncs useSearchParams in a transition, so two clicks in one task always beat the re-render,
+  // as a quick double tap on a slow device (or a busy CI runner) can.
+  await page.evaluate((buttons) => { for (const b of buttons) (b as HTMLButtonElement).click(); }, [await range.elementHandle(), await pane.elementHandle()]);
+  await expect(page).toHaveURL(`${URL}&range=7d&overlay=demand%2Cprice`);
+  await expect(range).toHaveAttribute("aria-pressed", "true");
+  await expect(pane).toHaveAttribute("aria-pressed", "false");
+});
+
 test("each pane shows its source and as of; the keyboard reads any day with its source and as of", async ({ page }) => {
   await open(page);
   await expect(page.getByText(/^Shopify stores · as of Oct 22, 06:00 UTC$/)).toHaveCount(2); // price, stores
