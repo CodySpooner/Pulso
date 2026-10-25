@@ -176,12 +176,12 @@ def undo(session: Session, decision_id: int, actor: str, reason: str) -> list[in
         .order_by(MatchDecision.id)
     ).all()
     ids = [row.listing_id for row in rows]
+    # Lock order is id order: decided_at is the transaction's start, which can precede the
+    # lock (XR-29), so a later move may carry an earlier stamp.
     latest = session.scalars(
         select(MatchDecision.id)
         .where(MatchDecision.listing_id.in_(ids))
-        .order_by(
-            MatchDecision.listing_id, MatchDecision.decided_at.desc(), MatchDecision.id.desc()
-        )
+        .order_by(MatchDecision.listing_id, MatchDecision.id.desc())
         .distinct(MatchDecision.listing_id)
     ).all()
     if set(latest) != {row.id for row in rows}:

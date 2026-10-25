@@ -946,6 +946,26 @@ def test_unlink_frees_listings_and_the_matcher_never_relinks_them(world: World) 
     world.run()
     assert products(session, cost, retail, late) == [product, None, product]
 
+    # XR-29: a move can take the lock after the owner's yet carry an earlier stamp. Undo reads
+    # the latest decision in lock order (id), so it sees the later move and refuses.
+    owner = latest(session, retail)
+    session.add(
+        MatchDecision(
+            actor="algo",
+            action="link",
+            listing_id=retail.id,
+            from_product_id=None,
+            to_product_id=product,
+            reason="took the lock later, stamped earlier",
+            decided_at=owner.decided_at - timedelta(seconds=1),
+        )
+    )
+    retail.product_id = product
+    session.flush()
+    with pytest.raises(ValueError, match="superseded"):
+        undo(session, owner.id, "owner", "too late")
+    session.rollback()
+
 
 def test_undo_writes_compensating_rows_and_reruns_keep_the_result(world: World) -> None:
     session = world.session

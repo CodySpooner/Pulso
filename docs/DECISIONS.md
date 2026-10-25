@@ -2473,7 +2473,7 @@ Superseded review defaults, not given entries: default #0 (move the repo) is don
     - Skip is client-only and writes nothing. Market rows are global, so only the counts are workspace-scoped.
   - **(b) Undo (imp-250) is new rows, never an edit.**
     - A decision is every row one call wrote: one actor at one `decided_at`, which is the transaction time.
-    - It can be undone only while each of its listings' latest decision is still that decision's own row; otherwise a 409 reports it as superseded.
+    - It can be undone only while each of its listings' latest decision is still that decision's own row; otherwise a 409 reports it as superseded. "Latest" is in id order, which is the order the rows took the matching lock: `decided_at` is the transaction's start and can precede the lock (XR-29).
     - Each row gets a compensating row from its `to` back to its `from`: accept → `unlink`, unlink → `link`, reject → `reject` (nothing moves), merge → `merge`, split → `merge`. The reason starts `undo #<id>`.
     - Undoing a merge makes the merged product `active` again, with `merged_into_id` NULL.
     - Candidates the decision settled go back to `pending`, or to `accepted` where the pair still ends on one product.
