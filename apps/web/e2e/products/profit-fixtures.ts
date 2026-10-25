@@ -102,6 +102,8 @@ export interface ProfitMock {
   failRecompute?: boolean;
   /** Never answer: the first-load skeleton stays. */
   hold?: boolean;
+  /** Answer the defaults, never a recompute: the last answer stays on screen with its hairline (imp-313). */
+  holdRecompute?: boolean;
 }
 
 /** The product shell's calls plus POST /v1/profit/calc. Returns the calc request bodies, in order. */
@@ -111,7 +113,7 @@ export async function mockProfitApi(page: Page, options: ProfitMock = {}) {
   await page.route("**/api/v1/profit/calc", async (route) => {
     const request = route.request().postDataJSON() as Request;
     requests.push(request);
-    if (options.hold) return;
+    if (options.hold || (options.holdRecompute && requests.length > 1)) return;
     const status = options.status ?? (options.failRecompute && requests.length > 1 ? 503 : 0);
     if (status) return route.fulfill({ status, contentType: "application/problem+json", json: problem(status, `e2e-profit-${status}`) });
     return route.fulfill({ json: answer(options.body ?? complete, request) });
