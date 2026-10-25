@@ -76,7 +76,7 @@
           "text": "One product's stage on day t from its primary demand family's feature rows (DEC-275)."
         },
         {
-          "text": "Inputs come from the rows at t and t−7: `v7` = V7(t), `v7_prev` = V7(t−7), `g7` = G7(t) and `g7_prev` = G7(t−7), so acceleration is `g7 − g7_prev`. G7 is the week-on-week growth ln((V7 + 5) / (V7 prev + 5)), so \"+20%\" below means G7 ≥ ln 1.2. `days_observed` counts the family's days up to t, t included (0: the product has no demand family). `has_gap` is either row's gap flag. `age_days` is days since the source's launch date (None: unknown)."
+          "text": "Inputs come from the rows at t and t−7: `v7` = V7(t), `v7_prev` = V7(t−7), `g7` = G7(t) and `g7_prev` = G7(t−7), so acceleration is `g7 − g7_prev`. G7 is the week-on-week growth ln((V7 + 5) / (V7 prev + 5)), so \"+20%\" below means G7 ≥ ln 1.2. `days_observed` is the days since the family's first row, t included, as Velocity reads it (0: no demand family). `has_gap` is either row's gap flag. `age_days` is days since the source's launch date (None: unknown)."
         },
         {
           "text": "No stage, with its reason, never a guessed one:"
@@ -104,17 +104,17 @@
           ]
         },
         {
-          "text": "Until G7(t−7) exists (a product's first 21 days) \"two weeks down\" and \"braking\" can't hold. Hysteresis (two nights before a change shows) is the scores writer's: it keeps yesterday's."
+          "text": "Until G7(t−7) exists (a product's first 21 days) \"two weeks down\" and \"braking\" can't hold. Hysteresis (two nights before a change shows) is the nightly job's (pulso_ml.scores.nightly)."
         }
       ],
       "inputs": [
         {
           "name": "v7",
-          "type": "int | None"
+          "type": "float | None"
         },
         {
           "name": "v7_prev",
-          "type": "int | None"
+          "type": "float | None"
         },
         {
           "name": "g7",
@@ -145,7 +145,7 @@
         {
           "name": "revision",
           "type": "int",
-          "note": "the `v0` in VERSION; bump with any change to the rules below",
+          "note": "bump with any change to the rules below",
           "value": 0
         },
         {
@@ -477,6 +477,16 @@
           "name": "penalties",
           "type": "tuple[Penalty, ...]",
           "note": "Trend: points off after the weighted inputs"
+        },
+        {
+          "name": "reason",
+          "type": "str | None",
+          "note": "why the value is NULL, or the Lifecycle rule that fired tonight"
+        },
+        {
+          "name": "pending",
+          "type": "Stage | None",
+          "note": "Lifecycle: tonight's stage, shown once a 2nd night matches"
         }
       ]
     },

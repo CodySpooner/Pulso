@@ -49,7 +49,7 @@ def test_lifecycle_reads_its_docstring_signature_and_config() -> None:
         "that isn't a decline yet."
     )
     assert [i["name"] for i in entry["inputs"]][:2] == ["v7", "v7_prev"]
-    assert entry["inputs"][0]["type"] == "int | None"
+    assert entry["inputs"][0]["type"] == "float | None"  # V7 as stored
     assert [c["name"] for c in entry["config"]] == [f.name for f in fields(lifecycle.Config)]
     up = next(c for c in entry["config"] if c["name"] == "up")
     assert up == {
@@ -97,6 +97,8 @@ def test_the_contract_names_its_fields_and_the_missing_rule() -> None:
         "coverage",
         "panel_size",
         "penalties",
+        "reason",
+        "pending",
     ]
     coverage = contract["explanation"]["fields"][4]
     assert coverage["note"] == "present configured weight / all configured weight"

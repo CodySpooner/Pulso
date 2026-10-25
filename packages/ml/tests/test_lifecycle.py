@@ -4,7 +4,8 @@ from typing import Any
 
 import pytest
 
-from pulso_ml.scores.lifecycle import CONFIG, VERSION, Config, Stage, lifecycle_stage, version
+from pulso_core.scores import version
+from pulso_ml.scores.lifecycle import CONFIG, VERSION, Config, Stage, lifecycle_stage
 
 UP, DOWN, BRAKE = CONFIG.up, CONFIG.down, CONFIG.brake
 E = 2**-20  # a step past a boundary; exact in binary, so 0.5 − 0.75 lands on BRAKE exactly
@@ -106,13 +107,12 @@ def test_delisted_is_dead_whatever_the_history() -> None:
 
 
 def test_version_names_the_revision_and_the_config_digest() -> None:
-    assert VERSION == version(Config())
-    assert VERSION.startswith(f"lifecycle_v{CONFIG.revision}-")
-    assert len(VERSION.rsplit("-", 1)[1]) == 8
+    model_version, digest = version(Config())
+    assert VERSION == model_version == f"{CONFIG.revision:03d}-{digest[:12]}"  # imp-413
 
 
 @pytest.mark.parametrize("name", [f.name for f in fields(Config)])
 def test_changing_any_threshold_changes_the_version(name: str) -> None:
     value = getattr(CONFIG, name)
     changed = replace(CONFIG, **{name: value + (1 if isinstance(value, int) else 0.01)})
-    assert version(changed) != VERSION
+    assert version(changed)[0] != VERSION

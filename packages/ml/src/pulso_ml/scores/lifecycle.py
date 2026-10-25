@@ -1,15 +1,15 @@
 """Lifecycle Stage (SPEC §7, vault Intelligence/Lifecycle Stage, DEC-307): pure, no tables."""
 
-import hashlib
-import json
 import math
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from typing import Literal, NamedTuple
+
+from pulso_core.scores import version
 
 
 @dataclass(frozen=True)
 class Config:
-    revision: int = 0  # the `v0` in VERSION; bump with any change to the rules below
+    revision: int = 0  # bump with any change to the rules below
     # Working guesses (DEC-307), tuned once two weeks of data exist.
     min_days: int = 15  # G7(t) reads a covered t−14
     up: float = math.log(1.2)  # +20% week on week
@@ -21,15 +21,7 @@ class Config:
 
 
 CONFIG = Config()
-
-
-def version(config: Config) -> str:
-    """`lifecycle_v<revision>-<hash8>` (vault Score Definitions §2): new thresholds, new version."""
-    digest = hashlib.sha256(json.dumps(asdict(config), sort_keys=True).encode()).hexdigest()
-    return f"lifecycle_v{config.revision}-{digest[:8]}"
-
-
-VERSION = version(CONFIG)
+VERSION, _ = version(CONFIG)  # `{revision:03d}-{hash12}` (DEC-306 d)
 
 
 class Stage(NamedTuple):
@@ -39,8 +31,8 @@ class Stage(NamedTuple):
 
 def lifecycle_stage(
     *,
-    v7: int | None,
-    v7_prev: int | None,
+    v7: float | None,
+    v7_prev: float | None,
     g7: float | None,
     g7_prev: float | None,
     days_observed: int,
@@ -52,9 +44,10 @@ def lifecycle_stage(
 
     Inputs come from the rows at t and t−7: `v7` = V7(t), `v7_prev` = V7(t−7), `g7` = G7(t) and
     `g7_prev` = G7(t−7), so acceleration is `g7 − g7_prev`. G7 is the week-on-week growth
-    ln((V7 + 5) / (V7 prev + 5)), so "+20%" below means G7 ≥ ln 1.2. `days_observed` counts the
-    family's days up to t, t included (0: the product has no demand family). `has_gap` is either
-    row's gap flag. `age_days` is days since the source's launch date (None: unknown).
+    ln((V7 + 5) / (V7 prev + 5)), so "+20%" below means G7 ≥ ln 1.2. `days_observed` is the days
+    since the family's first row, t included, as Velocity reads it (0: no demand family).
+    `has_gap` is either row's gap flag. `age_days` is days since the source's launch date (None:
+    unknown).
 
     No stage, with its reason, never a guessed one:
     - no source: no demand family, delisted or not.
@@ -75,7 +68,7 @@ def lifecycle_stage(
     - rising · growing: growth at or above +20% otherwise.
 
     Until G7(t−7) exists (a product's first 21 days) "two weeks down" and "braking" can't hold.
-    Hysteresis (two nights before a change shows) is the scores writer's: it keeps yesterday's.
+    Hysteresis (two nights before a change shows) is the nightly job's (pulso_ml.scores.nightly).
     """
     if days_observed <= 0:
         return Stage(None, "no source")
