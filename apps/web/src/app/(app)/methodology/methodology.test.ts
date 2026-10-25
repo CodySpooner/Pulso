@@ -32,11 +32,11 @@ describe("Methodology", () => {
     const html = render(methodology);
     const card = html.slice(html.indexOf('aria-labelledby="not-built-title"'));
     expect(card).toContain("Pulso shows no number for these until their code ships.");
-    const row = card.indexOf('id="trend-score"');
-    const trend = card.slice(card.indexOf(">", row) + 1, card.indexOf("</li>", row)); // the row's content, not its classes
-    expect(trend).toContain(">Trend Score v0</h3>");
-    expect(trend).toContain(">Phase 4 · SC-2</span>");
-    expect(trend.replace(/<[^>]+>/g, " ")).not.toMatch(/\d+\.\d|model_version/);
+    const row = card.indexOf('id="opportunity"');
+    const opportunity = card.slice(card.indexOf(">", row) + 1, card.indexOf("</li>", row)); // the row's content, not its classes
+    expect(opportunity).toContain(">Opportunity</h3>");
+    expect(opportunity).toContain(">Phase 4 · SC-5</span>");
+    expect(opportunity.replace(/<[^>]+>/g, " ")).not.toMatch(/\d+\.\d|model_version/);
   });
 
   test("missing inputs read no source yet, never 0", () => {

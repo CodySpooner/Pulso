@@ -299,9 +299,118 @@
     {
       "id": "trend-score",
       "title": "Trend Score v0",
-      "status": "not built yet",
-      "phase": 4,
-      "task": "SC-2"
+      "status": "built",
+      "task": "SC-2",
+      "code": "pulso_ml.scores.trend.trend_scores",
+      "definition": [
+        {
+          "text": "How strongly each product is trending on day t, 0–100 (Beta until a forecast is promoted)."
+        },
+        {
+          "text": "`categories` holds every product to score: its category and that category's ancestors, nearest first (empty when it has none). `rows` are day t's feature rows, every family; `week_ago` are day t−7's. `primary` names each product's primary demand family (vault Demand Signals rule 1); `saturation` holds its Saturation Score (SC-3). Each input is a robust z within the product's category, falling back up its ancestors to every product when n < 30 or MAD = 0, winsorized to ±3 (Score Definitions §4):"
+        },
+        {
+          "items": [
+            "<family>_g7: G7 = ln((V7(t) + 5) / (V7(t−7) + 5)) in the primary family, as stored: log growth, so 3 → 30 units reads 1.48, never +900%, and both weeks count only the listings covered at t−14 and t, so newly tracked listings never read as growth. Required.",
+            "<family>_acc: G7(t) − G7(t−7) in the same family, from the two days' rows.",
+            "gt_slope: ln((m4 + 1) / (m8 + 1)) within one Trends capture, as stored (R-18).",
+            "ads_growth: no source yet, so always missing."
+          ]
+        },
+        {
+          "text": "Each input's cohort is every product asked for with a value in it; families never mix. T = Σ w × z / Σ w over the present inputs: a missing one gets weight 0 and the rest renormalise (DEC-040). Then pre = 50 + 50 × T / 3, and Trend = clamp(pre − penalty, 0, 100) with penalty = 15 × max(0, (Saturation − 50) / 50) points. Without a Saturation the penalty is missing: nothing is taken off and `missing` names it."
+        },
+        {
+          "text": "No value, with its reason, never 0:"
+        },
+        {
+          "items": [
+            "no demand family: the product has no primary family. Search slope alone never scores.",
+            "no velocity growth: no G7 in that family on day t (no row, or a NULL one).",
+            "velocity growth doesn't vary: no category, nor the whole set, has a spread to normalise by."
+          ]
+        }
+      ],
+      "inputs": [
+        {
+          "name": "rows",
+          "type": "Iterable[Row]"
+        },
+        {
+          "name": "week_ago",
+          "type": "Iterable[Row]"
+        },
+        {
+          "name": "categories",
+          "type": "Mapping[UUID, Sequence[int]]"
+        },
+        {
+          "name": "primary",
+          "type": "Mapping[UUID, str]"
+        },
+        {
+          "name": "saturation",
+          "type": "Mapping[UUID, float | None]"
+        }
+      ],
+      "config": [
+        {
+          "name": "revision",
+          "type": "int",
+          "note": "bump with any change to the rules below",
+          "value": 0
+        },
+        {
+          "name": "feature_version",
+          "type": "str",
+          "note": "the rows these rules read",
+          "value": "002-73de55ab0c1d"
+        },
+        {
+          "name": "g7",
+          "type": "float",
+          "note": "weight of velocity growth in the primary demand family; required",
+          "value": 0.4
+        },
+        {
+          "name": "acc",
+          "type": "float",
+          "note": "weight of acceleration in the same family",
+          "value": 0.2
+        },
+        {
+          "name": "gt_slope",
+          "type": "float",
+          "note": "weight of the search-interest slope (R-18)",
+          "value": 0.25
+        },
+        {
+          "name": "ads_growth",
+          "type": "float",
+          "note": "weight of ad-count growth: no source yet, always missing",
+          "value": 0.15
+        },
+        {
+          "name": "penalty",
+          "type": "float",
+          "note": "points off at Saturation 100; none at or below 50",
+          "value": 15.0
+        },
+        {
+          "name": "min_n",
+          "type": "int",
+          "note": "a category needs this many products with the input, or its parent is used",
+          "value": 30
+        },
+        {
+          "name": "cap",
+          "type": "float",
+          "note": "robust z is winsorized to ±cap",
+          "value": 3.0
+        }
+      ],
+      "model_version": "000-8236875f835c",
+      "config_digest": "8236875f835cc289235b37ff85621392ab4887e78e7157923cb0dcc14a3e5da1"
     },
     {
       "id": "opportunity",
@@ -352,7 +461,7 @@
         {
           "name": "missing",
           "type": "tuple[str, ...]",
-          "note": null
+          "note": "the missing components', then penalties', names"
         },
         {
           "name": "coverage",
@@ -363,6 +472,11 @@
           "name": "panel_size",
           "type": "int | None",
           "note": "Saturation: stores tracked since t−28"
+        },
+        {
+          "name": "penalties",
+          "type": "tuple[Penalty, ...]",
+          "note": "Trend: points off after the weighted inputs"
         }
       ]
     },
