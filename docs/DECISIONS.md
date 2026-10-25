@@ -2365,3 +2365,28 @@ Superseded review defaults, not given entries: default #0 (move the repo) is don
   - The owner picks a replacement route. Options in the owner's session: CJ listing counts (DEC-136, coming online), Google Merchant Center Popular products (the owner's own account, if eligible), Google Trends, and paid or vendor data only with the owner's approval (DEC-010, SPEC §0).
 - **Alternatives:** approve DEC-090 (declined: risk to the owner's stores); run the crawler from another network (it doesn't change who the terms bind, and SPEC §4.2 forbids switching networks to dodge a block).
 - **Why:** the owner's own Shopify stores matter more than a competitor-store signal.
+
+### DEC-258 · Landed-cost freight: the variant's newest capture day across origins, then each origin's newest capture on that day
+**2026-10-25 · proposed (p2-22)** · P2-18 cross-review finding XR-23 (medium); refines DEC-250 (a) and leaves its (b)–(f), and DEC-246's rounding, FX and completeness rules, unchanged; vault Features/Product Page - Profit; `docs/reports/p2-22.md`; no migration, dependency, API shape or `missing` code change
+- **Decision:**
+  - **(a) Newest day first, then the newest capture per origin.** `freight_quotes` first finds the variant's newest `observed_for`, across every origin and source: `max(observed_for) OVER (PARTITION BY coalesce(variant_id, :single_variant))`. Within that day it keeps each origin's newest capture: `rank() OVER (PARTITION BY coalesce(variant_id, :single_variant), origin_country ORDER BY observed_for DESC, captured_at DESC, raw_payload_id DESC) = 1`, and the row's `observed_for` equals that day. An origin with nothing on that day is not priced. Everything else is DEC-250's: the partition key, the filter (this listing, US, this quantity), the method filter after ranking, the later raw payload on a tie, and the newer parse (`id DESC`) on a re-parse.
+  - **(b) Why a day.** CJ's tracked plan asks both origins of a variant together (`cj/tracked.py` `plan()`, CN and US), so the variant's newest day is its latest answer. An origin missing from that day either answered `data: []` (stored raw, no row written) or failed. Both read as "no quote from that origin", which fails closed (R-16): without a method it can't win cheapest, and asked by method it reads `freight_missing`. This is the case DEC-250 (a) missed: a method the newest capture no longer lists was never priced, unless the newest capture listed nothing at all.
+  - **(c) CSV quotes.**
+    - A CSV quote with no `warehouse_country` is its own origin, and it ages out with its day like any other.
+    - A CSV backfill (an `observed_for` before CJ's newest day, imported after it) no longer outranks the newer CJ capture. The order is `observed_for` first, as `effective_observation` already orders observations. This changes DEC-250 (a)'s `captured_at`-first order, which P2-18 noted.
+    - A CSV quote dated after CJ's newest day stands alone for that variant until CJ's next capture. To keep both origins priced, put every origin in the CSV.
+  - **(d) Gap codes unchanged.** There is no new `missing` value. A method or origin that only older days list reads `freight_missing`. One that another variant's newest day lists reads `freight_variant_mismatch`, as in DEC-250 (a).
+  - **(e) Ceiling.** A run that crosses 00:00 UTC splits one answer across two days, and the earlier day's origins aren't priced until the next run. That fails closed. The scheduled `cj.freight` slot runs at 04:30 UTC (`schedules.py`).
+- **Alternatives:**
+  - Rank over the freight `raw_payloads` per variant and origin (the review's fix 2): the loader would have to parse each source's request, and CSV quotes with no origin would need a rule of their own.
+  - A no-quote marker row written by the CJ adapter: a writer change and a new kind of observation row, for the same result.
+  - Group by collector run instead of by day: a same-day retry of one origin would hide the other origin's answer from earlier that day, and a CSV import isn't one run per variant.
+- **Why:**
+  - P2-18's probe: day 1 has CN `CJPacket` $5.00 and US `USPS` $3.00; on day 30, CN answers `CJPacket` $5.00 and US answers `data: []`. It used to answer USPS $3.00, complete, margin 1812. It now answers `CJPacket` 500, margin 1612, complete, and `method: "USPS"` reads `freight_missing`.
+  - The CSV probe: a 29-day-old $2.00 quote with no origin, beside CJ's day-30 CN capture. It now answers CJ's newest capture (`ePacket` 450).
+  - `apps/api/tests/test_profit.py`:
+    - P2-18's strict-xfail test, now unmarked;
+    - a newest capture that lists two methods and is re-parsed under a second parser version;
+    - an older-day test: the CSV probe, a day-1 CSV backfill imported after day 30, and a second variant whose newest day is older but is still priced.
+  - p2-14's test encoded the old rule: a 29-day-old US capture was priced beside a day-30 capture. Its own-origin US capture now sits on the same day.
+  - 52 one-line mutations each fail a test: p2-14's 40 and P2-18's 8 (now including the `row_number()` and re-parse mutations that used to survive), plus 4 for this rule: the newest-day filter removed, the newest day taken across the listing, the newest day taken per origin, and `captured_at` ordered before `observed_for` (`docs/reports/p2-22.md`).
