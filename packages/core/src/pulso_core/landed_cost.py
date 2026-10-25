@@ -13,6 +13,17 @@ from fractions import Fraction
 from pulso_core.money import convert_minor
 
 BPS = 10_000
+BIGINT = 2**63 - 1  # every line fits the column type and the API's integers (XR-20)
+MISSING = (  # every code, in the order `missing` lists them (DEC-246 c, DEC-250)
+    "price_missing",
+    "supplier_cost_missing",
+    "freight_missing",
+    "freight_variant_mismatch",
+    "duty_not_set",
+    "fx_missing",
+    "amount_out_of_range",
+)
+DDP_ZEROED = frozenset({"duty_bps", "customs_fee_minor"})  # unused inputs under DDP
 
 
 @dataclass(frozen=True)
@@ -64,7 +75,10 @@ def bps_of(minor: int, bps: int) -> int:
 
 
 def to_usd(amount: Amount) -> int | None:
-    """USD cents rounded half-even once; None when a non-USD amount has no rate."""
+    """USD cents rounded half-even once; None when a non-USD amount has no rate.
+
+    Raises ValueError when a non-USD amount is past BIGINT before or after converting.
+    """
     if amount.currency == "USD":
         return amount.minor
     if amount.usd_rate is None:
@@ -82,11 +96,21 @@ def to_usd(amount: Amount) -> int | None:
 def landed_cost(inputs: Inputs) -> LandedCost:
     missing: list[str] = []
 
+    def fit(value: int | None) -> int | None:
+        if value is not None and abs(value) > BIGINT:
+            missing.append("amount_out_of_range")
+            return None
+        return value
+
     def usd(amount: Amount | None, gap: str) -> int | None:
-        converted = None if amount is None else to_usd(amount)
+        try:
+            converted = None if amount is None else to_usd(amount)
+        except ValueError:  # past BIGINT in its own currency or in USD
+            missing.append("amount_out_of_range")
+            return None
         if converted is None:
             missing.append(gap if amount is None else "fx_missing")
-        return converted
+        return fit(converted)
 
     price = inputs.price_minor
     if price is not None and price <= 0:
@@ -104,18 +128,22 @@ def landed_cost(inputs: Inputs) -> LandedCost:
         if inputs.duty_bps is None:
             missing.append("duty_not_set")
         duty = None if inputs.duty_bps is None or goods is None else bps_of(goods, inputs.duty_bps)
+        duty = fit(duty)  # up to 10 x goods: duty can pass 100%
     customs = 0 if inputs.ddp else inputs.customs_fee_minor
     lines = (goods, freight, duty)
-    landed = None if None in lines else sum(line or 0 for line in lines) + customs
+    landed = None if None in lines else fit(sum(line or 0 for line in lines) + customs)
 
     payment = shopify = returns = margin = margin_bps = None
     if price is not None:
-        payment = bps_of(price, inputs.payment_fee_bps) + inputs.payment_fee_fixed_minor
-        shopify = bps_of(price, inputs.shopify_fee_bps)
+        payment = fit(bps_of(price, inputs.payment_fee_bps) + inputs.payment_fee_fixed_minor)
+        shopify = bps_of(price, inputs.shopify_fee_bps)  # at most the price: bps <= 10000
         returns = bps_of(price, inputs.returns_bps)
-        if landed is not None:
-            margin = price - landed - payment - shopify - returns
-            margin_bps = round(Fraction(margin * BPS, price))
+        costs = (landed, payment, shopify, returns)
+        if None not in costs:
+            margin = fit(price - sum(cost or 0 for cost in costs))
+            margin_bps = None if margin is None else fit(round(Fraction(margin * BPS, price)))
+    if missing:  # R-16: only a complete row has a margin, so only it can rank
+        margin = margin_bps = None
     return LandedCost(
         price_minor=price,
         goods_minor=goods,
@@ -129,8 +157,8 @@ def landed_cost(inputs: Inputs) -> LandedCost:
         margin_minor=margin,
         margin_bps=margin_bps,
         complete=not missing,
-        missing=tuple(dict.fromkeys(missing)),
-        estimates=tuple(sorted(inputs.estimates)),
+        missing=tuple(sorted(set(missing), key=MISSING.index)),
+        estimates=tuple(sorted(set(inputs.estimates) - (DDP_ZEROED if inputs.ddp else set()))),
     )
 
 

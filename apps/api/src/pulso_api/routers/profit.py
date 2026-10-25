@@ -25,6 +25,7 @@ Missing = Literal[
     "freight_variant_mismatch",
     "duty_not_set",
     "fx_missing",
+    "amount_out_of_range",
 ]
 # Scenario overrides: each is a labelled owner estimate in the result.
 OVERRIDES = {

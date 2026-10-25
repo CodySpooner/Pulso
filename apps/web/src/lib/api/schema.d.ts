@@ -837,7 +837,7 @@ export interface components {
             /** Method */
             method: string | null;
             /** Missing */
-            missing: ("price_missing" | "supplier_cost_missing" | "freight_missing" | "freight_variant_mismatch" | "duty_not_set" | "fx_missing")[];
+            missing: ("price_missing" | "supplier_cost_missing" | "freight_missing" | "freight_variant_mismatch" | "duty_not_set" | "fx_missing" | "amount_out_of_range")[];
             /** Payment Fee Minor */
             payment_fee_minor: number | null;
             /** Price Minor */
