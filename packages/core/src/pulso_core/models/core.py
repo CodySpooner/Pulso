@@ -219,6 +219,26 @@ class PopularBrandRule(WorkspaceOwned, CreatedAt, Base):
     created_by: Mapped[UUID] = mapped_column(ForeignKey("users.id"))
 
 
+class ProductKeyword(WorkspaceOwned, CreatedAt, Base):
+    """A search keyword the workspace confirmed or rejected for a product (KW-1, DEC-281). A
+    later decision sets status, decided_by and decided_at again; a trigger refuses DELETE."""
+
+    __tablename__ = "product_keywords"
+    __table_args__ = (
+        PrimaryKeyConstraint("workspace_id", "product_id", "keyword"),
+        CheckConstraint("status IN ('confirmed', 'rejected')", name="status_values"),
+        CheckConstraint("source IN ('title', 'manual')", name="source_values"),
+        CheckConstraint("relevance BETWEEN 0 AND 1", name="relevance_range"),
+    )
+    product_id: Mapped[UUID] = mapped_column(ForeignKey("products.id"))
+    keyword: Mapped[str] = mapped_column(String(100))  # normalized: casefolded, spacing collapsed
+    relevance: Mapped[Decimal | None] = mapped_column(Numeric(4, 3))  # at decision; null: manual
+    source: Mapped[str] = mapped_column(String(20))  # title: a candidate; manual: typed in
+    status: Mapped[str] = mapped_column(String(20))
+    decided_by: Mapped[UUID] = mapped_column(ForeignKey("users.id"))
+    decided_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 # The default scenario's landed cost per workspace and product (migration 0010, DEC-265): a
 # view, so it sits outside Base.metadata and autogenerate never makes it a table.
 workspace_product_economics = Table(

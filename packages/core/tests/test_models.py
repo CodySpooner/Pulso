@@ -144,6 +144,7 @@ def test_single_migration_head_and_offline_sql(
         ) in sql
         assert f"ALTER TABLE {table} ADD COLUMN {column} VECTOR(512)" in sql
     assert "BEFORE UPDATE OR DELETE ON match_decisions" in sql
+    assert "BEFORE DELETE ON product_keywords" in sql
 
 
 def test_queue_and_import_identity_contract() -> None:
