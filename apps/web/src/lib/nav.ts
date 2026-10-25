@@ -53,6 +53,8 @@ export interface NavItem {
   summary: string;
   /** Built before its phase is done: a task of that phase shipped it. */
   built?: true;
+  /** Why the page has no source yet, as its no-source state says it. It stays unbuilt whatever the phase (DEC-302). */
+  noSource?: string;
 }
 
 export interface NavGroup {
@@ -83,7 +85,16 @@ export const navGroups: NavGroup[] = [
   {
     label: "Competitors",
     items: [
-      { label: "Store Spy", href: "/stores", icon: Store, phase: 3, summary: "Tracked competitor stores: catalog size, launches, price changes and best sellers." },
+      {
+        label: "Store Spy",
+        href: "/stores",
+        icon: Store,
+        phase: 3,
+        summary: "Tracked competitor stores: catalog size, launches, price changes and best sellers.",
+        // DEC-261: Pulso never fetches from Shopify stores, so nothing tracks a competitor's catalog.
+        noSource:
+          "The Shopify store crawler stays off so your own Shopify stores aren't put at risk, and no other source tracks competitor stores. Sellers you import from a CSV still show on each product's Sellers tab.",
+      },
       { label: "Ad Intelligence", href: "/ads", icon: Megaphone, phase: 8, summary: "Ads from Meta Ad Library and TikTok, linked to the products they promote." },
     ],
   },
@@ -142,8 +153,8 @@ const detailRoutes = [
 
 export const allNavItems: NavItem[] = [...navGroups.flatMap((g) => g.items), settingsItem];
 
-export function isBuilt(item: Pick<NavItem, "phase" | "built">): boolean {
-  return item.built === true || item.phase < CURRENT_PHASE;
+export function isBuilt(item: Pick<NavItem, "phase" | "built" | "noSource">): boolean {
+  return item.noSource === undefined && (item.built === true || item.phase < CURRENT_PHASE);
 }
 
 export interface ResolvedRoute {

@@ -101,6 +101,16 @@ describe("sourceState", () => {
     expect(sourceState(s, undefined, NOW)).toBe(expected);
   });
 
+  // DEC-302 (c): a CSV-only source's row is its flag and stays off (DEC-267 f), so it reads by its imports, never Disabled.
+  test("a CSV-only source reads No import yet until a file lands, then by its import run", () => {
+    const csv = (over: Partial<SourceHealth> = {}) => source({ key: "amazon", type: "csv", enabled: false, status: "disabled", last_run: null, ...over });
+    expect(sourceState(csv(), {}, NOW)).toBe("no_import");
+    expect(sourceState(csv(), undefined, NOW)).toBe("no_import");
+    expect(sourceState(csv({ last_run: run({ trigger: "csv" }) }), {}, NOW)).toBe("healthy");
+    expect(sourceState(csv({ last_run: run({ trigger: "csv", status: "failed" }) }), {}, NOW)).toBe("failing");
+    expect(attentionCount([csv()], undefined, NOW)).toEqual({ count: 0, atLeast: false }); // no schedule, so never overdue
+  });
+
   test("a source the gap summary would mark overdue reads unknown without it, never healthy", () => {
     expect(sourceState(source(), { cj: ago(7) }, NOW)).toBe("overdue");
     expect(sourceState(source(), undefined, NOW)).toBe("unknown");

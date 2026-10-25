@@ -4,7 +4,7 @@ import { useEffect } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { keepPreviousData } from "@tanstack/react-query";
-import { Check, ChevronRight, CircleHelp, CircleSlash, PauseCircle, SearchX, Store, TriangleAlert } from "lucide-react";
+import { Check, ChevronRight, CircleHelp, CircleOff, CircleSlash, PauseCircle, SearchX, Store, TriangleAlert, Unplug } from "lucide-react";
 
 import { useApiReady } from "@/components/data-health/api";
 import { Ago, PanelError, Pill, StaleLine, TapTooltip } from "@/components/data-health/atoms";
@@ -32,6 +32,7 @@ function setFilter(next: Filter) {
 }
 
 const link = "link-inline rounded-sm underline decoration-border-strong underline-offset-2 hover:decoration-current";
+const IMPORT = "/admin/data-health#import";
 
 // UX-7 (vault Features/Product Page - Sellers): summary strip, filter chips kept in the URL, a dense table and, below
 // 768 px, seller cards with delisted sellers collapsed. Rows never animate (Motion System rule 2).
@@ -65,14 +66,28 @@ export function SellersTab({ id }: { id: string }) {
   const rows = data?.pages.flatMap((p) => p.rows) ?? [];
   const now = sellers.dataUpdatedAt;
   const retry = () => void sellers.refetch();
+  // DEC-302 (b): the store crawler stays off (DEC-261), so with no seller ever seen there is no source, never zeros.
+  const noSource = first?.crawler.status === "disabled" && first.as_of === null;
 
   return (
     <div className="flex flex-col gap-4 p-4">
       <h2 className="sr-only">Sellers</h2>
-      {first && first.crawler.status !== "enabled" && <CrawlerBanner page={first} />}
+      {first && first.crawler.status !== "enabled" && !noSource && <CrawlerBanner page={first} />}
       {data && sellers.isRefetchError && !isFetchNextPageError && <StaleLine boxed what="Couldn't refresh sellers" error={error} asOf={now} retry={retry} />}
       {!data && sellers.isError ? (
         <PanelError headingLevel="h2" size="md" title="Couldn't load sellers" error={error} retry={retry} />
+      ) : noSource ? (
+        <EmptyState
+          icon={Unplug}
+          title="Sellers: no source yet"
+          action={
+            <Button asChild variant="secondary">
+              <Link href={IMPORT}>Import a CSV in Data Health</Link>
+            </Button>
+          }
+        >
+          The Shopify store crawler stays off so your own Shopify stores aren&apos;t put at risk. A seller shows here once you import its listing from a CSV.
+        </EmptyState>
       ) : (
         <>
           {first ? (
@@ -148,6 +163,18 @@ const reasonText = (reason: string) => reason.replace(/^consecutive_blocks:/, "r
 /** The Shopify store crawler is off (owner decision 2, vault Source - Shopify Stores): prices and dates may be old. */
 function CrawlerBanner({ page }: { page: Page }) {
   const { status, since, reason } = page.crawler;
+  // DEC-302 (b): off for good by the owner's decision (DEC-261), so a plain fact in neutral tones, not a paused warning.
+  if (status === "disabled")
+    return (
+      <p role="status" className="rounded-lg border border-border bg-secondary px-4 py-2.5 text-data text-muted-foreground">
+        <CircleOff className="mr-1.5 inline size-3.5 align-[-2px]" aria-hidden />
+        <span className="font-medium text-foreground">Store crawler off</span> to keep your own Shopify stores safe, so sellers come only from your CSV
+        imports. Seller data as of {page.as_of ? <time dateTime={page.as_of}>{formatUtc(page.as_of)}</time> : "never"}.{" "}
+        <Link href={IMPORT} className={cn(link, "whitespace-nowrap")}>
+          Import a CSV in Data Health
+        </Link>
+      </p>
+    );
   return (
     <p role="status" className="rounded-lg border border-warning/40 bg-warning-muted px-4 py-2.5 text-data text-foreground">
       <PauseCircle className="mr-1.5 inline size-3.5 align-[-2px] text-warning" aria-hidden />

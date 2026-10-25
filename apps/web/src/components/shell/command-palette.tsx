@@ -410,7 +410,7 @@ export function CommandPalette({
                             icon={nav.icon}
                             label={nav.label}
                             keywords={[nav.label, nav.href]}
-                            hint={isBuilt(nav) ? <CornerDownLeft className="size-3.5" aria-hidden /> : `Phase ${nav.phase}`}
+                            hint={isBuilt(nav) ? <CornerDownLeft className="size-3.5" aria-hidden /> : nav.noSource ? "No source yet" : `Phase ${nav.phase}`}
                             onSelect={() => go(nav.href)}
                           />
                         ))}
