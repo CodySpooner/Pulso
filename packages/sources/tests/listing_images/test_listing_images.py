@@ -304,6 +304,28 @@ def test_consecutive_blocks_disable_once_and_stop_the_run(
     assert not session.get_one(Source, 6).enabled
 
 
+@pytest.mark.parametrize("status", [403, 429, 430])
+def test_image_blocks_disable_once_while_robots_answers_200(
+    session: Session, settings: Settings, net: Net, status: int
+) -> None:
+    # XR-11: the robots.txt 200 that opens every run must not reset the image block count.
+    threshold = settings.collector_block_threshold
+    for n in range(threshold):
+        (img,) = add_listing(session, f"https://{A}/{n}.png")
+        net.replies[img.url] = Response(b"", status, "text/plain")
+    for _ in range(threshold):
+        assert run(session, settings).error_message == f"http_{status}"
+        net.now += timedelta(days=1)
+    events = session.scalars(select(SourceEvent)).all()
+    assert [(e.action, e.reason) for e in events] == [
+        ("disable", f"consecutive_blocks:http_{status}")
+    ]
+    source = session.get_one(Source, 6)
+    assert not source.enabled and source.consecutive_block_count == threshold
+    run(session, settings)
+    assert len(net.calls) == 2 * threshold  # robots.txt and one image per run, then nothing
+
+
 def test_retry_after_is_honoured(session: Session, settings: Settings, net: Net) -> None:
     (img,) = add_listing(session, f"https://{A}/busy.png")
     busy = Response(b"", 503, "text/plain", headers={"Retry-After": "120"})

@@ -260,6 +260,31 @@ def test_five_429_runs_disable_and_same_slot_delivery_is_noop(
     assert session.scalar(select(func.count()).select_from(SourceEvent)) == 1
 
 
+def test_blocks_disable_once_while_robots_answers_200(
+    session: Session, settings: Settings, io_mock: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # XR-11: robots.txt 200 before each store's JSON must not reset the block count.
+    class Clock:
+        at = datetime.now(UTC)
+
+        @classmethod
+        def now(cls, tz: Any = None) -> datetime:
+            return cls.at
+
+    monkeypatch.setattr(lifecycle, "datetime", Clock)
+    io_mock.replies["https://first.test/meta.json"] = fixture("rate_limited")
+    for _ in range(settings.collector_block_threshold):
+        assert run(session, settings).error_message == "http_429"
+        Clock.at += timedelta(seconds=61)
+        io_mock.now += 61
+    source = session.get_one(Source, 1)
+    assert not source.enabled and source.consecutive_block_count == 5
+    assert session.scalar(select(func.count()).select_from(SourceEvent)) == 1
+    assert [u.rsplit("/", 1)[1] for u, _, _ in io_mock.calls] == ["robots.txt", "meta.json"] * 5
+    run(session, settings)
+    assert len(io_mock.calls) == 10
+
+
 @pytest.mark.parametrize("path", ["/robots.txt", "/meta.json", "/products.json?limit=250&page=1"])
 def test_unsolicited_304_never_confers_coverage(
     session: Session, settings: Settings, io_mock: Any, path: str

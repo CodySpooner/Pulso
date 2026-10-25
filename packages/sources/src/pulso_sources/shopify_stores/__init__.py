@@ -158,7 +158,7 @@ class ShopifyAdapter:
         ):
             body = cached[1]
         else:
-            yield request("/robots.txt")
+            yield Request(params=request("/robots.txt").params, resets_blocks=False)
             if self.responses[robots_url].status_code != 200:
                 raise ValueError("robots_unavailable")
             body = self.responses[robots_url].body or b""

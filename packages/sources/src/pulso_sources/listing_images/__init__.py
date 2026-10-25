@@ -158,7 +158,7 @@ class ImageAdapter:
         return UpsertStats(updated=1)
 
     def robots_requests(self, host: str) -> Iterator[Request]:
-        yield Request(params={"url": f"https://{host}/robots.txt", "host": host})
+        yield Request({"url": f"https://{host}/robots.txt", "host": host}, resets_blocks=False)
         # Resumed only after a 2xx capture; otherwise the target fails and the host's images
         # skip this run unattempted (fail closed, no backoff).
         robots = RobotFileParser()

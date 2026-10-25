@@ -162,11 +162,10 @@ def _capture[R](
                 # Block state from the current row: an owner may have disabled it mid-fetch.
                 session.refresh(source, with_for_update=True)
                 source.last_status_code = response.status_code
-                source.consecutive_block_count = (
-                    source.consecutive_block_count + 1
-                    if response.status_code in BLOCK_STATUSES
-                    else 0
-                )
+                if response.status_code in BLOCK_STATUSES:
+                    source.consecutive_block_count += 1
+                elif request.resets_blocks:
+                    source.consecutive_block_count = 0
                 if (
                     source.enabled
                     and source.consecutive_block_count >= settings.collector_block_threshold
