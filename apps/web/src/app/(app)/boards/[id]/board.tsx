@@ -487,20 +487,20 @@ function Cards({ board, setNote, saved }: { board: Board; setNote: ReturnType<ty
                           Product
                         </th>
                         {["Price", "Best margin", "Trend"].map((label) => (
-                          <th key={label} scope="col" className="py-2 pr-4 text-right font-medium whitespace-nowrap">
+                          <th key={label} scope="col" className="py-2 pr-3 text-right font-medium whitespace-nowrap">
                             {label}
                           </th>
                         ))}
-                        <th scope="col" className="py-2 pr-4 text-left font-medium">
+                        <th scope="col" className="py-2 pr-3 text-left font-medium">
                           Lifecycle
                         </th>
-                        <th scope="col" className="py-2 pr-4 text-right font-medium">
+                        <th scope="col" className="py-2 pr-3 text-right font-medium">
                           Saturation
                         </th>
                         <th scope="col" className="py-2 pr-4 text-left font-medium">
                           Note
                         </th>
-                        <th scope="col" className="py-2 pr-4 text-left font-medium whitespace-nowrap">
+                        <th scope="col" className="py-2 pr-3 text-left font-medium whitespace-nowrap">
                           Data as of
                         </th>
                         <th scope="col" className="py-2 pr-2 text-right font-medium">

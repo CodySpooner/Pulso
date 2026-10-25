@@ -98,27 +98,27 @@ export function Row(props: CardProps) {
           <ProductLink item={item} className="line-clamp-2 text-data" />
         </div>
       </th>
-      <td className="py-2 pr-4 text-right">
+      <td className="py-2 pr-3 text-right">
         <Price item={item} now={now} />
       </td>
-      <td className="py-2 pr-4 text-right">
+      <td className="py-2 pr-3 text-right">
         <Margin item={item} now={now} />
       </td>
-      <td className="py-2 pr-4 text-right">
+      <td className="py-2 pr-3 text-right">
         <ScoreValue score={item.trend} label="Trend Score" now={now} />
       </td>
-      <td className="py-2 pr-4">
+      <td className="py-2 pr-3">
         <Lifecycle item={item} now={now} />
       </td>
-      <td className="py-2 pr-4 text-right">
+      <td className="py-2 pr-3 text-right">
         <ScoreValue score={item.saturation} label="Saturation" now={now} />
       </td>
-      <td className="min-w-56 py-1.5 pr-4">
+      <td className="min-w-40 py-1.5 pr-4">
         <Merged item={item} />
         <NoteBox item={item} note={note} rows={1} />
         <NoteStatus note={note} className="px-2 text-micro" />
       </td>
-      <td className="py-2 pr-4 text-label">
+      <td className="py-2 pr-3 text-label">
         <Freshness item={item} now={now} />
       </td>
       <td className="py-2 pr-2 text-right text-label whitespace-nowrap text-subtle-foreground">

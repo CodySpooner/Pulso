@@ -42,7 +42,8 @@ export function ScoreValue({ score, label, now }: { score: Score; label: string;
       contentClassName="pointer-events-auto max-w-72 px-3 py-2"
       type="button"
       aria-label={`${label}: ${text}`}
-      className={cn(trigger, "whitespace-nowrap", !/^\d/.test(text) && "text-muted-foreground")}
+      // The longest words may wrap in a narrow table column, aligned like the column.
+      className={cn(trigger, "[text-align:inherit]", text !== "Insufficient signal" && "whitespace-nowrap", !/^\d/.test(text) && "text-muted-foreground")}
     >
       {text}
     </TapTooltip>

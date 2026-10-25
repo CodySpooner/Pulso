@@ -108,6 +108,8 @@ export interface BoardsMock {
   status?: number;
   /** GET …/items answers with this problem status. */
   itemsStatus?: number;
+  /** GET …/items never answers: the card skeletons stay. */
+  holdItems?: boolean;
   /** A note PATCH answers 503. */
   failNotes?: boolean;
   /** A move PATCH answers 503. */
@@ -172,6 +174,7 @@ export async function mockBoardsApi(page: Page, options: BoardsMock = {}) {
     if (rest !== "items") return fail(404, "not_found", "Not found.");
     const cards = sorted(id);
     if (!pid && method === "GET") {
+      if (options.holdItems) return;
       if (options.itemsStatus) return fail(options.itemsStatus, "unavailable", "The API is restarting. Try again.");
       const limit = Number(url.searchParams.get("limit") ?? 50);
       const cursor = url.searchParams.get("cursor");
