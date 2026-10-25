@@ -19,7 +19,10 @@ import { formatAgo, formatUtc } from "@/lib/format";
 import { duration, spring } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 
-import { resolveTab, TAB_FLAGS, TABS } from "./tabs";
+import { ContextRail } from "./context-rail";
+import { Overview } from "./overview";
+import { card, newest, StatCard } from "./stat-card";
+import { resolveTab, TAB_FLAGS, TABS, type Tab } from "./tabs";
 
 // The header stats as a response carries them (openapi-fetch retypes a NoSource, see Stat).
 type Stats = Record<"store_count" | "supplier_count" | "price_min_minor" | "price_max_minor", Stat>;
@@ -29,7 +32,6 @@ const usd = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" 
 const money = (minor: number) => usd.format(minor / 100);
 const count = (n: number) => n.toLocaleString("en-US");
 const day = new Intl.DateTimeFormat("en-US", { dateStyle: "medium", timeZone: "UTC" });
-const card = "rounded-xl border border-border bg-card shadow-card";
 
 // UX-3 (vault Features/Product Page): header, stat strip and tab bar. States per vault Design/UI States: a skeleton
 // while loading, not found, a panel error, a stale line when a refetch fails, stale data, and no source yet.
@@ -127,10 +129,7 @@ function Thumb({ url }: { url: string | null }) {
   return <img src={url} alt="" width={72} height={72} onError={() => setBroken(true)} className={cn(box, "object-cover")} />;
 }
 
-const newest = (stats: Stat[]) =>
-  stats.filter((s): s is Sourced => !("reason" in s)).sort((a, b) => Date.parse(b.as_of) - Date.parse(a.as_of))[0];
-
-function Loaded({ product, now }: { product: Stats; now: number }) {
+function Loaded({ product, now }: { product: Stats & { id: string }; now: number }) {
   const prices = [product.price_min_minor, product.price_max_minor];
   const stats = [product.store_count, product.supplier_count, ...prices];
   const stale = [...new Map(stats.filter((s): s is Sourced => !("reason" in s) && s.stale).map((s) => [s.source, s])).values()];
@@ -166,33 +165,12 @@ function Loaded({ product, now }: { product: Stats; now: number }) {
           </Link>
         </p>
       )}
-      <ProductTabs />
+      <ProductTabs id={product.id} />
     </>
   );
 }
 
-/** A stat card: label, value, and the value's source and age, or the reason it has none. */
-function StatCard({ label, stat, now, className, children }: { label: string; stat: Stat; now: number; className?: string; children: React.ReactNode }) {
-  return (
-    <div className={cn("flex min-w-0 flex-col gap-1 px-4 py-3", card, className)}>
-      <dt className="text-label text-muted-foreground">{label}</dt>
-      <dd className={cn("text-stat-lg font-semibold text-foreground", "reason" in stat ? "text-body font-normal" : "font-mono")}>{children}</dd>
-      <dd className={cn("line-clamp-2 text-micro text-subtle-foreground", !("reason" in stat) && stat.stale && "text-warning")}>
-        {"reason" in stat ? (
-          stat.reason
-        ) : (
-          <>
-            {stat.stale && <TriangleAlert className="mr-1 inline size-3 align-[-2px]" aria-hidden />}
-            {stat.source_name} · {formatAgo(stat.as_of, now)}
-            {stat.stale && " · stale"}
-          </>
-        )}
-      </dd>
-    </div>
-  );
-}
-
-function ProductTabs() {
+function ProductTabs({ id }: { id: string }) {
   const tab = resolveTab(useSearchParams().get("tab"));
   const list = useRef<HTMLDivElement>(null);
   const tabs = TABS.filter((t) => TAB_FLAGS[t.value]);
@@ -210,6 +188,11 @@ function ProductTabs() {
     // Native history keeps Back for the previous page and skips a server round trip; Next syncs useSearchParams.
     window.history.replaceState(null, "", query ? `?${query}` : window.location.pathname);
   };
+  // A link inside a panel: switch, and focus lands on the tab it opened rather than falling back to the page.
+  const goTo = (value: Tab) => {
+    select(value);
+    list.current?.querySelector<HTMLElement>(`[data-tab="${value}"]`)?.focus();
+  };
 
   return (
     <Tabs.Root value={tab} onValueChange={select} activationMode="manual" className="flex flex-col gap-4">
@@ -222,6 +205,7 @@ function ProductTabs() {
           <Tabs.Trigger
             key={t.value}
             value={t.value}
+            data-tab={t.value}
             className="relative h-11 shrink-0 snap-start px-3 text-body font-medium text-muted-foreground transition-colors duration-(--duration-fast) ease-standard outline-offset-[-2px] hover:text-foreground data-[state=active]:text-foreground"
           >
             {t.label}
@@ -229,15 +213,23 @@ function ProductTabs() {
           </Tabs.Trigger>
         ))}
       </Tabs.List>
-      {tabs.map((t) => (
-        <Tabs.Content key={t.value} value={t.value} className={card}>
-          <m.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: duration.fast }}>
-            <EmptyState icon={t.icon} headingLevel="h2" title={`The ${t.label} tab arrives in Phase 2`}>
-              {t.summary} Task {t.task} builds it; nothing shows here until it comes from a real source.
-            </EmptyState>
-          </m.div>
-        </Tabs.Content>
-      ))}
+      {/* The context rail sits beside every tab from 1280px and under it below (DEC-243). */}
+      <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_20rem]">
+        {tabs.map((t) => (
+          <Tabs.Content key={t.value} value={t.value} className={cn("min-w-0", t.value !== "overview" && card)}>
+            <m.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: duration.fast }}>
+              {t.value === "overview" ? (
+                <Overview id={id} goTo={goTo} />
+              ) : (
+                <EmptyState icon={t.icon} headingLevel="h2" title={`The ${t.label} tab arrives in Phase 2`}>
+                  {t.summary} Task {t.task} builds it; nothing shows here until it comes from a real source.
+                </EmptyState>
+              )}
+            </m.div>
+          </Tabs.Content>
+        ))}
+        <ContextRail id={id} />
+      </div>
     </Tabs.Root>
   );
 }

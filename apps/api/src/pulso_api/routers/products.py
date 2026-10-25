@@ -1,4 +1,5 @@
-"""Product resources (UX-3, UX-2): global market data, so auth applies and no workspace filter."""
+"""Product resources (UX-3, UX-2, UX-4). Products are global market data, so auth applies and
+no workspace filter; only notes and tags are the workspace's own."""
 
 import json
 from collections import defaultdict
@@ -12,15 +13,19 @@ from pydantic import (
     AwareDatetime,
     BaseModel,
     BeforeValidator,
+    ConfigDict,
     Field,
+    StringConstraints,
     TypeAdapter,
     ValidationError,
 )
 from sqlalchemy import (
     Double,
     Row,
+    Select,
     and_,
     case,
+    delete,
     distinct,
     exists,
     func,
@@ -29,11 +34,12 @@ from sqlalchemy import (
     true,
     tuple_,
 )
-from sqlalchemy.orm import Session
+from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy.orm import InstrumentedAttribute, Session
 from sqlalchemy.sql import ColumnElement
 from starlette.responses import RedirectResponse, Response
 
-from pulso_api.auth import current_principal
+from pulso_api.auth import Principal, current_principal
 from pulso_api.dependencies import get_db
 from pulso_api.errors import APIError
 from pulso_api.schemas.provenance import NoSource, Sourced, Stat
@@ -44,8 +50,11 @@ from pulso_core.models import (
     ListingSnapshot,
     Product,
     ProductDailyFeature,
+    ProductNote,
+    ProductTag,
     RawPayload,
     Source,
+    Supplier,
 )
 
 router = APIRouter(prefix="/v1/products", dependencies=[Depends(current_principal)])
@@ -146,6 +155,8 @@ def latest_snapshots(session: Session, product_ids: Sequence[UUID]) -> dict[UUID
             ListingSnapshot.price_min_minor,
             ListingSnapshot.price_max_minor,
             ListingSnapshot.currency,
+            ListingSnapshot.available,
+            ListingSnapshot.stock,
             Source.key,
             Source.name,
             Source.config,
@@ -166,17 +177,23 @@ def latest_snapshots(session: Session, product_ids: Sequence[UUID]) -> dict[UUID
     return grouped
 
 
+def newest(group: list[Row[Any]]) -> Row[Any] | None:
+    return max(group, key=lambda row: row.captured_at, default=None)
+
+
+def low(row: Row[Any]) -> int:
+    return int(row.price_min_minor)
+
+
+def usd_priced(rows: list[Row[Any]]) -> list[Row[Any]]:
+    # ponytail: USD prices only (US market, owner decision 3); others wait for an FX basis.
+    return [row for row in rows if row.currency == "USD" and row.price_min_minor is not None]
+
+
 def listing_stats(rows: list[Row[Any]], now: datetime) -> dict[str, Stat]:
     stores = [row for row in rows if row.store_id is not None]
     suppliers = [row for row in rows if row.supplier_id is not None]
-    # ponytail: USD-listed stores only (US market, owner decision 3); others wait for an FX basis.
-    priced = [row for row in stores if row.currency == "USD" and row.price_min_minor is not None]
-
-    def newest(group: list[Row[Any]]) -> Row[Any] | None:
-        return max(group, key=lambda row: row.captured_at, default=None)
-
-    def low(row: Row[Any]) -> int:
-        return int(row.price_min_minor)
+    priced = usd_priced(stores)
 
     def high(row: Row[Any]) -> int:
         return int(row.price_max_minor if row.price_max_minor is not None else row.price_min_minor)
@@ -197,6 +214,56 @@ def listing_stats(rows: list[Row[Any]], now: datetime) -> dict[str, Stat]:
         "price_min_minor": stat(min(priced, key=low, default=None), low, NO_PRICE, now),
         "price_max_minor": stat(max(priced, key=high, default=None), high, NO_PRICE, now),
     }
+
+
+def best_feature(product_id: InstrumentedAttribute[UUID] | UUID) -> Select[Any]:
+    """The latest feature day with a growth, then the best-graded family on it (DEC-239 c)."""
+    pdf = ProductDailyFeature
+    rank = case({family: i for i, family in enumerate(FAMILIES)}, value=pdf.family)
+    return (
+        select(
+            pdf.family,
+            pdf.velocity_7d,
+            pdf.growth_7d.label("growth"),
+            pdf.has_gap,
+            pdf.feature_date,
+            pdf.computed_at,
+        )
+        .where(
+            pdf.product_id == product_id,
+            pdf.family.in_(FAMILIES),
+            pdf.velocity_7d.is_not(None),
+            pdf.growth_7d.is_not(None),
+        )
+        .order_by(pdf.feature_date.desc(), rank, pdf.feature_version.desc())
+        .limit(1)
+    )
+
+
+def velocity_stat(
+    row: Row[Any] | None, sources: dict[str, Source], now: datetime
+) -> Velocity | NoSource:
+    """A `best_feature` row as the velocity stat; none, or a null family, is no signal."""
+    if row is None or row.family is None:
+        return NoSource(value=None, reason=NO_SIGNAL)
+    grade, key, method = FAMILIES[row.family]
+    # Features for day d use only captures before d+1 00:00Z (DEC-031).
+    as_of = min(
+        datetime.combine(row.feature_date + timedelta(days=1), time(), UTC), row.computed_at
+    )
+    return Velocity(
+        value=round(row.velocity_7d),
+        source=key,
+        source_name=sources[key].name,
+        as_of=as_of,
+        raw_payload_id=None,
+        method=method,
+        stale=is_stale(sources[key].config, as_of, now),
+        family=row.family,
+        grade=grade,
+        growth=row.growth,
+        gap=row.has_gap,
+    )
 
 
 Sort = Literal["momentum", "newest", "fewest_sellers"]
@@ -249,28 +316,7 @@ def list_products(
         .where(Listing.product_id == Product.id, Listing.delisted_at.is_(None))
         .lateral()
     )
-    pdf = ProductDailyFeature
-    rank = case({family: i for i, family in enumerate(FAMILIES)}, value=pdf.family)
-    # The latest feature day with a growth, then the best-graded family on it.
-    feature = (
-        select(
-            pdf.family,
-            pdf.velocity_7d,
-            pdf.growth_7d,
-            pdf.has_gap,
-            pdf.feature_date,
-            pdf.computed_at,
-        )
-        .where(
-            pdf.product_id == Product.id,
-            pdf.family.in_(FAMILIES),
-            pdf.velocity_7d.is_not(None),
-            pdf.growth_7d.is_not(None),
-        )
-        .order_by(pdf.feature_date.desc(), rank, pdf.feature_version.desc())
-        .limit(1)
-        .lateral()
-    )
+    feature = best_feature(Product.id).lateral()
     where: list[ColumnElement[bool]] = [Product.merged_into_id.is_(None)]
     if category is not None:
         where.append(Product.category_id == category)
@@ -297,7 +343,7 @@ def list_products(
             listings.c.price_high,
             feature.c.family,
             feature.c.velocity_7d,
-            feature.c.growth_7d.label("growth"),
+            feature.c.growth,
             feature.c.has_gap,
             feature.c.feature_date,
             feature.c.computed_at,
@@ -395,26 +441,7 @@ def item(
     row: Row[Any], snapshots: list[Row[Any]], sources: dict[str, Source], now: datetime
 ) -> DiscoverItem:
     stats = listing_stats(snapshots, now)
-    velocity: Velocity | NoSource = NoSource(value=None, reason=NO_SIGNAL)
-    if row.family is not None:
-        grade, key, method = FAMILIES[row.family]
-        # Features for day d use only captures before d+1 00:00Z (DEC-031).
-        as_of = min(
-            datetime.combine(row.feature_date + timedelta(days=1), time(), UTC), row.computed_at
-        )
-        velocity = Velocity(
-            value=round(row.velocity_7d),
-            source=key,
-            source_name=sources[key].name,
-            as_of=as_of,
-            raw_payload_id=None,
-            method=method,
-            stale=is_stale(sources[key].config, as_of, now),
-            family=row.family,
-            grade=grade,
-            growth=row.growth,
-            gap=row.has_gap,
-        )
+    velocity = velocity_stat(row, sources, now)
     # Each family's newest capture: stores (and their prices), suppliers, demand.
     fed = [
         s
@@ -467,3 +494,220 @@ def get_product(product_id: UUID, request: Request, session: DB) -> Response | P
         currency="USD",
         **listing_stats(latest_snapshots(session, [product.id])[product.id], datetime.now(UTC)),
     )
+
+
+class SupplierCost(Sourced):
+    """The lowest current unit cost among in-stock supplier offers."""
+
+    platform: str  # suppliers.platform of that offer, e.g. "cj"
+
+
+class Appearance(BaseModel):
+    vendor: Literal["store", "supplier"]
+    count: Stat  # stores: distinct live stores; suppliers: live offers (CJ has one supplier row)
+
+
+class ProductOverview(BaseModel):
+    """The Overview tab's key stats and where the product appears (UX-4, DEC-243)."""
+
+    currency: Literal["USD"]  # of the *_minor stats
+    price_min_minor: Stat
+    price_median_minor: Stat  # the lower median of the USD store listings' lowest prices
+    price_max_minor: Stat
+    best_supplier_cost_minor: SupplierCost | NoSource
+    landed_margin_minor: NoSource
+    first_seen_at: AwareDatetime
+    age_days: Stat  # UTC days since first_seen_at, traced to the product's first observation
+    velocity: Velocity | NoSource
+    appearances: list[Appearance]  # one per source with a live listing, suppliers first
+    ad_count: NoSource
+
+
+def live_product(session: Session, product_id: UUID) -> Product:
+    """A product a sub-resource may read or write. The page asks with the id `get_product`
+    resolved, so a merged id here means a merge landed while the page was open."""
+    product = session.get(Product, product_id)
+    if product is None:
+        raise APIError(404, "not_found", "Product not found.")
+    if product.merged_into_id is not None:
+        raise APIError(409, "merged", "This product was merged into another one. Reload the page.")
+    return product
+
+
+def appearance(store: bool, group: list[Row[Any]], now: datetime) -> Appearance:
+    """One source's live listings of a product, counted as stores or as supplier offers."""
+    n = len({row.store_id for row in group}) if store else len(group)
+    return Appearance(
+        vendor="store" if store else "supplier", count=stat(newest(group), lambda _: n, "", now)
+    )
+
+
+@router.get("/{product_id}/overview", response_model=ProductOverview)
+def get_product_overview(product_id: UUID, session: DB) -> ProductOverview:
+    product = live_product(session, product_id)
+    now = datetime.now(UTC)
+    rows = latest_snapshots(session, [product.id])[product.id]
+    stats = listing_stats(rows, now)
+    prices = sorted(usd_priced([row for row in rows if row.store_id is not None]), key=low)
+    # Known out of stock is out; CJ's catalog reports no stock, so its offers count (DEC-243).
+    offers = [
+        row
+        for row in usd_priced([row for row in rows if row.supplier_id is not None])
+        if row.available is not False and (row.stock is None or row.stock > 0)
+    ]
+    best = min(offers, key=low, default=None)
+    cost: SupplierCost | NoSource = NoSource(value=None, reason="No in-stock supplier offer yet.")
+    if best is not None:
+        platform = session.scalar(select(Supplier.platform).where(Supplier.id == best.supplier_id))
+        cost = SupplierCost(**stat(best, low, "", now).model_dump(), platform=platform)
+    groups: dict[tuple[bool, str], list[Row[Any]]] = defaultdict(list)
+    for row in rows:
+        groups[(row.store_id is not None, row.key)].append(row)
+    # Suppliers first, then by source.
+    appearances = [appearance(store, group, now) for (store, _), group in sorted(groups.items())]
+    first = session.execute(
+        select(ListingSnapshot.captured_at, ListingSnapshot.raw_payload_id, Source.key, Source.name)
+        .join(Listing, Listing.id == ListingSnapshot.listing_id)
+        .join(Source, Source.id == Listing.source_id)
+        .where(Listing.product_id == product.id)
+        .order_by(ListingSnapshot.captured_at, ListingSnapshot.id)
+        .limit(1)
+    ).first()
+    age: Stat = NoSource(value=None, reason="No listing observation yet.")
+    if first is not None:
+        age = Sourced(
+            value=(now.date() - product.first_seen_at.astimezone(UTC).date()).days,
+            source=first.key,
+            source_name=first.name,
+            as_of=first.captured_at,
+            raw_payload_id=first.raw_payload_id,
+            stale=False,  # an age never goes stale
+        )
+    feature = session.execute(best_feature(product.id)).first()
+    sources = {source.key: source for source in session.scalars(select(Source))}
+    return ProductOverview(
+        currency="USD",
+        price_min_minor=stats["price_min_minor"],
+        price_median_minor=stat(
+            prices[(len(prices) - 1) // 2] if prices else None, low, NO_PRICE, now
+        ),
+        price_max_minor=stats["price_max_minor"],
+        best_supplier_cost_minor=cost,
+        landed_margin_minor=NoSource(value=None, reason=NO_MARGIN),
+        first_seen_at=product.first_seen_at,
+        age_days=age,
+        velocity=velocity_stat(feature, sources, now),
+        appearances=appearances,
+        ad_count=NoSource(value=None, reason="No ad source is connected yet."),
+    )
+
+
+# Notes and tags: this workspace's own context on a product (the page's context rail, DEC-243).
+CurrentPrincipal = Annotated[Principal, Depends(current_principal)]
+NOTE_CURSOR = TypeAdapter(tuple[AwareDatetime, UUID])
+Tag = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=80)]
+
+
+class NoteIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    body: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=10_000)]
+
+
+class Note(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: UUID
+    body: str
+    created_at: AwareDatetime
+
+
+class NotePage(BaseModel):
+    items: list[Note]  # newest first
+    next_cursor: str | None = Field(description="Pass as `cursor` for the next, older page.")
+
+
+class Tags(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    tags: Annotated[list[Tag], Field(max_length=20)]
+
+
+@router.get("/{product_id}/notes", response_model=NotePage)
+def list_product_notes(
+    product_id: UUID,
+    principal: CurrentPrincipal,
+    session: DB,
+    cursor: str | None = None,
+    limit: Annotated[int, Query(ge=1, le=100)] = 20,
+) -> NotePage:
+    live_product(session, product_id)
+    query = select(ProductNote).where(
+        ProductNote.workspace_id == principal.workspace_id, ProductNote.product_id == product_id
+    )
+    if cursor is not None:
+        try:
+            after = NOTE_CURSOR.validate_json(cursor)
+        except ValidationError:
+            raise APIError(422, "invalid_cursor", "Invalid note cursor.") from None
+        query = query.where(tuple_(ProductNote.created_at, ProductNote.id) < after)
+    notes = session.scalars(
+        query.order_by(ProductNote.created_at.desc(), ProductNote.id.desc()).limit(limit + 1)
+    ).all()
+    last = notes[limit - 1] if len(notes) > limit else None
+    return NotePage(
+        items=[Note.model_validate(note) for note in notes[:limit]],
+        next_cursor=json.dumps([last.created_at.isoformat(), str(last.id)]) if last else None,
+    )
+
+
+@router.post("/{product_id}/notes", response_model=Note, status_code=201)
+def create_product_note(
+    product_id: UUID, note: NoteIn, principal: CurrentPrincipal, session: DB
+) -> Note:
+    live_product(session, product_id)
+    row = ProductNote(
+        workspace_id=principal.workspace_id,
+        product_id=product_id,
+        author_id=principal.user_id,
+        body=note.body,
+    )
+    session.add(row)
+    session.commit()
+    return Note.model_validate(row)
+
+
+def tags_of(session: Session, workspace_id: UUID, product_id: UUID) -> Tags:
+    tags = session.scalars(
+        select(ProductTag.tag).where(
+            ProductTag.workspace_id == workspace_id, ProductTag.product_id == product_id
+        )
+    )
+    return Tags(tags=sorted(tags, key=str.casefold))
+
+
+@router.get("/{product_id}/tags", response_model=Tags)
+def list_product_tags(product_id: UUID, principal: CurrentPrincipal, session: DB) -> Tags:
+    live_product(session, product_id)
+    return tags_of(session, principal.workspace_id, product_id)
+
+
+@router.put("/{product_id}/tags", response_model=Tags)
+def put_product_tags(
+    product_id: UUID, body: Tags, principal: CurrentPrincipal, session: DB
+) -> Tags:
+    """Replace this workspace's tags on the product. Inner spaces collapse, and a tag that
+    differs only in case from an earlier one is dropped."""
+    live_product(session, product_id)
+    unique: dict[str, str] = {}
+    for tag in body.tags:
+        tag = " ".join(tag.split())
+        unique.setdefault(tag.casefold(), tag)
+    scope = (ProductTag.workspace_id == principal.workspace_id, ProductTag.product_id == product_id)
+    session.execute(delete(ProductTag).where(*scope))
+    if unique:
+        rows = [
+            {"workspace_id": principal.workspace_id, "product_id": product_id, "tag": tag}
+            for tag in unique.values()
+        ]
+        # A concurrent PUT may have inserted one first.
+        session.execute(insert(ProductTag).values(rows).on_conflict_do_nothing())
+    session.commit()
+    return tags_of(session, principal.workspace_id, product_id)
