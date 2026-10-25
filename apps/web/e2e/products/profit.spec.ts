@@ -123,7 +123,7 @@ test("no market price: the price input asks for one, and a typed price prices th
   await mockProfitApi(page, { body: noPrice });
   await page.goto(URL);
   await expect(page.getByText("No market price yet: enter one")).toBeVisible();
-  await expect(page.getByRole("region", { name: "Profit and margin are withheld" })).toContainText("No sell price: no store sells it in USD yet.");
+  await expect(page.getByRole("region", { name: "Profit and margin are withheld" })).toContainText("No sell price: Pulso has no market price for it yet.");
   await expect(slider(page, "Sell price")).toHaveCount(0);
   const price = page.getByRole("textbox", { name: "Sell price" });
   await price.fill("29.999");

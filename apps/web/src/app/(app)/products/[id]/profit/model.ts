@@ -89,7 +89,7 @@ const REASONS: Record<Missing, (calc: Calc) => string> = {
   price_missing: (c) =>
     c.quantity > 1
       ? `No sell price for a ${c.quantity}-unit order: a one-unit store price never stands in for it. Enter the order's price.`
-      : "No sell price: no store sells it in USD yet. Enter a price to see profit.",
+      : "No sell price: Pulso has no market price for it yet. Enter your price to see profit.",
   supplier_cost_missing: () => "No supplier cost: Pulso hasn't captured a price for the supplier listing yet.",
   freight_missing: (c) => `Freight isn't quoted for this variant to the US at ${units(c.quantity)} per order.`,
   freight_variant_mismatch: () => "Freight is quoted for another variant of the supplier listing, not this one.",

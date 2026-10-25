@@ -80,6 +80,6 @@ describe("reasons", () => {
     expect(reasons(calc({ quantity: 3, missing: ["price_missing"] }))[0]).toBe(
       "No sell price for a 3-unit order: a one-unit store price never stands in for it. Enter the order's price.",
     );
-    expect(reasons(calc({ missing: ["price_missing"] }))[0]).toMatch(/^No sell price: no store sells it in USD yet/);
+    expect(reasons(calc({ missing: ["price_missing"] }))[0]).toMatch(/^No sell price: Pulso has no market price for it yet/);
   });
 });
