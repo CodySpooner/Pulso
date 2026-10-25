@@ -7,6 +7,14 @@ members = ["apps/api", "apps/workers", "packages/core", "packages/ml", "packages
 pulso-core = { workspace = true }
 pulso-ml = { workspace = true }
 pulso-sources = { workspace = true }
+torch = { index = "pytorch-cpu" }
+torchvision = { index = "pytorch-cpu" }
+
+[[tool.uv.index]]
+# CPU-only torch wheels (DEC-269): PyPI's Linux torch pulls the CUDA stack.
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
 
 [dependency-groups]
 dev = [
@@ -39,6 +47,11 @@ ignore_missing_imports = true
 [[tool.mypy.overrides]]
 # pgvector ships no py.typed marker (0.4.2).
 module = ["pgvector.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+# The optional `clip` extra (DEC-269): CI installs none of these.
+module = ["torch", "open_clip", "huggingface_hub"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]

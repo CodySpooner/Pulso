@@ -9,6 +9,14 @@ dependencies = [
     "pulso-core",
 ]
 
+[project.optional-dependencies]
+# OpenCLIP embeddings (DEC-269): only the ml worker installs these; CPU torch from pytorch-cpu.
+clip = [
+    "open-clip-torch>=3.3,<4",
+    "torch>=2.9,<3",
+    "torchvision>=0.24,<1",
+]
+
 [build-system]
 requires = ["uv_build>=0.11,<0.14"]
 build-backend = "uv_build"
