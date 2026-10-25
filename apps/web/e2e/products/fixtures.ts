@@ -52,16 +52,113 @@ export const stale: S["ProductHeader"] = {
 // A product photo stand-in, served for the fixture image URL so no request leaves the test.
 const LAMP = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 72"><defs><radialGradient id="g" cx=".5" cy=".42" r=".6"><stop offset="0" stop-color="#ffd27a"/><stop offset=".55" stop-color="#f0743e"/><stop offset="1" stop-color="#3a1f4d"/></radialGradient></defs><rect width="72" height="72" fill="url(#g)"/><circle cx="36" cy="30" r="13" fill="#fff3c9" opacity=".85"/><rect x="31" y="46" width="10" height="14" rx="2" fill="#1d1426"/></svg>`;
 
-/** The shell's admin calls, plus GET /v1/products/{id} answering `body` (or `status` with a problem; `hold` never
- *  answers). Returns the product requests' URLs. */
-export async function mockProductApi(page: Page, options: { body?: S["ProductHeader"]; status?: number; hold?: boolean } = {}) {
+// p2-07 (UX-4): the Overview tab and the context rail.
+const cj = (value: number, raw_payload_id: number): S["Sourced"] => ({
+  value, source: "cj", source_name: "CJ Dropshipping", as_of: at(9), raw_payload_id, method: null, stale: false,
+});
+
+export const overview: S["ProductOverview"] = {
+  currency: "USD",
+  price_min_minor: product.price_min_minor,
+  price_median_minor: shopify(2999, 6, 902077),
+  price_max_minor: product.price_max_minor,
+  best_supplier_cost_minor: { ...cj(812, 901877), platform: "cj" },
+  landed_margin_minor: none("The landed-cost engine arrives with UX-8."),
+  first_seen_at: product.first_seen_at,
+  age_days: { ...shopify(9, 24 * 9 + 5, 880412) },
+  velocity: {
+    ...shopify(34, 14, 0), raw_payload_id: null, method: "Shopify inventory drops", family: "shp_inv", grade: "A", growth: 0.47, gap: false,
+  },
+  appearances: [
+    { vendor: "supplier", count: cj(3, 901877) },
+    { vendor: "store", count: shopify(12, 6, 902114) },
+  ],
+  ad_count: none("No ad source is connected yet."),
+};
+
+/** Matched, nothing collected: every Overview number is null with its reason. */
+export const overviewUnmatched: S["ProductOverview"] = {
+  ...overview,
+  price_min_minor: none("No USD retail price observed yet."),
+  price_median_minor: none("No USD retail price observed yet."),
+  price_max_minor: none("No USD retail price observed yet."),
+  best_supplier_cost_minor: none("No in-stock supplier offer yet."),
+  age_days: none("No listing observation yet."),
+  velocity: none("No demand family has a 7-day growth yet."),
+  appearances: [],
+};
+
+/** The store crawler last captured 3 days ago: the retail stats are stale. */
+export const overviewStale: S["ProductOverview"] = {
+  ...overview,
+  ...Object.fromEntries(
+    (["price_min_minor", "price_median_minor", "price_max_minor"] as const).map((k) => [k, { ...(overview[k] as S["Sourced"]), as_of: at(74), stale: true }]),
+  ),
+};
+
+export const notes: S["Note"][] = [
+  { id: "7c1f0a52-0000-4000-8000-000000000002", body: "Glow films well: a TikTok angle. Test at $29.99 against the $24 floor.", created_at: at(20) },
+  { id: "7c1f0a52-0000-4000-8000-000000000001", body: "CJ ships from CN only.\nAsk for a US warehouse quote before a test.", created_at: at(50) },
+];
+export const manyNotes = (n: number): S["Note"][] =>
+  Array.from({ length: n }, (_, i) => ({ id: `7c1f0a52-0000-4000-8000-${String(1000 + i).padStart(12, "0")}`, body: `Note ${n - i}`, created_at: at(i + 1) }));
+
+export interface ProductMock {
+  /** GET /v1/products/{id}; `status` answers it with a problem, and `hold` never answers. */
+  body?: S["ProductHeader"];
+  status?: number;
+  hold?: boolean;
+  overview?: S["ProductOverview"];
+  overviewStatus?: number;
+  holdOverview?: boolean;
+  notes?: S["Note"][];
+  tags?: string[];
+  /** Answer the rail's GETs with a 503. */
+  railStatus?: number;
+  /** Answer every note POST and tags PUT with a 503, or never answer them. */
+  failSaves?: boolean;
+  holdSaves?: boolean;
+}
+
+const fail = (status: number, id: string) => ({ status, contentType: "application/problem+json", json: problem(status, id) });
+
+/** The shell's admin calls, plus the product's header, overview, notes and tags. Notes and tags keep what the page
+ *  saves, like the API (notes newest first, 20 a page, cursor = offset). Returns the product requests' URLs. */
+export async function mockProductApi(page: Page, options: ProductMock = {}) {
   const calls: string[] = [];
+  const saved = { notes: [...(options.notes ?? notes)], tags: [...(options.tags ?? ["Q4 test", "TikTok"])] };
   await mockAdminApi(page, { sources: healthySources });
   await page.route("https://cdn.example.test/**", (route) => route.fulfill({ contentType: "image/svg+xml", body: LAMP }));
   await page.route("**/api/v1/products/**", async (route) => {
-    calls.push(route.request().url());
+    const request = route.request();
+    const url = new URL(request.url());
+    const part = url.pathname.split("/")[5]; // /api/v1/products/{id}/{part}
+    calls.push(request.url());
+    if (part === "overview") {
+      if (options.holdOverview) return;
+      if (options.overviewStatus) return route.fulfill(fail(options.overviewStatus, `e2e-overview-${options.overviewStatus}`));
+      return route.fulfill({ json: options.overview ?? overview });
+    }
+    if (part === "notes" || part === "tags") {
+      const write = request.method() !== "GET";
+      if (write && options.holdSaves) return;
+      if (write && options.failSaves) return route.fulfill(fail(503, `e2e-${part}-save`));
+      if (!write && options.railStatus) return route.fulfill(fail(options.railStatus, `e2e-${part}-${options.railStatus}`));
+      if (part === "tags") {
+        if (write) saved.tags = [...(request.postDataJSON() as S["Tags"]).tags].sort((a, b) => a.localeCompare(b, "en", { sensitivity: "base" }));
+        return route.fulfill({ json: { tags: saved.tags } });
+      }
+      if (write) {
+        const note = { id: crypto.randomUUID(), body: (request.postDataJSON() as S["NoteIn"]).body.trim(), created_at: NOW.toISOString() };
+        saved.notes.unshift(note);
+        return route.fulfill({ status: 201, json: note });
+      }
+      const offset = Number(url.searchParams.get("cursor") ?? 0);
+      const end = offset + Number(url.searchParams.get("limit") ?? 20);
+      return route.fulfill({ json: { items: saved.notes.slice(offset, end), next_cursor: end < saved.notes.length ? String(end) : null } });
+    }
     if (options.hold) return; // never answers: the first-load skeleton stays
-    if (options.status) return route.fulfill({ status: options.status, contentType: "application/problem+json", json: problem(options.status, `e2e-product-${options.status}`) });
+    if (options.status) return route.fulfill(fail(options.status, `e2e-product-${options.status}`));
     return route.fulfill({ json: options.body ?? product });
   });
   return calls;

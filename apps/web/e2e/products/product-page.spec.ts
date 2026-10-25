@@ -7,7 +7,9 @@ const URL = `/products/${PRODUCT_ID}`;
 const openCard = (page: Page) => page.locator('[role="tooltip"]');
 const stats = (page: Page) => page.getByRole("main").locator("dl").first();
 const metrics = (page: Page) => stats(page).getByRole("button");
-const panelHeading = (page: Page, label: string) => page.getByRole("tabpanel").getByRole("heading", { name: `The ${label} tab arrives in Phase 2` });
+// Overview is built (UX-4); the other tabs still name the task that builds them.
+const panelHeading = (page: Page, label: string) =>
+  page.getByRole("tabpanel").getByRole("heading", { name: label === "Overview" ? "Where it appears" : `The ${label} tab arrives in Phase 2` });
 
 for (const [value, label] of Object.entries(TAB_LABELS)) {
   test(`?tab=${value} deep-links to ${label}`, async ({ page }) => {
