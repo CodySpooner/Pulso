@@ -22,6 +22,7 @@ COVERED_OPERATIONS = {
     "get_product",
     "get_product_overview",
     "get_product_sellers",
+    "get_product_scores",
     "get_product_series",
     "get_product_suppliers",
     "list_product_notes",
@@ -44,6 +45,18 @@ EXEMPT = {
     "StoreHit.id": "the stores row the palette opens, not a measurement",
     "SupplierHit.id": "the suppliers row the palette opens, not a measurement",
     "Vendor.id": "the stores or suppliers row Discover's chip filters by, not a measurement",
+}
+# A score's explanation (pulso_core.scores, DEC-331): the score carries as_of, and each input its
+# own capture time in Component.as_of; weights, z, points and coverage are arithmetic on them.
+EXEMPT |= {
+    f"{schema}.{field}": "a term of a score explanation; the score and its inputs carry as_of"
+    for schema, fields in {
+        "Component": ("contribution", "raw", "weight", "weight_eff", "z"),
+        "Explanation": ("confidence", "coverage", "panel_size"),
+        "Normalization": ("category_id", "n"),
+        "Penalty": ("points", "raw"),
+    }.items()
+    for field in fields
 }
 
 

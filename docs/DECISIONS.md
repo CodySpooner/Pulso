@@ -3729,3 +3729,59 @@ Superseded review defaults, not given entries: default #0 (move the repo) is don
   - **An `entity` filter** (the vault's inbox filters list one): the vault's endpoint list has only `unread` and `type`; WF-4b can ask for it.
 - **Why:** `apps/api/tests/test_alerts.py::test_inbox_pages_filters_reads_and_archives` on a throwaway `pgvector/pgvector:0.8.7-pg18-trixie`: four alerts in A (two firing at the same instant) and one in B; the list is newest first and breaks the tie on id, a 2-row page and its cursor return the rest, a 1-row walk returns all four once, a bad cursor is 422, `type` and `unread` filter, reading by ids skips B's id, archive hides from the list, the unread filter and the count, `all` empties the count and keeps the first `read_at`, malformed bodies are 422, and B's alert stays unread and listed. Eleven of twelve one-line mutations fail it; the survivor (no `id` in ORDER BY) is masked by the index's own order (`docs/reports/p4-19.md`).
 - **Not here:** the bell and `/alerts` UI (WF-4b, imp-464); the nightly `evaluate()` call (imp-465); unarchive, an archived view, an `entity` filter and a "mark all read up to" cursor (backlog rows in the report).
+
+### DEC-331 · Opportunity v0 (SC-5): a pure `opportunity()` over the latest Trend and Saturation rows and the workspace's economics margin, computed at read time and never stored; with duty the only gap, the margin is `landed_cost()` of the view row's USD lines at duty 0; `GET /v1/products/{id}/scores`
+**2026-10-25 · proposed (p4-20)** · Phase 4 task SC-5; SPEC §7; DEC-040, DEC-041, DEC-246 (c), DEC-265, DEC-306 (c, d), DEC-313, DEC-323 (f), DEC-326 (c); vault Intelligence/Opportunity Score, Intelligence/Score Definitions; `docs/reports/p4-20.md`; no migration, dependency, flag or UI
+- **Decision:**
+  - **(a) The score.** `pulso_ml.scores.opportunity.opportunity(trend, saturation, margin)` returns the value, `as_of` and an `Explanation` (the stored scores' contract). Inputs and default weights, as in the vault note:
+    - `trend` (momentum, 0.40): the latest Trend row. There is no forecasts table yet, so Momentum is always Trend Score v0 (Beta). The Beta pill reads the momentum component's name.
+    - `margin` (0.30): clamp(100 × m / (2 × m_ref), 0, 100).
+    - `saturation` (room, 0.20): 100 − the latest Saturation.
+    - `risk` (safety, 0.10): always missing until Phase 5.
+
+    `pulso_core.scores.explain()` renormalises (DEC-040). Each input's `z` holds its 0–100 value, so its `contribution` is its points. Opportunity = round(O, 1). The config is a frozen dataclass, versioned by `pulso_core.scores.version` (`000-de3f6e76320d`). Nothing is written to `scores` (DEC-041).
+  - **(b) Margin: the one function and the one view.** Opportunity reads the caller's `workspace_product_economics` row, the row Discover's and the Overview's best margin read (DEC-265).
+    - A complete row gives `margin_bps`.
+    - When `duty_not_set` is the only gap, `margin_of()` rebuilds `landed_cost()` inputs from the row's USD lines: price, goods at quantity 1, freight and the customs fee. It adds the workspace's fee and returns settings at duty 0, then calls `landed_cost()`. No second margin formula exists. A test shows the result equals the loader's original amounts at duty 0, for USD, CNY, JPY and KWD.
+    - Any other gap leaves the margin missing ("insufficient signal"). A workspace with no settings row has no economics row, so the margin reads "no source yet".
+    - R-16 is unchanged for Discover, Profit and the Overview: they still withhold the margin while duty isn't set. Only Opportunity scores it, flagged as in (d).
+  - **(c) Margin floor.** m_ref is the config value `floor_bps` = 3000, because no settings column exists for it. With m < m_ref, Opportunity = min(O, 25). The cut is recorded as a `margin_floor` penalty (points = O − the capped value, 0 when O ≤ 25), and `reason` reads "margin below your floor". At m = m_ref there is no cap.
+  - **(d) Confidence.** `Explanation` gains two optional fields, `confidence` and `cautions`, under DEC-306 (c)'s extension rule; earlier rows still validate. Opportunity's confidence is coverage − 0.2 while its margin is costed at duty 0, floored at 0, with `cautions: ["duty_not_set"]`. Score Definitions §6's freshness term isn't built yet, so coverage stands in for it.
+  - **(e) Sources and as_of.**
+    - A stored-score input's `source` names its kind (`trend`, `saturation`), and the margin's names the view.
+    - No row, or no settings, gives `source: null`, which reads "no source yet". A NULL row keeps its source and reads "insufficient signal".
+    - `as_of`: a stored row is as of min(its day's cutoff, `computed_at`); the margin is as of the view row's `as_of` (its oldest input); Opportunity is as of its oldest present input.
+    - Stale inputs aren't dropped yet, because freshness isn't built.
+  - **(f) Endpoint.** `GET /v1/products/{id}/scores` (operationId `get_product_scores`, new router `product_scores.py`). Query: `range` = `7d`, `30d`, `90d` or `all` (default `90d`), `cursor`, and `limit` 1–100 (default 90).
+    - `latest`: Trend, Saturation and Lifecycle, each its newest row through `latest()` (a NULL row keeps `explanation.reason`), or `{value: null, reason: "No source yet: nothing has scored this product."}`.
+    - `history`: those kinds' rows in the range, newest day first, then the newest id, keyset-paginated on `[day, id]`.
+    - `opportunity`: computed for `principal.workspace_id`.
+    - An unknown product is 404; a merged one is a 308 to the survivor, with the query kept. The day field is `day` (`scores.date`), as on the series `Point`.
+  - **(g) /methodology.** Opportunity moves from planned to built in the export, and `methodology.json` is regenerated. The web unit test's not-built example is now Risk.
+  - **(h) Provenance contract.** `StoredScore` and `Opportunity` carry a required `as_of`. The explanation's own numbers are exempted, with a reason, in `test_provenance_contract`: `Component` weights, z, raw and contribution; `Explanation` coverage, confidence and panel_size; `Normalization`; `Penalty`. Each input's capture time is `Component.as_of`.
+- **Alternatives:**
+  - **A migration adding an undutied margin to the view:** SQL `landed_cost()` twice per candidate listing, plus a new view column that Profit's `default()` test maps one to one onto the calc answer. `margin_of()` is already set-based (view rows plus one settings row per workspace), so the Screener doesn't need it.
+  - **Margin missing while duty isn't set (R-16 as it stands):** every fresh workspace (duty NULL by default) would score without margin and never meet the floor, and the note says duty not set doesn't block.
+  - **`calculate(..., overrides={"duty_bps": 0})` per product:** the loader runs once per product, and its pick (best complete margin at duty 0) could differ from the view's.
+  - **The planning note's SQL view `v_product_opportunity`:** the task asks for an `Explanation` with `as_of`. A Python function over the view row keeps one renormalisation (`explain()`).
+  - **m_ref as a workspace setting:** it needs a settings migration and Settings API and UI fields (backlog row).
+- **Why:**
+  - `packages/ml/tests/test_opportunity.py` (10 tests):
+    - the worked example to the cent: $15.82 contribution, 5275 bps, 65.7 (Beta), and 62.8 at Momentum 62;
+    - missing-input renormalisation: no settings, an incomplete row, and NULL versus no rows;
+    - nothing present gives no value;
+    - the margin floor cap, including a loss and exactly at the floor;
+    - duty not set (confidence 0.7 against 0.9, same value);
+    - as_of is the oldest present input;
+    - the USD-lines-at-duty-0 parity for CNY, JPY and KWD;
+    - only a duty-only gap is re-costed.
+  - `apps/api/tests/test_product_scores.py` (7 tests, Postgres):
+    - the worked example through the view;
+    - the SC-5 verify: a fee change moves Opportunity, and every `scores` row's `xmin` and the row count are unchanged;
+    - three-workspace isolation (duty unset, duty 40%, no settings);
+    - a NULL row's reason over an older value, and no row reading as no source yet;
+    - range and keyset pages;
+    - 404 and 308;
+    - 401 without a session.
+  - Five one-line mutations each fail a test.
+- **Not here:** the switch to forecast p14 (Phase 6); Risk (Phase 5); freshness in confidence (MT-1's next part); m_ref as a setting; every UI (WF-1 Screener, imp-460 score surfaces).

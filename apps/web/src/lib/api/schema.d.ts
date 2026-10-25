@@ -809,6 +809,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/products/{product_id}/scores": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Product Scores
+         * @description Score history with explanations (SC-5): a NULL row keeps its reason, no row is no source
+         *     yet, and Opportunity is the caller's workspace's, never a stored row (DEC-331).
+         */
+        get: operations["get_product_scores"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/products/{product_id}/sellers": {
         parameters: {
             query?: never;
@@ -1608,6 +1629,55 @@ export interface components {
             /** Tags */
             tags: number;
         };
+        /**
+         * Component
+         * @description One input as the explanation records it.
+         *
+         *     Missing with no `source` reads "no source yet"; missing with a source reads "insufficient
+         *     signal" (vault Score Definitions §7). A missing input has weight_eff 0 and no contribution,
+         *     so nothing downstream can show it as 0.
+         */
+        Component: {
+            /**
+             * Ai Derived
+             * @default false
+             */
+            ai_derived: boolean;
+            /** As Of */
+            as_of?: string | null;
+            /** Contribution */
+            contribution?: number | null;
+            /** Family */
+            family: string;
+            /**
+             * Gap
+             * @default false
+             */
+            gap: boolean;
+            /**
+             * Missing
+             * @default false
+             */
+            missing: boolean;
+            /** Name */
+            name: string;
+            normalization?: components["schemas"]["Normalization"] | null;
+            /** Prompt Version */
+            prompt_version?: string | null;
+            /** Raw */
+            raw?: number | null;
+            /** Source */
+            source: string | null;
+            /** Weight */
+            weight: number;
+            /**
+             * Weight Eff
+             * @default 0
+             */
+            weight_eff: number;
+            /** Z */
+            z?: number | null;
+        };
         /** Counts */
         Counts: {
             /** Active */
@@ -1739,6 +1809,40 @@ export interface components {
             next_cursor: string | null;
             store: components["schemas"]["Vendor"] | null;
             supplier: components["schemas"]["Vendor"] | null;
+        };
+        /**
+         * Explanation
+         * @description `scores.explanation`: every input, the missing ones by name, and the weight present.
+         */
+        Explanation: {
+            /**
+             * Cautions
+             * @default []
+             */
+            cautions: string[];
+            /** Components */
+            components: components["schemas"]["Component"][];
+            /** Confidence */
+            confidence?: number | null;
+            /** Config Digest */
+            config_digest: string;
+            /** Coverage */
+            coverage: number;
+            /** Missing */
+            missing: string[];
+            /** Model Version */
+            model_version: string;
+            /** Panel Size */
+            panel_size?: number | null;
+            /**
+             * Penalties
+             * @default []
+             */
+            penalties: components["schemas"]["Penalty"][];
+            /** Pending */
+            pending?: ("emerging" | "rising" | "peaking" | "declining" | "dead") | null;
+            /** Reason */
+            reason?: string | null;
         };
         /** Facets */
         Facets: {
@@ -1969,6 +2073,15 @@ export interface components {
             keywords: components["schemas"]["Keyword"][];
             trends: components["schemas"]["TrendsBudget"];
         };
+        /** LatestScores */
+        LatestScores: {
+            /** Lifecycle */
+            lifecycle: components["schemas"]["StoredScore"] | components["schemas"]["NoSource"];
+            /** Saturation */
+            saturation: components["schemas"]["StoredScore"] | components["schemas"]["NoSource"];
+            /** Trend */
+            trend: components["schemas"]["StoredScore"] | components["schemas"]["NoSource"];
+        };
         /** ListingDetail */
         ListingDetail: {
             /** Delisted At */
@@ -2138,6 +2251,16 @@ export interface components {
             /** Value */
             value: null;
         };
+        /**
+         * Normalization
+         * @description The products a robust z was taken over (vault Score Definitions §4).
+         */
+        Normalization: {
+            /** Category Id */
+            category_id: number | null;
+            /** N */
+            n: number;
+        };
         /** Note */
         Note: {
             /** Body */
@@ -2167,6 +2290,17 @@ export interface components {
              * @description Pass as `cursor` for the next, older page.
              */
             next_cursor: string | null;
+        };
+        /**
+         * Opportunity
+         * @description The caller's workspace's Opportunity, computed at read time and never stored (DEC-041).
+         */
+        Opportunity: {
+            /** As Of */
+            as_of: string | null;
+            explanation: components["schemas"]["Explanation"];
+            /** Value */
+            value: number | null;
         };
         /** Orders */
         Orders: {
@@ -2215,6 +2349,27 @@ export interface components {
              * @default 5
              */
             pct: number;
+        };
+        /**
+         * Penalty
+         * @description Points taken off after the weighted inputs: Trend's saturation penalty.
+         *
+         *     Missing, it takes nothing off and is named in `missing` after the components.
+         */
+        Penalty: {
+            /**
+             * Missing
+             * @default false
+             */
+            missing: boolean;
+            /** Name */
+            name: string;
+            /** Points */
+            points?: number | null;
+            /** Raw */
+            raw?: number | null;
+            /** Source */
+            source: string | null;
         };
         /** Picks */
         Picks: {
@@ -2420,6 +2575,30 @@ export interface components {
             price_min_minor: components["schemas"]["Sourced"] | components["schemas"]["NoSource"];
             /** Velocity */
             velocity: components["schemas"]["Velocity"] | components["schemas"]["NoSource"];
+        };
+        /** ProductScores */
+        ProductScores: {
+            /** History */
+            history: components["schemas"]["StoredScore"][];
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            latest: components["schemas"]["LatestScores"];
+            /**
+             * Next Cursor
+             * @description Pass as `cursor` for the next, older page.
+             */
+            next_cursor: string | null;
+            opportunity: components["schemas"]["Opportunity"];
+            /**
+             * Range
+             * @enum {string}
+             */
+            range: "7d" | "30d" | "90d" | "all";
+            /** Start */
+            start: string | null;
         };
         /** ProductSeries */
         ProductSeries: {
@@ -3516,6 +3695,31 @@ export interface components {
             stale: boolean;
             /** Top Product Id */
             top_product_id: string | null;
+        };
+        /** StoredScore */
+        StoredScore: {
+            /**
+             * As Of
+             * Format: date-time
+             */
+            as_of: string;
+            /**
+             * Day
+             * Format: date
+             */
+            day: string;
+            explanation: components["schemas"]["Explanation"];
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "trend" | "saturation" | "lifecycle";
+            /** Model Version */
+            model_version: string;
+            /** Stage */
+            stage: ("emerging" | "rising" | "peaking" | "declining" | "dead") | null;
+            /** Value */
+            value: number | null;
         };
         /**
          * SupplierCost
@@ -15743,6 +15947,244 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["ProductOverview"];
                 };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": {
+                        /** Code */
+                        code: string;
+                        /** Detail */
+                        detail: string;
+                        /** Errors */
+                        errors?: {
+                            [key: string]: unknown;
+                        }[];
+                        /** Request Id */
+                        request_id: string;
+                        /** Status */
+                        status: number;
+                        /** Title */
+                        title: string;
+                        /**
+                         * Type
+                         * @default about:blank
+                         */
+                        type: string;
+                    };
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": {
+                        /** Code */
+                        code: string;
+                        /** Detail */
+                        detail: string;
+                        /** Errors */
+                        errors?: {
+                            [key: string]: unknown;
+                        }[];
+                        /** Request Id */
+                        request_id: string;
+                        /** Status */
+                        status: number;
+                        /** Title */
+                        title: string;
+                        /**
+                         * Type
+                         * @default about:blank
+                         */
+                        type: string;
+                    };
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": {
+                        /** Code */
+                        code: string;
+                        /** Detail */
+                        detail: string;
+                        /** Errors */
+                        errors?: {
+                            [key: string]: unknown;
+                        }[];
+                        /** Request Id */
+                        request_id: string;
+                        /** Status */
+                        status: number;
+                        /** Title */
+                        title: string;
+                        /**
+                         * Type
+                         * @default about:blank
+                         */
+                        type: string;
+                    };
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": {
+                        /** Code */
+                        code: string;
+                        /** Detail */
+                        detail: string;
+                        /** Errors */
+                        errors?: {
+                            [key: string]: unknown;
+                        }[];
+                        /** Request Id */
+                        request_id: string;
+                        /** Status */
+                        status: number;
+                        /** Title */
+                        title: string;
+                        /**
+                         * Type
+                         * @default about:blank
+                         */
+                        type: string;
+                    };
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": {
+                        /** Code */
+                        code: string;
+                        /** Detail */
+                        detail: string;
+                        /** Errors */
+                        errors?: {
+                            [key: string]: unknown;
+                        }[];
+                        /** Request Id */
+                        request_id: string;
+                        /** Status */
+                        status: number;
+                        /** Title */
+                        title: string;
+                        /**
+                         * Type
+                         * @default about:blank
+                         */
+                        type: string;
+                    };
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": {
+                        /** Code */
+                        code: string;
+                        /** Detail */
+                        detail: string;
+                        /** Errors */
+                        errors?: {
+                            [key: string]: unknown;
+                        }[];
+                        /** Request Id */
+                        request_id: string;
+                        /** Status */
+                        status: number;
+                        /** Title */
+                        title: string;
+                        /**
+                         * Type
+                         * @default about:blank
+                         */
+                        type: string;
+                    };
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": {
+                        /** Code */
+                        code: string;
+                        /** Detail */
+                        detail: string;
+                        /** Errors */
+                        errors?: {
+                            [key: string]: unknown;
+                        }[];
+                        /** Request Id */
+                        request_id: string;
+                        /** Status */
+                        status: number;
+                        /** Title */
+                        title: string;
+                        /**
+                         * Type
+                         * @default about:blank
+                         */
+                        type: string;
+                    };
+                };
+            };
+        };
+    };
+    get_product_scores: {
+        parameters: {
+            query?: {
+                range?: "7d" | "30d" | "90d" | "all";
+                cursor?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                product_id: string;
+            };
+            cookie?: {
+                __session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProductScores"];
+                };
+            };
+            /** @description Merged: the survivor's scores URL, query string kept. */
+            308: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Unauthorized */
             401: {

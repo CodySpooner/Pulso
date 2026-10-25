@@ -415,9 +415,103 @@
     {
       "id": "opportunity",
       "title": "Opportunity",
-      "status": "not built yet",
-      "phase": 4,
-      "task": "SC-5"
+      "status": "built",
+      "task": "SC-5",
+      "code": "pulso_ml.scores.opportunity.opportunity",
+      "definition": [
+        {
+          "text": "\"Should I test this?\" for one workspace, 0–100: higher is a better test."
+        },
+        {
+          "text": "Each input is a 0–100 value (the explanation's `z`, so its `contribution` is its points):"
+        },
+        {
+          "items": [
+            "trend (momentum): the latest Trend Score v0, marked Beta, until a published 14-day forecast exists; then 100 × p14 (Phase 6).",
+            "margin: clamp(100 × m / (2 × m_ref), 0, 100), m the contribution margin before ads from the workspace's landed cost and m_ref `floor_bps`: 50 at the floor, 100 at twice it.",
+            "saturation (room): 100 − the latest Saturation.",
+            "risk (safety): 100 − Risk, no source until Phase 5, so always missing."
+          ]
+        },
+        {
+          "text": "O = Σ w × value / Σ w over the present inputs: a missing one gets weight 0 and the rest renormalise (DEC-040). A NULL stored row is missing with its score as source (\"insufficient signal\"); no row, or no workspace settings, is missing with none (\"no source yet\")."
+        },
+        {
+          "items": [
+            "Margin floor: with m under m_ref, Opportunity = min(O, `floor_cap`); the cut is the `margin_floor` penalty and the reason reads \"margin below your floor\".",
+            "Duty not set: m is costed at duty 0, never withheld; confidence (coverage, here) loses `duty_not_set` and the explanation lists the caution."
+          ]
+        },
+        {
+          "text": "Opportunity = round(O, 1), as of its oldest present input; no value when none is present."
+        }
+      ],
+      "inputs": [
+        {
+          "name": "trend",
+          "type": "Stored | None"
+        },
+        {
+          "name": "saturation",
+          "type": "Stored | None"
+        },
+        {
+          "name": "margin",
+          "type": "Margin | None"
+        }
+      ],
+      "config": [
+        {
+          "name": "revision",
+          "type": "int",
+          "note": "bump with any change to the rules below",
+          "value": 0
+        },
+        {
+          "name": "momentum",
+          "type": "float",
+          "note": "weight of Trend Score v0 (Beta) until a published forecast exists",
+          "value": 0.4
+        },
+        {
+          "name": "margin",
+          "type": "float",
+          "note": "weight of the contribution margin before ads, against the floor",
+          "value": 0.3
+        },
+        {
+          "name": "room",
+          "type": "float",
+          "note": "weight of 100 − Saturation",
+          "value": 0.2
+        },
+        {
+          "name": "safety",
+          "type": "float",
+          "note": "weight of 100 − Risk: no source until Phase 5, always missing",
+          "value": 0.1
+        },
+        {
+          "name": "floor_bps",
+          "type": "int",
+          "note": "m_ref, contribution margin before ads (a guess): Margin 50 at it",
+          "value": 3000
+        },
+        {
+          "name": "floor_cap",
+          "type": "float",
+          "note": "the most Opportunity can be while the margin is under the floor",
+          "value": 25.0
+        },
+        {
+          "name": "duty_not_set",
+          "type": "float",
+          "note": "confidence taken off while the margin has no duty line",
+          "value": 0.2
+        }
+      ],
+      "model_version": "000-de3f6e76320d",
+      "config_digest": "de3f6e76320d61b9a7cd81a1c9f9f5613ba54efbc4e23ea545bc275c8f699501"
     },
     {
       "id": "risk",
@@ -481,12 +575,22 @@
         {
           "name": "reason",
           "type": "str | None",
-          "note": "why the value is NULL, or the Lifecycle rule that fired tonight"
+          "note": "why the value is NULL, the Lifecycle rule or Opportunity's cap"
         },
         {
           "name": "pending",
           "type": "Stage | None",
           "note": "Lifecycle: tonight's stage, shown once a 2nd night matches"
+        },
+        {
+          "name": "confidence",
+          "type": "float | None",
+          "note": "Opportunity: coverage − cautions"
+        },
+        {
+          "name": "cautions",
+          "type": "tuple[str, ...]",
+          "note": "Opportunity: what lowered confidence, e.g. duty_not_set"
         }
       ]
     },

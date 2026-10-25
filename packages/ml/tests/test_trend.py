@@ -108,6 +108,8 @@ def test_the_vault_lamp_scores_68_6_with_its_explanation() -> None:
         ],
         "reason": None,
         "pending": None,
+        "confidence": None,
+        "cautions": [],
     }  # fmt: skip
     assert Explanation.model_validate(score.explanation.model_dump(mode="json")) == (
         score.explanation
