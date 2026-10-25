@@ -29,7 +29,7 @@ function series(metric: S["Series"]["metric"], unit: S["Series"]["unit"], days: 
   return { metric, unit, source: "shopify_stores", source_name: "Shopify stores", method, as_of: points.at(-1)?.as_of ?? at(0), stale: false, points, gaps };
 }
 const missing = (metric: S["MissingSeries"]["metric"], reason: string) => ({ metric, value: null, reason }) as S["MissingSeries"];
-const SEARCH = missing("search", "No search interest is collected for this product's keywords yet. Confirmed keywords join the weekly Google Trends fetch in a later step.");
+const SEARCH = missing("search", "No search interest is collected for this product's keywords yet. Tracked keywords are fetched from Google Trends each Monday when tracking is on.");
 const ADS = missing("ads", "No ad source yet. Ad counts arrive in Phase 8 or by CSV import.");
 const NO_JS = missing("velocity_js", "No velocity computed from Shopify inventory drops yet.");
 

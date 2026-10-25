@@ -5,7 +5,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { Check, ChevronRight, PenLine, Search, X } from "lucide-react";
 
 import { useApiReady } from "@/components/data-health/api";
-import { PanelError, StaleLine } from "@/components/data-health/atoms";
+import { PanelError, StaleLine, TapTooltip } from "@/components/data-health/atoms";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { $api } from "@/lib/api/client";
@@ -26,7 +26,7 @@ const shortDay = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeri
 const provenance = (k: Keyword) =>
   k.relevance === null
     ? `Added by you · no listing title holds it${k.decided_at ? ` · confirmed ${formatUtc(k.decided_at)}` : ""}`
-    : `Relevance ${k.relevance.toFixed(2)} from listing titles as of ${formatUtc(k.as_of)}`;
+    : `Relevance ${k.relevance.toFixed(2)}: how many titles use the phrase and its words\nListing titles as of ${formatUtc(k.as_of)}`;
 
 // KW-1 (vault Features/Product Page - Trends, DEC-281): the owner confirms the search keywords for this product.
 // Candidates are phrases from its listing titles, never a link until confirmed (DEC-245 d). One click confirms or
@@ -75,7 +75,7 @@ export function KeywordsSection({ id }: { id: string }) {
     requestAnimationFrame(() => {
       const rows = section.current?.querySelectorAll<HTMLElement>(`[data-list="${list}"] > li`) ?? [];
       const row = rows[Math.min(index, rows.length - 1)];
-      (row?.querySelector<HTMLElement>("button") ?? input.current)?.focus();
+      (row?.querySelector<HTMLElement>("button[data-decide]") ?? input.current)?.focus(); // not the relevance number
     });
   };
   const add = () => {
@@ -118,8 +118,9 @@ export function KeywordsSection({ id }: { id: string }) {
           <div className="flex flex-col gap-2">
             <h3 className="flex flex-wrap items-center gap-x-1.5 text-label font-medium text-foreground">
               Confirmed <span className="font-normal text-subtle-foreground">· {confirmed.length}</span>{" "}
-              {/* The chips' marker, explained once: a filled dot is in the weekly Trends set. */}
-              {confirmed.length > 0 && (
+              {/* The chips' marker, explained once: a filled dot is in the weekly Trends set. Off, the cost line says
+                  nothing is fetched, so there's no legend (imp-355). */}
+              {confirmed.length > 0 && query.data.trends.enabled && (
                 <span className="inline-flex items-center gap-1 font-normal text-subtle-foreground">
                   · <Marker tracked /> {confirmed.filter((k) => k.tracked).length} tracked
                 </span>
@@ -145,6 +146,7 @@ export function KeywordsSection({ id }: { id: string }) {
                     {/* Rejecting keeps the decision on record; nothing is deleted (DEC-281). */}
                     <button
                       type="button"
+                      data-decide
                       aria-label={`Reject ${k.keyword}`}
                       onClick={() => decideAt("confirmed", i, k.keyword, "rejected")}
                       className="relative hit-area grid size-5 shrink-0 place-items-center rounded-sm text-muted-foreground transition-colors duration-(--duration-fast) hover:bg-accent hover:text-foreground"
@@ -194,8 +196,10 @@ export function KeywordsSection({ id }: { id: string }) {
             <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
               <h3 className="text-label font-medium text-foreground">Suggested from listing titles</h3>
               {all[0] && (
+                // Phones keep this to one line: what relevance means is in each number's tooltip there (imp-343).
                 <span className="text-micro text-subtle-foreground">
-                  Relevance: how many titles use the phrase and its words · titles as of <time dateTime={all[0].as_of}>{formatUtc(all[0].as_of)}</time>
+                  <span className="hidden sm:inline">Relevance: how many titles use the phrase and its words · </span>Titles as of{" "}
+                  <time dateTime={all[0].as_of}>{formatUtc(all[0].as_of)}</time>
                 </span>
               )}
             </div>
@@ -210,11 +214,11 @@ export function KeywordsSection({ id }: { id: string }) {
                     <span className="min-w-0 flex-1 basis-40 text-data break-words text-foreground">{k.keyword}</span>
                     <Relevance k={k} />
                     <span className="ml-auto flex gap-1.5">
-                      <Button size="sm" variant="secondary" aria-label={`Confirm ${k.keyword}`} aria-describedby="keyword-cost" onClick={() => decideAt("candidates", i, k.keyword, "confirmed")}>
+                      <Button size="sm" variant="secondary" data-decide aria-label={`Confirm ${k.keyword}`} aria-describedby="keyword-cost" onClick={() => decideAt("candidates", i, k.keyword, "confirmed")}>
                         <Check aria-hidden className="size-3.5" />
                         Confirm
                       </Button>
-                      <Button size="sm" variant="ghost" aria-label={`Reject ${k.keyword}`} onClick={() => decideAt("candidates", i, k.keyword, "rejected")}>
+                      <Button size="sm" variant="ghost" data-decide aria-label={`Reject ${k.keyword}`} onClick={() => decideAt("candidates", i, k.keyword, "rejected")}>
                         <X aria-hidden className="size-3.5" />
                         Reject
                       </Button>
@@ -236,7 +240,7 @@ export function KeywordsSection({ id }: { id: string }) {
                   <li key={k.keyword} className="flex flex-wrap items-center gap-x-3 gap-y-1.5 border-t border-border-subtle py-2">
                     <span className="min-w-0 flex-1 basis-40 text-data break-words text-muted-foreground">{k.keyword}</span>
                     <Relevance k={k} />
-                    <Button size="sm" variant="ghost" className="ml-auto" aria-label={`Confirm ${k.keyword} instead`} aria-describedby="keyword-cost" onClick={() => decideAt("rejected", i, k.keyword, "confirmed")}>
+                    <Button size="sm" variant="ghost" className="ml-auto" data-decide aria-label={`Confirm ${k.keyword} instead`} aria-describedby="keyword-cost" onClick={() => decideAt("rejected", i, k.keyword, "confirmed")}>
                       <Check aria-hidden className="size-3.5" />
                       Confirm instead
                     </Button>
@@ -305,7 +309,8 @@ function TrendsCost({ budget }: { budget: TrendsBudget }) {
   );
 }
 
-/** The relevance as a short bar and a number; a typed-in keyword no title holds reads "typed in", never 0. */
+/** The relevance as a short bar and a number; a typed-in keyword no title holds reads "typed in", never 0. The number
+ *  opens what relevance means and its as of on hover, tap and keyboard focus, as every number does (imp-343). */
 function Relevance({ k }: { k: Keyword }) {
   if (k.relevance === null)
     return (
@@ -314,14 +319,20 @@ function Relevance({ k }: { k: Keyword }) {
       </span>
     );
   return (
-    <span className="flex items-center gap-2" title={provenance(k)}>
+    <span className="flex items-center gap-2">
       <span aria-hidden className="hidden h-1 w-14 overflow-hidden rounded-full bg-secondary sm:block">
         <span className="block h-full rounded-full bg-muted-foreground" style={{ width: `${k.relevance * 100}%` }} />
       </span>
-      <span className="font-mono text-data text-foreground" data-numeric>
+      <TapTooltip
+        hint={provenance(k)}
+        contentClassName="max-w-64 whitespace-pre-line"
+        type="button"
+        data-numeric
+        className="relative hit-area cursor-help rounded-sm font-mono text-data text-foreground decoration-border-strong decoration-dotted underline-offset-4 hover:underline"
+      >
         <span className="sr-only">Relevance </span>
         {k.relevance.toFixed(2)}
-      </span>
+      </TapTooltip>
     </span>
   );
 }

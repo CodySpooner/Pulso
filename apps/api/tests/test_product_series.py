@@ -250,8 +250,8 @@ def test_series_nothing_backs_say_why(api: TestClient, db_engine: Engine) -> Non
         "No store listing matched yet.",
         "No store listing matched yet.",
         (
-            "No search interest is collected for this product's keywords yet. Confirmed keywords "
-            "join the weekly Google Trends fetch in a later step."
+            "No search interest is collected for this product's keywords yet. Tracked keywords are "
+            "fetched from Google Trends each Monday when tracking is on."
         ),
         "No velocity computed from Shopify inventory drops yet.",
         "No velocity computed from Shopify updated_at bumps yet.",
