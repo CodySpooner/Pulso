@@ -253,6 +253,8 @@ def test_a_testing_change_across_a_collection_gap_is_skipped(db_engine: Engine) 
             "to": gap.slot_end.isoformat(),  # the gap known by as_of, not the one found later
         }
         assert len(alerts(session, ws, own)) == 1  # only Testing rules are gap-aware (R-23)
+        evaluate(session, ws, day(1) + timedelta(hours=1))  # no new observation: still held
+        assert alerts(session, ws, default) == []
         snap(session, listing, day(2), price_min_minor=1100)  # a gap-free window confirms it
         assert evaluate(session, ws, day(2))[default] == "ok"
         assert [a.payload["new"]["as_of"] for a in alerts(session, ws, default)] == [
@@ -284,6 +286,13 @@ def test_a_rule_without_a_source_never_fires_and_reports_no_source(db_engine: En
         evaluate(session, ws, day(3))
         assert [a.rule_id for a in alerts(session, ws)] == [back]
         assert alerts(session, ws)[0].payload["new"]["value"] is True
+        snap(session, listing, day(4), stock=0)  # out again: old is the last state, not the first
+        evaluate(session, ws, day(4))
+        out = alerts(session, ws, stock)[0].payload
+        assert (out["old"], out["new"]["value"]) == (
+            {"value": True, "as_of": day(3).isoformat()},
+            False,
+        )
 
 
 @pytest.mark.db
