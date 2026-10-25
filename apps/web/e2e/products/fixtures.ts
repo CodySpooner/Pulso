@@ -65,7 +65,10 @@ export const overview: S["ProductOverview"] = {
   price_median_minor: shopify(2999, 6, 902077),
   price_max_minor: product.price_max_minor,
   best_supplier_cost_minor: { ...cj(812, 901877), platform: "cj" },
-  landed_margin_minor: none("The landed-cost engine arrives with UX-8."),
+  // imp-280: Discover's best margin, as of its oldest input (the CJ cost).
+  landed_margin_minor: {
+    ...cj(1188, 901903), method: "Landed cost, default scenario: price - landed cost - fees - returns, before ads", margin_bps: 3961, supplier_listing_id: 907001,
+  },
   first_seen_at: product.first_seen_at,
   age_days: { ...shopify(9, 24 * 9 + 5, 880412) },
   velocity: {
@@ -78,6 +81,9 @@ export const overview: S["ProductOverview"] = {
   ad_count: none("No ad source is connected yet."),
 };
 
+/** R-16: a withheld margin, with the gaps the view names (imp-280). */
+const gap = (reason: string, ...missing: string[]) => ({ value: null, reason, missing });
+
 /** Matched, nothing collected: every Overview number is null with its reason. */
 export const overviewUnmatched: S["ProductOverview"] = {
   ...overview,
@@ -85,10 +91,14 @@ export const overviewUnmatched: S["ProductOverview"] = {
   price_median_minor: none("No USD retail price observed yet."),
   price_max_minor: none("No USD retail price observed yet."),
   best_supplier_cost_minor: none("No in-stock supplier offer yet."),
+  landed_margin_minor: gap("Needs a market price, a supplier price and a freight quote.", "price_missing", "supplier_cost_missing", "freight_missing"),
   age_days: none("No listing observation yet."),
   velocity: none("No demand family has a 7-day growth yet."),
   appearances: [],
 };
+
+/** Costed, but the workspace has no duty rate: R-16 withholds the margin (imp-280). */
+export const overviewNoDuty: S["ProductOverview"] = { ...overview, landed_margin_minor: gap("Needs a duty rate.", "duty_not_set") };
 
 /** The store crawler last captured 3 days ago: the retail stats are stale. */
 export const overviewStale: S["ProductOverview"] = {

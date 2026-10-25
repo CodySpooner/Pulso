@@ -19,6 +19,9 @@ type Velocity = components["schemas"]["Velocity"];
 
 const usd = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" });
 const money = (minor: number) => usd.format(minor / 100);
+// A loss reads "−$3.39" and "−11.3%", with U+2212 as on Discover and the Profit tab.
+const signedMoney = (minor: number) => money(minor).replace("-", "−");
+const pct = (bps: number) => `${(bps / 100).toFixed(1)}%`.replace("-", "−");
 const count = (n: number) => n.toLocaleString("en-US");
 const ago = (days: number) => (days === 0 ? "Today" : days === 1 ? "1 day ago" : `${count(days)} days ago`);
 const day = new Intl.DateTimeFormat("en-US", { dateStyle: "medium", timeZone: "UTC" });
@@ -53,6 +56,9 @@ export function Overview({ id, goTo }: { id: string; goTo: (tab: Tab) => void })
   const prices = [data.price_min_minor, data.price_max_minor];
   const cost = data.best_supplier_cost_minor;
   const velocity = data.velocity;
+  // Discover's best margin (imp-280). R-16 withholds it and the card names the gaps; duty is the one Settings closes.
+  const margin = data.landed_margin_minor;
+  const noDuty = "reason" in margin && margin.missing.includes("duty_not_set");
   return (
     <div className="flex flex-col gap-4">
       {overview.isError && <StaleLine boxed what="Couldn't refresh the overview" error={error} asOf={now} retry={retry} />}
@@ -87,8 +93,15 @@ export function Overview({ id, goTo }: { id: string; goTo: (tab: Tab) => void })
           <StatCard label="Best supplier cost" stat={cost} now={now} detail={!("reason" in cost) && `Lowest in-stock unit cost · ${platform(cost.platform)}`}>
             <Metric stat={cost} label="Best supplier cost" format={money} now={now} />
           </StatCard>
-          <StatCard label="Landed margin" stat={data.landed_margin_minor} now={now}>
-            <Metric stat={data.landed_margin_minor} label="Landed margin" format={money} now={now} />
+          <StatCard label="Landed margin" stat={margin} now={now} detail={!("reason" in margin) && `${pct(margin.margin_bps)} margin · before ads`}>
+            <Metric
+              stat={margin}
+              label="Landed margin"
+              missing={noDuty ? "Duty not set" : "No source yet"}
+              format={signedMoney}
+              now={now}
+              className={cn(noDuty && "text-warning")}
+            />
           </StatCard>
           <StatCard label="First seen" stat={data.age_days} now={now} detail={<Metric stat={data.age_days} label="Days since first seen" format={ago} now={now} />}>
             <time dateTime={data.first_seen_at} title={formatUtc(data.first_seen_at)} className="whitespace-nowrap">
