@@ -104,7 +104,7 @@ export function Topbar() {
               Data as of —
             </Link>
           </TooltipTrigger>
-          <TooltipContent className="max-w-60">Collectors start in Phase 1. Then every number shows its source and an “as of” time.</TooltipContent>
+          <TooltipContent className="max-w-60">Collectors run on your PC. Every number shows its source and an “as of” time.</TooltipContent>
         </Tooltip>
         <WorkspaceChip />
 

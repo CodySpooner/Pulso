@@ -50,7 +50,7 @@ for (const theme of ["dark", "light"] as const) {
       test("loading", async ({ page }) => {
         await mockSeriesApi(page, { hold: true });
         await page.goto(URL);
-        await expect(page.getByLabel("Loading trends")).toBeVisible();
+        await expect(page.getByRole("status").filter({ hasText: "Loading trends…" })).toBeAttached();
         await shot(page, "loading");
       });
 

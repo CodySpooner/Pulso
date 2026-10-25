@@ -25,10 +25,10 @@ import {
 } from "lucide-react";
 
 // One nav config feeds the sidebar, the mobile sheet, the bottom bar, breadcrumbs, the Ctrl+K palette and
-// the "coming in Phase N" pages (vault Design/App Shell & Navigation). A route is built once its phase
-// is reached; `CURRENT_PHASE` is the feature flag that moves with the build.
+// the "coming in Phase N" pages (vault Design/App Shell & Navigation). `CURRENT_PHASE` is the phase in progress, the
+// feature flag that moves with the build. A route is built once its phase is done, or earlier with `built` (DEC-284).
 
-export const CURRENT_PHASE = 1;
+export const CURRENT_PHASE = 3;
 
 export const PHASES = [
   "Foundation",
@@ -50,7 +50,7 @@ export interface NavItem {
   phase: number;
   /** What the page will show; used by the palette and the coming-soon page. */
   summary: string;
-  /** Built ahead of `CURRENT_PHASE`: a task of the running phase shipped it. */
+  /** Built before its phase is done: a task of that phase shipped it. */
   built?: true;
 }
 
@@ -141,7 +141,7 @@ const detailRoutes = [
 export const allNavItems: NavItem[] = [...navGroups.flatMap((g) => g.items), settingsItem];
 
 export function isBuilt(item: Pick<NavItem, "phase" | "built">): boolean {
-  return item.built === true || item.phase <= CURRENT_PHASE;
+  return item.built === true || item.phase < CURRENT_PHASE;
 }
 
 export interface ResolvedRoute {

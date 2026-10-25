@@ -14,7 +14,7 @@ export default function GooglePopularPage() {
     <div className="flex w-full flex-col gap-5">
       <PageHeader
         title="Google popular"
-        description="What US shoppers bought on Google each week, from your Merchant Center report. Big brands are hidden so dropshippable products surface; hide any other brand from its row."
+        description="What US shoppers bought on Google each week, from your Merchant Center report. Major brands are hidden so dropshippable products surface; hide any other brand from its row."
       />
       <Suspense>
         <GooglePopular />

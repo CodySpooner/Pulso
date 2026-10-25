@@ -377,7 +377,9 @@ function Landed({ calc, now }: { calc: Calc; now: number }) {
 function Days({ calc }: { calc: Calc }) {
   const text = days(calc.freight_min_days, calc.freight_max_days);
   if (!text) return <span className="text-subtle-foreground">—</span>;
-  return <span title={`${calc.method}: the carrier's estimate to the US, before supplier processing`}>{text}</span>;
+  const quote = calc.sources.freight;
+  const from = quote?.as_of ? ` · ${quote.source_name}, as of ${formatUtc(quote.as_of)}` : "";
+  return <span title={`${calc.method}: the carrier's estimate to the US, before supplier processing${from}`}>{text}</span>;
 }
 
 function Terms({ row, now }: { row: Row; now: number }) {

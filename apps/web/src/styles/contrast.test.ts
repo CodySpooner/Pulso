@@ -101,6 +101,8 @@ const textPairs: Pair[] = [
   ...TEXT.flatMap((fg) => SURFACES.map((bg): Pair => [fg, bg])),
   // Hover and selection overlays on cards and the sidebar, and the opaque table-row states.
   ...TEXT.flatMap((fg): Pair[] => [[fg, "accent", "card"], [fg, "selected", "card"], [fg, "table-row-hover"], [fg, "table-row-selected"]]),
+  // p2-39: the palette's active row (accent on the popover).
+  ...TEXT.flatMap((fg): Pair[] => [[fg, "accent", "popover"]]),
   ["sidebar-foreground", "sidebar"],
   ["sidebar-foreground", "accent", "sidebar"],
   ["card-foreground", "card"],
@@ -116,12 +118,21 @@ const textPairs: Pair[] = [
   ["negative", "negative-muted", "card"],
   ["warning", "warning-muted", "card"],
   ["model", "model-muted", "card"],
+  // p2-39: page banners (Discover stale, Google popular) on the page background, and the chart axis labels.
+  ["foreground", "warning-muted", "background"],
+  ["foreground", "brand-muted", "background"],
+  ["chart-axis", "card"],
   // Selected text (the global ::selection rule in globals.css): an opaque pair, so it holds on every surface.
   ["selection-foreground", "selection"],
 ];
 
 // Non-text UI and large text (≥ 3:1): focus ring, brand marks (logo, active-nav bar), input outlines.
-const uiPairs: Pair[] = ["ring", "brand", "input"].flatMap((fg) => ["background", "card", "popover", "sidebar"].map((bg): Pair => [fg, bg]));
+const uiPairs: Pair[] = [
+  ...["ring", "brand", "input"].flatMap((fg) => ["background", "card", "popover", "sidebar"].map((bg): Pair => [fg, bg])),
+  // p2-39: the active bar on an accent row, in the sidebar and the Ctrl+K palette.
+  ["brand", "accent", "sidebar"],
+  ["brand", "accent", "popover"],
+];
 
 for (const theme of ["dark", "light"] as const) {
   describe(`${theme} theme`, () => {

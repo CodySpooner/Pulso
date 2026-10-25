@@ -108,7 +108,8 @@ test("search and ads have no source yet and never draw a zero line", async ({ pa
 
 test("loading shows pane skeletons", async ({ page }) => {
   await open(page, "", { hold: true });
-  await expect(page.getByLabel("Loading trends")).toBeVisible();
+  await expect(page.getByRole("status").filter({ hasText: "Loading trends…" })).toBeAttached();
+  await expect(page.locator(".bg-skeleton:visible").first()).toBeVisible();
 });
 
 test("a failed load shows the cause, the error ID and Retry", async ({ page }) => {

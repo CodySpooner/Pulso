@@ -109,6 +109,9 @@ function TagsPanel({ id }: { id: string }) {
         <div className="flex flex-col gap-2.5 p-4">
           {!query.data ? (
             <div className="flex gap-1.5">
+              <span className="sr-only" role="status">
+                Loading tags…
+              </span>
               <Skeleton className="h-6 w-16" />
               <Skeleton className="h-6 w-20" />
             </div>
@@ -258,6 +261,9 @@ function NotesPanel({ id }: { id: string }) {
         <PanelError title="Couldn't load notes" error={notes.error} retry={() => void notes.refetch()} />
       ) : !notes.data ? (
         <div className="flex flex-col gap-2 p-4">
+          <span className="sr-only" role="status">
+            Loading notes…
+          </span>
           <Skeleton className="h-4 w-full" />
           <Skeleton className="h-3.5 w-24" />
         </div>
@@ -269,8 +275,8 @@ function NotesPanel({ id }: { id: string }) {
             {items.map((note) => {
               const pending = note.id.startsWith(PENDING);
               return (
-                <li key={note.id} className={cn("flex flex-col gap-1 border-b border-border-subtle px-4 py-3 last:border-b-0", pending && "opacity-60")}>
-                  <p className="text-body break-words whitespace-pre-wrap text-foreground">{note.body}</p>
+                <li key={note.id} className="flex flex-col gap-1 border-b border-border-subtle px-4 py-3 last:border-b-0">
+                  <p className={cn("text-body break-words whitespace-pre-wrap", pending ? "text-muted-foreground" : "text-foreground")}>{note.body}</p>
                   <p className="text-micro text-subtle-foreground">
                     {pending ? "Saving…" : <time dateTime={note.created_at}>{formatUtc(note.created_at)}</time>}
                   </p>

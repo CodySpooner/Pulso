@@ -339,7 +339,7 @@ function Layout({ list, compare }: { list: React.ReactNode; compare: React.React
 }
 
 const selectClass =
-  "h-(--button-h-sm) min-w-0 rounded-md border border-border bg-secondary px-2 text-label text-foreground hover:border-border-strong";
+  "h-(--button-h-sm) pointer-coarse:h-(--input-h) min-w-0 rounded-md border border-border bg-secondary px-2 text-label text-foreground hover:border-border-strong";
 
 function Toolbar({
   filters,
@@ -446,7 +446,9 @@ function QueueList({
                     )}
                   </span>
                 </span>
-                <span className="shrink-0 font-mono text-data tabular-nums text-foreground">{item.score.toFixed(2)}</span>
+                <span className="shrink-0 font-mono text-data tabular-nums text-foreground" title={`Matcher ${item.scorer_version} · scored ${formatUtc(item.created_at)}`}>
+                  {item.score.toFixed(2)}
+                </span>
               </button>
             </li>
           );

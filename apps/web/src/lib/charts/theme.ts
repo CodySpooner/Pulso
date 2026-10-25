@@ -57,5 +57,5 @@ export const tooltipStyle = (t: ChartTokens) => ({
   borderColor: t.border,
   padding: [8, 10],
   textStyle: { color: t.foreground, fontFamily: t.sans, fontSize: 12 },
-  extraCssText: `border-radius:8px;box-shadow:${t.shadow};font-variant-numeric:tabular-nums;`,
+  extraCssText: `border-radius:var(--radius);box-shadow:${t.shadow};font-variant-numeric:tabular-nums;`,
 });

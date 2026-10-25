@@ -74,7 +74,7 @@ function SpreadTile({ page, now }: { page: Page; now: number }) {
           </svg>
           {s.n > 2 && (
             <p className="flex items-center gap-1.5 text-micro text-subtle-foreground tabular-nums">
-              <span aria-hidden className="h-2 w-3 rounded-[2px] bg-brand-muted" />
+              <span aria-hidden className="h-2 w-3 rounded-xs bg-brand-muted" />
               Middle 50%: {money(s.p25!)}–{money(s.p75!)}
             </p>
           )}
