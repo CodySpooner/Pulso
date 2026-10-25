@@ -35,7 +35,7 @@ for (const theme of ["dark", "light"] as const) {
         test(name, async ({ page }) => {
           await page.goto(`/methodology${hash}`);
           await expect(page.locator(`#${section}`)).toBeVisible();
-          if (name === "thresholds") await page.getByRole("table", { name: "Lifecycle Stage thresholds" }).scrollIntoViewIfNeeded();
+          if (name === "thresholds") await page.getByRole("table", { name: "Lifecycle Stage config" }).scrollIntoViewIfNeeded();
           // The row anchor lands under the card's header; bring the header back so the shot shows both.
           if (name === "not-built") await page.locator("#not-built-title").scrollIntoViewIfNeeded();
           await shot(page, name);

@@ -6,7 +6,7 @@ from typing import Any
 import pytest
 
 from pulso_core.scores import version
-from pulso_ml.scores import lifecycle, methodology
+from pulso_ml.scores import lifecycle, methodology, velocity
 
 COMMITTED = Path(__file__).resolve().parents[3] / methodology.OUT
 
@@ -59,6 +59,15 @@ def test_lifecycle_reads_its_docstring_signature_and_config() -> None:
         "value": math.log(1.2),
     }
     assert (entry["model_version"], entry["config_digest"]) == version(lifecycle.CONFIG)
+
+
+def test_velocity_comes_first_with_its_own_version() -> None:
+    doc = methodology.build()
+    assert [s["id"] for s in doc["scores"][:2]] == ["velocity", "lifecycle-stage"]
+    entry = score(doc, "velocity")
+    assert entry["code"] == "pulso_ml.scores.velocity.family_velocity"
+    assert entry["model_version"] == velocity.VERSION
+    assert [i["name"] for i in entry["inputs"]] == ["now", "week_ago", "days_observed"]
 
 
 def test_unbuilt_scores_name_their_phase_and_carry_no_numbers() -> None:

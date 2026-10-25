@@ -134,9 +134,9 @@ function ScoreSection({ score, missing }: { score: BuiltScore; missing: string }
       <div className="flex flex-col gap-5 p-4 md:p-6">
         <Doc blocks={score.definition} lede />
         <div className="grid gap-6 xl:grid-cols-2">
-          <Sub title="Thresholds" note={config}>
+          <Sub title="Config" note={config}>
             <Rows
-              label={`${score.title} thresholds`}
+              label={`${score.title} config`}
               columns={["Setting", "Value"]}
               rows={score.config.map((c) => ({
                 name: c.name,

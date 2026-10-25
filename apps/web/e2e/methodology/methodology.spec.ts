@@ -12,7 +12,7 @@ test("the sidebar reaches Methodology in one click, with Lifecycle Stage and its
   const lifecycle = page.locator("section#lifecycle-stage");
   await expect(lifecycle.getByRole("heading", { name: "Lifecycle Stage" })).toBeVisible();
   await expect(lifecycle.getByRole("textbox", { name: "Lifecycle Stage model_version" })).toHaveText(/^\d{3}-[0-9a-f]{12}$/);
-  await expect(lifecycle.getByRole("table", { name: "Lifecycle Stage thresholds" }).getByRole("row", { name: /^up/ })).toContainText("0.1823");
+  await expect(lifecycle.getByRole("table", { name: "Lifecycle Stage config" }).getByRole("row", { name: /^up/ })).toContainText("0.1823");
 });
 
 test("the palette opens Methodology", async ({ page }) => {
