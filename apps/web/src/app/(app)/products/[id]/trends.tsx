@@ -18,6 +18,7 @@ import { formatUtc } from "@/lib/format";
 import { spring } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 
+import { KeywordsSection } from "./keywords";
 import {
   align, hasData, LAYOUT, PANES, RANGES, readState, gapBands, windowDays, writeState,
   type AnySeries, type ChartPane, type PaneKey, type Point, type Range, type Series,
@@ -50,6 +51,15 @@ const SWATCH = ["bg-chart-1", "bg-chart-2", "bg-chart-3", "bg-chart-4", "bg-char
 const HATCH = "bg-[repeating-linear-gradient(135deg,var(--muted-foreground)_0_1px,transparent_1px_4px)] opacity-60";
 
 export function TrendsTab({ id }: { id: string }) {
+  return (
+    <>
+      <SeriesView id={id} />
+      <KeywordsSection id={id} />
+    </>
+  );
+}
+
+function SeriesView({ id }: { id: string }) {
   const params = useSearchParams();
   const query = $api.useQuery("get", "/v1/products/{product_id}/series", { params: { path: { product_id: id }, query: { range: "all" } } }, { enabled: useApiReady() });
   const { data, error } = query;

@@ -28,7 +28,9 @@ def test_the_shared_phrase_leads_and_its_inner_pieces_fold_into_it() -> None:
     # In every title, but one word is a broad search: half weight.
     assert ("sunset", 0.5) in top
     # Still scored, so a decided keyword reads its relevance.
-    assert scored[key("projection lamp")].relevance == pytest.approx((0.75 + 0.875) / 2 * 0.85, abs=1e-3)
+    assert scored[key("projection lamp")].relevance == pytest.approx(
+        (0.75 + 0.875) / 2 * 0.85, abs=1e-3
+    )
 
 
 def test_titles_that_reorder_the_words_still_rank_the_full_phrase_above_single_words() -> None:
@@ -49,7 +51,9 @@ def test_stop_words_numbers_and_listing_noise_never_make_a_keyword() -> None:
     assert top == ["pet hair remover roller"]
     lamp = words(suggest(grams(LAMP), limit=50))
     for word in ("with", "and", "for", "16"):
-        assert not any(k == word or k.startswith(f"{word} ") or k.endswith(f" {word}") for k in lamp)
+        assert not any(
+            k == word or k.startswith(f"{word} ") or k.endswith(f" {word}") for k in lamp
+        )
     assert grams(["2024 New Hot", "   "]) == {}
     assert grams([]) == {}
 

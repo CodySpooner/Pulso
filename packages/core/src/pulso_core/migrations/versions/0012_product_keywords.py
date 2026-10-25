@@ -83,7 +83,7 @@ def downgrade() -> None:
         DO $$
         BEGIN
             IF EXISTS (SELECT 1 FROM product_keywords) THEN
-                RAISE EXCEPTION 'product_keywords holds keyword decisions; refusing a lossy downgrade';
+                RAISE EXCEPTION 'product_keywords holds decisions; refusing a lossy downgrade';
             END IF;
         END
         $$

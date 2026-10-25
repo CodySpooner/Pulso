@@ -68,7 +68,7 @@ def phrases(title: str) -> list[list[str]]:
 
 
 def grams(titles: Iterable[str]) -> dict[Key, Gram]:
-    """Every candidate in the titles, scored. Titles that differ only in case or spacing count once."""
+    """Every candidate in the titles, scored. Titles that differ only in case count once."""
     distinct = list(dict.fromkeys(normalize(title) for title in titles if title.strip()))
     held: Counter[Key] = Counter()
     word_held: Counter[str] = Counter()

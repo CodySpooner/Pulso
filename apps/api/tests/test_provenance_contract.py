@@ -21,6 +21,8 @@ COVERED_OPERATIONS = {
     "create_product_note",
     "list_product_tags",
     "put_product_tags",
+    "list_product_keywords",
+    "set_product_keyword",
     "search",
     "calc_profit",
     "list_categories",

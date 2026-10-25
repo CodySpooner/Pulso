@@ -26,7 +26,10 @@ DAYS = {"7d": 7, "30d": 30, "90d": 90}
 VELOCITY = {"velocity_js": "shp_inv", "velocity_bumps": "shp_bump"}  # metric → demand family
 OBSERVED = ("success", "partial")  # source_daily_coverage: the source collected that UTC day
 MISSING = {
-    "search": "No search keyword is linked to this product yet. Keywords arrive in Phase 3.",
+    "search": (
+        "No search interest is collected for this product's keywords yet. Confirmed keywords "
+        "join the weekly Google Trends fetch in a later step."
+    ),
     "ads": "No ad source yet. Ad counts arrive in Phase 8 or by CSV import.",
 }
 

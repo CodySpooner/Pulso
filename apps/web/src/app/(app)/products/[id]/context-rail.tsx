@@ -27,7 +27,7 @@ const field =
 const PENDING = "pending-";
 
 /** A save that failed and was undone: what, why, and the error ID. Spoken once. */
-function Failed({ what, error }: { what: string; error: unknown }) {
+export function Failed({ what, error }: { what: string; error: unknown }) {
   const problem = isProblem(error) ? error : null;
   return (
     <p role="alert" className="text-label text-foreground">
