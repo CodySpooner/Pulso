@@ -4186,3 +4186,55 @@ Superseded review defaults, not given entries: default #0 (move the repo) is don
   - `test_screener.py` sorts Twin (69.8) above Single (62.6) with duty unset.
   - Removing or reversing either key fails a test (`docs/reports/imp-520.md`).
 - **Not here:** any UI; Opportunity in Discover and Daily Pulse (imp-489).
+
+### DEC-342 · Daily Pulse page (WF-6 part b): `/` reads `GET /v1/pulse` for the day in `?date=` (none is the latest scored day), one card per section with its own as of, sources and a designed state per status; Previous / Next / Latest push the URL; movers Up/Down; watchlist sparklines; the alerts card links `/alerts`
+**2026-10-25 · proposed (p4-29)** · Phase 4 task WF-6b; SPEC §6.1; DEC-031, DEC-040, DEC-330, DEC-337; imp-510; vault Features/Daily Pulse, Design/UI States, Charts & Data Viz, Component Inventory; `docs/reports/p4-29.md`; no backend change, migration, flag or dependency
+- **Decision:**
+  - **(a) The day.** The URL holds it as `?date=YYYY-MM-DD`; without it the page asks for the API's default, the newest scored day (DEC-337). A malformed date reads as the latest day rather than a 422 page.
+    - The third button is **Latest**, not "Today": the newest scored day is usually yesterday (UTC), so a "Today" button would show yesterday's date.
+    - Previous is always on. Next is off on the latest view and on or after the UTC day of the last fetch. Latest is off on the latest view.
+    - Each switch is a `history.pushState`, so Back steps back a day, and Next.js's `useSearchParams` follows it with no server round trip.
+  - **(b) Switching days** keeps the old day's cards on screen at 50% opacity (`aria-busy`, opacity only, `duration.fast`) until the new day arrives, then swaps them. TanStack's 5-minute cache serves a day already seen.
+  - **(c) Card order:** alerts first when any are unread (the note's phone order), then the populated sections, then the no-source ones, each group in the note's order. Two columns from `lg`; an odd last card spans both.
+  - **(d) States, per card:**
+    - **ok:** up to 10 rows (32 px, 44 on touch), each row opens its product;
+    - **empty:** the EmptyState with the API's reason. The empty watchlist offers Discover;
+    - **no source:** a dashed card with one line, "No source yet." plus the API's reason and an Open Data Health link. Never a number;
+    - **stale:** the card's `as_of` is more than 1.5 days before the day's cutoff (UI States' 1.5 × the daily interval). It gets an amber dot, the word for screen readers and the reason in the as-of hint.
+  - **(e) States, per page:**
+    - loading: the header and eight card skeletons in their loaded shapes;
+    - error: one PanelError with Retry (one request feeds every card);
+    - a failed refresh keeps the day with the StaleLine over it;
+    - the latest day before yesterday shows an amber "Nothing scored since …" line with Data Health;
+    - nothing ok on the latest day shows the first-run card.
+  - **(f) Movers** use the API's day-over-day Trend change, with an Up/Down segmented control in the header (local state, Up first). Deltas are DeltaBadges, with the sign plus ▲/▼.
+  - **(g) Top emerging's stage pill is neutral**, because every row there is emerging or rising. Elsewhere (the watchlist) the LifecyclePill keeps its colour, and a stage entered on the day carries a dot and says so.
+  - **(h) Sparkline:** the watchlist's 14-day Trend series. A day without a score breaks the line, under 3 points gives a dashed baseline, neutral, `aria-hidden` (vault Charts & Data Viz). It lives in the page folder: the only other sparkline (Sellers) draws a different series type inline.
+  - **(i) Links.** Each row is one stretched link, and its `title` gives the number's source and as of. The tab is picked by section: Suppliers for supplier changes, Trends for search movers, Profit for margins, Sellers for launches, the overview otherwise. Alerts open `entityHref()`.
+  - **(j) The alerts card (imp-510)** lists the day's alerts in the API's order (unread first) with the unread count and a footer link to `/alerts`. It never marks an alert read: reads stay in the inbox (DEC-330).
+- **Alternatives:**
+  - **`<Link href="?date=…">`:** a server round trip per switch, and `loading.tsx` would flash over the cards.
+  - **A native date input:** typing fires a request per intermediate date. Previous / Next / Latest is the note's control.
+  - **Hiding no-source cards:** the acceptance asks each section to say why it is empty.
+  - **A centred EmptyState for no source:** six tall identical slabs on an empty database (design review round 1).
+  - **A card-level error per section:** one request feeds every card, so one error with one Retry.
+- **Why:**
+  - `src/app/(app)/(pulse)/pulse.test.ts`: 37 Vitest tests. They render every card in its ok, empty and no-source state, and cover the delta glyphs and hover text, the movers toggle, the alerts link and order, the watchlist sparkline, stage and missing trend, stale, and the model (dates, order, series gaps).
+  - `e2e/pulse/pulse.spec.ts`: 10 Playwright tests on fixture responses under the E2E auth bypass. They cover:
+    - Shopify off;
+    - the day switch (URL, request date, as of, Back);
+    - a dated URL;
+    - the toggle in one click;
+    - the alerts link and a product link;
+    - keyboard only;
+    - error, Retry and a failed refresh;
+    - the behind line and the first-run card;
+    - 375 px with 44 px hit areas.
+- **Not here:**
+  - the note's keyboard shortcuts (`,` `.` `J` `K` `W` `B` `T` `A` `M`);
+  - mark-all-read on the card;
+  - row quick actions;
+  - the collection status line;
+  - R-22's shortlist card;
+  - Opportunity (imp-489);
+  - swipe between days on a phone.
