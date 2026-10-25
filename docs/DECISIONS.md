@@ -4075,3 +4075,29 @@ Superseded review defaults, not given entries: default #0 (move the repo) is don
 
   `test_screens.py` covers CRUD, unique names, validation and two-workspace 404s. `test_saved_screens_schema.py` covers up/down/up and the refused downgrade. 18 mutations each fail a test.
 - **Not here:** the Screener page (WF-1b), `?format=csv` (imp-430), a result count and per-condition "removed by" counts, the metric catalog and histograms (`GET /screener/metrics`), OR groups, "include no data", rename and duplicate (PATCH), alerts on new matches (Phase 7), and forecast filters (Phase 6).
+
+### DEC-341 · With no complete listing, the economics view and `calculate()` cost the one with the fewest missing inputs, then the lowest goods + freight, then the lowest id; while duty is unset that is the best margin at duty 0, the one Opportunity scores (refines DEC-331 b and DEC-265)
+**2026-10-25 · proposed (imp-520)** · backlog imp-520 (XR-66 from P4-26, `docs/reports/p4-26.md`); Phase 4 SC-5; SPEC §7; R-16; DEC-246, DEC-265, DEC-291, DEC-331 (b), DEC-336; vault Intelligence/Opportunity Score, Agents/Reviews/2026-10-25 Claude - p4-20 p4-13 p4-18 p4-22 cross-review; `docs/reports/imp-520.md`; migration 0023 (the view only); no endpoint, schema, flag, dependency or UI change
+- **Decision:**
+  - **(a) One tie-break key, in both places.**
+    - Migration 0023 re-creates `workspace_product_economics` from 0014's text with one ORDER BY edit: after `cardinality(cost.missing)` comes `cost.goods_minor::numeric + cost.freight_minor` ascending, NULLS LAST, then `l.id`. The cast is there because goods + freight can pass BIGINT where each line fits (the "landed cost past BIGINT" vector).
+    - `calculate()`'s fallback uses the same key through `landed_cost_loader.fallback()`: (missing count, total is None, total, id).
+    - A golden vector (the dearer listing created first, duty unset) holds the view, the loader and the vector to the same listing and lines.
+  - **(b) Why that is the best margin.**
+    - With duty unset, every listing is incomplete (`duty_not_set`), so every `cost.margin_minor` is NULL and `l.id` used to decide.
+    - Price, fees, returns and the customs fee are the same for every listing of a product in one workspace. So among the listings whose only gap is `duty_not_set`, the lowest goods + freight is the highest margin at duty 0: the margin `margin_of()` scores (DEC-331 b).
+    - Opportunity with duty unset now equals the duty-0 workspace's value, in either creation order, except for confidence (0.7 against 0.9) and the `duty_not_set` caution. The Screener's Opportunity sort (DEC-336) reads the same rows, so it follows.
+  - **(c) What doesn't change.**
+    - Complete rows still rank by margin (R-16 `best()`), in stock first (DEC-291). With duty set, a product with any complete listing costs the same listing as before.
+    - R-16 still withholds an incomplete row's margin on Discover, Profit and the Overview. Only the listing the row names (its supplier, lines and sources) changes.
+    - Incomplete rows with other gaps are ordered by the key too: at the same missing count, the cheaper priced pair comes first and a row missing a line comes after. None of them shows a margin.
+  - **(d) Refines** DEC-331 (b) ("the row Discover's and the Overview's best margin read") and DEC-265 (the view's fallback after the best complete listing). Neither entry is edited.
+- **Alternatives:**
+  - **Rank incomplete rows by a duty-0 margin in SQL:** a second margin expression in the view. Goods + freight gives the same order, because every other line is common to the product.
+  - **Pick the listing inside `margin_of()`:** a second per-product query on every read and in the Screener's batch, and the score would name a different supplier from the row the UI shows.
+  - **Apply the key only when duty is the only gap:** one more CASE with no visible difference, since incomplete rows with other gaps show no margin.
+- **Why:** P4-26's probe ($29.99; CJ $20.00 created first and $5.00; $4.10 freight each; 2.9% + 30¢; returns 5%) scored 25.0, "margin below your floor" (0.1074), with duty unset and 69.8 (0.6075) at duty 0.
+  - Now both read 69.8 and 0.6075, with confidence 0.7 against 0.9, in both creation orders (`test_product_scores.py`).
+  - `test_screener.py` sorts Twin (69.8) above Single (62.6) with duty unset.
+  - Removing or reversing either key fails a test (`docs/reports/imp-520.md`).
+- **Not here:** any UI; Opportunity in Discover and Daily Pulse (imp-489).

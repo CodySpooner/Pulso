@@ -32,7 +32,7 @@ def test_names_versions_and_the_lossy_downgrade_guard(db_engine: Engine) -> None
                 connection.execute(insert(SavedScreen).values({**screen, **values}))
         with pytest.raises(DBAPIError, match="lossy downgrade"), connection.begin_nested():
             command.downgrade(config, "0021")
-        assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "0022"
+        assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "0023"
         connection.execute(text("DELETE FROM saved_screens"))
         command.downgrade(config, "0021")
         assert connection.scalar(text("SELECT to_regclass('saved_screens')")) is None
