@@ -2670,3 +2670,27 @@ Superseded review defaults, not given entries: default #0 (move the repo) is don
   - the ml worker image, the `ml` consumer and a Beat entry (g);
   - title normalisation;
   - the M-2 verify (95 % of listings with an image embedded within one nightly run), which needs `listing_images` enabled (an owner decision) and real data on the collector host.
+
+### DEC-271 · A product an undo empties is marked `empty` in the same transaction; Discover, its category filter, search and the product page skip it
+**2026-10-25 · proposed (imp-273)** · Improvement Backlog imp-273; closes DEC-263's "Not here" line on emptied products; DEC-257 (a, f), DEC-263 (b, c), DEC-239, DEC-252; AGENTS.md §3; vault Data/Product Matching, Features/Matching Queue; `docs/reports/imp-273.md`; no migration, flag, dependency or API schema change
+- **Decision:**
+  - **(a) The decision service marks it.** `settle()` in `pulso_ml.matching.decisions` runs inside the call's locked transaction (DEC-257 f). Each product a move left or reached becomes `status = 'empty'` when no listing points at it (a delisted listing still counts), or `active` when one does. A merged product keeps `merged`.
+    - `undo` settles every product its rows left or reached.
+    - `merge` and `split` settle their target, so a merge or a split `into` an emptied product makes it `active` again.
+    - Nothing else can empty or refill a product. Split and unlink keep a listing behind (DEC-257 a, DEC-263 c). Accept and the matcher only move product-less listings, or merge through `merge`. A merge's source becomes `merged`.
+  - **(b) Readers skip `empty`.**
+    - Discover (`list_products`) and its category filter (`list_categories`) add `status <> 'empty'` beside `merged_into_id IS NULL`.
+    - Search's product-title candidates add it too. A merged product's title still stands for its survivor, and a listing-title hit only reaches the product that holds the listing.
+    - `get_product` still follows `merged_into_id` first. An empty product then answers 404 with code `no_listings`. The product page shows its own state for that code: "No listings left on this product", saying an undo moved its last listing off and that its notes, scores and forecasts are kept, with the Daily Pulse link.
+  - **(c) Nothing is deleted or rewritten.** The product row stays, so notes, tags, scores, forecasts and features keep its id, and `match_decisions` only gains the undo's own rows. `products.status` is mutable state (merge already sets it) with no CHECK, so `'empty'` needs no migration.
+- **Alternatives:**
+  - Readers skip products with no listing (`EXISTS` on `listings.product_id`): no state to keep, and it would cover products emptied before this change. But it changes what a listing-less product is everywhere: eight green Discover, product page and search tests seed one ("Unmatched") as a product with no source yet, and all eight fail.
+  - Refuse a merge or split into an emptied product instead of reactivating it: one more 409, for a target the queue never shows; settling it is the same helper.
+  - Keep the page's generic not-found copy: it says no product has this ID and that Pulso's links keep working, and neither is true here.
+- **Why:** Postgres tests on `pgvector/pgvector:0.8.7-pg18-trixie`, both failing first:
+  - `apps/api/tests/test_matching.py::test_a_product_emptied_by_an_undo_leaves_discover_search_and_its_page`: an accept forms a product, and a split moves a listing onto a new one. Each is listed in Discover, search and the category filter, and its page answers 200. After each undo neither is listed, and each page answers 404 `no_listings`.
+  - `packages/ml/tests/test_matcher.py::test_a_product_an_undo_empties_is_empty_until_listings_join_it_again`: undoing an accept and a split marks the product `empty`; a split `into` it and a merge into it make it `active`; undoing that merge marks it `empty` again and its source `active`.
+  - Eight one-line mutations each fail one of them: each reader filter dropped (Discover, search, categories, page), each `settle()` call dropped (undo, split, merge), and `empty` written as `active`. A Playwright spec covers the page's `no_listings` state and fails without it.
+- **Not here:**
+  - Products emptied before this change (an undo since p2-25 merged) stay `active`. A read-only query finds any: `SELECT id FROM products p WHERE status = 'active' AND merged_into_id IS NULL AND NOT EXISTS (SELECT 1 FROM listings WHERE product_id = p.id)`. Marking them is a one-off data fix, so it waits for the owner.
+  - An empty product's sub-resources (overview, sellers, series, notes, tags) still answer for its id; the page doesn't call them.

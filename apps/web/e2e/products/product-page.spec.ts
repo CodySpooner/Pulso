@@ -119,6 +119,14 @@ test("an unknown id shows not found at once", async ({ page }) => {
   expect(calls).toHaveLength(1); // a 4xx is not retried
 });
 
+test("a product an undo emptied says its last listing moved off", async ({ page }) => {
+  await mockProductApi(page, { status: 404, code: "no_listings" }); // DEC-271
+  await page.goto(URL);
+  await expect(page.getByRole("heading", { level: 1, name: "Product has no listings" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "No listings left on this product" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Go to Daily Pulse", exact: true })).toBeVisible();
+});
+
 test("a failed load shows the cause, the error ID and Retry", async ({ page }) => {
   await mockProductApi(page, { status: 503 });
   await page.goto(URL);

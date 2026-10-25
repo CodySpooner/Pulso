@@ -9,7 +9,7 @@ from collections.abc import Collection, Sequence
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import and_, func, or_, select, update
+from sqlalchemy import and_, case, exists, func, or_, select, update
 from sqlalchemy.orm import Session
 
 from pulso_core.models import Listing, MatchCandidate, MatchDecision, Product
@@ -55,6 +55,7 @@ def merge(
         )
         .values(status="merged", decided_at=func.now())
     )
+    settle(session, [target])
     return target
 
 
@@ -90,6 +91,7 @@ def split(
         )
         .values(status="split", decided_at=func.now())
     )
+    settle(session, [target])
     return target
 
 
@@ -207,7 +209,7 @@ def undo(session: Session, decision_id: int, actor: str, reason: str) -> list[in
             None if row.candidate_id is None else session.get(MatchCandidate, row.candidate_id)
         )
         record(session, listing, row.from_product_id, actor, INVERSE[row.action], note, candidate)
-    session.flush()
+    settle(session, {row.from_product_id for row in rows} | {row.to_product_id for row in rows})
     merged = redirects(session)
     for candidate in touched:
         a, b = (canonical(merged, listing.product_id) for listing in pair_of(session, candidate))
@@ -271,6 +273,19 @@ def one_product(
     if not stay:
         raise ValueError("one listing at least stays on the product; merge moves a whole product")
     return listings, source, stay
+
+
+def settle(session: Session, product_ids: Collection[UUID | None]) -> None:
+    """Products a move left or reached: `empty` with no listing left, so Discover, search and
+    the product page skip it, and `active` once one joins again. A merged product stays merged.
+    Only undo can empty a product, and merge or split into it can refill one (DEC-271)."""
+    session.flush()
+    held = exists().where(Listing.product_id == Product.id)
+    session.execute(
+        update(Product)
+        .where(Product.id.in_(set(product_ids) - {None}), Product.merged_into_id.is_(None))
+        .values(status=case((held, "active"), else_="empty"))
+    )
 
 
 def record(

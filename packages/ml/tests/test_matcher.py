@@ -1042,3 +1042,46 @@ def test_undo_writes_compensating_rows_and_reruns_keep_the_result(world: World) 
     assert [table(session, model) for model in (MatchCandidate, MatchDecision, Product)] == rows
     with pytest.raises(LookupError):
         undo(session, 10**9, "owner", "missing")
+
+
+def test_a_product_an_undo_empties_is_empty_until_listings_join_it_again(world: World) -> None:
+    """DEC-271: every move that empties a product marks it, and every move onto it clears that."""
+    session = world.session
+    cheap = world.listing(world.supplier(), 1, price=100)  # 10x markup: pending at 1.0
+    retail = world.listing(world.store(), 1, age_days=1)
+    home = world.product()
+    stays = world.listing(world.store(), 2, product=home)
+    leaves = world.listing(world.store(), 3, product=home)
+    world.run()
+    pair = candidate(session, cheap, retail)
+    assert pair is not None
+
+    def status(product_id: UUID) -> str:
+        session.expire_all()
+        return session.get_one(Product, product_id).status
+
+    def undone() -> None:
+        undo(session, latest(session, leaves).id, "owner", "misclick")
+        session.commit()
+
+    formed = accept(session, pair.id, "owner", "queue")
+    session.commit()
+    undo(session, latest(session, cheap).id, "owner", "misclick")
+    session.commit()
+    assert status(formed) == "empty"
+
+    new = split(session, [leaves.id], "owner", "colourway")
+    session.commit()
+    undone()
+    assert (status(new), status(home)) == ("empty", "active")
+    split(session, [leaves.id], "owner", "colourway", into=new)
+    session.commit()
+    assert status(new) == "active"
+    undone()
+    assert status(new) == "empty"
+    merge(session, home, new, "owner", "same lamp")
+    session.commit()
+    assert (status(new), status(home)) == ("active", "merged")
+    undone()
+    assert (status(new), status(home)) == ("empty", "active")
+    assert products(session, stays, leaves) == [home, home]

@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 from pulso_api.auth import Principal, current_principal
 from pulso_api.dependencies import get_db
 from pulso_core.models import (
+    Category,
     CollectorRun,
     Image,
     Listing,
@@ -359,6 +360,46 @@ def test_decisions_only_append_and_undo_adds_compensating_rows(queue: Queue) -> 
     with Session(queue.engine) as session:
         actors = set(session.scalars(select(MatchDecision.actor)))
         assert actors == {str(queue.users["a"])}
+
+
+def test_a_product_emptied_by_an_undo_leaves_discover_search_and_its_page(queue: Queue) -> None:
+    """Undoing an accept that formed a product, or a split onto a new one, empties it (DEC-271)."""
+    with Session(queue.engine) as session:
+        cj, shop = queue.listing(session, CJ), queue.listing(session, SHOPIFY)
+        pair = queue.pair(session, cj, shop, "0.8000")
+        kept = Product(name="Kept lamp", first_seen_at=SEEN)
+        session.add_all([kept, Category(id=7, name="Lamps", path="Home > Lamps")])
+        session.flush()
+        leaves = [queue.listing(session, SHOPIFY, product=kept.id) for _ in range(2)][1].id
+        session.commit()
+        kept_id = str(kept.id)
+    client, url = queue.as_("a"), "/v1/admin/matching/decisions"
+
+    def listed() -> tuple[set[str], set[str], list[int]]:
+        discover = client.get("/v1/products").json()["items"]
+        search = client.get("/v1/search", params={"q": "Sunset lamp"}).json()["products"]
+        used = client.get("/v1/categories").json()
+        return {i["id"] for i in discover}, {h["id"] for h in search}, [c["id"] for c in used]
+
+    emptied = []
+    for body in (
+        {"action": "accept", "candidate_id": pair},
+        {"action": "split", "listing_ids": [leaves]},
+    ):
+        decision = client.post(url, json=body).json()
+        with Session(queue.engine) as session:  # the taxonomy job categorised it meanwhile
+            session.get_one(Product, UUID(decision["product_id"])).category_id = 7
+            session.commit()
+        discover, search, used = listed()
+        assert decision["product_id"] in discover & search and used == [7]
+        assert client.get(f"/v1/products/{decision['product_id']}").status_code == 200
+        assert client.post(f"{url}/{decision['id']}/undo").status_code == 201
+        emptied.append(decision["product_id"])
+
+    assert listed() == ({kept_id}, {kept_id}, [])
+    for product_id in emptied:
+        page = client.get(f"/v1/products/{product_id}")
+        assert (page.status_code, page.json()["code"]) == (404, "no_listings")
 
 
 def test_a_split_or_rejected_pair_stays_apart_after_a_matcher_rerun(queue: Queue) -> None:

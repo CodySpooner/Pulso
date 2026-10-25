@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import * as m from "motion/react-m";
-import { Package, SearchX, TriangleAlert } from "lucide-react";
+import { Package, PackageX, SearchX, TriangleAlert } from "lucide-react";
 import { Tabs } from "radix-ui";
 
 import { useApiReady } from "@/components/data-health/api";
@@ -51,6 +51,7 @@ export function ProductPage({ id }: { id: string }) {
   const { data, error } = product;
   const failed = product.isError && !data;
   const notFound = failed && isProblem(error) && (error.status === 404 || error.status === 422);
+  const emptied = notFound && isProblem(error) && error.code === "no_listings"; // an undo took its last listing (DEC-271)
   const retry = () => void product.refetch();
 
   // A merged id answers 308, which fetch follows: show the survivor's URL, query string kept (DEC-238).
@@ -70,7 +71,7 @@ export function ProductPage({ id }: { id: string }) {
             title={data?.title}
             className={cn("line-clamp-2 text-title-1 font-semibold break-words text-foreground outline-none", !data && !failed && "sr-only")}
           >
-            {data?.title ?? (notFound ? "Product not found" : failed ? "Product" : "Loading product")}
+            {data?.title ?? (emptied ? "Product has no listings" : notFound ? "Product not found" : failed ? "Product" : "Loading product")}
           </h1>
           {data ? (
             <p className="text-label text-subtle-foreground">
@@ -97,16 +98,18 @@ export function ProductPage({ id }: { id: string }) {
       ) : notFound ? (
         <section className={card}>
           <EmptyState
-            icon={SearchX}
+            icon={emptied ? PackageX : SearchX}
             headingLevel="h2"
-            title="No product has this ID"
+            title={emptied ? "No listings left on this product" : "No product has this ID"}
             action={
               <Button asChild variant="secondary">
                 <Link href="/">Go to Daily Pulse</Link>
               </Button>
             }
           >
-            Check the link. A product merged into another one redirects to it, so links Pulso gave you keep working.
+            {emptied
+              ? "An undo in the Matching Queue moved its last listing off it, so Discover and search no longer show it. Its notes, scores and forecasts are kept."
+              : "Check the link. A product merged into another one redirects to it, so links Pulso gave you keep working."}
           </EmptyState>
         </section>
       ) : failed ? (
