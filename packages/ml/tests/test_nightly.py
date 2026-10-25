@@ -280,6 +280,7 @@ def test_lifecycle_reads_launch_dates_and_delistings_as_of_the_cutoff(db_engine:
         at = datetime.combine(DAY, datetime.min.time(), UTC)
         for product, listing in (
             (k, {"source_created_at": at - timedelta(days=10)}),  # launched 10 days ago
+            (k, {"source_published_at": at - timedelta(days=5)}),  # its later listing
             (m, {"delisted_at": at - timedelta(days=2)}),  # delisted before the cutoff
             (n, {"delisted_at": AT, "source_created_at": AT}),  # both after it
         ):
