@@ -20,14 +20,14 @@ export type Paused = Map<string, string>;
 
 const usd = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", trailingZeroDisplay: "stripIfInteger" });
 const money = (minor: number) => usd.format(minor / 100);
-const count = (n: number) => n.toLocaleString("en-US");
+export const count = (n: number) => n.toLocaleString("en-US");
 const perWeek = (n: number) => `${count(n)}/7d`;
 const pct = (bps: number) => `${(bps / 100).toFixed(1)}%`;
-const day = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
+export const day = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
 const leaf = (path: string | null) => path?.split(" > ").at(-1) ?? "Uncategorised";
 const sourced = (stats: Stat[]) => stats.filter((s): s is Exclude<Stat, { reason: string }> => !("reason" in s));
 
-function Price({ item, now }: { item: Item; now: number }) {
+export function Price({ item, now }: { item: Item; now: number }) {
   if ("reason" in item.price_min_minor) return <Metric stat={item.price_min_minor} label="Retail price" format={money} now={now} />;
   return (
     <span className="whitespace-nowrap">
@@ -38,7 +38,7 @@ function Price({ item, now }: { item: Item; now: number }) {
   );
 }
 
-function Velocity({ item, now }: { item: Item; now: number }) {
+export function Velocity({ item, now }: { item: Item; now: number }) {
   const v = item.velocity;
   if ("reason" in v) return <Metric stat={v} label="Velocity" missing="Insufficient signal" format={perWeek} now={now} />;
   return (
@@ -59,7 +59,7 @@ function Velocity({ item, now }: { item: Item; now: number }) {
 
 /** The best complete supplier's landed margin, $ and % (DEC-265). R-16 withholds it otherwise; "Duty not set" names
  *  the one gap Settings can close, and its card lists every gap. */
-function BestMargin({ item, now }: { item: Item; now: number }) {
+export function BestMargin({ item, now }: { item: Item; now: number }) {
   const m = item.best_margin_minor;
   if ("reason" in m) {
     const duty = m.missing.includes("duty_not_set");
@@ -80,7 +80,7 @@ function BestMargin({ item, now }: { item: Item; now: number }) {
 }
 
 /** G7, the momentum sort key, signed with ▲/▼ (never colour alone). */
-function Momentum({ item, now }: { item: Item; now: number }) {
+export function Momentum({ item, now }: { item: Item; now: number }) {
   const v = item.velocity;
   if ("reason" in v) return <DeltaBadge value={null} missingReason="Insufficient signal: no momentum" />;
   const delta = formatDelta(v.growth, "up", 2);
@@ -90,7 +90,7 @@ function Momentum({ item, now }: { item: Item; now: number }) {
 
 /** The oldest family feeding the item. The dot is amber when stale, red when a feeding source is down; the words say which,
  *  in neutral text, since a blocked source would otherwise paint every card red. */
-function Freshness({ item, now, paused }: { item: Item; now: number; paused: Paused }) {
+export function Freshness({ item, now, paused }: { item: Item; now: number; paused: Paused }) {
   const stats = sourced([item.store_count, item.supplier_count, item.velocity]);
   const off = stats.map((s) => paused.get(s.source)).find(Boolean);
   const state = off ? `source ${off}` : item.stale ? "stale" : null;
@@ -109,7 +109,7 @@ function Freshness({ item, now, paused }: { item: Item; now: number; paused: Pau
   );
 }
 
-function Thumb({ url, className }: { url: string | null; className: string }) {
+export function Thumb({ url, className }: { url: string | null; className: string }) {
   const [broken, setBroken] = useState(false);
   if (!url || broken)
     return (
