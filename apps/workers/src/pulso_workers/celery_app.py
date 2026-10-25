@@ -27,11 +27,17 @@ def configuration() -> dict[str, object]:
         "beat_scheduler": "pulso_workers.beat:LockedScheduler",
         "beat_schedule": BEAT_SCHEDULE,
         "beat_max_loop_interval": 5,
-        "imports": ("pulso_workers.tasks", "pulso_workers.ops", "pulso_workers.registration"),
+        "imports": (
+            "pulso_workers.tasks",
+            "pulso_workers.ops",
+            "pulso_workers.registration",
+            "pulso_workers.ml",
+        ),
         "task_routes": {
             "collect.*": {"queue": "collect"},
             "ops.*": {"queue": "ops"},
             "audit.*": {"queue": "ops"},
+            "ml.*": {"queue": "ml"},
         },
         "task_annotations": {
             "collect.run": {
