@@ -12,6 +12,9 @@ dependencies = [
     "sqlalchemy>=2.0,<3",
 ]
 
+[project.optional-dependencies]
+ml = ["pulso-ml[clip]"]  # the ml consumer's image: `uv sync --package pulso-workers --extra ml`
+
 [build-system]
 requires = ["uv_build>=0.11,<0.14"]
 build-backend = "uv_build"

@@ -37,3 +37,27 @@ def match_listings(task: Any) -> None:
 
 
 app.task(name="ml.match", bind=True)(match_listings)
+
+
+def embed_listings(task: Any) -> None:
+    """M-2 part b (DEC-269). ponytail: no Beat entry until the ml consumer has the weights."""
+    with job_id.set(task.request.id):
+        if not get_settings().embeddings_enabled:
+            logger.info("embeddings_disabled")
+            return
+        from pulso_ml import embeddings
+        from pulso_sources.storage import read_capture
+
+        with get_session() as session:
+            counts = embeddings.embed(session, embeddings.openclip(), read_capture)
+        logger.info(
+            "embeddings_done model=%s images=%s titles=%s image_missing=%s image_unreadable=%s",
+            embeddings.MODEL_VERSION,
+            counts.images,
+            counts.titles,
+            counts.image_missing,
+            counts.image_unreadable,
+        )
+
+
+app.task(name="ml.embed", bind=True)(embed_listings)
