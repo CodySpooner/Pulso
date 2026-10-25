@@ -67,7 +67,7 @@ export const navGroups: NavGroup[] = [
     label: null,
     items: [
       { label: "Daily Pulse", href: "/", icon: Activity, phase: 0, summary: "What changed overnight and what deserves attention today." },
-      { label: "Alerts", href: "/alerts", icon: Bell, phase: 4, summary: "Alerts that fired when a product crossed one of your rules. Each fires once per crossing." },
+      { label: "Alerts", href: "/alerts", icon: Bell, phase: 4, built: true, summary: "Alerts that fired when a product crossed one of your rules. Each fires once per crossing." },
     ],
   },
   {
