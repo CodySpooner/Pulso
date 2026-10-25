@@ -34,9 +34,9 @@ function Badge() {
 }
 
 /** A number from the answer: its value, and on hover, focus or tap the badge, the as-of time and "Not stored". */
-function Live({ value, label, format, asOf, now }: { value: number; label: string; format: (v: number) => string; asOf: string; now: number }) {
+function Live({ value, label, format, asOf, now, className }: { value: number; label: string; format: (v: number) => string; asOf: string; now: number; className?: string }) {
   const stat = { value, source: "aliexpress", source_name: LIVE, as_of: asOf, stale: false, method: null, raw_payload_id: null };
-  return <Metric stat={stat} label={`${label} · ${LIVE}`} format={format} now={now} />;
+  return <Metric stat={stat} label={`${label} · ${LIVE}`} format={format} now={now} className={className} />;
 }
 
 // AE-3 (vault Features/Product Page - Suppliers): paste the product's AliExpress link and its SKUs and US shipping
@@ -243,7 +243,6 @@ type Found = Lookup & { product: NonNullable<Lookup["product"]>; as_of: string; 
 
 function Answer({ data, now }: { data: Found; now: number }) {
   const { product, as_of: asOf } = data;
-  const n = (v: number) => String(v);
   return (
     <div className="flex flex-col gap-3">
       <div className="flex flex-col gap-0.5">
@@ -266,65 +265,51 @@ function Answer({ data, now }: { data: Found; now: number }) {
           {product.sales && <span title="AliExpress's own sales label; its window isn't documented">{product.sales} sold</span>}
         </p>
       </div>
-      <Table caption="Variants" heads={["Variant (SKU)", "Unit cost", "List price", "Stock", "Source"]}>
-        {product.skus.map((sku) => (
-          <tr key={sku.sku_id} className="row-h">
-            <th scope="row" className={cn(cell, "text-left font-mono font-normal text-muted-foreground")}>
-              {sku.sku_id}
-            </th>
-            <td className={cn(cell, "num font-medium text-foreground")}>
-              <Live value={sku.sale_price_minor} label="Unit cost" format={(v) => money(v)} asOf={asOf} now={now} />
-            </td>
-            <td className={cn(cell, "num text-muted-foreground")}>
-              <Live value={sku.price_minor} label="List price" format={(v) => money(v)} asOf={asOf} now={now} />
-            </td>
-            <td className={cn(cell, "num")}>
-              {sku.stock === null ? (
-                <span className="text-subtle-foreground" title="AliExpress didn't give this variant's stock">
+      <Rows
+        label="AliExpress variants"
+        heads={["Variant (SKU)", "Unit cost", "List price", "Stock"]}
+        none="AliExpress listed no variants for this product."
+        lines={product.skus.map((sku) => ({
+          key: sku.sku_id,
+          name: <span className="font-mono text-muted-foreground">{sku.sku_id}</span>,
+          cells: [
+            <Live key="unit" value={sku.sale_price_minor} label="Unit cost" format={(v) => money(v)} asOf={asOf} now={now} className="font-medium text-foreground" />,
+            <Live key="list" value={sku.price_minor} label="List price" format={(v) => money(v)} asOf={asOf} now={now} className="text-muted-foreground" />,
+            sku.stock === null ? (
+              <span key="stock" className="text-subtle-foreground" title="AliExpress didn't give this variant's stock">
+                —
+              </span>
+            ) : (
+              <Live key="stock" value={sku.stock} label="Stock" format={String} asOf={asOf} now={now} />
+            ),
+          ],
+        }))}
+      />
+      {data.shipping && (
+        <Rows
+          label="AliExpress shipping to the US, 1 unit"
+          heads={["Method", "Ship to US", "Days"]}
+          none="AliExpress offers no shipping to the US for this variant."
+          lines={data.shipping.map((option) => ({
+            key: option.code,
+            name: (
+              <>
+                {option.company}
+                {option.ship_from && <span className="ml-1.5 text-micro text-subtle-foreground">from {option.ship_from}</span>}
+              </>
+            ),
+            cells: [
+              <Live key="fee" value={option.fee_minor} label={`Shipping, ${option.company}`} format={(v) => (option.free ? "Free" : money(v))} asOf={asOf} now={now} />,
+              option.max_days === null && option.min_days === null ? (
+                <span key="days" className="text-subtle-foreground">
                   —
                 </span>
               ) : (
-                <Live value={sku.stock} label="Stock" format={n} asOf={asOf} now={now} />
-              )}
-            </td>
-            <td className={cell}>
-              <Badge />
-            </td>
-          </tr>
-        ))}
-      </Table>
-      {data.shipping && (
-        <Table caption="Shipping to the US, 1 unit" heads={["Method", "Ship to US", "Days", "From", "Source"]}>
-          {data.shipping.length === 0 ? (
-            <tr>
-              <td colSpan={5} className={cn(cell, "py-2 text-muted-foreground")}>
-                AliExpress offers no shipping to the US for this variant.
-              </td>
-            </tr>
-          ) : (
-            data.shipping.map((option) => (
-              <tr key={option.code} className="row-h">
-                <th scope="row" className={cn(cell, "text-left font-normal text-foreground")}>
-                  {option.company}
-                </th>
-                <td className={cn(cell, "num")}>
-                  <Live value={option.fee_minor} label={`Shipping, ${option.company}`} format={(v) => (option.free ? "Free" : money(v))} asOf={asOf} now={now} />
-                </td>
-                <td className={cn(cell, "num")}>
-                  {option.max_days === null && option.min_days === null ? (
-                    <span className="text-subtle-foreground">—</span>
-                  ) : (
-                    <Live value={option.max_days ?? option.min_days!} label={`Days, ${option.company}`} format={() => days(option.min_days, option.max_days)!} asOf={asOf} now={now} />
-                  )}
-                </td>
-                <td className={cn(cell, "text-muted-foreground")}>{option.ship_from ?? "—"}</td>
-                <td className={cell}>
-                  <Badge />
-                </td>
-              </tr>
-            ))
-          )}
-        </Table>
+                <Live key="days" value={option.max_days ?? option.min_days!} label={`Days, ${option.company}`} format={() => days(option.min_days, option.max_days)!} asOf={asOf} now={now} />
+              ),
+            ],
+          }))}
+        />
       )}
       <p className="text-micro text-subtle-foreground">
         As of <time dateTime={asOf}>{formatUtc(asOf)}</time> · gone at <time dateTime={data.expires_at}>{formatUtc(data.expires_at)}</time>. Not in landed cost
@@ -334,22 +319,61 @@ function Answer({ data, now }: { data: Found; now: number }) {
   );
 }
 
-function Table({ caption, heads, children }: { caption: string; heads: string[]; children: React.ReactNode }) {
+type Line = { key: string; name: React.ReactNode; cells: React.ReactNode[] };
+
+/** A table from 768 px, cards below it (like the supplier list); every row or card carries the badge. */
+function Rows({ label, heads: [nameHead, ...heads], lines, none }: { label: string; heads: string[]; lines: Line[]; none: string }) {
+  if (!lines.length) return <p className="text-data text-muted-foreground">{none}</p>;
   return (
-    <div role="region" aria-label={`AliExpress ${caption[0].toLowerCase()}${caption.slice(1)}`} tabIndex={0} className="overflow-x-auto overscroll-x-contain rounded-lg border border-border">
-      <table className="w-full border-separate border-spacing-0 zone-data">
-        <caption className="sr-only">{caption}</caption>
-        <thead className="bg-card">
-          <tr className="row-h text-label text-muted-foreground">
-            {heads.map((head, i) => (
-              <th key={head} scope="col" className={cn(cell, "border-border font-medium", i === 0 || i === heads.length - 1 || head === "From" ? "text-left" : "text-right")}>
-                {head}
-              </th>
+    <>
+      <div role="region" aria-label={label} tabIndex={0} className="overflow-x-auto overscroll-x-contain rounded-lg border border-border max-md:hidden">
+        <table className="w-full border-separate border-spacing-0 zone-data">
+          <thead className="bg-card">
+            <tr className="row-h text-label text-muted-foreground">
+              {[nameHead, ...heads, "Source"].map((head, i) => (
+                <th key={head} scope="col" className={cn(cell, "border-border font-medium", i === 0 || i > heads.length ? "text-left" : "text-right")}>
+                  {head}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {lines.map((line) => (
+              <tr key={line.key} className="row-h">
+                <th scope="row" className={cn(cell, "text-left font-normal text-foreground")}>
+                  {line.name}
+                </th>
+                {line.cells.map((value, i) => (
+                  <td key={heads[i]} className={cn(cell, "num")}>
+                    {value}
+                  </td>
+                ))}
+                <td className={cell}>
+                  <Badge />
+                </td>
+              </tr>
             ))}
-          </tr>
-        </thead>
-        <tbody>{children}</tbody>
-      </table>
-    </div>
+          </tbody>
+        </table>
+      </div>
+      <ul aria-label={label} className="flex flex-col gap-2 md:hidden">
+        {lines.map((line) => (
+          <li key={line.key} className="flex flex-col gap-2.5 rounded-lg border border-border-subtle p-3 zone-data">
+            <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
+              <span className="min-w-0 truncate text-foreground">{line.name}</span>
+              <Badge />
+            </div>
+            <dl className="grid grid-cols-3 gap-x-3">
+              {heads.map((head, i) => (
+                <div key={head} className="flex flex-col gap-0.5">
+                  <dt className="text-label text-muted-foreground">{head}</dt>
+                  <dd className="tabular-nums">{line.cells[i]}</dd>
+                </div>
+              ))}
+            </dl>
+          </li>
+        ))}
+      </ul>
+    </>
   );
 }

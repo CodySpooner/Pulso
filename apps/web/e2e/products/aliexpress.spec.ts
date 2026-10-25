@@ -29,7 +29,7 @@ test("two clicks from the product page show its AliExpress cost, and every numbe
   const numbers = section(page).getByRole("button").filter({ hasNotText: "Look up" });
   await expect(numbers).toHaveCount(11); // rating, reviews; 3 + 2 per variant (one stock unknown); 2 per shipping option
   for (const name of await numbers.evaluateAll((els) => els.map((el) => el.getAttribute("aria-label")))) expect(name).toContain(LIVE);
-  await expect(page.getByRole("region", { name: "AliExpress shipping to the US, 1 unit" })).toContainText("Fixture Standard$4.999–15 dCN");
+  await expect(page.getByRole("region", { name: "AliExpress shipping to the US, 1 unit" })).toContainText("Fixture Standardfrom CN$4.999–15 d");
 
   // Hover, focus or tap opens the number's card: the badge as its source, its as-of time, and nothing stored.
   await variants.getByRole("button", { name: `Unit cost · ${LIVE}: $3.99` }).focus();
