@@ -120,12 +120,19 @@ export function Discover() {
             <section className="rounded-xl border border-border bg-card shadow-card">
               <PanelError headingLevel="h2" size="md" title="Couldn't load products" error={error} retry={() => void feed.refetch()} />
             </section>
-          ) : view === "grid" ? (
-            <div className={GRID}>
-              <CardSkeletons n={12} />
-            </div>
           ) : (
-            <TableSkeleton />
+            <>
+              <span className="sr-only" role="status">
+                Loading products…
+              </span>
+              {view === "grid" ? (
+                <div className={GRID}>
+                  <CardSkeletons n={12} />
+                </div>
+              ) : (
+                <TableSkeleton />
+              )}
+            </>
           )
         ) : items.length === 0 ? (
           <Empty state={state} set={set} filters={filters} />

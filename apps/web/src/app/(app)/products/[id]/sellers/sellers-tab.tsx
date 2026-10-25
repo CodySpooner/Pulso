@@ -75,7 +75,16 @@ export function SellersTab({ id }: { id: string }) {
         <PanelError headingLevel="h2" size="md" title="Couldn't load sellers" error={error} retry={retry} />
       ) : (
         <>
-          {first ? <Summary page={first} now={now} /> : <SummarySkeleton />}
+          {first ? (
+            <Summary page={first} now={now} />
+          ) : (
+            <>
+              <span className="sr-only" role="status">
+                Loading sellers…
+              </span>
+              <SummarySkeleton />
+            </>
+          )}
           <Chips filter={filter} />
           {first && first.as_of === null ? (
             <EmptyState

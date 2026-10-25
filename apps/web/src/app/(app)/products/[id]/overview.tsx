@@ -199,6 +199,9 @@ function Appears({ data, now, goTo }: { data: { appearances: { vendor: "store" |
 function OverviewSkeleton() {
   return (
     <div className="flex flex-col gap-4">
+      <span className="sr-only" role="status">
+        Loading the overview…
+      </span>
       <div className="grid grid-cols-2 gap-3 md:grid-cols-3 3xl:grid-cols-5">
         {SKELETON_SPANS.map((span, i) => (
           <div key={i} className={cn("flex flex-col gap-1 px-4 py-3", card, span)}>
