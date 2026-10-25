@@ -326,6 +326,7 @@ def test_fx_converts_at_the_observation_utc_date(api: TestClient, db_engine: Eng
     body = calc(api, ws, product_id=product_id)
     assert body["goods_minor"] == 500
     assert body["sources"]["fx_unit_cost"]["raw_payload_id"] == day_payload
+    assert datetime.fromisoformat(body["as_of"]) == DAY  # the oldest input, not the 10-24 rate
     assert (body["freight_minor"], body["missing"], body["margin_minor"]) == (
         None,
         ["fx_missing"],
@@ -337,6 +338,7 @@ def test_fx_converts_at_the_observation_utc_date(api: TestClient, db_engine: Eng
         session.commit()
     body = calc(api, ws, product_id=product_id)
     assert (body["freight_minor"], body["complete"]) == (500, True)
+    assert datetime.fromisoformat(body["as_of"]) == datetime(2026, 10, 20, tzinfo=UTC)
 
 
 @pytest.mark.db
@@ -423,6 +425,8 @@ def test_unknown_inputs_are_not_found(api: TestClient, db_engine: Engine) -> Non
     none = calc(api, ws, product_id=ids["product"])
     assert none["supplier_listing_id"] is None
     assert none["missing"] == ["supplier_cost_missing", "freight_missing", "duty_not_set"]
+    # No store price stands in at quantity 2, so only settings feed it: nothing observed.
+    assert calc(api, ws, product_id=ids["product"], quantity=2)["as_of"] is None
 
 
 @pytest.mark.db

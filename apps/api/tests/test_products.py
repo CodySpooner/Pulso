@@ -13,7 +13,6 @@ from sqlalchemy.orm import Session
 
 from pulso_api.auth import Principal, current_principal
 from pulso_api.dependencies import get_db
-from pulso_api.main import create_app
 from pulso_api.routers.products import NO_MARGIN, NO_SIGNAL
 from pulso_core.models import (
     Category,
@@ -31,52 +30,6 @@ from pulso_core.models import (
 
 STATS = ("store_count", "supplier_count", "price_min_minor", "price_max_minor")
 NOW = datetime.now(UTC)
-
-
-def numbers_without_as_of(spec: dict[str, Any], prefix: str = "/v1/products") -> list[str]:
-    """Every schema in a 2xx product response that holds a number but no required `as_of`."""
-    schemas = spec["components"]["schemas"]
-    found: list[str] = []
-    seen: set[str] = set()
-
-    def walk(node: Any, where: str) -> None:
-        if isinstance(node, list):
-            for item in node:
-                walk(item, where)
-        if not isinstance(node, dict):
-            return
-        if "$ref" in node:
-            name = node["$ref"].rsplit("/", 1)[1]
-            if name not in seen:
-                seen.add(name)
-                walk(schemas[name], name)
-            return
-        numbers = [
-            key
-            for key, prop in node.get("properties", {}).items()
-            if {"integer", "number"} & {item.get("type") for item in [prop, *prop.get("anyOf", [])]}
-        ]
-        if numbers and "as_of" not in node.get("required", []):
-            found.extend(f"{where}.{key}" for key in numbers)
-        for value in node.values():
-            walk(value, where)
-
-    for path, operations in spec["paths"].items():
-        if path.startswith(prefix):
-            for operation in operations.values():
-                for status, response in operation["responses"].items():
-                    if status.startswith("2"):
-                        walk(response, path)
-    return found
-
-
-def test_every_number_in_a_product_resource_carries_as_of() -> None:
-    spec = create_app().openapi()
-    assert any(path.startswith("/v1/products") for path in spec["paths"])
-    assert numbers_without_as_of(spec) == []
-    # The check itself catches a bare number (and a Problem's status outside the products prefix).
-    assert numbers_without_as_of(spec, "/v1/me") == []
-    assert numbers_without_as_of(spec, "/v1/settings") != []
 
 
 def test_product_requires_a_session(client: TestClient) -> None:

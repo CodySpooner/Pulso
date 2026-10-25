@@ -981,6 +981,11 @@ export interface components {
         };
         /** ProfitCalc */
         ProfitCalc: {
+            /**
+             * As Of
+             * @description The oldest observation in `sources` (DEC-259); null when only settings and owner estimates feed the result.
+             */
+            as_of: string | null;
             /** Complete */
             complete: boolean;
             /**
