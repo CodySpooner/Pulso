@@ -866,3 +866,22 @@ def test_xr28_a_stored_row_rescores_to_its_stored_score(world: World) -> None:
     )
     assert row.score == combined(CONFIG, row.image_cos, row.title_cos, row.phash_sim)
     assert row.score == Decimal("0.9149")
+
+
+@pytest.mark.xfail(strict=True, reason="XR-29: replay orders by decided_at, the txn's start")
+def test_xr29_replay_follows_the_order_moves_took_the_lock(world: World, db_engine: Engine) -> None:
+    session = world.session
+    older = world.product()
+    world.listing(world.store(), 3, product=older)
+    moved = world.listing(world.store(), 0)
+    world.listing(world.store(), 0)
+    session.commit()
+    with Session(db_engine) as owner:
+        owner.execute(select(1))  # an API request's auth query opens its transaction first
+        assert world.run().linked == 1  # meanwhile the matcher links `moved` onto a new product
+        (new,) = products(session, moved)
+        assert new is not None
+        merge(owner, new, older, "owner", "same lamp")  # takes the lock after the matcher
+        owner.commit()
+    assert products(session, moved) == [older]
+    assert membership(session, datetime.now(UTC) + timedelta(minutes=1))[moved.id] == older
