@@ -110,9 +110,11 @@ def unit_cost(session: Session, listing_id: int, variant_id: int | None) -> Row[
 def freight_quotes(
     session: Session, listing_id: int, variant_id: int | None, quantity: int, method: str | None
 ) -> tuple[list[Row[Any]], str]:
-    """The exact US quotes of the newest capture per origin, and the reason when there are none.
+    """The exact US quotes of the newest capture per origin on the variant's newest capture day,
+    and the reason when there are none.
 
-    A method the newest capture no longer lists is never priced (XR-16, DEC-250).
+    A method the newest capture no longer lists is never priced (XR-16, DEC-250), and neither is
+    an origin with nothing on that day: an empty answer writes no row (XR-23, DEC-258).
     """
     variants = session.scalars(
         select(ListingVariant.id).where(
@@ -134,11 +136,18 @@ def freight_quotes(
             ShippingOption.currency,
             ShippingOption.captured_at,
             ShippingOption.raw_payload_id,
+            ShippingOption.observed_for,
             Source.key,
-            func.rank()  # 1 for every row of the newest capture
+            # CJ asks every origin in one run, so a day's captures are the variant's answer.
+            func.max(ShippingOption.observed_for).over(partition_by=variant).label("day"),
+            func.rank()  # 1 for every row of the origin's newest capture
             .over(
                 partition_by=(variant, ShippingOption.origin_country),
-                order_by=(ShippingOption.captured_at.desc(), ShippingOption.raw_payload_id.desc()),
+                order_by=(
+                    ShippingOption.observed_for.desc(),
+                    ShippingOption.captured_at.desc(),
+                    ShippingOption.raw_payload_id.desc(),
+                ),
             )
             .label("capture"),
         )
@@ -151,7 +160,11 @@ def freight_quotes(
         )
         .subquery()
     )
-    query = select(newest).where(newest.c.capture == 1).order_by(newest.c.id.desc())
+    query = (
+        select(newest)
+        .where(newest.c.capture == 1, newest.c.observed_for == newest.c.day)
+        .order_by(newest.c.id.desc())
+    )
     if method is not None:  # after the ranking: a method's own last capture isn't the newest
         query = query.where(newest.c.method == method)
     quotes = session.execute(query).all()

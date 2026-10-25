@@ -109,7 +109,7 @@ def observe[T: Base](
     )
     session.add(payload)
     session.flush()
-    row = model(captured_at=at, observed_for=at.date(), raw_payload_id=payload.id, **values)
+    row = model(captured_at=at, raw_payload_id=payload.id, **{"observed_for": at.date()} | values)
     session.add(row)
     session.flush()
     return row
@@ -178,9 +178,13 @@ def capture(
     at: datetime,
     variant_id: int | None = None,
     origin: str | None = None,
+    observed_for: date | None = None,
     **costs: int,
-) -> None:
-    """One freight response: a row per method it lists, all under one capture, as CJ writes."""
+) -> int:
+    """One freight response: a row per method it lists, all under one capture, as CJ writes.
+
+    `observed_for` backdates it, as a CSV row may; the default is the capture's UTC date.
+    """
     first, *rest = (
         {
             "listing_id": listing_id,
@@ -190,15 +194,14 @@ def capture(
             "method": method,
             "cost_minor": cost,
             "currency": "USD",
+            "observed_for": observed_for or at.date(),
         }
         for method, cost in costs.items()
     )
     payload = observe(session, ShippingOption, CJ, at, **first).raw_payload_id
-    session.add_all(
-        ShippingOption(captured_at=at, observed_for=at.date(), raw_payload_id=payload, **row)
-        for row in rest
-    )
+    session.add_all(ShippingOption(captured_at=at, raw_payload_id=payload, **row) for row in rest)
     session.flush()
+    return payload
 
 
 def lamp(session: Session, price: int = 2999) -> Product:
@@ -435,7 +438,7 @@ def test_a_method_the_newest_capture_drops_is_never_priced(
         cj = supplier_listing(session, product, 620)
         capture(session, cj, DAY - timedelta(days=29), A=300, B=500)
         capture(session, cj, DAY, B=500)
-        capture(session, cj, DAY - timedelta(days=29), origin="US", USW=900)  # its own origin
+        capture(session, cj, DAY - timedelta(hours=1), origin="US", USW=900)  # its own origin
         single = supplier_listing(session, lamp(session), 620)
         only = ListingVariant(listing_id=single, external_id="only")
         session.add(only)
@@ -517,7 +520,6 @@ def test_ddp_drops_unused_estimates_and_amounts_past_bigint_are_named(
 
 
 @pytest.mark.db
-@pytest.mark.xfail(strict=True, reason="XR-23 (P2-18): an empty newest answer keeps the old quote")
 def test_xr23_an_origin_whose_newest_answer_is_empty_is_not_priced(
     api: TestClient, db_engine: Engine
 ) -> None:
@@ -558,3 +560,66 @@ def test_xr23_an_origin_whose_newest_answer_is_empty_is_not_priced(
     assert body["margin_minor"] == 2999 - 620 - 500 - 117 - 150
     usps = calc(api, ws, product_id=product_id, method="USPS")
     assert (usps["freight_minor"], usps["missing"]) == (None, ["freight_missing"])
+
+
+@pytest.mark.db
+def test_the_newest_capture_prices_every_method_at_its_latest_parse(
+    api: TestClient, db_engine: Engine
+) -> None:
+    with Session(db_engine) as session:
+        ws = workspace(session, duty_default_bps=0)
+        product = lamp(session)
+        cj = supplier_listing(session, product, 620)
+        payload = capture(session, cj, DAY, A=300, B=500)
+        session.add_all(  # the same capture re-parsed with corrected costs
+            ShippingOption(
+                listing_id=cj,
+                destination_country="US",
+                method=method,
+                cost_minor=cost,
+                currency="USD",
+                captured_at=DAY,
+                observed_for=DAY.date(),
+                raw_payload_id=payload,
+                parser_version="2",
+            )
+            for method, cost in {"A": 350, "B": 550}.items()
+        )
+        session.commit()
+        product_id = product.id
+
+    body = calc(api, ws, product_id=product_id)
+    assert (body["method"], body["freight_minor"], body["complete"]) == ("A", 350, True)
+    assert calc(api, ws, product_id=product_id, method="B")["freight_minor"] == 550
+
+
+@pytest.mark.db
+def test_a_quote_from_before_the_newest_day_is_not_priced(
+    api: TestClient, db_engine: Engine
+) -> None:
+    with Session(db_engine) as session:
+        ws = workspace(session, duty_default_bps=0)
+        product = lamp(session)
+        cj = supplier_listing(session, product, 620)
+        day_1 = DAY - timedelta(days=29)
+        capture(session, cj, day_1, manual=200)  # a CSV quote with no origin
+        capture(session, cj, DAY, origin="CN", CJPacket=500, ePacket=450)
+        # A CSV backfill of day 1, imported after CJ's day-30 capture.
+        capture(session, cj, DAY + timedelta(hours=1), None, "CN", day_1.date(), manual=100)
+        paired = supplier_listing(session, lamp(session), 620)
+        variants = [ListingVariant(listing_id=paired, external_id=key) for key in "AB"]
+        session.add_all(variants)
+        session.flush()
+        capture(session, paired, DAY - timedelta(days=7), variants[0].id, "CN", CJPacket=400)
+        capture(session, paired, DAY, variants[1].id, "CN", CJPacket=500)
+        session.commit()
+        product_id, older = product.id, variants[0].id
+        paired_product = session.get_one(Listing, paired).product_id
+
+    body = calc(api, ws, product_id=product_id)
+    assert (body["method"], body["freight_minor"], body["complete"]) == ("ePacket", 450, True)
+    assert calc(api, ws, product_id=product_id, method="manual")["missing"] == ["freight_missing"]
+    each = calc(
+        api, ws, product_id=paired_product, supplier_listing_id=paired, variant_id=older
+    )  # each variant has its own newest day
+    assert (each["method"], each["freight_minor"]) == ("CJPacket", 400)
