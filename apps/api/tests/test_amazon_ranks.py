@@ -1,10 +1,13 @@
 """GET /v1/amazon/ranks (AMZ-1b, DEC-286) on synthetic imports only: every ASIN and title here is
 invented, and nothing is requested from Amazon (DEC-279)."""
 
+import json
 import zlib
 from collections.abc import Iterator
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
+from unittest.mock import Mock
+from urllib.parse import quote
 from uuid import UUID, uuid4
 
 import pytest
@@ -19,9 +22,19 @@ from pulso_api.dependencies import get_db
 from pulso_core.models import AmazonRank, CollectorRun, Listing, ListingVariant, Product, RawPayload
 
 AMAZON = 8  # seeded source id (migration 0012)
-TODAY = datetime.now(UTC).date()
+NOW = datetime.now(UTC)
+TODAY = NOW.date()
 EARLIER = TODAY - timedelta(days=3)
 GTIN = "036000291452"
+
+
+@pytest.fixture(autouse=True)
+def clock(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The router's clock reads NOW, so staleness can't shift when a run passes 00:00Z after this
+    module was imported (imp-303's idiom, XR-52)."""
+    clock = Mock(wraps=datetime)
+    clock.now.return_value = NOW
+    monkeypatch.setattr("pulso_api.routers.amazon.datetime", clock)
 
 
 def test_amazon_ranks_require_a_session(client: TestClient) -> None:
@@ -30,7 +43,23 @@ def test_amazon_ranks_require_a_session(client: TestClient) -> None:
 
 @pytest.mark.parametrize(
     "query",
-    ["limit=0", "limit=501", "rank_kind=top", "observed_for=soon", "cursor=x", "cursor=[1]"],
+    [
+        "limit=0",
+        "limit=501",
+        "rank_kind=top",
+        "observed_for=soon",
+        "cursor=x",
+        "cursor=[1]",
+        # A rank outside int4 is a 422, not a 500 (XR-49); the first is the old cursor's shape.
+        *(
+            "cursor=" + quote(json.dumps(["Home", "bsr", rank, "B000000001", *imported]))
+            for rank, imported in (
+                (10**30, []),
+                (2**31, ["2026-10-25T00:00:00Z"]),
+                (-1, ["2026-10-25T00:00:00Z"]),
+            )
+        ),
+    ],
 )
 def test_amazon_ranks_validate_the_query(client: TestClient, query: str) -> None:
     assert isinstance(client.app, FastAPI)
@@ -240,6 +269,7 @@ def test_stale_when_the_newest_day_is_over_14_days_old(
         imported(session, day, [("Home", "bsr", 1, "Lamp")])
         session.commit()
     assert get(api)["stale"] is stale
+    assert get(api)["lists"][0]["stale"] is stale
     assert get(api, f"?observed_for={day}")["stale"] is False  # an earlier day picked on purpose
 
 
@@ -362,3 +392,31 @@ def test_another_workspace_sees_the_same_ranks(api: TestClient, db_engine: Engin
     assert isinstance(api.app, FastAPI)
     api.app.dependency_overrides[current_principal] = lambda: Principal(uuid4(), uuid4())
     assert ranked(api, product) == first
+
+
+@pytest.mark.db
+def test_load_more_keeps_the_imports_page_one_showed(api: TestClient, db_engine: Engine) -> None:
+    """XR-50: a file imported between pages never mixes into the list page 1 started."""
+    with Session(db_engine) as session:
+        imported(session, EARLIER, [("Home", "bsr", r, f"Old {r}") for r in range(1, 5)])
+        session.commit()
+    first = get(api, limit=2)
+    with Session(db_engine) as session:
+        imported(session, TODAY, [("Home", "bsr", r, f"New {r}") for r in range(1, 5)])
+        session.commit()
+    rest = get(api, limit=2, cursor=first["next_cursor"])
+    assert ranks(first) + ranks(rest) == [("Home", "bsr", r, f"Old {r}") for r in range(1, 5)]
+    assert rest["next_cursor"] is None
+    assert ranks(get(api, limit=1)) == [("Home", "bsr", 1, "New 1")]  # a new first page
+
+
+@pytest.mark.db
+def test_an_old_list_is_stale_beside_a_fresh_one(api: TestClient, db_engine: Engine) -> None:
+    """XR-51: the page's flag reads the newest list, so each list carries its own (DEC-286 b)."""
+    with Session(db_engine) as session:
+        imported(session, TODAY, [("Home", "bsr", 1, "Lamp")])
+        imported(session, TODAY - timedelta(days=60), [("Toys", "bsr", 1, "Kite")])
+        session.commit()
+    page = get(api)
+    assert page["stale"] is False
+    assert [(x["category"], x["stale"]) for x in page["lists"]] == [("Home", False), ("Toys", True)]

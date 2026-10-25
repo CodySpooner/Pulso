@@ -25,7 +25,10 @@ products_router = APIRouter(prefix="/v1/products", dependencies=[Depends(current
 STALE_DAYS = 14
 A = AmazonRank
 RankKind = Literal["bsr", "movers"]  # Best Sellers, Movers & Shakers (DEC-279)
-CURSOR = TypeAdapter(tuple[str, str, int, str])  # the last row's category, rank kind, rank, ASIN
+Rank = Annotated[int, Field(ge=0, le=2**31 - 1)]  # int4, so a huge rank is a 422 (XR-49)
+# The last row's category, rank kind, rank and ASIN, then the newest import page 1 read: later
+# pages read only imports up to it, so a file imported meanwhile never joins the lists (XR-50).
+CURSOR = TypeAdapter(tuple[str, str, Rank, str, AwareDatetime])
 
 
 class AmazonList(BaseModel):
@@ -36,6 +39,7 @@ class AmazonList(BaseModel):
     as_of: date  # the newest day imported
     captured_at: AwareDatetime  # that day's newest import
     rows: int
+    stale: bool  # as_of is over 14 days old, whatever the other lists' days (XR-51)
 
 
 class AmazonRankRow(BaseModel):
@@ -78,16 +82,22 @@ class ProductAmazonRanks(BaseModel):
     stale: bool  # the rows' newest day is over 14 days old
 
 
-def newest_captures(session: Session) -> dict[tuple[str, str, date], Row[Any]]:
-    """The newest capture of each list and day: a corrected file imported again adds one.
+def newest_captures(
+    session: Session, read: datetime | None = None
+) -> dict[tuple[str, str, date], Row[Any]]:
+    """The newest capture of each list and day (of the imports up to `read`, when given): a
+    corrected file imported again adds one.
     ponytail: groups the whole table per request (one row per ranked ASIN and day); a migration
     adding a (category, rank_kind, observed_for) index when imports make this slow."""
     captures: dict[tuple[str, str, date], Row[Any]] = {}
-    for capture in session.execute(
+    grouped = (
         select(A.category, A.rank_kind, A.observed_for, A.raw_payload_id, A.parser_version)
         .add_columns(func.max(A.captured_at).label("captured_at"), func.count().label("rows"))
         .group_by(A.category, A.rank_kind, A.observed_for, A.raw_payload_id, A.parser_version)
         .order_by(func.max(A.captured_at), A.raw_payload_id, A.parser_version)
+    )
+    for capture in session.execute(
+        grouped if read is None else grouped.where(A.captured_at <= read)
     ):
         captures[capture.category, capture.rank_kind, capture.observed_for] = capture  # newest wins
     return captures
@@ -156,7 +166,7 @@ def list_amazon_ranks(
         captured_at=None,
         stale=False,
     )
-    captures = newest_captures(session)
+    captures = newest_captures(session, after[4] if after else None)
     newest = {key[:2]: captures[key] for key in sorted(captures)}  # the newest day wins
     page.lists = [
         AmazonList(
@@ -165,6 +175,7 @@ def list_amazon_ranks(
             as_of=c.observed_for,
             captured_at=c.captured_at,
             rows=c.rows,
+            stale=is_stale(c.observed_for),
         )
         for c in (newest[key] for key in sorted(newest))
     ]
@@ -181,15 +192,16 @@ def list_amazon_ranks(
     order = (A.category, A.rank_kind, A.rank, A.asin)
     query = rows_of(shown)
     if after is not None:
-        query = query.where(tuple_(*order) > tuple_(*map(literal, after)))
+        query = query.where(tuple_(*order) > tuple_(*map(literal, after[:4])))
     found = session.scalars(query.order_by(*order).limit(limit + 1)).all()
     rows = found[:limit]
     linked = link_products(session, rows)
     page.rows = [rank_row(row, linked[row.id]) for row in rows]
     if len(found) > limit:
         last = rows[-1]
+        read = after[4] if after else max(c.captured_at for c in captures.values())
         page.next_cursor = CURSOR.dump_json(
-            (last.category, last.rank_kind, last.rank, last.asin)
+            (last.category, last.rank_kind, last.rank, last.asin, read)
         ).decode()
     page.total = sum(c.rows for c in shown)
     page.as_of = max(c.observed_for for c in shown)
