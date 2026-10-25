@@ -270,7 +270,7 @@ Sort = Literal["momentum", "newest", "fewest_sellers"]
 CURSORS: dict[str, TypeAdapter[Any]] = {
     "momentum": TypeAdapter(tuple[float | None, UUID]),  # null: insufficient signal
     "newest": TypeAdapter(tuple[AwareDatetime, UUID]),
-    "fewest_sellers": TypeAdapter(tuple[int, UUID]),
+    "fewest_sellers": TypeAdapter(tuple[Annotated[int, Field(ge=0, le=2**63 - 1)], UUID]),
 }
 
 
@@ -278,9 +278,14 @@ CURSORS: dict[str, TypeAdapter[Any]] = {
 def list_products(
     session: DB,
     sort: Sort = "momentum",
-    category: Annotated[int | None, Query(ge=1)] = None,
-    price_min: Annotated[int | None, Query(ge=0, description="USD minor units")] = None,
-    price_max: Annotated[int | None, Query(ge=0, description="USD minor units")] = None,
+    # Bounded by the column types (int4, BIGINT), so a huge value is a 422, not a 500 (XR-18).
+    category: Annotated[int | None, Query(ge=1, le=2**31 - 1)] = None,
+    price_min: Annotated[
+        int | None, Query(ge=0, le=2**63 - 1, description="USD minor units")
+    ] = None,
+    price_max: Annotated[
+        int | None, Query(ge=0, le=2**63 - 1, description="USD minor units")
+    ] = None,
     source: Annotated[str | None, Query(max_length=80, description="A sources.key")] = None,
     # A query string arrives as text; the Literal needs the int.
     first_seen_days: Annotated[Literal[7, 30, 90] | None, BeforeValidator(int), Query()] = None,

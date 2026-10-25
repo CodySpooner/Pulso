@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 
-import { activeFilters, apiQuery, feedSearch, NO_FILTERS, parseFeed, readView, saveView, type FeedState } from "./url-state";
+import { activeFilters, apiQuery, feedSearch, joinPages, NO_FILTERS, parseFeed, readView, saveView, type FeedState } from "./url-state";
 
 const parse = (search: string) => parseFeed(new URLSearchParams(search));
 const DEFAULT: FeedState = { view: null, sort: "momentum", ...NO_FILTERS };
@@ -57,5 +57,13 @@ describe("remembered view", () => {
     };
     expect(readView(blocked)).toBeNull();
     expect(() => saveView("grid", blocked)).not.toThrow();
+  });
+});
+
+describe("joined pages", () => {
+  test("XR-19: a product that moved into a later page between loads renders once, at its first place", () => {
+    const pages = [{ items: [{ id: "p", n: 1 }, { id: "q", n: 1 }] }, { items: [{ id: "q", n: 2 }, { id: "r", n: 1 }] }];
+    expect(joinPages(pages)).toEqual([{ id: "p", n: 1 }, { id: "q", n: 1 }, { id: "r", n: 1 }]);
+    expect(joinPages(undefined)).toEqual([]);
   });
 });

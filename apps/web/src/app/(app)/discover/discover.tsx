@@ -23,6 +23,7 @@ import {
   apiQuery,
   feedSearch,
   FIRST_SEEN,
+  joinPages,
   NO_FILTERS,
   parseFeed,
   readView,
@@ -82,7 +83,7 @@ export function Discover() {
     },
   );
   const { data, error, hasNextPage, isFetchingNextPage, isFetchNextPageError, fetchNextPage } = feed;
-  const items: Item[] = data?.pages.flatMap((p) => p.items) ?? [];
+  const items: Item[] = joinPages(data?.pages);
   const first = data?.pages[0];
   const now = feed.dataUpdatedAt;
   const paused = new Map(first?.degraded.filter((d) => d.state !== "stale").map((d) => [d.source, SAID[d.state]]));

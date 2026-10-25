@@ -9,8 +9,8 @@ from itertools import combinations
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import Select, case, exists, func, or_, select, text, true
-from sqlalchemy.orm import Session
+from sqlalchemy import Select, case, exists, func, or_, select, text, true, update
+from sqlalchemy.orm import Session, aliased
 
 from pulso_core.landed_cost import Amount, to_usd
 from pulso_core.models import (
@@ -149,7 +149,10 @@ def match(session: Session, rates: RateLookup, config: ScorerConfig = CONFIG) ->
         if currency != "USD" and (currency, day) not in usd_rates:
             row = rates(session, currency, day)
             usd_rates[currency, day] = None if row is None else row.rate
-        usd = to_usd(Amount(minor, currency, usd_rates.get((currency, day))))
+        try:
+            usd = to_usd(Amount(minor, currency, usd_rates.get((currency, day))))
+        except ValueError:  # past BIGINT in USD: no price, as in cheapest() (XR-26)
+            usd = None
         return None if usd is None else Price(usd, supplier=listing.supplier_id is not None)
 
     for listing_id in session.scalars(
@@ -167,11 +170,19 @@ def match(session: Session, rates: RateLookup, config: ScorerConfig = CONFIG) ->
         )
         root = canonical(merged, source.product_id)
         same_product = [] if root is None else group(merged, root)
-        hits: dict[int, float] = {}
-        for other_id, cos in session.execute(
-            neighbours(source, embedding, same_product, config.top_k)
-        ).tuples():
-            hits[other_id] = max(cos, hits.get(other_id, cos))  # one row per embedded image
+        # The top k listings, not image rows: ask again for 4x the rows while one listing's
+        # images crowd the k nearest (XR-24). ponytail: the scan stops at hnsw.max_scan_tuples.
+        limit = config.top_k
+        while True:
+            query = neighbours(source, embedding, same_product, limit)
+            rows = session.execute(query).tuples().all()
+            hits: dict[int, float] = {}
+            for other_id, cos in rows:
+                hits[other_id] = max(cos, hits.get(other_id, cos))  # one row per embedded image
+            if len(hits) >= config.top_k or len(rows) < limit:
+                break
+            limit *= 4
+        hits = dict(list(hits.items())[: config.top_k])  # rows come nearest first
         titles: dict[int, float | None] = {}
         if source.title_embedding is not None:
             distance = Listing.title_embedding.cosine_distance(source.title_embedding)
@@ -205,7 +216,8 @@ def match(session: Session, rates: RateLookup, config: ScorerConfig = CONFIG) ->
                 continue  # decided pairs are never touched; a GTIN pair outranks any score
             phash_sim = None if a.phash is None or b.phash is None else similarity(a.phash, b.phash)
             score = combined(config, image_cos, titles.get(other_id), phash_sim)
-            assert score is not None  # image_cos is always present
+            if score is None:  # no component left: a NaN image cosine is missing too (XR-26)
+                continue
             sane = price_sane(config, a.price, b.price)
             verdict = route(config, score, sane)
             counts.scored += 1
@@ -232,12 +244,41 @@ def match(session: Session, rates: RateLookup, config: ScorerConfig = CONFIG) ->
             reason = f"{config.version}: score {score} >= auto {config.auto}"
             if verdict == "link" and link(session, candidate, merged, reason):
                 counts.linked += 1
-            elif verdict == "discard":
+            elif verdict == "discard":  # below the band now: out of the queue (DEC-260 c)
+                candidate.status, candidate.decided_at = "rejected", func.now()
                 counts.discarded += 1
             else:
                 counts.queued += 1
         session.commit()
+    settle(session)
     return counts
+
+
+def settle(session: Session) -> None:
+    """Pending pairs whose listings are already on one product are accepted (DEC-260 d).
+
+    Nothing moves, so no decision row (R-15). Same-product listings are never neighbours,
+    so without this a pair queued before both joined one product would stay queued.
+    """
+    lock(session)
+    merged = redirects(session)
+    a, b = aliased(Listing), aliased(Listing)
+    rows = session.execute(
+        select(MatchCandidate.id, a.product_id, b.product_id)
+        .join(a, a.id == MatchCandidate.listing_a_id)
+        .join(b, b.id == MatchCandidate.listing_b_id)
+        .where(
+            MatchCandidate.status == "pending", a.product_id.is_not(None), b.product_id.is_not(None)
+        )
+    ).tuples()
+    ids = [id_ for id_, x, y in rows if canonical(merged, x) == canonical(merged, y)]
+    if ids:
+        session.execute(
+            update(MatchCandidate)
+            .where(MatchCandidate.id.in_(ids))
+            .values(status="accepted", decided_at=func.now())
+        )
+    session.commit()
 
 
 def gtins(session: Session, merged: dict[UUID, UUID | None], counts: Counts) -> None:

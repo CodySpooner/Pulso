@@ -10107,6 +10107,7 @@
             "schema": {
               "anyOf": [
                 {
+                  "maximum": 2147483647,
                   "minimum": 1,
                   "type": "integer"
                 },
@@ -10125,6 +10126,7 @@
             "schema": {
               "anyOf": [
                 {
+                  "maximum": 9223372036854775807,
                   "minimum": 0,
                   "type": "integer"
                 },
@@ -10144,6 +10146,7 @@
             "schema": {
               "anyOf": [
                 {
+                  "maximum": 9223372036854775807,
                   "minimum": 0,
                   "type": "integer"
                 },
