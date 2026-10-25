@@ -46,7 +46,7 @@ interface Run {
 }
 
 const item =
-  "relative flex h-10 cursor-pointer items-center gap-3 rounded-lg px-2 pointer-coarse:h-11 text-body text-muted-foreground outline-none select-none data-[selected=true]:text-foreground data-[disabled=true]:cursor-default data-[disabled=true]:text-subtle-foreground";
+  "relative flex min-h-10 cursor-pointer items-center gap-3 rounded-lg px-2 pointer-coarse:min-h-11 text-body text-muted-foreground outline-none select-none data-[selected=true]:text-foreground data-[disabled=true]:cursor-default data-[disabled=true]:text-subtle-foreground";
 const group =
   "px-1.5 [&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:pt-2 [&_[cmdk-group-heading]]:pb-1.5 [&_[cmdk-group-heading]]:text-label [&_[cmdk-group-heading]]:font-medium [&_[cmdk-group-heading]]:text-subtle-foreground";
 
@@ -81,8 +81,11 @@ function Row({
         <m.span layoutId="palette-highlight" transition={spring.snappy} className="absolute inset-0 rounded-lg bg-accent" />
       )}
       <Icon className={cn("relative size-4 shrink-0", iconClassName)} strokeWidth={1.5} aria-hidden />
-      <span className="relative min-w-0 shrink truncate">{label}</span>
-      {detail && <span className="relative min-w-0 flex-1 basis-0 truncate text-label text-subtle-foreground">{detail}</span>}
+      {/* On a phone the detail drops under the label, so it isn't squeezed out. */}
+      <span className="relative flex min-w-0 flex-1 items-center gap-3 max-sm:flex-col max-sm:items-start max-sm:gap-0 max-sm:py-1.5">
+        <span className="min-w-0 max-w-full shrink truncate">{label}</span>
+        {detail && <span className="min-w-0 max-w-full flex-1 basis-0 truncate text-label text-subtle-foreground max-sm:basis-auto">{detail}</span>}
+      </span>
       {hint && <span className="relative ml-auto shrink-0 text-label text-subtle-foreground">{hint}</span>}
     </Command.Item>
   );
