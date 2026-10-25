@@ -76,6 +76,7 @@ SOURCES = {
     "listing_images": "public_endpoint",
     "merchant_bestsellers": "csv",
     "amazon": "csv",
+    "aliexpress": "official_api",
 }
 ROUTES = [
     ("GET", "/v1/admin/sources"),
@@ -790,6 +791,7 @@ def test_import_template_and_preview_write_nothing(admin: TestClient, engine: En
         "listing_images": None,
         "merchant_bestsellers": "ready",
         "amazon": "ready",
+        "aliexpress": None,
     }
 
     def preview(key: str, body: bytes) -> dict[str, Any]:
