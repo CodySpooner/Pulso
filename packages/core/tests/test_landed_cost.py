@@ -3,7 +3,8 @@ from decimal import Decimal
 
 import pytest
 
-from pulso_core.landed_cost import Amount, Inputs, best, landed_cost
+from pulso_core.landed_cost import MISSING, Amount, Inputs, best, bps_of, landed_cost
+from pulso_core.landed_cost_loader import cheapest
 
 # The Profit note's worked example: $29.99, CJ $6.20, freight $4.85, duty 20%, 2.9% + $0.30, 5%.
 EXAMPLE = Inputs(
@@ -179,3 +180,54 @@ def test_an_unquoted_cheap_supplier_cannot_be_best() -> None:
     assert best({1: cheap}) is None
     loss = landed_cost(replace(EXAMPLE, price_minor=1000))  # complete, but loses money
     assert best({1: cheap, 2: loss}) == 2
+
+
+BIG = 2**62  # x 2 is 2^63, one past BIGINT
+
+
+@pytest.mark.parametrize(
+    "unit_cost", [Amount(BIG, "USD"), Amount(BIG, "JPY", Decimal("150"))], ids=["USD", "JPY"]
+)
+def test_a_line_past_bigint_is_named_not_returned(unit_cost: Amount) -> None:
+    cost = landed_cost(replace(EXAMPLE, unit_cost=unit_cost, quantity=2))
+    assert (cost.goods_minor, cost.duty_minor, cost.landed_cost_minor) == (None, None, None)
+    assert (cost.complete, cost.missing, cost.margin_minor) == (
+        False,
+        ("amount_out_of_range",),
+        None,
+    )
+
+
+def test_fees_and_totals_past_bigint_are_named_not_returned() -> None:
+    top = 2**63 - 1  # every input is inside the request bounds
+    fees = landed_cost(
+        replace(EXAMPLE, price_minor=top, payment_fee_bps=10000, payment_fee_fixed_minor=top)
+    )
+    assert (fees.payment_fee_minor, fees.margin_minor, fees.margin_bps) == (None, None, None)
+    assert (fees.missing, fees.returns_minor) == (("amount_out_of_range",), bps_of(top, 500))
+    duty = landed_cost(replace(EXAMPLE, unit_cost=Amount(BIG, "USD"), duty_bps=20000))
+    assert (duty.goods_minor, duty.duty_minor, duty.landed_cost_minor) == (BIG, None, None)
+    landed = landed_cost(replace(EXAMPLE, unit_cost=Amount(top, "USD"), duty_bps=0))
+    assert (landed.goods_minor, landed.landed_cost_minor) == (top, None)
+    ratio = landed_cost(replace(EXAMPLE, price_minor=1, unit_cost=Amount(BIG, "USD"), duty_bps=0))
+    assert ratio.landed_cost_minor == BIG + 485  # margin_bps would be ~ -4.6e22
+    assert (ratio.margin_minor, ratio.margin_bps, ratio.complete) == (None, None, False)
+
+
+def test_missing_codes_keep_the_dec_order() -> None:
+    cost = landed_cost(replace(EXAMPLE, unit_cost=Amount(4000, "CNY"), freight=None, duty_bps=None))
+    assert cost.missing == ("freight_missing", "duty_not_set", "fx_missing")
+    assert MISSING[-2:] == ("fx_missing", "amount_out_of_range")
+
+
+def test_ddp_overridden_inputs_are_not_estimates() -> None:
+    estimates = ("duty_bps", "customs_fee_minor", "returns_bps")
+    ddp = landed_cost(replace(EXAMPLE, ddp=True, estimates=estimates))
+    assert ddp.estimates == ("returns_bps",)
+    assert landed_cost(replace(EXAMPLE, estimates=estimates)).estimates == tuple(sorted(estimates))
+
+
+def test_a_freight_past_bigint_sorts_last_and_is_named() -> None:
+    freight = Amount(2**63 - 1, "GBP", Decimal("0.5"))  # 1.8e19 USD cents
+    assert cheapest(("A", freight, {})) == (True, 0)
+    assert landed_cost(replace(EXAMPLE, freight=freight)).missing == ("amount_out_of_range",)

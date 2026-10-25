@@ -1,7 +1,7 @@
 from collections.abc import Iterator
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
-from typing import Any
+from typing import Any, get_args
 from uuid import UUID, uuid4
 
 import pytest
@@ -12,7 +12,9 @@ from sqlalchemy.orm import Session
 
 from pulso_api.auth import Principal, current_principal
 from pulso_api.dependencies import get_db
+from pulso_api.routers.profit import Missing
 from pulso_core.db import Base
+from pulso_core.landed_cost import MISSING
 from pulso_core.models import (
     CollectorRun,
     FxRate,
@@ -36,6 +38,10 @@ FEES = {"payment_fee_bps": 290, "payment_fee_fixed_minor": 30, "returns_bps": 50
 
 def test_calc_requires_a_session(client: TestClient) -> None:
     assert client.post("/v1/profit/calc", json={"product_id": str(uuid4())}).status_code == 401
+
+
+def test_the_missing_literal_matches_landed_cost() -> None:
+    assert get_args(Missing) == MISSING
 
 
 @pytest.mark.parametrize(
@@ -164,6 +170,35 @@ def quote(
         cost_minor=cost,
         currency=currency,
     )
+
+
+def capture(
+    session: Session,
+    listing_id: int,
+    at: datetime,
+    variant_id: int | None = None,
+    origin: str | None = None,
+    **costs: int,
+) -> None:
+    """One freight response: a row per method it lists, all under one capture, as CJ writes."""
+    first, *rest = (
+        {
+            "listing_id": listing_id,
+            "variant_id": variant_id,
+            "origin_country": origin,
+            "destination_country": "US",
+            "method": method,
+            "cost_minor": cost,
+            "currency": "USD",
+        }
+        for method, cost in costs.items()
+    )
+    payload = observe(session, ShippingOption, CJ, at, **first).raw_payload_id
+    session.add_all(
+        ShippingOption(captured_at=at, observed_for=at.date(), raw_payload_id=payload, **row)
+        for row in rest
+    )
+    session.flush()
 
 
 def lamp(session: Session, price: int = 2999) -> Product:
@@ -388,3 +423,94 @@ def test_unknown_inputs_are_not_found(api: TestClient, db_engine: Engine) -> Non
     none = calc(api, ws, product_id=ids["product"])
     assert none["supplier_listing_id"] is None
     assert none["missing"] == ["supplier_cost_missing", "freight_missing", "duty_not_set"]
+
+
+@pytest.mark.db
+def test_a_method_the_newest_capture_drops_is_never_priced(
+    api: TestClient, db_engine: Engine
+) -> None:
+    with Session(db_engine) as session:
+        ws = workspace(session, duty_default_bps=0, **FEES)
+        product = lamp(session)
+        cj = supplier_listing(session, product, 620)
+        capture(session, cj, DAY - timedelta(days=29), A=300, B=500)
+        capture(session, cj, DAY, B=500)
+        capture(session, cj, DAY - timedelta(days=29), origin="US", USW=900)  # its own origin
+        single = supplier_listing(session, lamp(session), 620)
+        only = ListingVariant(listing_id=single, external_id="only")
+        session.add(only)
+        session.flush()
+        capture(session, single, DAY - timedelta(days=29), manual=200)  # null variant
+        capture(session, single, DAY, only.id, B=500)  # the same question, asked later
+        session.commit()
+        product_id, single_product = product.id, session.get_one(Listing, single).product_id
+
+    body = calc(api, ws, product_id=product_id)
+    assert (body["method"], body["freight_minor"], body["complete"]) == ("B", 500, True)
+    assert body["margin_minor"] == 2999 - 620 - 500 - 117 - 150
+    assert datetime.fromisoformat(body["sources"]["freight"]["as_of"]) == DAY
+    dropped = calc(api, ws, product_id=product_id, method="A")
+    assert (dropped["freight_minor"], dropped["complete"], dropped["missing"]) == (
+        None,
+        False,
+        ["freight_missing"],
+    )
+    assert calc(api, ws, product_id=product_id, method="USW")["freight_minor"] == 900
+    assert calc(api, ws, product_id=single_product)["method"] == "B"
+
+
+@pytest.mark.db
+def test_a_capture_tie_goes_to_the_later_raw_payload(api: TestClient, db_engine: Engine) -> None:
+    with Session(db_engine) as session:
+        ws = workspace(session, duty_default_bps=0)
+        product = lamp(session)
+        dropped, added = (supplier_listing(session, product, 620) for _ in range(2))
+        capture(session, dropped, DAY, A=300, B=500)
+        capture(session, dropped, DAY, B=500)  # same captured_at, later raw payload
+        capture(session, added, DAY, B=500)
+        capture(session, added, DAY, A=300, B=500)
+        session.commit()
+        product_id = product.id
+
+    def method(listing: int, **body: Any) -> Any:
+        found = calc(api, ws, product_id=product_id, supplier_listing_id=listing, **body)
+        return found["method"], found["missing"]
+
+    assert method(dropped) == ("B", [])
+    assert method(dropped, method="A") == (None, ["freight_missing"])
+    assert method(added) == ("A", [])
+
+
+@pytest.mark.db
+def test_ddp_drops_unused_estimates_and_amounts_past_bigint_are_named(
+    api: TestClient, db_engine: Engine
+) -> None:
+    with Session(db_engine) as session:
+        ws = workspace(session, customs_fee_minor=99, **FEES)
+        product = lamp(session)
+        quote(session, supplier_listing(session, product, 620), 485)
+        session.commit()
+        product_id = product.id
+
+    ddp = calc(api, ws, product_id=product_id, ddp=True, duty_bps=2500, returns_bps=0)
+    assert (ddp["complete"], ddp["estimates"], ddp["customs_fee_minor"]) == (
+        True,
+        ["returns_bps"],
+        0,
+    )
+    assert {"duty_bps", "customs_fee_minor"}.isdisjoint(ddp["sources"])
+    top = 2**63 - 1
+    huge = calc(
+        api,
+        ws,
+        product_id=product_id,
+        ddp=True,
+        price_minor=top,
+        payment_fee_bps=10000,
+        payment_fee_fixed_minor=top,
+    )
+    assert (huge["payment_fee_minor"], huge["margin_minor"], huge["missing"]) == (
+        None,
+        None,
+        ["amount_out_of_range"],
+    )

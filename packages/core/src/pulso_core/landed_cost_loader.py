@@ -10,10 +10,18 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import Row, select
+from sqlalchemy import Row, func, select
 from sqlalchemy.orm import Session
 
-from pulso_core.landed_cost import Amount, Inputs, LandedCost, best, landed_cost, to_usd
+from pulso_core.landed_cost import (
+    DDP_ZEROED,
+    Amount,
+    Inputs,
+    LandedCost,
+    best,
+    landed_cost,
+    to_usd,
+)
 from pulso_core.models import (
     FxRate,
     Listing,
@@ -102,7 +110,10 @@ def unit_cost(session: Session, listing_id: int, variant_id: int | None) -> Row[
 def freight_quotes(
     session: Session, listing_id: int, variant_id: int | None, quantity: int, method: str | None
 ) -> tuple[list[Row[Any]], str]:
-    """The latest exact US quote per origin and method, and the reason when there is none."""
+    """The exact US quotes of the newest capture per origin, and the reason when there are none.
+
+    A method the newest capture no longer lists is never priced (XR-16, DEC-250).
+    """
     variants = session.scalars(
         select(ListingVariant.id).where(
             ListingVariant.listing_id == listing_id, ListingVariant.delisted_at.is_(None)
@@ -110,8 +121,12 @@ def freight_quotes(
     ).all()
     single = len(variants) <= 1  # only a single-variant listing takes a null-variant quote
     wanted = variant_id if variant_id is not None or not single else next(iter(variants), None)
-    query = (
+    # One freight question per variant and origin; on a single-variant listing a null-variant
+    # quote asks the variant's, so the two share one newest capture.
+    variant = func.coalesce(ShippingOption.variant_id, wanted if single else None)
+    newest = (
         select(
+            ShippingOption.id,
             ShippingOption.variant_id,
             ShippingOption.origin_country,
             ShippingOption.method,
@@ -120,6 +135,12 @@ def freight_quotes(
             ShippingOption.captured_at,
             ShippingOption.raw_payload_id,
             Source.key,
+            func.rank()  # 1 for every row of the newest capture
+            .over(
+                partition_by=(variant, ShippingOption.origin_country),
+                order_by=(ShippingOption.captured_at.desc(), ShippingOption.raw_payload_id.desc()),
+            )
+            .label("capture"),
         )
         .join(RawPayload, RawPayload.id == ShippingOption.raw_payload_id)
         .join(Source, Source.id == RawPayload.source_id)
@@ -128,10 +149,11 @@ def freight_quotes(
             ShippingOption.destination_country == "US",
             ShippingOption.quantity == quantity,
         )
-        .order_by(ShippingOption.captured_at.desc(), ShippingOption.id.desc())
+        .subquery()
     )
-    if method is not None:
-        query = query.where(ShippingOption.method == method)
+    query = select(newest).where(newest.c.capture == 1).order_by(newest.c.id.desc())
+    if method is not None:  # after the ranking: a method's own last capture isn't the newest
+        query = query.where(newest.c.method == method)
     quotes = session.execute(query).all()
     latest: dict[tuple[str | None, str], Row[Any]] = {}
     for quote in quotes:
@@ -146,7 +168,10 @@ def freight_quotes(
 
 def cheapest(option: tuple[str, Amount, dict[str, Provenance]]) -> tuple[bool, int]:
     """Without a chosen method, the cheapest quote in USD; one without FX sorts last."""
-    usd = to_usd(option[1])
+    try:
+        usd = to_usd(option[1])
+    except ValueError:  # past BIGINT: sorts last too, and landed_cost() names it (XR-20)
+        usd = None
     return usd is None, usd or 0
 
 
@@ -176,6 +201,8 @@ def calculate(
         values["price_minor"], sources["price_minor"] = reference_price
     values |= overrides
     sources |= {name: Provenance("owner_estimate") for name in overrides}
+    if ddp:  # DDP zeroes duty and the customs fee, so neither input is used (XR-21)
+        sources = {name: trace for name, trace in sources.items() if name not in DDP_ZEROED}
     base = Inputs(
         **values,
         unit_cost=None,
