@@ -34,9 +34,15 @@ function save(blob: Blob, file: string) {
   setTimeout(() => URL.revokeObjectURL(url), 60_000); // ponytail: ample for any browser to start the download
 }
 
-/** Every row of the feed's query as the API's CSV (WF-7, DEC-316): the API counts, then streams the file. */
-export function useCsvExport(query: ReturnType<typeof apiQuery>) {
-  const key = JSON.stringify(query);
+type CsvRequest = (signal: AbortSignal) => Promise<{ data?: Response["body"]; error?: unknown; response: Response }>;
+
+/** Every row of the feed's query as the API's CSV (WF-7, DEC-316). */
+export const useCsvExport = (query: ReturnType<typeof apiQuery>) =>
+  useCsvDownload(JSON.stringify(query), (signal) => fetchClient.GET("/v1/products", { params: { query: { ...query, format: "csv" } }, parseAs: "stream", signal }));
+
+/** A table's `?format=csv` download (DEC-316, DEC-345): the API counts, then streams the file. `key` names the
+ *  table's query, so another query starts clean. */
+export function useCsvDownload(key: string, request: CsvRequest) {
   const [outcome, setOutcome] = useState<{ key: string; step: Step }>({ key, step: IDLE });
   const controller = useRef<AbortController | null>(null);
   useEffect(() => () => controller.current?.abort(), []);
@@ -49,11 +55,7 @@ export function useCsvExport(query: ReturnType<typeof apiQuery>) {
     const set = (next: Step) => setOutcome({ key, step: next });
     set({ step: "preparing", rows: null });
     try {
-      const { data, error, response } = await fetchClient.GET("/v1/products", {
-        params: { query: { ...query, format: "csv" } },
-        parseAs: "stream",
-        signal,
-      });
+      const { data, error, response } = await request(signal);
       if (!data) {
         set({ step: "failed", problem: isProblem(error) ? error : null });
         return;
@@ -61,7 +63,7 @@ export function useCsvExport(query: ReturnType<typeof apiQuery>) {
       const rows = Number(response.headers.get("X-Total-Count") ?? NaN);
       set({ step: "preparing", rows: Number.isInteger(rows) ? rows : null });
       const blob = await new Response(data).blob();
-      const done: Step = { step: "done", file: attachment(response.headers.get("Content-Disposition")) ?? "pulso_discover.csv" };
+      const done: Step = { step: "done", file: attachment(response.headers.get("Content-Disposition")) ?? "pulso_export.csv" };
       save(blob, done.file);
       set(done);
       setTimeout(() => setOutcome((o) => (o.step === done ? { key, step: IDLE } : o)), 2500);
@@ -72,8 +74,8 @@ export function useCsvExport(query: ReturnType<typeof apiQuery>) {
   return { step, run };
 }
 
-/** Export CSV for the feed's toolbar, with its one polite status and, after a failure, one alert. */
-export function ExportCsv({ csv: { step, run }, empty }: { csv: ReturnType<typeof useCsvExport>; empty: boolean }) {
+/** Export CSV for a table's toolbar, with its one polite status and, after a failure, one alert. */
+export function ExportCsv({ csv: { step, run }, empty }: { csv: ReturnType<typeof useCsvDownload>; empty: boolean }) {
   const button = useRef<HTMLButtonElement>(null);
   const busy = step.step === "preparing";
   const problem = step.step === "failed" ? step.problem : null;

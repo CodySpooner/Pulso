@@ -7,10 +7,11 @@ export const OVER_CAP = "54,210 rows exceed the 50,000 export limit. Narrow your
 
 type Reply = "file" | "over-cap" | "down" | "hold";
 
-export async function mockExport(page: Page, replies: Reply[] = ["file"]) {
+/** `path` and `file` default to Discover's; the Testing Board passes its own (p4-30). */
+export async function mockExport(page: Page, replies: Reply[] = ["file"], { path = "/api/v1/products", file = FILE } = {}) {
   const calls: URL[] = [];
   await page.route(
-    (url) => url.pathname === "/api/v1/products" && url.searchParams.get("format") === "csv",
+    (url) => url.pathname === path && url.searchParams.get("format") === "csv",
     (route) => {
       calls.push(new URL(route.request().url()));
       const reply = replies[Math.min(calls.length, replies.length) - 1];
@@ -24,7 +25,7 @@ export async function mockExport(page: Page, replies: Reply[] = ["file"]) {
         });
       return route.fulfill({
         body: "﻿id,product,price_min,currency\r\nf-1,Sunset lamp,24.00,USD\r\n",
-        headers: { "content-type": "text/csv; charset=utf-8", "content-disposition": `attachment; filename="${FILE}"`, "x-total-count": "1" },
+        headers: { "content-type": "text/csv; charset=utf-8", "content-disposition": `attachment; filename="${file}"`, "x-total-count": "1" },
       });
     },
   );

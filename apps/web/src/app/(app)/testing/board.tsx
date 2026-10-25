@@ -13,6 +13,7 @@ import { DropdownMenu } from "radix-ui";
 import { useApiReady } from "@/components/data-health/api";
 import { Ago, Missing, PanelError, Pill, StaleLine } from "@/components/data-health/atoms";
 import { EmptyState } from "@/components/pulso/empty-state";
+import { isTyping } from "@/components/shell/app-shell";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -20,6 +21,7 @@ import { $api, fetchClient } from "@/lib/api/client";
 import { duration, ease, spring } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 
+import { ExportCsv, useCsvDownload } from "../discover/export-csv";
 import { money } from "../products/[id]/profit/model";
 import { KILL_REASONS, LIST, listKey, moveOptions, reasonOf, SIGNALS, spendBar, STAGES, stageLabel, staleMetrics, testDay, TRACK, type KillReason, type Move, type Stage, type Test } from "./model";
 import { TestDrawer, Thumb } from "./test-drawer";
@@ -49,6 +51,8 @@ export function TestingBoard() {
   const [note, setNote] = useState<Note | null>(null);
   const focusAfter = useRef<number | null>(null);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
+  // The board has no filters, so the export is every test, past the newest 100 it shows (DEC-345).
+  const csv = useCsvDownload("tests", (signal) => fetchClient.GET("/v1/tests", { params: { query: { format: "csv" } }, parseAs: "stream", signal }));
   const items = list.data?.items;
 
   useEffect(() => {
@@ -92,6 +96,12 @@ export function TestingBoard() {
   return (
     <div className="flex flex-col gap-4">
       {list.isRefetchError && <StaleLine boxed what="Couldn't refresh your tests" error={list.error} asOf={list.dataUpdatedAt} retry={() => void list.refetch()} />}
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+        <p className="min-w-0 flex-1 text-label text-subtle-foreground">
+          {next_cursor != null ? `Your newest ${tests.length} tests; the export has them all` : `${tests.length} ${tests.length === 1 ? "test" : "tests"}`}
+        </p>
+        <ExportCsv csv={csv} empty={tests.length === 0} />
+      </div>
       {tests.length === 0 ? (
         <section aria-label="Testing board" className="rounded-xl border border-border bg-card shadow-card">
           <EmptyState
@@ -120,7 +130,16 @@ export function TestingBoard() {
           }}
         >
           <LayoutGroup>
-            <div className="grid items-start gap-3 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+            <div
+              className="grid items-start gap-3 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5"
+              // E exports while focus is on the board (vault Features/CSV Export & Import). A card's menu is a portal whose
+              // keys bubble here through React, so only targets inside the grid count.
+              onKeyDown={(e) => {
+                if (e.key.toLowerCase() !== "e" || e.ctrlKey || e.metaKey || e.altKey || isTyping(e.target) || !e.currentTarget.contains(e.target as Node)) return;
+                e.preventDefault();
+                void csv.run();
+              }}
+            >
               {STAGES.map(({ value, label }) => {
                 const cards = tests.filter((t) => t.stage === value);
                 return (
