@@ -19,6 +19,7 @@ import { formatUtc } from "@/lib/format";
 import { duration, spring } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 
+import { ExportCsv, useCsvExport } from "./export-csv";
 import { CardSkeletons, GRID, ProductCard, ProductTable, TableSkeleton, type Item, type Paused } from "./feed-views";
 import {
   activeFilters,
@@ -95,32 +96,49 @@ export function Discover() {
   const filters = activeFilters(state);
   // The page names the filter's store or supplier; an id it doesn't know reads as such once it has answered.
   const named: Named = (key) => first?.[key]?.name ?? `#${state[key]}${first ? ", not found" : ""}`;
+  const csv = useCsvExport(apiQuery(state));
+  const empty = !!first && items.length === 0;
 
   return (
     <div className="flex flex-col gap-4">
       <Toolbar state={state} set={set} view={view} setView={setView}>
         <VendorChips state={state} set={set} named={named} loading={!first && !feed.isError} />
       </Toolbar>
-      <p className="text-label text-subtle-foreground" aria-live="polite">
-        {first ? (
-          <>
-            {items.length.toLocaleString("en-US")} {items.length === 1 ? "product" : "products"}
-            {hasNextPage && " loaded, more as you scroll"} ·{" "}
-            {first.as_of ? (
-              <>
-                as of <time dateTime={first.as_of}>{formatUtc(first.as_of)}</time>
-              </>
-            ) : (
-              "nothing collected yet"
-            )}
-          </>
-        ) : (
-          " "
-        )}
-      </p>
+      {/* The count, and what Export CSV takes: every matching row, not the loaded pages (DEC-316). */}
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+        <p className="mr-auto text-label text-subtle-foreground" aria-live="polite">
+          {first ? (
+            <>
+              {items.length.toLocaleString("en-US")} {items.length === 1 ? "product" : "products"}
+              {hasNextPage && " loaded, more as you scroll"} ·{" "}
+              {first.as_of ? (
+                <>
+                  as of <time dateTime={first.as_of}>{formatUtc(first.as_of)}</time>
+                </>
+              ) : (
+                "nothing collected yet"
+              )}
+            </>
+          ) : (
+            " "
+          )}
+        </p>
+        <ExportCsv csv={csv} empty={empty} />
+      </div>
       {first && first.degraded.length > 0 && <DegradedBanner degraded={first.degraded} />}
       {data && feed.isRefetchError && <StaleLine boxed what="Couldn't refresh the feed" error={error} asOf={now} retry={() => void feed.refetch()} />}
-      <m.div key={view} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: duration.fast }}>
+      <m.div
+        key={view}
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ duration: duration.fast }}
+        // E exports while focus is in the results, grid or table (vault Features/CSV Export & Import).
+        onKeyDown={(e) => {
+          if (e.key.toLowerCase() !== "e" || e.ctrlKey || e.metaKey || e.altKey || isTyping(e.target) || empty) return;
+          e.preventDefault();
+          void csv.run();
+        }}
+      >
         {!data ? (
           feed.isError ? (
             <section className="rounded-xl border border-border bg-card shadow-card">
