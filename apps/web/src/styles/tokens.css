@@ -19,8 +19,8 @@
   --amber-300: #ffd27a; --amber-400: #f7b841; --amber-500: #e09a12; --amber-700: #935600; --amber-950: #261803;
   --blue-400: #6fa8ff; --blue-700: #2156c9; --violet-400: #ae9bff; --violet-700: #6446d8;
   --viz-blue-d: #3987e5; --viz-orange-d: #d95926; --viz-aqua-d: #199e70; --viz-yellow-d: #c98500; --viz-magenta-d: #d55181;
-  /* Light slots clear 3:1 on white (imp-313): aqua leans teal and magenta violet to stay apart from --positive and --negative. */
-  --viz-blue-l: #2a78d6; --viz-orange-l: #eb6834; --viz-aqua-l: #0d9488; --viz-yellow-l: #a88400; --viz-magenta-l: #cc4c8f;
+  /* Light slots clear 3:1 on white and on secondary (imp-313): aqua leans teal and magenta violet, apart from --positive and --negative. */
+  --viz-blue-l: #2a78d6; --viz-orange-l: #e2612c; --viz-aqua-l: #0d9488; --viz-yellow-l: #a88400; --viz-magenta-l: #cc4c8f;
   --radius: 0.5rem;
 }
 
