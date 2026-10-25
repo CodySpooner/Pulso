@@ -5,8 +5,9 @@ from decimal import Decimal
 
 import pytest
 
+from pulso_core.scores import version
 from pulso_ml.features.demand import FEATURE_VERSION, Day, Demand, product_demand
-from pulso_ml.scores.velocity import CONFIG, VERSION, Measure, Velocity, family_velocity, version
+from pulso_ml.scores.velocity import CONFIG, VERSION, Measure, Velocity, family_velocity
 
 T = date(2026, 10, 20)
 ALL = set(range(-21, 1))  # every day G7(t−7) reads, t−21..t
@@ -115,8 +116,19 @@ def test_a_listing_joining_mid_window_moves_neither_growth_nor_acceleration() ->
     assert family_velocity(now, week_ago, 22)[1:] == run(ALL)[1:]
 
 
+def test_an_emptied_stable_panel_reads_as_a_gap_until_its_size_is_stored() -> None:
+    # listing 1 last covered t−7, listing 2 from t−10: nobody spans t−14..t, so G7(t) has no panel
+    units = {**UNITS, 2: {day(-i): Day(2) for i in range(10)}}
+    covered = {1: {day(i) for i in range(-21, -6)}, 2: {day(i) for i in range(-10, 1)}}
+    now, week_ago = (product_demand(units, covered, [1, 2], day(i)) for i in (0, -7))
+    assert (now.has_gap, week_ago.has_gap, week_ago.growth_7d) == (False, False, G7_PREV)
+    assert family_velocity(now, week_ago, 22) == Velocity(
+        Measure(14), gap("t-14..t"), gap("t-14..t"), True
+    )
+
+
 def test_any_rule_change_makes_a_new_version() -> None:
-    assert VERSION.startswith("velocity_v0-") and len(VERSION) == len("velocity_v0-") + 8
+    assert VERSION.startswith("000-") and len(VERSION) == 16
     assert CONFIG.feature_version == FEATURE_VERSION
-    assert version(replace(CONFIG, feature_version="002-000000000000")) != VERSION
-    assert version(replace(CONFIG, revision=1)).startswith("velocity_v1-")
+    assert version(replace(CONFIG, feature_version="002-000000000000"))[0] != VERSION
+    assert version(replace(CONFIG, revision=1))[0].startswith("001-")

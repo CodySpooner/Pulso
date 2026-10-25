@@ -3,30 +3,21 @@
 Pure, no tables: reads a family's product_daily_features rows (DEC-275), never sums families.
 """
 
-import hashlib
-import json
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from typing import NamedTuple, Protocol
 
+from pulso_core.scores import version
 from pulso_ml.features.demand import FEATURE_VERSION
 
 
 @dataclass(frozen=True)
 class Config:
-    revision: int = 0  # the `v0` in VERSION; bump with any change to the rules below
+    revision: int = 0  # bump with any change to the rules below
     feature_version: str = FEATURE_VERSION  # the rows these rules read: new G7 maths, new version
 
 
 CONFIG = Config()
-
-
-def version(config: Config) -> str:
-    """`velocity_v<revision>-<hash8>`, p4-02's rule (DEC-307 d) until pulso_core.scores lands."""
-    digest = hashlib.sha256(json.dumps(asdict(config), sort_keys=True).encode()).hexdigest()
-    return f"velocity_v{config.revision}-{digest[:8]}"
-
-
-VERSION = version(CONFIG)
+VERSION, _ = version(CONFIG)  # `{revision:03d}-{hash12}` (DEC-306 d)
 
 
 class Row(Protocol):
@@ -73,6 +64,8 @@ def family_velocity(now: Row | None, week_ago: Row | None, days_observed: int) -
         none = Measure(None, "no source")
         return Velocity(none, none, none, False)
 
+    # ponytail: an emptied stable panel (every listing replaced within 14 days) reads as a gap;
+    # telling it from one needs the panel size on the row (FS-1 backlog, DEC-310 c).
     def measure(value: float | None, days: int, window: str) -> Measure:
         if value is not None:
             return Measure(value)
@@ -84,6 +77,7 @@ def family_velocity(now: Row | None, week_ago: Row | None, days_observed: int) -
     acc = g7 if g7.value is None else before
     if g7.value is not None and before.value is not None:
         acc = Measure(g7.value - before.value)
+
     def tolerated(row: Row | None) -> bool:  # DEC-275 also flags a V7 NULL from short history
         return row is not None and row.has_gap and row.velocity_7d is not None
 
