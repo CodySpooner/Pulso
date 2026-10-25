@@ -32,14 +32,16 @@ describe("nav config", () => {
   });
 
   // imp-001: the coming-soon pages, the palette hints and the phase progress bar all read this one constant.
-  test("the build is in Phase 3", () => {
-    expect(CURRENT_PHASE).toBe(3);
+  test("the build is in Phase 4", () => {
+    expect(CURRENT_PHASE).toBe(4);
   });
 
   // DEC-284: the running phase's routes stay coming-soon until a task ships them.
   test("a route of the phase in progress is not built", () => {
-    expect(isBuilt(resolveRoute("/stores")!.item)).toBe(false);
-    expect(isBuilt(resolveRoute("/stores/abc")!.item)).toBe(false);
+    for (const path of ["/alerts", "/screener", "/watchlists", "/boards", "/testing", "/methodology"]) {
+      expect(resolveRoute(path)!.item.phase).toBe(CURRENT_PHASE);
+      expect(isBuilt(resolveRoute(path)!.item)).toBe(false);
+    }
     expect(isBuilt({ phase: CURRENT_PHASE - 1 })).toBe(true);
   });
 

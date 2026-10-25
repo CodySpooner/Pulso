@@ -29,7 +29,7 @@ import {
 // the "coming in Phase N" pages (vault Design/App Shell & Navigation). `CURRENT_PHASE` is the phase in progress, the
 // feature flag that moves with the build. A route is built once its phase is done, or earlier with `built` (DEC-284).
 
-export const CURRENT_PHASE = 3;
+export const CURRENT_PHASE = 4;
 
 export const PHASES = [
   "Foundation",
