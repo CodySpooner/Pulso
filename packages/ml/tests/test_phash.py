@@ -1,7 +1,10 @@
 import io
 import random
 
+import pytest
 from PIL import Image, ImageDraw
+from sqlalchemy import Engine, text
+from sqlalchemy.exc import DBAPIError
 
 from pulso_ml.phash import phash, similarity
 
@@ -46,8 +49,18 @@ def test_resized_jpeg_copy_is_near_and_unrelated_images_are_far() -> None:
 
 def test_hash_is_signed_64_bit_and_similarity_bounds() -> None:
     value = phash(product(1))
-    # The DC term is the largest coefficient of a non-negative image, so the top bit is set.
+    # The DC term (the pixel sum) sits far above the median, so the top bit is set.
     assert -(1 << 63) <= value < 0
     assert similarity(value, value) == 1.0
     assert similarity(value, ~value) == 0.0
     assert similarity(-1, (1 << 63) - 1) == 1 - 1 / 64
+
+
+@pytest.mark.db
+def test_hash_round_trips_through_postgres_bigint(db_engine: Engine) -> None:
+    values = [phash(product(1)), -(1 << 63), (1 << 63) - 1]
+    with db_engine.begin() as connection:
+        cast = text("SELECT CAST(:v AS BIGINT)")
+        assert [connection.scalar(cast, {"v": v}) for v in values] == values
+        with pytest.raises(DBAPIError, match="out of range"), connection.begin_nested():
+            connection.scalar(cast, {"v": values[0] + (1 << 64)})  # the unsigned form
