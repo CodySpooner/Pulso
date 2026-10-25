@@ -27,8 +27,8 @@ VELOCITY = {"velocity_js": "shp_inv", "velocity_bumps": "shp_bump"}  # metric â†
 OBSERVED = ("success", "partial")  # source_daily_coverage: the source collected that UTC day
 MISSING = {
     "search": (
-        "No search interest is collected for this product's keywords yet. Confirmed keywords "
-        "join the weekly Google Trends fetch in a later step."
+        "No search interest is collected for this product's keywords yet. Tracked keywords are "
+        "fetched from Google Trends each Monday when tracking is on."
     ),
     "ads": "No ad source yet. Ad counts arrive in Phase 8 or by CSV import.",
 }
