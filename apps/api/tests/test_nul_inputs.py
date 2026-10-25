@@ -73,6 +73,20 @@ TYPED: dict[str, tuple[tuple[str | int, ...], Case, Case, int]] = {
         ("PUT", "/v1/products/{product}/tags", {"json": {"tags": ["ok", "b\td\ne"]}}),
         200,
     ),
+    "keyword": (
+        ("body", "keyword"),
+        (
+            "POST",
+            "/v1/products/{product}/keywords",
+            {"json": {"keyword": "a\x00b", "status": "confirmed"}},
+        ),
+        (
+            "POST",
+            "/v1/products/{product}/keywords",
+            {"json": {"keyword": "a\tb\nc", "status": "confirmed"}},
+        ),
+        200,
+    ),
     "note body": (
         ("body", "body"),
         ("POST", "/v1/products/{product}/notes", {"json": {"body": "a\x00b"}}),
