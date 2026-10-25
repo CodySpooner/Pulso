@@ -177,3 +177,5 @@ def test_an_unquoted_cheap_supplier_cannot_be_best() -> None:
     dearer = landed_cost(replace(EXAMPLE, unit_cost=Amount(700, "USD")))
     assert best({1: cheap, 2: dearer, 3: quoted}) == 3
     assert best({1: cheap}) is None
+    loss = landed_cost(replace(EXAMPLE, price_minor=1000))  # complete, but loses money
+    assert best({1: cheap, 2: loss}) == 2
