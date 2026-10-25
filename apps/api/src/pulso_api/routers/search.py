@@ -136,7 +136,7 @@ def search_products(session: Session, q: str, limit: int) -> list[ProductHit]:
         limit,
         select(survivor, literal("title").label("field"), Product.name.label("text"))
         .add_columns(literal(0).label("priority"))
-        .where(matches(Product.name, q)),
+        .where(matches(Product.name, q), Product.status != "empty"),  # DEC-271
         select(survivor, literal("listing_title"), Listing.title, literal(1))
         .join(Product, Product.id == Listing.product_id)
         .where(Listing.delisted_at.is_(None), matches(Listing.title, q)),

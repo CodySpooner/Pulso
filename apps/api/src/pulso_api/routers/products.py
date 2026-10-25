@@ -293,7 +293,8 @@ def list_products(
     cursor: str | None = None,
     limit: Annotated[int, Query(ge=1, le=100)] = 48,
 ) -> DiscoverPage:
-    """Discover (UX-2): non-merged products, filtered, sorted and keyset-paginated (DEC-239)."""
+    """Discover (UX-2): products neither merged nor emptied by an undo, filtered, sorted and
+    keyset-paginated (DEC-239, DEC-271)."""
     now = datetime.now(UTC)
     snap = (
         select(
@@ -322,7 +323,7 @@ def list_products(
         .lateral()
     )
     feature = best_feature(Product.id).lateral()
-    where: list[ColumnElement[bool]] = [Product.merged_into_id.is_(None)]
+    where: list[ColumnElement[bool]] = [Product.merged_into_id.is_(None), Product.status != "empty"]
     if category is not None:
         where.append(Product.category_id == category)
     if first_seen_days is not None:
@@ -470,8 +471,12 @@ def item(
 
 @categories_router.get("", response_model=list[CategoryOption])
 def list_categories(session: DB) -> list[CategoryOption]:
-    """Categories that hold at least one non-merged product: Discover's category filter."""
-    used = exists().where(Product.category_id == Category.id, Product.merged_into_id.is_(None))
+    """Categories that hold a product Discover lists: Discover's category filter."""
+    used = exists().where(
+        Product.category_id == Category.id,
+        Product.merged_into_id.is_(None),
+        Product.status != "empty",
+    )
     rows = session.execute(select(Category.id, Category.path).where(used).order_by(Category.path))
     return [CategoryOption(id=row.id, path=row.path) for row in rows]
 
@@ -490,6 +495,8 @@ def get_product(product_id: UUID, request: Request, session: DB) -> Response | P
         # redirects again.
         query = f"?{request.url.query}" if request.url.query else ""
         return RedirectResponse(f"{product.merged_into_id}{query}", status_code=308)
+    if product.status == "empty":  # an undo took its last listing (DEC-271)
+        raise APIError(404, "no_listings", "This product has no listings left.")
     return ProductHeader(
         id=product.id,
         title=product.name,
