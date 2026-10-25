@@ -32,7 +32,7 @@ Canonical compliance record required by SPEC §4.2: for every data source, its a
 | Frankfurter FX | `fx_frankfurter` | Official, keyless | enabled (collector host since 2026-10-24) | 1 | Free |
 | Listing images | `listing_images` | Public image CDNs named in `IMAGE_HOSTS` (unauthenticated GET) | planned (built, disabled; hosts to verify before enabling, owner decision) | 2 | Free |
 | AliExpress | `aliexpress` | Open Platform Affiliate + DS APIs (app approval) | planned, live-lookup only | 3 | Free ("temporarily") |
-| Amazon | `amazon` | Manual CSV only (no usable official API) | planned (CSV); Creators API disabled (ineligible) | 3 | Free |
+| Amazon | `amazon` | Manual CSV only (no usable official API) | CSV import built (p3-01, DEC-279); source row disabled; Creators API disabled (ineligible) | 3 | Free |
 | Meta Ad Library | `meta_ad_library` | Graph API v26.0 `ads_archive` (EU/UK commercial only); CSV for US | planned | 8 (CSV optional earlier) | Free |
 | TikTok Creative Center | `tiktok_cc` | Manual CSV only | planned (CSV); automation disabled | 8 | Free |
 | Keepa | `keepa` | Official paid API | candidate (owner must approve cost) | later | ~€49/mo (unverified) |
@@ -221,7 +221,18 @@ Static files vendored into the repo once, changed only by a reviewed PR. No adap
 
 ## Amazon (`amazon`)
 
-- **Access:** manual CSV import (`asin, title, url, category, rank, rank_kind, price, currency, rating, review_count, observed_on`).
+- **Access:** manual CSV import only (DEC-279), in Data Health › CSV import › Source "Amazon". Pulso never sends a request to Amazon or to a vendor; the owner supplies a file of their own export or compilation.
+- **Why CSV (2026-10-25, p3-01):** every automated route is closed. PA-API 5.0 is retired, the Creators API is ineligible and against program intent, and the Conditions of Use exclude robots and data mining (the checks of 2026-10-22 below, carried forward: per the task brief no new request was sent to Amazon). Vendor scrapers stay disabled pending DEC-010.
+- **Template (`csv-v1`, header only):** `asin,title,category,rank,rank_kind,price,currency,rating,review_count,gtins,observed_for`.
+  - `asin` (required): the 10-character ASIN, uppercase letters and digits.
+  - `title`, `category` (required): the product title and the list's category as the file names it; a rank is only comparable within its category.
+  - `rank` (required): 1 or more. `rank_kind`: `bsr` (Best Sellers rank, the default when blank) or `movers` (Movers & Shakers).
+  - `price`, `currency`: price in major units; currency defaults to `USD`.
+  - `rating` (0 to 5, up to two decimals) and `review_count` (cumulative), both optional.
+  - `gtins`: optional UPC, EAN or GTIN codes, one or more separated by spaces, commas or semicolons. Products link on read through M-4's GTIN normaliser (DEC-267 c); rows without a match are kept.
+  - `observed_for`: the day the ranks are from (`YYYY-MM-DD`, not after the import day); blank means the import day.
+  - **Help text:** obtain the data lawfully. CSV is not an exemption from Amazon's terms: use an export from a tool or account whose terms allow it, or a list you compiled by hand. Never a scrape, by you or a vendor.
+- **Rows:** `amazon_ranks`, one append-only row per ASIN × category × rank kind × day (a trigger rejects UPDATE and DELETE), carrying `captured_at`, `observed_for` and `raw_payload_id`, unique on that key plus `raw_payload_id` and `parser_version` (DEC-028). Re-importing a file writes nothing. Money is `price_minor` + `currency`. Malformed rows are reported with their row numbers and the valid rows import; an ASIN repeated in the same list and day rejects the file.
 - **Terms / official routes (checked 2026-10-22):**
   - PA-API 5.0: retired, returns HTTP 403 `AccessDeniedException` — https://affiliate-program.amazon.com/creatorsapi/docs/en-us/paapiv5-deprecation
   - Creators API: requires Associates enrollment and ≥ 10 qualifying sales in the past 30 days; 1 TPS / 8,640 TPD to start; affiliate-data use for research is against program intent → **disabled** — https://affiliate-program.amazon.com/creatorsapi/docs/en-us/introduction . Free Associates enrollment; no paid API tier documented — https://affiliate-program.amazon.com/creatorsapi/docs/en-us/onboarding (checked 2026-10-22). Access can lapse after 30 days without qualifying sales (`Source - Amazon`); CSV remains the fallback.
@@ -230,7 +241,7 @@ Static files vendored into the repo once, changed only by a reviewed PR. No adap
 - **Limits:** manual CSV has no source API quota; disabled Creators API limits above are not a CSV limit.
 - **Count semantics:** ranks (BSR per category, Movers & Shakers 24 h gain), not counts; review count cumulative. Features prefixed `amz_`.
 - **Risk:** no key for CSV; obtain data lawfully, since CSV is not an exemption from source terms. Official affiliate eligibility and direct-scrape blocking prevent an automated route today. Evidence: `Source - Amazon`, TA §2.11 / SF §8.
-- **Cost:** free CSV, no paid CSV tier; optional paid Keepa is separate below. **Status:** planned (CSV). **Phase:** 3.
+- **Cost:** free CSV, no paid CSV tier; optional paid Keepa is separate below. **Status:** CSV import built (p3-01, DEC-279); the source row stays disabled because no collector exists. A surface (a page, or Product page rows) is a follow-up. **Phase:** 3.
 
 ## Meta Ad Library (`meta_ad_library`)
 
@@ -418,3 +429,4 @@ These read only the owner's own data. They are listed here because each still ad
 - 2026-10-25 — P2-06 (Claude): DEC-242 (cross-review XR-11, XR-12 to XR-15): robots.txt no longer resets the block count (both crawlers); fractional and file-wide `Crawl-delay`, `Request-rate: 0/n` refusal; `IMAGE_HOSTS` validation; `NoListedHost`; a slow host sits the run out. No requests to any source.
 - 2026-10-25 — P2-17 (Claude): added a "Reference data" section with the Google Product Taxonomy (M-6, DEC-253). The one static file was fetched once and vendored unmodified, with its URL, version, hash and terms (no licence stated). No request to any collected source.
 - 2026-10-25 — P2-29 (Claude): added `merchant_bestsellers` as a CSV-only source (DEC-267): the Popular products help page, the BigQuery field reference and the Merchant Center terms checked on public pages, plus the header row of the owner's first download; internal use only. No request to Merchant Center or any Google API.
+- 2026-10-25 — P3-01 (Claude): Amazon CSV import built (DEC-279): the template's columns and help text, the `amazon_ranks` rows, and why CSV. The terms checks of 2026-10-22 carried forward; no request to Amazon or any vendor.
