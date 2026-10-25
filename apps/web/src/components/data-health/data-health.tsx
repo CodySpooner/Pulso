@@ -44,6 +44,10 @@ export function DataHealth() {
   // Offline a refetch would only pause until reconnect, so Refresh says why instead (imp-134).
   const online = useOnline();
   const pageRetry = useRetryScope(firstPanel);
+  // Both core calls failed without an API answer: the API (on the home PC) is down, not a collector. Before any
+  // data that replaces the page; after, the page keeps it under one line (imp-132).
+  const coreDown = useCoreDown();
+  const pageDown = coreDown && !sources.data && !host.data;
 
   const header = (
     <PageHeader
@@ -59,27 +63,27 @@ export function DataHealth() {
           "As of —"
         )
       }
+      // The replaced page's Retry runs the same refresh, so one control under one verb (imp-118).
       actions={
-        <TapTooltip hint={online ? null : offlineHint("refresh")} asChild>
-          <Button
-            variant="secondary"
-            onClick={() => online && void refresh()}
-            aria-disabled={fetching || !online}
-            // Dimmed with a token, not opacity, so its focus ring keeps 3:1 while locked (DEC-185, DEC-206).
-            className="aria-disabled:pointer-events-auto aria-disabled:cursor-not-allowed aria-disabled:text-subtle-foreground aria-disabled:opacity-100"
-          >
-            <RotateCw className={cn(fetching && "motion-safe:animate-spin")} aria-hidden />
-            {fetching ? "Refreshing…" : "Refresh"}
-          </Button>
-        </TapTooltip>
+        !pageDown && (
+          <TapTooltip hint={online ? null : offlineHint("refresh")} asChild>
+            <Button
+              variant="secondary"
+              onClick={() => online && void refresh()}
+              aria-disabled={fetching || !online}
+              // Dimmed with a token, not opacity, so its focus ring keeps 3:1 while locked (DEC-185, DEC-206).
+              className="aria-disabled:pointer-events-auto aria-disabled:cursor-not-allowed aria-disabled:text-subtle-foreground aria-disabled:opacity-100"
+            >
+              <RotateCw className={cn(fetching && "motion-safe:animate-spin")} aria-hidden />
+              {fetching ? "Refreshing…" : "Refresh"}
+            </Button>
+          </TapTooltip>
+        )
       }
     />
   );
 
-  // Both core calls failed without an API answer: the API (on the home PC) is down, not a collector. Before any
-  // data that replaces the page; after, the page keeps it under one line (imp-132).
-  const coreDown = useCoreDown();
-  if (coreDown && !sources.data && !host.data) {
+  if (pageDown) {
     return (
       <div className="flex flex-col gap-6">
         {header}

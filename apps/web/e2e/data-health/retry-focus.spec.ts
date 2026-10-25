@@ -38,6 +38,8 @@ async function tabTo(page: Page, target: Locator, from = page.getByRole("button"
   await expect(target).toBeFocused();
 }
 
+const h1 = (page: Page) => page.getByRole("heading", { level: 1, name: "Data Health" });
+
 /** Every admin call fails without an answer (the API on the home PC is down) while `api.down` holds. */
 async function apiDown(page: Page) {
   const api = { down: true };
@@ -72,7 +74,7 @@ for (const [width, height] of [
       await page.goto(PAGE);
       await expect(page.getByRole("heading", { level: 2, name: "Can't reach the API" })).toBeVisible();
       const retry = page.getByRole("button", { name: "Retry" });
-      await tabTo(page, retry);
+      await tabTo(page, retry, h1(page)); // the API-down page has no header Refresh (imp-118)
       await forget(page);
 
       api.down = false;
@@ -90,7 +92,7 @@ for (const [width, height] of [
       await apiDown(page);
       await page.goto(PAGE);
       const retry = page.getByRole("button", { name: "Retry" });
-      await tabTo(page, retry);
+      await tabTo(page, retry, h1(page)); // the API-down page has no header Refresh (imp-118)
       await forget(page);
 
       await page.keyboard.press("Enter");
