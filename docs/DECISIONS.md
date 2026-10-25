@@ -2461,3 +2461,57 @@ Superseded review defaults, not given entries: default #0 (move the repo) is don
   - A `(listing_id, id)` index to match the new order: needs a migration; replay is one pass per call at v1 scale (DEC-257 e's ponytail), and `manual()` reads one listing's few rows through the `listing_id` prefix of the existing index.
 - **Why:** Postgres tests on `pgvector/pgvector:0.8.7-pg18-trixie` (`packages/ml/tests/test_matcher.py`): P2-24's strict-xfail `test_xr29_replay_follows_the_order_moves_took_the_lock` passes with its mark removed, and the new `test_xr29_manual_reads_the_move_that_took_the_lock_last` holds an owner unlink that locked after an algo link but carries the earlier stamp. Both failed on the `decided_at` order first. The membership chain and cutoff test and the XR-28 manual test still pass. Seven one-line mutations each fail a test, among them each query put back to `decided_at` order (`docs/reports/p2-28.md`).
 - **Not here:** XR-30 (stale redirects mid-run) and the other P2-24 lows. Any `ALTER SEQUENCE … CACHE n` on `match_decisions_id_seq` would break (b); none exists.
+
+### DEC-263 · Matching Queue (UX-1): `/v1/admin/matching` endpoints over the M-5 service, undo as compensating decisions, owner unlink, notes and tags read through `merged_into_id`, one key per decision
+**2026-10-25 · proposed (p2-25)** · Phase 2 task UX-1, imp-249, imp-250; R-15; DEC-028, DEC-040, DEC-249, DEC-255, DEC-257, DEC-261, DEC-266; AGENTS.md §3, §8; vault Features/Matching Queue, Data/Product Matching; `docs/reports/p2-25.md`; no migration, flag or dependency
+- **Decision:**
+  - **(a) Endpoints.** A `/v1/admin/matching` router, signed in (`current_principal`), with stable operation ids:
+    - `list_match_candidates` (GET `/candidates`): pending pairs whose sides aren't already on one canonical product. Sorts: `impact` (pairs touching a canonical product this workspace has notes or tags on, then score), `score`, and `age` (oldest first). Filters: `source_pair` (`cj+shopify_stores`, sorted), `min_score`/`max_score`, and `version` (`scorer_version`). Keyset `cursor`, limit 1..200. Each page also carries the queue summary (pending count, sources with a stored listing, listings the matcher linked and when it last did, `MATCHER_ENABLED`), the facets, and the scorer thresholds.
+    - `get_match_candidate` (GET `/candidates/{id}`): both listings (up to 4 images, price as of its capture, variants, first seen), the components against the thresholds, `scorer_version`, `price_sane`, each side's product cluster (up to 48 members), and `superseded`, set when the pair is decided or its sides already share a product. Note and tag counts are this workspace's only.
+    - `create_match_decision` (POST `/decisions`, discriminated on `action`): `accept` and `reject` take a candidate, `merge` takes two products, and `split` and `unlink` take listings (1..500). Each calls the M-5 service with the user id as actor, then commits. A missing row is a 404 `not_found`, and a service refusal is a 409 `decision_conflict` with the service's reason.
+    - `undo_match_decision` (POST `/decisions/{id}/undo`).
+    - Skip is client-only and writes nothing. Market rows are global, so only the counts are workspace-scoped.
+  - **(b) Undo (imp-250) is new rows, never an edit.**
+    - A decision is every row one call wrote: one actor at one `decided_at`, which is the transaction time.
+    - It can be undone only while each of its listings' latest decision is still that decision's own row; otherwise a 409 reports it as superseded. "Latest" is in id order, which is the order the rows took the matching lock: `decided_at` is the transaction's start and can precede the lock (XR-29). This is the same order DEC-266 gives `membership(t)` and `manual()`.
+    - Each row gets a compensating row from its `to` back to its `from`: accept → `unlink`, unlink → `link`, reject → `reject` (nothing moves), merge → `merge`, split → `merge`. The reason starts `undo #<id>`.
+    - Undoing a merge makes the merged product `active` again, with `merged_into_id` NULL.
+    - Candidates the decision settled go back to `pending`, or to `accepted` where the pair still ends on one product.
+    - The matcher's decisions are never undone, and an undo is never undone: to redo, decide again.
+    - Undo adds no cannot-link, and a reject's compensating `reject` still isn't manual (DEC-257 c), so a score + GTIN re-run sees what it saw before the decision.
+  - **(c) Owner unlink** (`unlink(listings)`): listings of one product leave it with an `unlink` row each, and at least one stays, as in a split. The latest move is manual, so the matcher never links them again (DEC-249 h).
+  - **(d) Notes and tags on a merge stay where they are (imp-249).** A merge moves listings only. Notes and `product_tags` keep their product id, as forecasts, scores and features do. The product page's notes list and tag reads follow `merged_into_id` through a recursive CTE (two hops and more), so the survivor shows the union. PUT tags replaces the tags across the whole merged group. The tags response is `TagList` without the 20-tag cap, because a union may hold more than 20.
+  - **(e) The page** (`/admin/matching`, nav entry built):
+    - **Keys.** A accept, R reject, S skip, M merge, X split, U or Ctrl/⌘+Z undo, J/K next/previous, 1–4 image.
+    - **Fields and dialogs.** Keys are ignored while typing in a field or while a dialog is open.
+    - **Modifiers and held keys.** Alt and Shift are never shortcuts: Shift+A batch accept isn't built. A held key repeats only J, K and S.
+    - **Pacing.** A decision hides its pair and selects the next one before the request returns. A 409 skips the pair, and any other failure puts it back. A key acts only on the pair on screen. List rows never animate, and the pair fades in over 120 ms without blocking a key.
+    - **Merge dialog.** The younger product goes into the older (`first_seen_at`, then id), and a swap reverses it. Before confirm it shows the listings that move, and the notes and tags that stay and read through.
+    - **Split dialog.** It shows ticked against staying listings, with Split (new product) or Unlink.
+    - **Phone.** Read-only, with Accept, Reject and Skip.
+    - **Empty states.** No source yet appears when fewer than two sources have a stored listing. It names a second stored source, such as a CSV import, and never promises Shopify (DEC-261).
+- **Alternatives:**
+  - (b) Deleting or flipping the undone rows breaks the append-only log (AGENTS.md §3). A `reverts` column needs a migration and adds nothing the actor + `decided_at` group doesn't already give. Undoing any decision in the log, not just each listing's latest, would overwrite later decisions.
+  - (d) Moving notes and tags on merge rewrites workspace rows and needs its own undo, and a later split couldn't tell which note belonged to which side.
+  - (a) Offset pagination shifts pages as pairs are decided. Sorting impact by watchlists, boards and tests waits until those tables exist (Phase 4).
+  - (e) Shift+A batch accept (backlog).
+- **Why:**
+  - `packages/ml/tests/test_matcher.py`:
+    - undo of accept, accept-merge, reject and split each writes compensating rows and restores the pointers, statuses and merged product;
+    - undoing twice, undoing an undo, undoing the matcher's decision and undoing a missing id all fail;
+    - a score + GTIN re-run after each undo leaves every table unchanged;
+    - unlinked listings are never re-linked.
+  - `apps/api/tests/test_matching.py`:
+    - sorting, filters and keyset pages;
+    - detail with workspace counts, where B sees 0 of A's notes and tags;
+    - each action through the API, where the decision count only grows and undo adds rows;
+    - a split or rejected pair stays apart after a matcher re-run through the API path.
+  - `apps/api/tests/test_product_notes.py`: notes and tags read through two merge hops and never leak across workspaces.
+  - Vitest covers the key map.
+  - Playwright: 200 fixture pairs decided with one key each in 19.9 s of machine time.
+- **Not here:**
+  - Shift+A batch accept;
+  - auto-link audit sampling;
+  - a stored matcher-run summary (the empty state reads the latest `algo` decision instead);
+  - impact from watchlists, boards and tests;
+  - cleaning up a product emptied by undoing an accept or split, which stays `active` with no listings.

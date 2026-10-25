@@ -1,4 +1,5 @@
-"""Owner decisions: merge, split, accept and reject, and membership(t) replay (M-5, DEC-257).
+"""Owner decisions: merge, split, accept, reject, unlink and undo, and membership(t) replay
+(M-5, DEC-257; UX-1, DEC-263).
 
 Every listings.product_id change appends one match_decisions row (R-15). Each call takes
 the matcher's transaction lock first and leaves the commit to the caller.
@@ -73,21 +74,7 @@ def split(
     """
     lock(session)
     merged = redirects(session)
-    listings = session.scalars(
-        select(Listing).where(Listing.id.in_(listing_ids)).order_by(Listing.id)
-    ).all()
-    sources = {canonical(merged, listing.product_id) for listing in listings}
-    if len(listings) != len(set(listing_ids)) or len(sources) != 1 or None in sources:
-        raise ValueError("a split takes existing listings of one product")
-    (source,) = sources
-    assert source is not None
-    stay = session.scalars(
-        select(Listing.id).where(
-            Listing.product_id.in_(group(merged, source)), Listing.id.not_in(listing_ids)
-        )
-    ).all()
-    if not stay:
-        raise ValueError("a split leaves one listing at least; merge moves a whole product")
+    listings, source, stay = one_product(session, merged, listing_ids)
     target = new_product(session, listings) if into is None else canonical(merged, into)
     assert target is not None
     if target == source:
@@ -147,6 +134,89 @@ def reject(session: Session, candidate_id: int, actor: str, reason: str) -> None
     candidate.status, candidate.decided_at = "rejected", func.now()
 
 
+def unlink(session: Session, listing_ids: Collection[int], actor: str, reason: str) -> None:
+    """Take listings of one product off it. The latest move is the owner's, so the matcher
+    never links them again; one listing at least stays, as in a split."""
+    lock(session)
+    listings, _, _ = one_product(session, redirects(session), listing_ids)
+    for listing in listings:
+        record(session, listing, None, actor, "unlink", reason, None)
+
+
+# The compensating action per undone action. Only a split writes a cannot-link (DEC-257 b) and
+# a reject never counts as a manual move, so an undo restores what the matcher saw before.
+INVERSE = {
+    "accept": "unlink",
+    "unlink": "link",
+    "reject": "reject",
+    "merge": "merge",
+    "split": "merge",
+}
+UNDO = "undo #"
+
+
+def undo(session: Session, decision_id: int, actor: str, reason: str) -> list[int]:
+    """Reverse an owner decision with new rows, one per row undone, and return the listings.
+
+    A decision is every row its call wrote: one actor at one transaction time. It is undone
+    only while each of its listings' latest decision is still its own, so nothing since is
+    overwritten, and an undo itself is never undone. A merged product becomes active again.
+    Candidates the decision settled return to pending, or accepted where the pair ends on one
+    product.
+    """
+    lock(session)
+    first = session.get(MatchDecision, decision_id)
+    if first is None:
+        raise LookupError(f"decision {decision_id} not found")
+    if first.actor == "algo" or (first.reason or "").startswith(UNDO):
+        raise ValueError(f"decision {decision_id} is the matcher's or an undo; neither is undone")
+    rows = session.scalars(
+        select(MatchDecision)
+        .where(MatchDecision.actor == first.actor, MatchDecision.decided_at == first.decided_at)
+        .order_by(MatchDecision.id)
+    ).all()
+    ids = [row.listing_id for row in rows]
+    # Lock order is id order: decided_at is the transaction's start, which can precede the
+    # lock (XR-29), so a later move may carry an earlier stamp.
+    latest = session.scalars(
+        select(MatchDecision.id)
+        .where(MatchDecision.listing_id.in_(ids))
+        .order_by(MatchDecision.listing_id, MatchDecision.id.desc())
+        .distinct(MatchDecision.listing_id)
+    ).all()
+    if set(latest) != {row.id for row in rows}:
+        raise ValueError(f"decision {decision_id} was superseded by a later decision")
+    listings = {listing.id: listing for listing in pair_of_ids(session, ids)}
+    touched = session.scalars(
+        select(MatchCandidate).where(
+            MatchCandidate.decided_at == first.decided_at,
+            or_(MatchCandidate.listing_a_id.in_(ids), MatchCandidate.listing_b_id.in_(ids)),
+        )
+    ).all()
+    note = f"{UNDO}{decision_id}: {reason}"
+    for row in rows:
+        listing = listings[row.listing_id]
+        if listing.product_id != row.to_product_id:
+            raise ValueError(f"listing {listing.id} moved without a decision")
+        back = None if row.from_product_id is None else session.get(Product, row.from_product_id)
+        if back is not None and back.merged_into_id is not None:
+            if row.action != "merge" or back.merged_into_id != row.to_product_id:
+                raise ValueError(f"product {back.id} was merged since; undo that merge first")
+            back.merged_into_id, back.status = None, "active"
+        candidate = (
+            None if row.candidate_id is None else session.get(MatchCandidate, row.candidate_id)
+        )
+        record(session, listing, row.from_product_id, actor, INVERSE[row.action], note, candidate)
+    session.flush()
+    merged = redirects(session)
+    for candidate in touched:
+        a, b = (canonical(merged, listing.product_id) for listing in pair_of(session, candidate))
+        together = a is not None and a == b
+        candidate.status = "accepted" if together else "pending"
+        candidate.decided_at = func.now() if together else None
+    return ids
+
+
 def membership(session: Session, at: datetime) -> dict[int, UUID]:
     """Each listing's product as of `at`: the latest decision before it (R-15).
 
@@ -174,11 +244,33 @@ def pending(session: Session, candidate_id: int) -> MatchCandidate:
 
 
 def pair_of(session: Session, candidate: MatchCandidate) -> Sequence[Listing]:
+    return pair_of_ids(session, (candidate.listing_a_id, candidate.listing_b_id))
+
+
+def pair_of_ids(session: Session, listing_ids: Collection[int]) -> Sequence[Listing]:
     return session.scalars(
-        select(Listing)
-        .where(Listing.id.in_((candidate.listing_a_id, candidate.listing_b_id)))
-        .order_by(Listing.id)
+        select(Listing).where(Listing.id.in_(listing_ids)).order_by(Listing.id)
     ).all()
+
+
+def one_product(
+    session: Session, merged: dict[UUID, UUID | None], listing_ids: Collection[int]
+) -> tuple[Sequence[Listing], UUID, Sequence[int]]:
+    """The listings, their one product and the listings that stay on it, at least one."""
+    listings = pair_of_ids(session, listing_ids)
+    sources = {canonical(merged, listing.product_id) for listing in listings}
+    if len(listings) != len(set(listing_ids)) or len(sources) != 1 or None in sources:
+        raise ValueError("this takes existing listings of one product")
+    (source,) = sources
+    assert source is not None
+    stay = session.scalars(
+        select(Listing.id).where(
+            Listing.product_id.in_(group(merged, source)), Listing.id.not_in(listing_ids)
+        )
+    ).all()
+    if not stay:
+        raise ValueError("one listing at least stays on the product; merge moves a whole product")
+    return listings, source, stay
 
 
 def record(

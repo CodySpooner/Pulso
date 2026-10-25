@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from pulso_api.auth import Principal, current_principal
 from pulso_api.dependencies import get_db
-from pulso_core.models import Product, ProductTag, User, Workspace
+from pulso_core.models import Product, ProductNote, ProductTag, User, Workspace
 
 # The context rail's notes and tags (UX-4, DEC-243): workspace-owned rows on global products.
 
@@ -124,3 +124,55 @@ def test_workspace_b_never_sees_or_edits_a(
     assert as_("a").get(tags).json() == {"tags": ["mine"]}
     with Session(db_engine) as session:
         assert session.execute(select(ProductTag.tag)).scalars().all() == ["mine"]
+
+
+@pytest.mark.db
+def test_notes_and_tags_on_a_merged_product_read_through_the_survivor(
+    rail: tuple[As, dict[str, UUID]], db_engine: Engine
+) -> None:
+    """DEC-263: a merge leaves workspace rows where they are; the survivor's reads follow
+    merged_into_id at any depth, each workspace seeing only its own."""
+    as_, ids = rail
+    with Session(db_engine) as session:
+        older = Product(name="Merged earlier", merged_into_id=ids["merged"])  # two hops
+        session.add(older)
+        session.flush()
+        workspace = {
+            key: session.scalars(
+                select(Workspace.id).where(Workspace.name == f"Workspace {key}")
+            ).one()
+            for key in "ab"
+        }
+        author = session.scalars(select(User.id).where(User.clerk_user_id == "user_a")).one()
+        session.add_all(
+            [
+                ProductNote(
+                    workspace_id=workspace["a"],
+                    product_id=older.id,
+                    author_id=author,
+                    body="noted before the merge",
+                ),
+                ProductTag(workspace_id=workspace["a"], product_id=ids["merged"], tag="Winner"),
+                ProductTag(workspace_id=workspace["a"], product_id=older.id, tag="winner"),
+                ProductTag(workspace_id=workspace["a"], product_id=ids["product"], tag="Q4"),
+                ProductTag(workspace_id=workspace["b"], product_id=ids["merged"], tag="theirs"),
+            ]
+        )
+        session.commit()
+        older_id = older.id
+    notes = f"/v1/products/{ids['product']}/notes"
+    tags = f"/v1/products/{ids['product']}/tags"
+    a = as_("a")
+    assert [note["body"] for note in a.get(notes).json()["items"]] == ["noted before the merge"]
+    assert a.get(tags).json() == {"tags": ["Q4", "Winner"]}  # one per case-insensitive spelling
+    assert as_("b").get(tags).json() == {"tags": ["theirs"]}
+    assert as_("b").get(notes).json()["items"] == []
+
+    # A PUT replaces the whole group's tags, so a removed tag never comes back from a merged id.
+    assert as_("a").put(tags, json={"tags": ["Q4"]}).json() == {"tags": ["Q4"]}
+    with Session(db_engine) as session:
+        rows = session.execute(select(ProductTag.product_id, ProductTag.tag)).tuples().all()
+        assert sorted(rows, key=str) == sorted(
+            [(ids["product"], "Q4"), (ids["merged"], "theirs")], key=str
+        )
+        assert session.scalars(select(ProductNote.product_id)).all() == [older_id]  # never moved

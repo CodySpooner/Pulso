@@ -635,6 +635,20 @@ class Tags(BaseModel):
     tags: Annotated[list[Tag], Field(max_length=20)]
 
 
+class TagList(BaseModel):
+    """The tags read back. A merge can join two products' tags past 20 (DEC-263)."""
+
+    tags: list[str]
+
+
+def with_merged(product_id: UUID) -> Select[tuple[UUID]]:
+    """The product and every product merged into it, at any depth. A merge leaves notes and
+    tags where they were, and the survivor reads them through merged_into_id (DEC-263)."""
+    tree = select(Product.id).where(Product.id == product_id).cte("merged_tree", recursive=True)
+    tree = tree.union(select(Product.id).where(Product.merged_into_id == tree.c.id))
+    return select(tree.c.id)
+
+
 @router.get("/{product_id}/notes", response_model=NotePage)
 def list_product_notes(
     product_id: UUID,
@@ -645,7 +659,8 @@ def list_product_notes(
 ) -> NotePage:
     live_product(session, product_id)
     query = select(ProductNote).where(
-        ProductNote.workspace_id == principal.workspace_id, ProductNote.product_id == product_id
+        ProductNote.workspace_id == principal.workspace_id,
+        ProductNote.product_id.in_(with_merged(product_id)),
     )
     if cursor is not None:
         try:
@@ -679,34 +694,46 @@ def create_product_note(
     return Note.model_validate(row)
 
 
-def tags_of(session: Session, workspace_id: UUID, product_id: UUID) -> Tags:
-    tags = session.scalars(
-        select(ProductTag.tag).where(
-            ProductTag.workspace_id == workspace_id, ProductTag.product_id == product_id
-        )
-    )
-    return Tags(tags=sorted(tags, key=str.casefold))
+def tags_of(session: Session, workspace_id: UUID, product_id: UUID) -> TagList:
+    """Tags on the product and on products merged into it, one per case-insensitive spelling."""
+    unique: dict[str, str] = {}
+    for tag in sorted(
+        session.scalars(
+            select(ProductTag.tag).where(
+                ProductTag.workspace_id == workspace_id,
+                ProductTag.product_id.in_(with_merged(product_id)),
+            )
+        ),
+        key=lambda tag: (tag.casefold(), tag),
+    ):
+        unique.setdefault(tag.casefold(), tag)
+    return TagList(tags=list(unique.values()))
 
 
-@router.get("/{product_id}/tags", response_model=Tags)
-def list_product_tags(product_id: UUID, principal: CurrentPrincipal, session: DB) -> Tags:
+@router.get("/{product_id}/tags", response_model=TagList)
+def list_product_tags(product_id: UUID, principal: CurrentPrincipal, session: DB) -> TagList:
     live_product(session, product_id)
     return tags_of(session, principal.workspace_id, product_id)
 
 
-@router.put("/{product_id}/tags", response_model=Tags)
+@router.put("/{product_id}/tags", response_model=TagList)
 def put_product_tags(
     product_id: UUID, body: Tags, principal: CurrentPrincipal, session: DB
-) -> Tags:
-    """Replace this workspace's tags on the product. Inner spaces collapse, and a tag that
-    differs only in case from an earlier one is dropped."""
+) -> TagList:
+    """Replace this workspace's tags on the product, including those still on products merged
+    into it, which move here. Inner spaces collapse, and a tag that differs only in case from
+    an earlier one is dropped."""
     live_product(session, product_id)
     unique: dict[str, str] = {}
     for tag in body.tags:
         tag = " ".join(tag.split())
         unique.setdefault(tag.casefold(), tag)
-    scope = (ProductTag.workspace_id == principal.workspace_id, ProductTag.product_id == product_id)
-    session.execute(delete(ProductTag).where(*scope))
+    session.execute(
+        delete(ProductTag).where(
+            ProductTag.workspace_id == principal.workspace_id,
+            ProductTag.product_id.in_(with_merged(product_id)),
+        )
+    )
     if unique:
         rows = [
             {"workspace_id": principal.workspace_id, "product_id": product_id, "tag": tag}
