@@ -5,17 +5,23 @@ from typing import Any
 from uuid import UUID, uuid4
 
 from sqlalchemy import (
+    ARRAY,
     CHAR,
     BigInteger,
+    Boolean,
     CheckConstraint,
+    Column,
     DateTime,
     ForeignKey,
     Index,
+    MetaData,
     Numeric,
     PrimaryKeyConstraint,
     SmallInteger,
     String,
+    Table,
     Text,
+    Uuid,
     func,
     text,
 )
@@ -195,3 +201,38 @@ class ProductTag(WorkspaceOwned, Base):
     __table_args__ = (PrimaryKeyConstraint("workspace_id", "product_id", "tag"),)
     product_id: Mapped[UUID] = mapped_column(ForeignKey("products.id"))
     tag: Mapped[str] = mapped_column(String(80))
+
+
+# The default scenario's landed cost per workspace and product (migration 0010, DEC-265): a
+# view, so it sits outside Base.metadata and autogenerate never makes it a table.
+workspace_product_economics = Table(
+    "workspace_product_economics",
+    MetaData(),
+    Column("workspace_id", Uuid),
+    Column("product_id", Uuid),
+    Column("supplier_listing_id", BigInteger),  # null: the product has no supplier listing
+    Column("method", Text),  # the freight quote's shipping method
+    *(
+        Column(name, BigInteger)
+        for name in (
+            "price_minor",
+            "goods_minor",
+            "freight_minor",
+            "duty_minor",
+            "customs_fee_minor",
+            "payment_fee_minor",
+            "shopify_fee_minor",
+            "returns_minor",
+            "landed_cost_minor",
+            "margin_minor",
+            "margin_bps",
+            "ad_cost_minor",
+            "net_minor",
+            "net_bps",
+        )
+    ),
+    Column("complete", Boolean),
+    Column("missing", ARRAY(Text)),  # landed_cost.MISSING codes, in that order
+    Column("sources", JSONB),  # Calc.sources: {input: {source, as_of, raw_payload_id}}
+    Column("as_of", DateTime(timezone=True)),  # the oldest observation in `sources`
+)

@@ -104,7 +104,8 @@ def test_single_migration_head_and_offline_sql(
     output = StringIO()
     config = Config(str(Path(__file__).resolve().parents[3] / "alembic.ini"), output_buffer=output)
     scripts = ScriptDirectory.from_config(config)
-    assert scripts.get_heads() == ["0009"]
+    assert scripts.get_heads() == ["0010"]
+    assert scripts.get_revision("0010").down_revision == "0009"
     assert scripts.get_revision("0009").down_revision == "0008"
     assert scripts.get_revision("0008").down_revision == "0007"
     assert scripts.get_revision("0007").down_revision == "0006"
@@ -124,6 +125,7 @@ def test_single_migration_head_and_offline_sql(
     assert "'Shopify stores', 'public_endpoint', false" in sql
     assert sql.count("ADD CONSTRAINT fk_products_main_image_id_images") == 1
     assert "CREATE VIEW source_daily_coverage" in sql
+    assert "CREATE VIEW workspace_product_economics" in sql
     assert "WHERE template_version IS NOT NULL" in sql
     assert "'backup', 'Backups', 'internal', false" in sql
     assert "CREATE INDEX ix_host_heartbeats_at ON host_heartbeats (at)" in sql

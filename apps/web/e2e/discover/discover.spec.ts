@@ -113,7 +113,20 @@ test("a card's numbers open their provenance; insufficient signal and no source 
   await expect(page.locator('[role="tooltip"]')).toContainText("Raw payload");
   const noSignal = cards(page).last(); // insufficient signal sorts last
   await expect(noSignal.getByRole("button", { name: "Velocity: Insufficient signal" })).toBeVisible();
-  await expect(noSignal.getByRole("button", { name: "Best landed margin: No source yet" })).toBeVisible();
+});
+
+test("best margin: $ and % of a complete row, duty not set in amber, any other gap no source yet (DEC-265)", async ({ page }) => {
+  await mockFeedApi(page);
+  await page.goto("/discover");
+  // Momentum order puts products 0, 1 and 2 first: a margin, duty not set, freight not quoted.
+  await expect(cards(page).nth(0).getByRole("button", { name: "Best landed margin: $4.56 · 38.0%" })).toBeVisible();
+  const duty = cards(page).nth(1).getByRole("button", { name: "Best landed margin: Duty not set" });
+  await expect(duty).toHaveClass(/text-warning/);
+  await duty.focus();
+  await expect(page.locator('[role="tooltip"]')).toContainText("Needs a duty rate.");
+  await cards(page).nth(0).getByRole("button", { name: /^Best landed margin/ }).focus();
+  await expect(page.locator('[role="tooltip"]:not([data-state="closed"])')).toContainText("Estimate · Landed cost");
+  await expect(cards(page).nth(2).getByRole("button", { name: "Best landed margin: No source yet" })).toBeVisible();
 });
 
 test("empty: nothing collected yet links Data Health; filtered empty removes a filter in one click", async ({ page }) => {

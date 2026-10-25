@@ -7,6 +7,7 @@ from uuid import UUID, uuid4
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session
 
@@ -30,6 +31,7 @@ from pulso_core.models import (
     VariantSnapshot,
     Workspace,
     WorkspaceSettings,
+    workspace_product_economics,
 )
 
 SHOPIFY, CJ, FX = 1, 2, 4  # seeded source ids
@@ -93,7 +95,50 @@ def calc(api: TestClient, workspace_id: UUID, status: int = 200, **body: Any) ->
         json={key: str(v) if isinstance(v, UUID) else v for key, v in body.items()},
     )
     assert response.status_code == status, response.text
-    return response.json()
+    answer = response.json()
+    if status == 200 and body.keys() == {"product_id"}:  # the default scenario: the view's row
+        assert economics(api, workspace_id, answer["product_id"]) == default(answer)  # DEC-265
+    return answer
+
+
+def when(at: str | None) -> datetime | None:
+    return datetime.fromisoformat(at) if at else None
+
+
+def default(answer: dict[str, Any]) -> dict[str, Any]:
+    """A default-scenario calc answer as the view's row reads it."""
+    names = [column.name for column in workspace_product_economics.columns][1:]  # workspace_id
+    trace = ("source", "raw_payload_id")
+    return {name: answer[name] for name in names} | {
+        "product_id": UUID(answer["product_id"]),
+        "as_of": when(answer["as_of"]),
+        "sources": {
+            name: {key: entry[key] for key in trace} | {"as_of": when(entry["as_of"])}
+            for name, entry in answer["sources"].items()
+        },
+    }
+
+
+def economics(api: TestClient, workspace_id: UUID, product_id: str) -> dict[str, Any]:
+    """The view's row, read through the API's session, as default() shapes an answer."""
+    assert isinstance(api.app, FastAPI)
+    sessions = api.app.dependency_overrides[get_db]()
+    view = workspace_product_economics.c
+    row = dict(
+        next(sessions)
+        .execute(
+            select(workspace_product_economics).where(
+                view.workspace_id == workspace_id, view.product_id == UUID(product_id)
+            )
+        )
+        .mappings()
+        .one()
+    )
+    sessions.close()
+    del row["workspace_id"]
+    for entry in row["sources"].values():  # jsonb holds the timestamp as text
+        entry["as_of"] = when(entry["as_of"])
+    return row
 
 
 def observe[T: Base](
@@ -214,8 +259,16 @@ def capture(
 def lamp(session: Session, price: int = 2999) -> Product:
     """A product with one live USD store price and no supplier yet."""
     product = Product(name="Sunset lamp")
+    session.add(product)
+    session.flush()
+    shop(session, product, price)
+    return product
+
+
+def shop(session: Session, product: Product, price: int, currency: str = "USD") -> None:
+    """A live store listing of the product at this price."""
     store = Store(domain=f"{uuid4().hex}.example.test", platform="shopify")
-    session.add_all([product, store])
+    session.add(store)
     session.flush()
     shop = Listing(
         source_id=SHOPIFY,
@@ -233,10 +286,9 @@ def lamp(session: Session, price: int = 2999) -> Product:
         SHOPIFY,
         listing_id=shop.id,
         values_hash="h",
-        currency="USD",
+        currency=currency,
         price_min_minor=price,
     )
-    return product
 
 
 def rate(session: Session, day: date, quote: str, value: str, source: str = "x") -> FxRate:
@@ -400,6 +452,59 @@ def test_freight_matches_the_variant_and_quantity(api: TestClient, db_engine: En
     )
     assert ask(variant_id=ids["a"], quantity=2)["missing"] == ["price_missing", "freight_missing"]
     assert calc(api, ws, product_id=ids["single_product"])["freight_minor"] == 485
+
+
+@pytest.mark.db
+def test_the_view_picks_the_supplier_and_freight_the_endpoint_does(
+    api: TestClient, db_engine: Engine
+) -> None:
+    """Each bare calc() also checks the view's row (DEC-265): one SQL rule per product."""
+    with Session(db_engine) as session:
+        ws = workspace(session, duty_default_bps=0)
+        products = {name: lamp(session) for name in ("two", "bulk", "gone", "fx", "stuck")}
+        two = supplier_listing(session, products["two"], 620)
+        session.add_all(ListingVariant(listing_id=two, external_id=key) for key in "AB")
+        quote(session, two, 485)  # a null-variant quote can't cover a two-variant listing
+        bulk = supplier_listing(session, products["bulk"], 620)
+        quote(session, bulk, 485)
+        quote(session, bulk, 300, quantity=2)  # the newer, cheaper capture is for two units
+        gone = supplier_listing(session, products["gone"], 620)
+        live = ListingVariant(listing_id=gone, external_id="A")
+        old = ListingVariant(listing_id=gone, external_id="B", delisted_at=DAY)
+        session.add_all([live, old])
+        session.flush()
+        quote(session, gone, 485, variant_id=live.id)
+        # A delisted variant's later day isn't the live variant's newest day.
+        capture(session, gone, DAY + timedelta(days=1), variant_id=old.id, CJPacket=200)
+        fx = supplier_listing(session, products["fx"], 620)
+        usd = quote(session, fx, 600)
+        session.add(  # the same capture, in EUR with no rate: it sorts after any USD quote
+            ShippingOption(
+                listing_id=fx,
+                destination_country="US",
+                quantity=1,
+                method="DHL",
+                cost_minor=100,
+                currency="EUR",
+                captured_at=DAY,
+                observed_for=DAY.date(),
+                raw_payload_id=usd.raw_payload_id,
+            )
+        )
+        supplier_listing(session, products["stuck"], 620, "CNY")  # no FX and no freight
+        fewest = supplier_listing(session, products["stuck"], 700)  # no freight only
+        session.commit()
+        ids = {name: product.id for name, product in products.items()}
+
+    def ask(name: str) -> Any:
+        return calc(api, ws, product_id=ids[name])
+
+    assert ask("two")["missing"] == ["freight_variant_mismatch"]
+    assert ask("bulk")["freight_minor"] == 485
+    assert ask("gone")["freight_minor"] == 485
+    assert (ask("fx")["method"], ask("fx")["freight_minor"]) == ("CJPacket", 600)
+    stuck = ask("stuck")
+    assert (stuck["supplier_listing_id"], stuck["missing"]) == (fewest, ["freight_missing"])
 
 
 @pytest.mark.db
@@ -700,3 +805,127 @@ def test_the_profit_tab_gets_net_profit_rates_freight_days_and_named_sources(
         None,
         None,
     )
+
+
+# Discover's best margin (UX-8 part c, DEC-265): the view's complete rows, the same answer the
+# Profit tab's default calc gives.
+
+
+def discover(api: TestClient, workspace_id: UUID) -> dict[str, Any]:
+    """The feed's best margins by product id, for the caller's workspace."""
+    assert isinstance(api.app, FastAPI)
+    api.app.dependency_overrides[current_principal] = lambda: Principal(uuid4(), workspace_id)
+    response = api.get("/v1/products", params={"limit": 100})
+    assert response.status_code == 200, response.text
+    return {item["id"]: item["best_margin_minor"] for item in response.json()["items"]}
+
+
+@pytest.mark.db
+def test_discover_best_margin_is_the_profit_tabs_default_answer(
+    api: TestClient, db_engine: Engine
+) -> None:
+    with Session(db_engine) as session:
+        ws = workspace(session, duty_default_bps=2000, **FEES)
+        product = lamp(session)  # 2999, plus three more stores: the lower median stays 2999
+        for price in (2499, 3499, 3999):
+            shop(session, product, price)
+        shop(session, product, 9999, "EUR")  # not a USD price: it would make the median 3499
+        cj = supplier_listing(session, product, 620)
+        quote(session, cj, 485)
+        session.commit()
+        product_id = str(product.id)
+
+    body = calc(api, ws, product_id=product_id)
+    best = discover(api, ws)[product_id]
+    assert (best["value"], best["margin_bps"], best["supplier_listing_id"]) == (1503, 5012, cj)
+    assert (body["margin_minor"], body["price_minor"]) == (1503, 2999)
+    assert when(best["as_of"]) == when(body["as_of"])  # the oldest input (DEC-259 e)
+    freight = body["sources"]["freight"]  # every input is from DAY: the first by name
+    assert (best["source"], best["source_name"], best["raw_payload_id"]) == (
+        "cj",
+        "CJ Dropshipping",
+        freight["raw_payload_id"],
+    )
+    assert best["method"].startswith("Landed cost")
+    assert best["stale"] is False
+
+
+@pytest.mark.db
+def test_an_unquoted_cheap_supplier_cannot_set_discovers_best_margin(
+    api: TestClient, db_engine: Engine
+) -> None:
+    with Session(db_engine) as session:
+        ws = workspace(session, duty_default_bps=0)
+        product = lamp(session)
+        cheap = supplier_listing(session, product, 100)  # $1.00, never quoted
+        quoted = supplier_listing(session, product, 620)
+        quote(session, quoted, 485)
+        session.commit()
+        product_id = str(product.id)
+
+    best = discover(api, ws)[product_id]
+    assert (best["value"], best["supplier_listing_id"]) == (2999 - 620 - 485, quoted)
+    assert calc(api, ws, product_id=product_id, supplier_listing_id=cheap)["margin_minor"] is None
+
+    with Session(db_engine) as session:  # only the unquoted supplier is left
+        session.get_one(Listing, quoted).delisted_at = DAY
+        session.commit()
+    assert discover(api, ws)[product_id] == {
+        "value": None,
+        "reason": "Needs a freight quote.",
+        "missing": ["freight_missing"],
+    }
+
+
+@pytest.mark.db
+def test_a_settings_fee_change_moves_discovers_best_margin_on_the_next_request(
+    api: TestClient, db_engine: Engine
+) -> None:
+    """UX-10's verify, the Discover half: Settings feed the view at query time."""
+    with Session(db_engine) as session:
+        ws = workspace(session, duty_default_bps=2000, **FEES)
+        product = lamp(session)
+        quote(session, supplier_listing(session, product, 620), 485)
+        session.commit()
+        product_id = str(product.id)
+
+    assert discover(api, ws)[product_id]["value"] == 1503
+    assert api.patch("/v1/settings", json={"payment_fee_bps": 590}).status_code == 200
+    assert discover(api, ws)[product_id]["value"] == 1413  # payment fee 117 -> 207
+    assert api.patch("/v1/settings", json={"duty_default_bps": None}).status_code == 200
+    assert discover(api, ws)[product_id] == {
+        "value": None,
+        "reason": "Needs a duty rate.",
+        "missing": ["duty_not_set"],
+    }
+
+
+@pytest.mark.db
+def test_discover_best_margin_reads_only_the_callers_workspace(
+    api: TestClient, db_engine: Engine
+) -> None:
+    with Session(db_engine) as session:
+        a = workspace(session, duty_default_bps=2000, **FEES)
+        b = workspace(session, duty_default_bps=2000)
+        bare = Workspace(name="No settings yet")
+        session.add(bare)
+        product = lamp(session)
+        quote(session, supplier_listing(session, product, 620), 485)
+        unpriced = Product(name="No store price")  # DEC-261: store prices stay "no source yet"
+        session.add(unpriced)
+        session.flush()
+        quote(session, supplier_listing(session, unpriced, 620), 485)
+        session.commit()
+        ids, bare_id = (str(product.id), str(unpriced.id)), bare.id
+
+    assert [discover(api, a)[ids[0]]["value"], discover(api, b)[ids[0]]["value"]] == [1503, 1770]
+    assert discover(api, a)[ids[1]] == {
+        "value": None,
+        "reason": "Needs a market price.",
+        "missing": ["price_missing"],
+    }
+    assert discover(api, bare_id)[ids[0]] == {
+        "value": None,
+        "reason": "No workspace settings yet.",
+        "missing": [],
+    }

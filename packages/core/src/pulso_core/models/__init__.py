@@ -34,6 +34,7 @@ from pulso_core.models.core import (
     WorkspaceMember,
     WorkspaceSettings,
     WorkspaceTrackedStore,
+    workspace_product_economics,
 )
 from pulso_core.models.vendors import ShippingOption, Store, Supplier, SupplierOffer
 
@@ -71,4 +72,5 @@ __all__ = [
     "WorkspaceMember",
     "WorkspaceSettings",
     "WorkspaceTrackedStore",
+    "workspace_product_economics",
 ]

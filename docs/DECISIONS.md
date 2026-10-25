@@ -2563,3 +2563,55 @@ Superseded review defaults, not given entries: default #0 (move the repo) is don
   - a monthly report fails, a Tuesday `report_week` is a row error, and a repeated rank rejects the file;
   - importing the same file twice leaves 3 rows, and a re-parse inserts 0;
   - a GTIN-14 written with a dash links to its product, a merged product's GTIN links to the live one, a wrong check digit never links, and the same GTIN on two live products links neither.
+
+### DEC-265 · Workspace product economics: `landed_cost()` in SQL held to the Python by golden vectors, a default-scenario view per workspace, and Discover's best margin from its complete rows
+**2026-10-25 · proposed (p2-27)** · Phase 2 task UX-8 part c; R-16; DEC-031, DEC-238, DEC-239, DEC-246, DEC-250, DEC-251, DEC-256, DEC-258, DEC-259, DEC-261; SPEC §6.4 Profit; vault Features/Product Page - Profit, Features/Discover; `docs/reports/p2-27.md`; migration 0010; no flag, dependency or CI change
+- **Decision:**
+  - **(a) One SQL twin of `landed_cost()`.** Migration 0010 adds four Postgres functions: `half_even()`, `usd_line()`, `usd_rate()` and `landed_cost()`. `landed_cost()` follows `pulso_core.landed_cost.landed_cost` line by line:
+    - exact numeric arithmetic, rounded half-even once per line (DEC-246 a), at the currency's exponent from `currencies`;
+    - every line and total checked against BIGINT (DEC-250 c), and `missing` in `MISSING` order;
+    - margin, `margin_bps`, net and `net_bps` null unless the row is complete (R-16).
+
+    An unknown missing code, an unknown currency or a price ≤ 0 raises, as the Python does. The Python stays the reference. The golden vectors in (b) hold the SQL to it.
+  - **(b) Golden vectors.** `packages/core/tests/fixtures/landed_cost_vectors.json` holds vectors generated from the Python function and spot-checked by hand. They cover:
+    - the worked example and a loss;
+    - half-even ties both ways;
+    - JPY, KWD and CNY rates;
+    - DDP and quantity above 1;
+    - duty not set, each gap alone and several together;
+    - an FX rate of 0;
+    - BIGINT overflow on each checked line, including p2-12's JPY 2^62 at q = 2.
+
+    Every vector runs through both the Python and the SQL function. The ones marked `view` (quantity 1, no DDP, no owner estimate) also run through the view and through `calculate()` on the same seeded rows. A rule change goes into the Python first: the vectors are regenerated, and the SQL must then match them.
+  - **(c) The view is `calculate()` with no overrides.** `workspace_product_economics` has one row per workspace (its `settings` row) and non-merged product. Its inputs:
+    - quantity 1, no DDP;
+    - Settings' duty, fees, returns and CPA, with source `settings` (duty is listed only when set);
+    - the lower median of live USD store prices as the reference price;
+    - each live supplier listing's latest snapshot as its unit cost (a latest snapshot without a price is no unit cost, never an older one);
+    - FX through `usd_rate()`: the rate's own date with a 4-day look-back, and the blend before a manual rate;
+    - freight: the cheapest exact US quote at quantity 1 on the variant's newest capture day (DEC-258). It is US only: `settings.default_country`, which `v1_market` pins.
+
+    The supplier is chosen as `best()` does: the highest complete margin; with none, the fewest missing inputs; then the lowest id. Owner estimates belong to a request, so the view has none. `as_of` is the oldest observed input (DEC-259 e). It is a plain view, so it is live and needs no refresh. A dated reader would put DEC-031's cutoff inside the ranked subquery.
+  - **(d) Discover's best margin.** `GET /v1/products` reads the view for the caller's workspace and the page's product ids. `best_margin_minor` becomes `Margin | Incomplete`:
+    - `Margin` (a `Sourced`) is `margin_minor` plus `margin_bps` and `supplier_listing_id`. Its source, `as_of` and raw payload are the oldest observed input's, and it is stale when any input is (DEC-238). This is the break-even CPA, the Profit tab's margin (DEC-256 a), so an ad cost never moves it.
+    - `Incomplete` (a `NoSource`) carries the `missing` codes and a reason in the Profit tab's words, for example "Needs a freight quote." A workspace without a settings row gets "No workspace settings yet." and no codes.
+    - The web cell shows `$4.56 · 38.0%`. It shows amber "Duty not set" when duty is among the gaps, because that is the gap Settings closes, and "No source yet" for any other gap. Its provenance card names every gap.
+  - **(e) No margin sort or filter yet.** A margin sort or `margin_min_bp` filter would compute the view for every product in the filtered set on each request, and no index can cover a view built from functions. They need a materialized per-workspace table, refreshed on capture and on a Settings change (BACKLOG).
+  - **(f) DEC-261.** The Shopify crawler stays off, so the store price comes only from listings already in the database (CSV imports). Without one, the margin reads "Needs a market price.", shown as "No source yet".
+- **Alternatives:**
+  - A job that writes a per-workspace table: a second scheduler path, stale between runs; the view answers the next request, which the Settings acceptance asks for.
+  - `calculate()` per product in the router: several queries for each of 48 products per page, and it could never be sorted in SQL.
+  - A materialized view now: it needs refresh triggers on every capture table and on settings, and no sort asks for it yet (e).
+  - Owner estimates in the view: the Profit tab's estimates belong to one request, and no per-product estimate is stored yet.
+- **Why:** On `pgvector/pgvector:0.8.7-pg18-trixie`, every vector gives the same `complete`, `missing` and minor-unit totals from the Python function, the SQL function, and (for `view` vectors) the view and `calculate()`. Every default-scenario `calc()` in `test_profit.py` also asserts that the view row equals the endpoint's answer. Other tests on the same image:
+  - an unquoted cheap supplier can't set the margin;
+  - a Settings PATCH moves it on the next request;
+  - two workspaces each read their own settings;
+  - a merged product has no row.
+
+  The one-line mutations of the SQL and the router are listed in `docs/reports/p2-27.md` with the test that catches each.
+- **Not here:**
+  - margin sort and filter (e);
+  - the overview's `landed_margin_minor` from the view;
+  - ship-days, US-warehouse and lifecycle filters;
+  - per-product duty.

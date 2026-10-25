@@ -1,5 +1,5 @@
 """Product resources (UX-3, UX-2, UX-4). Products are global market data, so auth applies and
-no workspace filter; only notes and tags are the workspace's own."""
+no workspace filter; only notes, tags and Discover's best margin (Settings) are the workspace's."""
 
 import json
 from collections import defaultdict
@@ -35,6 +35,7 @@ from sqlalchemy import (
     tuple_,
 )
 from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy.engine import RowMapping
 from sqlalchemy.orm import InstrumentedAttribute, Session
 from sqlalchemy.sql import ColumnElement
 from starlette.responses import RedirectResponse, Response
@@ -55,6 +56,7 @@ from pulso_core.models import (
     RawPayload,
     Source,
     Supplier,
+    workspace_product_economics,
 )
 
 router = APIRouter(prefix="/v1/products", dependencies=[Depends(current_principal)])
@@ -63,6 +65,17 @@ DB = Annotated[Session, Depends(get_db)]
 NO_PRICE = "No USD retail price observed yet."
 NO_SIGNAL = "No demand family has a 7-day growth yet."  # the UI reads "Insufficient signal"
 NO_MARGIN = "The landed-cost engine arrives with UX-8."
+NO_SETTINGS = "No workspace settings yet."
+MARGIN = "Landed cost, default scenario: price - landed cost - fees - returns, before ads"
+NEEDS = {  # landed_cost.MISSING: what a margin needs, as the Profit tab words it
+    "price_missing": "a market price",
+    "supplier_cost_missing": "a supplier price",
+    "freight_missing": "a freight quote",
+    "freight_variant_mismatch": "a freight quote for this variant",
+    "duty_not_set": "a duty rate",
+    "fx_missing": "a USD exchange rate",
+    "amount_out_of_range": "smaller amounts",
+}
 # Demand families that carry units, best grade first (vault Intelligence/Demand Signals).
 # gt_slope is keyword-level, never a velocity.
 FAMILIES = {
@@ -94,9 +107,23 @@ class Velocity(Sourced):
     gap: bool  # the window overlaps a collection gap
 
 
+class Margin(Sourced):
+    """The best complete supplier's margin in the default scenario (DEC-265): the break-even CPA.
+    As of its oldest input, whose source it names (DEC-259 e); stale when any input is."""
+
+    margin_bps: int
+    supplier_listing_id: int
+
+
+class Incomplete(NoSource):
+    """No complete cost row: R-16 withholds the margin and names what it needs."""
+
+    missing: list[str]  # landed_cost.MISSING codes; empty when the workspace has no settings
+
+
 class DiscoverItem(ProductHeader):
     velocity: Velocity | NoSource
-    best_margin_minor: NoSource
+    best_margin_minor: Margin | Incomplete
     as_of: AwareDatetime | None  # the oldest family feeding the card; null when nothing does
     stale: bool  # some family feeding the card is past twice its source's interval
 
@@ -240,6 +267,35 @@ def best_feature(product_id: InstrumentedAttribute[UUID] | UUID) -> Select[Any]:
     )
 
 
+def margin_stat(
+    row: RowMapping | None, sources: dict[str, Source], now: datetime
+) -> Margin | Incomplete:
+    """A workspace_product_economics row as the best-margin stat; only a complete row has one."""
+    if row is None:
+        return Incomplete(value=None, reason=NO_SETTINGS, missing=[])
+    if not row["complete"]:
+        needs = [NEEDS[code] for code in row["missing"]]
+        words = ", ".join(needs[:-1]) + " and " + needs[-1] if len(needs) > 1 else needs[0]
+        return Incomplete(value=None, reason=f"Needs {words}.", missing=row["missing"])
+    observed = sorted(
+        (datetime.fromisoformat(trace["as_of"]), name, trace)
+        for name, trace in row["sources"].items()
+        if trace["as_of"] is not None
+    )
+    as_of, _, oldest = observed[0]
+    return Margin(
+        value=row["margin_minor"],
+        source=oldest["source"],
+        source_name=sources[oldest["source"]].name,
+        as_of=as_of,
+        raw_payload_id=oldest["raw_payload_id"],
+        method=MARGIN,
+        stale=any(is_stale(sources[t["source"]].config, at, now) for at, _, t in observed),
+        margin_bps=row["margin_bps"],
+        supplier_listing_id=row["supplier_listing_id"],
+    )
+
+
 def velocity_stat(
     row: Row[Any] | None, sources: dict[str, Source], now: datetime
 ) -> Velocity | NoSource:
@@ -277,6 +333,7 @@ CURSORS: dict[str, TypeAdapter[Any]] = {
 @router.get("", response_model=DiscoverPage)
 def list_products(
     session: DB,
+    principal: Annotated[Principal, Depends(current_principal)],
     sort: Sort = "momentum",
     # Bounded by the column types (int4, BIGINT), so a huge value is a 422, not a 500 (XR-18).
     category: Annotated[int | None, Query(ge=1, le=2**31 - 1)] = None,
@@ -408,6 +465,16 @@ def list_products(
         }[sort]
         next_cursor = json.dumps([value, str(last.id)])
     snapshots = latest_snapshots(session, [row.id for row in page])
+    view = workspace_product_economics.c
+    margins = {
+        row["product_id"]: row
+        for row in session.execute(
+            select(workspace_product_economics).where(
+                view.workspace_id == principal.workspace_id,
+                view.product_id.in_([row.id for row in page]),
+            )
+        ).mappings()
+    }
     by_key = {row.Source.key: row.Source for row in sources}
     feeding = [row for row in sources if row.feeding]
     degraded = []
@@ -435,7 +502,7 @@ def list_products(
                 )
             )
     return DiscoverPage(
-        items=[item(row, snapshots[row.id], by_key, now) for row in page],
+        items=[item(row, snapshots[row.id], margins.get(row.id), by_key, now) for row in page],
         next_cursor=next_cursor,
         as_of=max((row.last_capture for row in feeding if row.last_capture), default=None),
         degraded=degraded,
@@ -443,14 +510,20 @@ def list_products(
 
 
 def item(
-    row: Row[Any], snapshots: list[Row[Any]], sources: dict[str, Source], now: datetime
+    row: Row[Any],
+    snapshots: list[Row[Any]],
+    economics: RowMapping | None,
+    sources: dict[str, Source],
+    now: datetime,
 ) -> DiscoverItem:
     stats = listing_stats(snapshots, now)
     velocity = velocity_stat(row, sources, now)
-    # Each family's newest capture: stores (and their prices), suppliers, demand.
+    margin = margin_stat(economics, sources, now)
+    # Each family's newest capture: stores (and their prices), suppliers, demand; the margin's
+    # oldest input.
     fed = [
         s
-        for s in (stats["store_count"], stats["supplier_count"], velocity)
+        for s in (stats["store_count"], stats["supplier_count"], velocity, margin)
         if isinstance(s, Sourced)
     ]
     return DiscoverItem(
@@ -462,7 +535,7 @@ def item(
         currency="USD",
         **stats,
         velocity=velocity,
-        best_margin_minor=NoSource(value=None, reason=NO_MARGIN),
+        best_margin_minor=margin,
         as_of=min((s.as_of for s in fed), default=None),
         stale=any(s.stale for s in fed),
     )

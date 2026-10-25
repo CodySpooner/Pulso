@@ -55,7 +55,7 @@ def test_phase2_round_trip(db_engine: Engine) -> None:
         assert connection.scalar(version) == "0004"
         assert connection.scalar(text("SELECT to_regclass('match_decisions')")) is None
         command.upgrade(config, "head")
-        assert connection.scalar(version) == "0009"
+        assert connection.scalar(version) == "0010"
 
 
 @pytest.mark.parametrize(
@@ -91,7 +91,7 @@ def test_phase2_downgrade_refuses_owner_input(db_engine: Engine, owner_input: st
             connection.begin_nested(),
         ):
             command.downgrade(config, "0004")
-        assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "0009"
+        assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "0010"
 
 
 def test_embedding_knn_uses_hnsw(db_engine: Engine) -> None:
