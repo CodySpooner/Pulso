@@ -91,7 +91,7 @@ def test_source_rules_are_per_source() -> None:
         ("Galaxy Projector Star Night Light", 505826),  # ambient lighting, not a video projector
         ("Mini Projector 1080P Portable", 396),
         ("Resistance Bands Set (5 pcs)", 5869),  # plural folds to the keyword
-        ("Dog Harness and Leash Combo", 6250),  # the longest keyword wins over "leash"
+        ("Leash and Dog Harness Combo", 6250),  # the longest keyword beats the earlier "leash"
     ],
 )
 def test_title_fallback(title: str, expected: int) -> None:

@@ -2179,7 +2179,7 @@ Superseded review defaults, not given entries: default #0 (move the repo) is don
   - every seed niche has a title rule;
   - the apply job writes `rule` categories and mappings, clears a stale rule guess, uses the product name, and changes 0 on a rerun;
   - a manual or AI category survives; a manual mapping wins and is kept;
-  - mutation checked: removing both `category_source` guards fails the manual test.
+  - mutation checked: removing both `category_source` guards fails the manual test, and 13 one-line mutations of the module each fail a test (`docs/reports/p2-17.md`).
 
   `packages/sources/tests/test_category_coverage.py` passes the existing fixture payloads through `shopify_stores.records.parse` and `cj.parse` (253 distinct products) into the mapper: 252 get a category (99.6 %), and "Fixture bowl" stays NULL / NULL.
 - **Not here:**
