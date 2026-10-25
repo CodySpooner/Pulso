@@ -266,7 +266,7 @@ function ListPanel({ list, lists, onSettings }: { list: List; lists: List[]; onS
             Remove
           </Button>
           <Button size="sm" variant="ghost" onClick={() => setSelected(new Set())}>
-            Clear
+            Clear selection
           </Button>
         </div>
       )}
@@ -295,7 +295,8 @@ function ListPanel({ list, lists, onSettings }: { list: List; lists: List[]; onS
           </EmptyState>
         </section>
       ) : (
-        <m.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: duration.fast }} className="flex flex-col gap-3">
+        // A CSS fade: one held by Motion stays at opacity 0 until LazyMotion's features load after a full page load.
+        <div className="flex flex-col gap-3 animate-in fade-in-0 duration-(--duration-fast)">
           {/* Lists stay well under 200 rows and aren't virtualized, so a removed row may fade out (Motion System). */}
           <div role="region" aria-label={`${list.name} products`} tabIndex={0} className={cn(card, "max-h-[max(24rem,calc(100dvh-15rem))] overflow-auto overscroll-contain max-md:hidden")}>
             <table className="w-full min-w-200 border-separate border-spacing-0 zone-data">
@@ -414,7 +415,7 @@ function ListPanel({ list, lists, onSettings }: { list: List; lists: List[]; onS
               onLoad={() => void items.fetchNextPage()}
             />
           )}
-        </m.div>
+        </div>
       )}
       <Toast note={note} />
     </section>

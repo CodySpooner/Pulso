@@ -112,8 +112,8 @@ export async function mockWatchlistsApi(page: Page, options: WatchMock = {}) {
       const rows = store.items
         .filter((i) => i.list === id)
         .sort((a, b) => b.added_at.localeCompare(a.added_at))
-        .map((i) => ({ ...i, image_url: null, product: { ...byId.get(survivor(i.product_id))!, ...watch(survivor(i.product_id)) } }));
-      return reply(route, { items: rows.map(({ list: _, ...row }) => row), next_cursor: null });
+        .map((i) => ({ product_id: i.product_id, name: i.name, added_at: i.added_at, image_url: null, product: { ...byId.get(survivor(i.product_id))!, ...watch(survivor(i.product_id)) } }));
+      return reply(route, { items: rows, next_cursor: null });
     }
     const ids = (body?.product_ids as string[] | undefined) ?? [];
     if (method === "DELETE") {
