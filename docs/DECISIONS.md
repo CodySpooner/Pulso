@@ -4075,3 +4075,46 @@ Superseded review defaults, not given entries: default #0 (move the repo) is don
 
   `test_screens.py` covers CRUD, unique names, validation and two-workspace 404s. `test_saved_screens_schema.py` covers up/down/up and the refused downgrade. 18 mutations each fail a test.
 - **Not here:** the Screener page (WF-1b), `?format=csv` (imp-430), a result count and per-condition "removed by" counts, the metric catalog and histograms (`GET /screener/metrics`), OR groups, "include no data", rename and duplicate (PATCH), alerts on new matches (Phase 7), and forecast filters (Phase 6).
+
+### DEC-339 · Alerts Rules tab and rule builder (WF-4 part c): `?view=rules` on /alerts, a sentence-style builder whose one verb select maps to the four rule types, the Product Page's Create alert as the preset, mute as a far-future `muted_until`, and the rule list carrying its target's product and last fired time
+**2026-10-25 · proposed (p4-27)** · Phase 4 task WF-4 part c (imp-464 part 2); SPEC §5 `alert_rules`, §6.10; DEC-040, DEC-324, DEC-330, DEC-333, DEC-335 (d); vault Features/Alerts & Notifications, Design/App Shell & Navigation, Design/Motion System, Design/Component Inventory; `docs/reports/p4-27.md`; no migration, no new endpoint (79 operations, unchanged), regenerated client
+- **Decision:**
+  - **(a) The list needs three fields `RuleOut` lacked, so it gained them** (no migration, no endpoint). `product_id` and `product_name` give the product the target is, or a supplier offer's product through its listing; both are null for the Testing defaults. `last_fired_at` is the rule's newest alert, archived alerts included. `views()` reads them once per page in three batched queries, and every rules endpoint answers through it. `ponytail:` the newest-alert query is a group-by over the workspace's alerts; index `alerts (rule_id, fired_at)` if an inbox grows past a few thousand.
+  - **(b) Rules is a third /alerts tab, `?view=rules`.** The type and read filters belong to Inbox and Archived and are dropped on the way to Rules. It is a dense table with Rule, Type, Target, Last fired and Notifies columns, and cards on a phone. The threshold sits in the Type cell ("Supplier price ±8%") so the row actions fit at 1440 px. Each row has a status line from its last evaluation:
+    - `no_source`: "No source yet" (DEC-040);
+    - `skipped`: "1 evaluation skipped: data gap Oct 19 → Oct 21" (DEC-335 d);
+    - `ok`: "Evaluated 8h ago";
+    - before the first evaluation: "Not evaluated yet".
+    The tab also shows the Inbox's line on how many rules are on and when they were last evaluated, flagged past 26 h. It reads the newest 100 rules as one page, and the footer says so when there are more.
+  - **(c) Enabled and mute are optimistic.** The PATCH patches the cached list first, puts it back if the API refuses, says why, and refetches either way. Mute offers 24 hours, 7 days and Until unmuted. Until unmuted is `muted_until = 9999-01-01T00:00:00Z`, because the API reads null as unmuted. Unmute sends null. The Notifies cell reads Off, On or "Muted until Oct 23, 14:00 UTC" (or "until you unmute").
+  - **(d) The builder is one sentence: When [target] [verb] [N] % → notify In-app.**
+    - The verb select ("changes price by", "changes freight by", "goes out of stock", "comes back in stock") maps 1:1 to the four types, so a metric select and a condition select don't repeat each other ("stock goes out of stock").
+    - The target is "any supplier" (the product) or one of its offers, from the first page of the Suppliers tab's own query.
+    - An edit fixes the type and target, since the API's PATCH takes neither. Only the name and the % change.
+    - A blank name becomes "<product>: <type> ±N%", in the Testing defaults' style.
+    - The % is sent as typed (blank reads 0), so the API's 422 is the one validator. Its messages show beside the field their `loc` names (pct or name), and anything else shows under the form. A stock rule sends the API's default `pct: 5`, which its evaluation ignores.
+    - Discord and Email are disabled "Phase 7" chips, not inputs.
+    - It is a dialog, and at ≤640 px a full-height sheet with the fields stacked, from the same component. It gives focus back to whatever opened it when it closes, Escape included (`useReturnFocus`): Radix returns focus only to a `Dialog.Trigger`, and these dialogs open from state. Delete's confirm does the same.
+  - **(e) The preset is the Product Page header's Create alert**, beside Watch and Start a test, so it is there from every tab. It opens the builder on the product with "any supplier changes price by 5 %" filled in, so a rule is **2 clicks** (Create alert, Create rule). The new rule's name stays beside the button with a View rules link.
+  - **(f) Rules are made from a product.** The Rules tab has no New rule button, because there is no product picker yet. With no product context, its empty state says how rules are made and links Discover, with no starter buttons. The starters for a product are the builder's default (price ±5%) and one select for stock-out. Testing defaults show a "Default" tag, offer Edit and Mute, and never Delete.
+- **Alternatives:**
+  - **Disable for "until unmuted":** `evaluate()` skips a disabled rule and a muted one the same way, but the row would then read Off, and Unmute would have nothing to undo. Keeping it a mute keeps the switch and the mute menu independent.
+  - **A `muted_forever` column:** a migration for what a sentinel date already says.
+  - **A New rule button with a product search:** a combobox and a search query, more than this task's budget. It is a backlog row.
+  - **Last fired from `GET /v1/alerts?rule=`:** one request per rule.
+  - **A separate Sheet for phones:** a second code path for the same form. Responsive classes on the dialog cover it.
+  - **Client-side % validation:** a second set of rules that could disagree with the API's.
+- **Why:** `apps/api/tests/test_alerts.py` checks the new fields: a product rule and an offer rule both name the product; the Testing default reads null; the newest of a rule's two alerts is its `last_fired_at`, and a rule with none reads null. Vitest (`components/alerts/model.test.ts`) covers the builder's create and patch payloads, the 422 field mapping, the target and threshold labels, the status lines and mute. Playwright (`e2e/alerts/rules.spec.ts`, 6 tests on fixtures) covers:
+  - the list's status lines (no source yet, the gap span);
+  - the 2-click create from the Product Page, and the new rule in the list;
+  - keyboard-only use with a visible focus ring, a 422 by its field, and Escape returning focus to Create alert;
+  - enable, mute and unmute surviving a reload, and an edit saving the name and %;
+  - a refused toggle rolling back;
+  - delete confirming first, and no Delete on a Testing default.
+- **Not here:**
+  - the entity filter (imp-483) and entity labels on alert rows (imp-505);
+  - a New rule button with a product picker;
+  - starter rules on the Rules tab with a product context;
+  - the note's "fires in 30d" and channels columns (channels arrive in Phase 7);
+  - the rule backtest preview;
+  - Load more past 100 rules.

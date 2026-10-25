@@ -46,6 +46,9 @@ const rule = (n: number, name: string, type: string, over: Partial<S["RuleOut"]>
   skipped: null,
   last_evaluated_at: at(8),
   created_at: at(400),
+  product_id: null,
+  product_name: null,
+  last_fired_at: null,
   ...over,
 });
 
@@ -55,6 +58,24 @@ export const rules = (): S["RuleOut"][] => [
   rule(3, "Testing: supplier stock-out", "supplier_stock_out", { status: "no_source" }),
 ];
 
+const lamp = { product_id: PRODUCT_ID, product_name: "Sunset projection lamp" };
+
+/** WF-4c (p4-27): two rules on a product above the Testing defaults: one offer's price (fired, muted for a day), and
+ *  stock-outs on any of its suppliers (off, never fired). */
+export const ruleList = (): S["RuleOut"][] => [
+  rule(5, "Lamp: supplier price ±8%", "supplier_price_change", {
+    ...lamp,
+    target_type: "supplier_offer",
+    target_id: "4806",
+    params: { pct: 8 },
+    muted_until: at(-24),
+    last_fired_at: at(2),
+    created_at: at(30),
+  }),
+  rule(4, "Lamp: stock-out", "supplier_stock_out", { ...lamp, target_type: "product", target_id: PRODUCT_ID, params: { pct: 5 }, enabled: false, status: null, last_evaluated_at: null, created_at: at(40) }),
+  ...rules(),
+];
+
 export interface AlertsMock {
   items?: Stored[];
   rules?: S["RuleOut"][];
@@ -62,14 +83,45 @@ export interface AlertsMock {
   hold?: boolean;
   /** GET /v1/alerts answers with this problem status. */
   status?: number;
+  /** GET /v1/alert-rules never answers, or answers with this problem status. */
+  holdRules?: boolean;
+  rulesStatus?: number;
 }
+
+const unprocessable = (loc: string[], msg: string) => ({ status: 422, contentType: "application/problem+json", json: { ...problem(422, "e2e-rules-422"), code: "validation_error", detail: "Invalid request.", errors: [{ loc, msg, type: "e2e" }] } });
 
 export async function mockAlertsApi(page: Page, options: AlertsMock = {}) {
   const rows = options.items ?? alerts();
   const writes: { path: string; body: unknown }[] = [];
   const unread = () => ({ count: rows.filter((a) => !a.read_at && !a.archived).length });
+  const ruleRows = options.rules ?? rules();
+  const ruleWrites: { method: string; id?: string; body: unknown }[] = [];
   await mockAdminApi(page, { sources: healthySources });
-  await page.route("**/api/v1/alert-rules**", (route) => route.fulfill({ json: { items: options.rules ?? rules(), next_cursor: null } satisfies S["RulePage"] }));
+  // The rules keep what the page writes, like the API (DEC-324, DEC-339): newest first; a % must be over 0; a Testing
+  // default can't be deleted.
+  await page.route("**/api/v1/alert-rules**", (route) => {
+    const request = route.request();
+    const method = request.method();
+    const id = new URL(request.url()).pathname.split("/")[4];
+    if (method === "GET") {
+      if (options.holdRules) return;
+      if (options.rulesStatus) return route.fulfill({ status: options.rulesStatus, contentType: "application/problem+json", json: problem(options.rulesStatus, "e2e-rules") });
+      return route.fulfill({ json: { items: ruleRows, next_cursor: null } satisfies S["RulePage"] });
+    }
+    const body = (method === "DELETE" ? null : request.postDataJSON()) as (Partial<S["RuleIn"]> & { muted_until?: string | null }) | null;
+    ruleWrites.push({ method, id, body });
+    if (body?.params && !(body.params.pct > 0)) return route.fulfill(unprocessable(["body", "params", "pct"], "Input should be greater than 0"));
+    if (body?.name === "") return route.fulfill(unprocessable(["body", "name"], "String should have at least 1 character"));
+    if (method === "POST") {
+      const made = rule(9, body!.name!, body!.type!, { ...lamp, target_type: body!.target_type!, target_id: body!.target_id!, params: body!.params!, status: null, last_evaluated_at: null, created_at: NOW.toISOString() });
+      ruleRows.unshift(made);
+      return route.fulfill({ status: 201, json: made });
+    }
+    const at = ruleRows.findIndex((r) => r.id === id);
+    if (method === "DELETE") return route.fulfill({ json: ruleRows.splice(at, 1)[0] });
+    Object.assign(ruleRows[at], body);
+    return route.fulfill({ json: ruleRows[at] });
+  });
   await page.route("**/api/v1/alerts**", async (route) => {
     const request = route.request();
     const url = new URL(request.url());
@@ -100,5 +152,5 @@ export async function mockAlertsApi(page: Page, options: AlertsMock = {}) {
     }
     return route.fulfill({ json: unread() });
   });
-  return { rows, writes };
+  return { rows, writes, ruleRows, ruleWrites };
 }

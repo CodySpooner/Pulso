@@ -6,6 +6,7 @@ from uuid import UUID, uuid4
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from sqlalchemy import update
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session
 
@@ -152,10 +153,13 @@ def test_rules_crud_validation_and_isolation(
     assert rule["target_id"] == str(ids["product"])  # normalized
     assert rule["params"] == {"pct": 5}
     assert (rule["enabled"], rule["armed"], rule["status"]) == (True, True, None)
+    lamp = (str(ids["product"]), "Sunset lamp", None)
+    assert (rule["product_id"], rule["product_name"], rule["last_fired_at"]) == lamp
     offer = {"target_type": "supplier_offer", "target_id": str(ids["offer"])}
     stock = client.post(
         "/v1/alert-rules", json=body | offer | {"type": "supplier_stock_out"}
     ).json()
+    assert (stock["product_id"], stock["product_name"]) == lamp[:2]  # the offer's product
     wrongs: list[tuple[dict[str, Any], int]] = [
         ({"target_id": str(uuid4())}, 404),  # no such product
         ({"target_type": "supplier_offer", "target_id": str(ids["shop"])}, 404),  # not a supplier
@@ -190,11 +194,17 @@ def test_rules_crud_validation_and_isolation(
             last_value={"status": "skipped", "skipped": {"reason": "gap"}},
         )  # fmt: skip
         session.add(default)
+        fired = [ids["a1"], ids["a3"]]  # a3 is the newer
+        session.execute(update(Alert).where(Alert.id.in_(fired)).values(rule_id=UUID(rule["id"])))
         session.commit()
         default_id = default.id
-    shown = client.get("/v1/alert-rules").json()["items"][0]
+    items = client.get("/v1/alert-rules").json()["items"]
+    shown = items[0]
     assert (shown["id"], shown["status"]) == (str(default_id), "skipped")
     assert shown["skipped"] == {"reason": "gap"}
+    assert (shown["product_id"], shown["product_name"], shown["last_fired_at"]) == (None,) * 3
+    last = {r["id"]: r["last_fired_at"] for r in items}
+    assert (last[rule["id"]], last[stock["id"]]) == ("2026-11-02T08:00:00Z", None)
     assert client.delete(f"/v1/alert-rules/{default_id}").json()["code"] == "default_rule"
     client = as_("b")
     assert client.get("/v1/alert-rules").json() == {"items": [], "next_cursor": None}

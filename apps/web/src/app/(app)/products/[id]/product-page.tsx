@@ -7,6 +7,7 @@ import * as m from "motion/react-m";
 import { Package, PackageX, SearchX, TriangleAlert } from "lucide-react";
 import { Tabs } from "radix-ui";
 
+import { CreateAlert } from "@/components/alerts/rule-builder";
 import { useApiReady } from "@/components/data-health/api";
 import { PanelError, StaleLine } from "@/components/data-health/atoms";
 import { EmptyState } from "@/components/pulso/empty-state";
@@ -98,6 +99,7 @@ export function ProductPage({ id }: { id: string }) {
         {data && (
           <div className="col-span-2 flex flex-wrap items-start gap-2 sm:col-span-1 sm:justify-end">
             <WatchControl product={data} />
+            <CreateAlert product={{ id: data.id, name: data.title }} />
             <StartTest productId={data.id} />
           </div>
         )}

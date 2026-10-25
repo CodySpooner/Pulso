@@ -3551,6 +3551,11 @@ export interface components {
             id: string;
             /** Last Evaluated At */
             last_evaluated_at: string | null;
+            /**
+             * Last Fired At
+             * @description The rule's newest alert, archived too.
+             */
+            last_fired_at: string | null;
             /** Muted Until */
             muted_until: string | null;
             /** Name */
@@ -3559,6 +3564,13 @@ export interface components {
             params: {
                 [key: string]: unknown;
             };
+            /**
+             * Product Id
+             * @description The product the target is or belongs to; null for the Testing defaults.
+             */
+            product_id: string | null;
+            /** Product Name */
+            product_name: string | null;
             /**
              * Skipped
              * @description {"reason": "gap", "from", "to"}

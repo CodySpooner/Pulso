@@ -2,6 +2,7 @@
 the workspace's rules. `pulso_core.alerts.evaluate()` fires the alerts; the web shows them in the
 top bar's bell and on /alerts."""
 
+from collections.abc import Sequence
 from typing import Annotated, Any, Literal, Self
 from uuid import UUID
 
@@ -22,7 +23,7 @@ from sqlalchemy.orm import Session
 from pulso_api.errors import APIError
 from pulso_api.routers.products import DB, CurrentPrincipal, live_product
 from pulso_api.schemas.text import NoNulStr
-from pulso_core.models import Alert, AlertRule, Listing
+from pulso_core.models import Alert, AlertRule, Listing, Product
 
 router = APIRouter(prefix="/v1/alerts")
 rules_router = APIRouter(prefix="/v1/alert-rules")
@@ -35,6 +36,7 @@ Ids = Annotated[
 ]
 Limit = Annotated[int, Query(ge=1, le=100)]
 NOT_NULL = ("name", "params", "enabled")
+EXTRA = ("product_id", "product_name", "last_fired_at")  # RuleOut fields that aren't columns
 
 
 class AlertOut(BaseModel):
@@ -119,6 +121,13 @@ class RuleOut(BaseModel):
     skipped: dict[str, Any] | None = Field(description='{"reason": "gap", "from", "to"}')
     last_evaluated_at: AwareDatetime | None
     created_at: AwareDatetime
+    product_id: UUID | None = Field(
+        description="The product the target is or belongs to; null for the Testing defaults."
+    )
+    product_name: str | None
+    last_fired_at: AwareDatetime | None = Field(
+        description="The rule's newest alert, archived too."
+    )
 
 
 class RulePage(BaseModel):
@@ -157,14 +166,42 @@ def archive(session: Session, workspace_id: UUID, ids: list[int], on: bool) -> U
     return unread(session, workspace_id)
 
 
-def view(row: AlertRule) -> RuleOut:
-    last = row.last_value or {}
-    fields = RuleOut.model_fields.keys() - {"status", "skipped"}
-    return RuleOut(
-        **{name: getattr(row, name) for name in fields},
-        status=last.get("status"),
-        skipped=last.get("skipped"),
+def views(session: Session, workspace_id: UUID, rows: Sequence[AlertRule]) -> list[RuleOut]:
+    """Each rule with its target's product (a supplier offer's through its listing) and its newest
+    alert. ponytail: a group-by over the workspace's alerts; index alerts (rule_id, fired_at) if
+    an inbox ever grows past a few thousand."""
+    offers = [int(str(row.target_id)) for row in rows if row.target_type == "supplier_offer"]
+    listed = select(Listing.id, Listing.product_id).where(Listing.id.in_(offers))
+    of_offer = dict(session.execute(listed).tuples().all())
+    product = {
+        row.id: of_offer.get(int(str(row.target_id)))
+        if row.target_type == "supplier_offer"
+        else UUID(str(row.target_id))
+        for row in rows
+        if row.target_type in ("product", "supplier_offer")
+    }
+    named = select(Product.id, Product.name).where(Product.id.in_(set(product.values()) - {None}))
+    fired = (
+        select(Alert.rule_id, func.max(Alert.fired_at))
+        .where(Alert.workspace_id == workspace_id, Alert.rule_id.in_([row.id for row in rows]))
+        .group_by(Alert.rule_id)
     )
+    names, last_fired = (
+        dict(session.execute(named).tuples().all()),
+        dict(session.execute(fired).tuples().all()),
+    )
+    fields = RuleOut.model_fields.keys() - {"status", "skipped", *EXTRA}
+    return [
+        RuleOut(
+            **{name: getattr(row, name) for name in fields},
+            status=(row.last_value or {}).get("status"),
+            skipped=(row.last_value or {}).get("skipped"),
+            product_id=product.get(row.id),
+            product_name=names.get(product.get(row.id)),  # type: ignore[arg-type]
+            last_fired_at=last_fired.get(row.id),
+        )
+        for row in rows
+    ]
 
 
 def owned(session: Session, workspace_id: UUID, rule_id: UUID) -> AlertRule:
@@ -267,7 +304,7 @@ def list_alert_rules(
     rows = session.scalars(query.order_by(*order).limit(limit + 1)).all()
     last = rows[limit - 1] if len(rows) > limit else None
     return RulePage(
-        items=[view(row) for row in rows[:limit]],
+        items=views(session, principal.workspace_id, rows[:limit]),
         next_cursor=RULE_CURSOR.dump_json((last.created_at, last.id)).decode() if last else None,
     )
 
@@ -278,7 +315,7 @@ def create_alert_rule(body: RuleIn, principal: CurrentPrincipal, session: DB) ->
     row = AlertRule(workspace_id=principal.workspace_id, **values)
     session.add(row)
     session.commit()
-    return view(row)
+    return views(session, principal.workspace_id, [row])[0]
 
 
 @rules_router.patch("/{rule_id}", response_model=RuleOut)
@@ -292,7 +329,7 @@ def update_alert_rule(
     for name, value in values.items():
         setattr(row, name, value)
     session.commit()
-    return view(row)
+    return views(session, principal.workspace_id, [row])[0]
 
 
 @rules_router.delete("/{rule_id}", response_model=RuleOut)
@@ -301,7 +338,7 @@ def delete_alert_rule(rule_id: UUID, principal: CurrentPrincipal, session: DB) -
     row = owned(session, principal.workspace_id, rule_id)
     if row.target_type == "test":
         raise APIError(409, "default_rule", "Disable or mute a Testing default; it can't go.")
-    deleted = view(row)
+    deleted = views(session, principal.workspace_id, [row])[0]
     session.delete(row)
     session.commit()
     return deleted

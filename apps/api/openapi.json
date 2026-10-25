@@ -6852,6 +6852,19 @@
             ],
             "title": "Last Evaluated At"
           },
+          "last_fired_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The rule's newest alert, archived too.",
+            "title": "Last Fired At"
+          },
           "muted_until": {
             "anyOf": [
               {
@@ -6872,6 +6885,30 @@
             "additionalProperties": true,
             "title": "Params",
             "type": "object"
+          },
+          "product_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The product the target is or belongs to; null for the Testing defaults.",
+            "title": "Product Id"
+          },
+          "product_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Product Name"
           },
           "skipped": {
             "anyOf": [
@@ -6936,7 +6973,10 @@
           "status",
           "skipped",
           "last_evaluated_at",
-          "created_at"
+          "created_at",
+          "product_id",
+          "product_name",
+          "last_fired_at"
         ],
         "title": "RuleOut",
         "type": "object"

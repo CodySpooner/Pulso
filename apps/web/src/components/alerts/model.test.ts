@@ -1,6 +1,28 @@
 import { describe, expect, it } from "vitest";
 
-import { badge, bellLabel, describeAlert, entityHref, gapSpan, groupByDay, lastEvaluation, rulesLine, type Alert } from "./model";
+import {
+  badge,
+  bellLabel,
+  createBody,
+  describeAlert,
+  draftOf,
+  entityHref,
+  fieldErrors,
+  FOREVER,
+  gapSpan,
+  groupByDay,
+  lastEvaluation,
+  mutedLabel,
+  muteUntil,
+  patchBody,
+  rulesLine,
+  statusLine,
+  targetOf,
+  threshold,
+  type Alert,
+  type Draft,
+  type Rule,
+} from "./model";
 
 const alert = (id: number, over: Partial<Alert> = {}): Alert => ({
   id,
@@ -116,5 +138,121 @@ describe("rule status", () => {
     expect(gapSpan({ reason: "gap", from: "2026-11-03T06:00:00Z", to: "2026-11-05T02:00:00Z" })).toBe("data gap Nov 3 → Nov 5");
     expect(gapSpan({ reason: "gap" })).toBe("data gap");
     expect(gapSpan(null)).toBe("data gap");
+  });
+});
+
+// WF-4c (p4-27): the rule builder's payloads and the Rules tab's lines.
+describe("the rule builder", () => {
+  const product = { id: "5e7a0c11-0000-4000-8000-000000000007", name: "Sunset lamp" };
+  const draft = (over: Partial<Draft> = {}): Draft => ({ target: "product", type: "supplier_price_change", pct: "5", name: "", ...over });
+  const saved = (over: Partial<Rule> = {}): Rule => ({
+    id: "0a1e0000-0000-4000-8000-000000000001",
+    name: "Lamp cost",
+    type: "supplier_price_change",
+    target_type: "supplier_offer",
+    target_id: "4801",
+    params: { pct: 8 },
+    enabled: true,
+    muted_until: null,
+    armed: true,
+    status: null,
+    skipped: null,
+    last_evaluated_at: null,
+    created_at: "2026-10-20T00:00:00Z",
+    product_id: product.id,
+    product_name: product.name,
+    last_fired_at: null,
+    ...over,
+  });
+
+  it("creates a supplier price rule on any of the product's suppliers, named from the sentence", () => {
+    expect(createBody(draft(), product)).toEqual({
+      name: "Sunset lamp: supplier price ±5%",
+      type: "supplier_price_change",
+      target_type: "product",
+      target_id: product.id,
+      params: { pct: 5 },
+      enabled: true,
+    });
+  });
+
+  it("targets one offer by its listing id and keeps a typed name, trimmed", () => {
+    expect(createBody(draft({ target: "4801", type: "freight_change", pct: "12.5", name: "  Lamp freight " }), product)).toEqual({
+      name: "Lamp freight",
+      type: "freight_change",
+      target_type: "supplier_offer",
+      target_id: "4801",
+      params: { pct: 12.5 },
+      enabled: true,
+    });
+  });
+
+  it.each([
+    ["supplier_stock_out", "Sunset lamp: stock-out"],
+    ["back_in_stock", "Sunset lamp: back in stock"],
+  ] as const)("%s sends the API's default %, whatever was typed", (type, name) => {
+    expect(createBody(draft({ type, pct: "9" }), product)).toEqual({ name, type, target_type: "product", target_id: product.id, params: { pct: 5 }, enabled: true });
+  });
+
+  it("passes a blank % on as 0, so the API's 422 says what's wrong", () => {
+    expect(createBody(draft({ pct: " " }), product).params).toEqual({ pct: 0 });
+  });
+
+  it("edits only the name and, for price and freight, the %", () => {
+    expect(patchBody(draft({ name: " Cost ±8% ", pct: "8" }), saved())).toEqual({ name: "Cost ±8%", params: { pct: 8 } });
+    expect(patchBody(draft({ name: "Out", type: "supplier_stock_out" }), saved({ type: "supplier_stock_out", params: {} }))).toEqual({ name: "Out" });
+  });
+
+  it("reads a saved rule back into the sentence", () => {
+    expect(draftOf(saved())).toEqual({ target: "4801", type: "supplier_price_change", pct: "8", name: "Lamp cost" });
+    expect(draftOf(saved({ target_type: "test", target_id: null, type: "supplier_stock_out", params: {} }))).toEqual({ target: "product", type: "supplier_stock_out", pct: "5", name: "Lamp cost" });
+  });
+
+  it("puts each 422 message next to its field", () => {
+    const problem = (errors: object[], detail = "Invalid request.") => ({ type: "about:blank", title: "Unprocessable", status: 422, code: "validation_error", detail, request_id: "r", errors });
+    expect(fieldErrors(problem([{ loc: ["body", "params", "pct"], msg: "Input should be greater than 0", type: "greater_than" }]))).toEqual({ pct: "Input should be greater than 0" });
+    expect(fieldErrors(problem([{ loc: ["body", "name"], msg: "String should have at least 1 character", type: "string_too_short" }]))).toEqual({ name: "String should have at least 1 character" });
+    expect(fieldErrors({ ...problem([], "Supplier offer not found."), status: 404, code: "not_found" })).toEqual({ form: "Supplier offer not found." });
+    expect(fieldErrors(new TypeError("fetch failed")).form).toMatch(/didn’t answer/);
+  });
+
+  it("names a rule's target, linking its product", () => {
+    expect(targetOf(saved())).toEqual({ label: "Sunset lamp", detail: "offer 4801", href: `/products/${product.id}?tab=suppliers` });
+    expect(targetOf(saved({ target_type: "product", target_id: product.id }))).toMatchObject({ label: "Sunset lamp", detail: "any supplier" });
+    expect(targetOf(saved({ target_type: "test", target_id: null, product_id: null, product_name: null }))).toEqual({ label: "Products in Testing", detail: "every open test", href: "/testing" });
+  });
+
+  it("shows the threshold only where a rule has one", () => {
+    expect(threshold(saved())).toBe("±8%");
+    expect(threshold(saved({ type: "back_in_stock", params: {} }))).toBeNull();
+  });
+});
+
+describe("a rule's status line", () => {
+  const now = Date.parse("2026-10-25T14:00:00Z");
+  const r = (status: Rule["status"], over: Partial<Pick<Rule, "skipped" | "last_evaluated_at">> = {}) => ({ status, skipped: null, last_evaluated_at: null, ...over });
+
+  it.each([
+    [r(null), "Not evaluated yet", "muted"],
+    [r("no_source", { last_evaluated_at: "2026-10-25T06:00:00Z" }), "No source yet", "muted"],
+    [r("skipped", { skipped: { reason: "gap", from: "2026-10-19T00:00:00Z", to: "2026-10-21T00:00:00Z" } }), "1 evaluation skipped: data gap Oct 19 → Oct 21", "warning"],
+    [r("ok", { last_evaluated_at: "2026-10-25T06:00:00Z" }), "Evaluated 8h ago", "ok"],
+  ])("%j", (rule, text, tone) => expect(statusLine(rule, now)).toEqual({ text, tone }));
+});
+
+describe("mute", () => {
+  const now = Date.parse("2026-10-25T14:00:00Z");
+
+  it("mutes for 24 h, 7 d or until unmuted", () => {
+    expect(muteUntil(24, now)).toBe("2026-10-26T14:00:00.000Z");
+    expect(muteUntil(168, now)).toBe("2026-11-01T14:00:00.000Z");
+    expect(muteUntil(null, now)).toBe(FOREVER);
+  });
+
+  it("says until when, and nothing once it has passed", () => {
+    expect(mutedLabel(null, now)).toBeNull();
+    expect(mutedLabel("2026-10-25T13:59:00Z", now)).toBeNull();
+    expect(mutedLabel("2026-10-26T14:00:00Z", now)).toBe("Muted until Oct 26, 14:00 UTC");
+    expect(mutedLabel(FOREVER, now)).toBe("Muted until you unmute");
   });
 });
