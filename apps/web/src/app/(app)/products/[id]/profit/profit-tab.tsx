@@ -28,8 +28,8 @@ const tones = { positive: "text-positive", negative: "text-negative", neutral: "
 const ROUNDING = "Each line is rounded to the cent once and totals add the rounded lines, so the breakdown always sums.";
 const LABELS: Record<string, string> = {
   price_minor: "Sell price",
-  unit_cost: "Supplier price",
-  fx_unit_cost: "FX rate for the supplier price",
+  unit_cost: "Unit cost",
+  fx_unit_cost: "FX rate for the unit cost",
   freight: "Freight quote",
   fx_freight: "FX rate for the freight",
   duty_bps: "Duty rate",
@@ -234,7 +234,7 @@ function Results({ calc, now }: { calc: Calc; now: number }) {
       <Result
         label="Break-even ad cost"
         className="col-span-2 sm:col-span-1"
-        detail={detail ?? (breakEven! > 0 ? "the most an order's ads can cost" : "loses money before any ad cost")}
+        detail={detail ?? (breakEven! > 0 ? "profit before ads: the most ads can cost" : "loses money before any ad cost")}
       >
         {breakEven !== null ? (
           <Amount label="Break-even ad cost" text={signedMoney(breakEven).text} hint={<Computed formula={MARGIN} calc={calc} now={now} />} className={cn(breakEven <= 0 && "text-negative")}>
@@ -615,7 +615,7 @@ function lines(calc: Calc): Line[] {
     },
     { label: "Transaction fee", detail: pct(calc.shopify_fee_bps), minor: calc.shopify_fee_minor, kind: "cost", traces: traces(calc, "shopify_fee_bps"), gaps: ["price_missing"] },
     { label: "Returns allowance", detail: pct(calc.returns_bps), minor: calc.returns_minor, kind: "cost", traces: traces(calc, "returns_bps"), gaps: ["price_missing"] },
-    { label: "Profit before ads", detail: "break-even ad cost", minor: calc.margin_minor, kind: "profit", bps: calc.margin_bps, formula: MARGIN },
+    { label: "Profit before ads", minor: calc.margin_minor, kind: "profit", bps: calc.margin_bps, formula: MARGIN },
     { label: "Ad cost", detail: "per order", minor: calc.ad_cost_minor, kind: "cost", traces: traces(calc, "ad_cost_minor") },
     { label: "Profit per order", minor: calc.net_minor, kind: "profit", strong: true, bps: calc.net_bps, formula: NET },
   ];
@@ -638,7 +638,7 @@ function Breakdown({ calc, now }: { calc: Calc; now: number }) {
             <th scope="col" className="py-1.5 text-right font-normal">
               Amount
             </th>
-            <th scope="col" className="py-1.5 pl-3 text-right font-normal">
+            <th scope="col" className="py-1.5 pl-3 text-right font-normal sm:whitespace-nowrap">
               <abbr title="Share of the sell price" className="no-underline">
                 % of price
               </abbr>

@@ -33,7 +33,7 @@ for (const theme of ["dark", "light"] as const) {
       test("loaded", async ({ page }) => {
         await mockProfitApi(page);
         await page.goto(URL);
-        await expect(page.getByRole("tabpanel").getByText("+$0.03")).toBeVisible();
+        await expect(page.getByRole("button", { name: "Profit per order: +$0.03" })).toBeVisible();
         await shot(page, "loaded");
       });
 

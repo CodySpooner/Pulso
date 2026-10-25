@@ -30,8 +30,8 @@ test("complete costs: the tab shows the endpoint's landed cost and margin, each 
   await expect(row(page, "Sell price")).toContainText("Shopify stores · 6h ago");
   // Every amount opens its provenance by keyboard: an observation's source and raw payload, a total's formula.
   await row(page, "Unit cost").getByRole("button", { name: "Unit cost: −$6.20" }).focus();
-  await expect(card(page, "Supplier price")).toContainText("CJ Dropshipping");
-  await expect(card(page, "Supplier price")).toContainText("#901877");
+  await expect(card(page, "#901877")).toContainText("Unit cost");
+  await expect(card(page, "#901877")).toContainText("CJ Dropshipping");
   await row(page, "Landed cost").getByRole("button").focus();
   await expect(card(page, "Computed by Pulso")).toContainText("Unit cost + freight + duty + customs fee.");
   await row(page, "Ad cost").getByRole("button").focus();
