@@ -240,7 +240,8 @@ class CatalogAdapter(CJAdapter):
     def targets(self) -> list[Target]:
         def requests() -> Iterator[Request]:
             # The tree goes through the run's hook, so block, disable and raw capture apply.
-            yield Request(params={"endpoint": "/product/getCategory"})
+            # Its free 200 says nothing about the paid listV2 calls (DEC-321a, XR-59).
+            yield Request(params={"endpoint": "/product/getCategory"}, resets_blocks=False)
             yield from category_plan(self.tree, self.names)[0].requests
 
         return [Target("cj_category_resolution", "catalog", requests())]

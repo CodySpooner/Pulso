@@ -9,8 +9,17 @@ import pytest
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from pulso_core.models import CollectorRun, CollectorRunTarget, ListingSnapshot, RawPayload, Source
-from pulso_sources.framework import enqueue_run
+from pulso_core.models import (
+    CollectorRun,
+    CollectorRunTarget,
+    ListingSnapshot,
+    RawPayload,
+    Source,
+    SourceEvent,
+)
+from pulso_sources import cj
+from pulso_sources.cj.transport import Transport
+from pulso_sources.framework import Response, enqueue_run
 from pulso_workers import registration, tasks
 
 from .test_cj import fixture
@@ -87,3 +96,64 @@ def test_inactivity_on_the_tree_request_disables_cj(
         "blocked",
         "cj_api_disabled_inactivity",
     )
+
+
+BLOCKED = json.dumps({"code": 1600200, "result": False, "message": "Too much request"}).encode()
+
+
+def catalog(
+    session: Session, monkeypatch: pytest.MonkeyPatch, responses: dict[str, Response]
+) -> tuple[CollectorRun, list[str]]:
+    cfg, sent = live(session, monkeypatch, {})
+
+    def http(self: Transport, endpoint: str, params: object, *, token: str | None) -> Response:
+        sent.append(endpoint)
+        return responses[endpoint]
+
+    monkeypatch.setattr(Transport, "http", http)
+    adapter = cj.CatalogAdapter(["Computer & Office"])
+    run = enqueue_run(session, source_id=2, trigger="manual", publish=lambda _: None)
+    return cj.collect(session, run.id, adapter.targets(), settings=cfg, adapter=adapter), sent
+
+
+@pytest.mark.parametrize(
+    "blocked",
+    [Response(BLOCKED, 200), Response(BLOCKED, 429, headers={"Retry-After": "60"})],
+)
+def test_free_tree_never_resets_the_paid_block_streak(
+    session: Session, monkeypatch: pytest.MonkeyPatch, blocked: Response
+) -> None:
+    """XR-59: a 200 tree each run must not hide blocked listV2 calls from DEC-032."""
+    tree = Response(BODIES["/product/getCategory"], 200)
+    for count in range(1, 6):
+        run, sent = catalog(
+            session, monkeypatch, {"/product/getCategory": tree, "/product/listV2": blocked}
+        )
+        source = session.get_one(Source, 2)
+        assert sent == ["/product/getCategory", "/product/listV2"]
+        assert run.error_code == "cj_rate_limited" and source.consecutive_block_count == count
+        assert source.enabled == (count < 5)
+        if blocked.status_code == 429:
+            assert source.retry_not_before is not None
+            source.retry_not_before = None  # The Retry-After has passed before the next slot.
+            session.commit()
+    assert source.status == "blocked"
+    assert session.scalar(select(func.count()).select_from(SourceEvent)) == 1
+
+
+@pytest.mark.parametrize("blocked", [Response(BLOCKED, 200), Response(BLOCKED, 429)])
+def test_blocked_tree_answer_still_counts(
+    session: Session, monkeypatch: pytest.MonkeyPatch, blocked: Response
+) -> None:
+    session.get_one(Source, 2).consecutive_block_count = 2
+    run, sent = catalog(session, monkeypatch, {"/product/getCategory": blocked})
+    assert sent == ["/product/getCategory"] and run.error_code == "cj_rate_limited"
+    assert session.get_one(Source, 2).consecutive_block_count == 3
+
+
+def test_successful_list_page_still_resets_the_streak(
+    session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    session.get_one(Source, 2).consecutive_block_count = 4
+    run, _ = catalog(session, monkeypatch, {k: Response(v, 200) for k, v in BODIES.items()})
+    assert run.status == "success" and session.get_one(Source, 2).consecutive_block_count == 0
