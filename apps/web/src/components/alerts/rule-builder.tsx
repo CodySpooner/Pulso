@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import Link from "next/link";
 import { BellPlus, Check, CircleCheck } from "lucide-react";
 
@@ -56,12 +56,27 @@ export function CreateAlert({ product }: { product: { id: string; name: string }
   );
 }
 
-/** WF-4c (DEC-339): the sentence-style rule builder. A dialog; on a phone, a full-height sheet with the fields stacked.
- *  Radix gives focus back to whatever opened it when it closes, Escape included. */
+/** DialogContent props that give focus back to whatever had it when the dialog opened, Escape included: Radix only
+ *  returns it to a Dialog.Trigger, and these dialogs open from state. */
+export function useReturnFocus() {
+  const opener = useRef<HTMLElement | null>(null);
+  return {
+    onOpenAutoFocus: () => void (opener.current = document.activeElement as HTMLElement | null),
+    onCloseAutoFocus: (e: Event) => {
+      e.preventDefault();
+      opener.current?.focus();
+    },
+  };
+}
+
+/** WF-4c (DEC-339): the sentence-style rule builder. A dialog; on a phone, a full-height sheet with the fields stacked. */
 export function RuleBuilder({ product, rule, open, onOpenChange, onSaved }: Props) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:w-[min(36rem,calc(100vw-2rem))] max-sm:inset-0 max-sm:h-dvh max-sm:w-full max-sm:translate-0 max-sm:rounded-none max-sm:border-0 max-sm:p-4">
+      <DialogContent
+        {...useReturnFocus()}
+        className="sm:w-[min(36rem,calc(100vw-2rem))] max-sm:inset-0 max-sm:h-dvh max-sm:w-full max-sm:translate-0 max-sm:rounded-none max-sm:border-0 max-sm:p-4"
+      >
         {/* Mounted per opening, so each one starts from the rule or the product's defaults. */}
         <Form product={product} rule={rule} close={() => onOpenChange(false)} onSaved={onSaved} />
       </DialogContent>

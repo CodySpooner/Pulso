@@ -8,7 +8,7 @@ import { DropdownMenu } from "radix-ui";
 
 import { useAlertRules, useRuleWrites } from "@/components/alerts/api";
 import { MUTES, mutedLabel, muteUntil, statusLine, targetOf, threshold, TYPES, type Rule } from "@/components/alerts/model";
-import { RuleBuilder } from "@/components/alerts/rule-builder";
+import { RuleBuilder, useReturnFocus } from "@/components/alerts/rule-builder";
 import { Ago, PanelError, StaleLine } from "@/components/data-health/atoms";
 import { EmptyState } from "@/components/pulso/empty-state";
 import { Button } from "@/components/ui/button";
@@ -248,7 +248,7 @@ function DeleteDialog({ rule, open, onOpenChange }: { rule: Rule; open: boolean;
   const { remove } = useRuleWrites();
   return (
     <Dialog open={open} onOpenChange={(next) => (onOpenChange(next), remove.reset())}>
-      <DialogContent>
+      <DialogContent {...useReturnFocus()}>
         <DialogTitle>Delete {rule.name}?</DialogTitle>
         <DialogDescription>It stops watching now. The alerts it already fired stay in your inbox. This can’t be undone.</DialogDescription>
         {remove.isError && (
