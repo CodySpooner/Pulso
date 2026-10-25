@@ -380,6 +380,50 @@ def test_per_host_spacing_caps_requests_and_crawl_delay_slows_it(
     assert [url.split("/")[2] for url, _, _ in net.calls[:4]] == [A, B, A, B]
 
 
+def test_crawl_delay_past_the_budget_skips_only_that_host(
+    session: Session, settings: Settings, net: Net
+) -> None:
+    # XR-13: A's 3000 s Crawl-delay is past the 2700 s budget; B's images still go out.
+    net.replies[f"https://{A}/robots.txt"] = Response(
+        b"User-agent: *\nCrawl-delay: 3000\n", 200, "text/plain"
+    )
+    (slow,) = add_listing(session, f"https://{A}/x.png")
+    fast = [add_listing(session, f"https://{B}/{n}.png")[0] for n in range(3)]
+    for n, img in enumerate(fast):
+        net.replies[img.url] = image(n)
+    result = run(session, settings)
+    assert [len(net.hits(img.url)) for img in fast] == [1, 1, 1] and not net.hits(slow.url)
+    skipped = target(session, result, slow)
+    assert (skipped.status, skipped.raw_payload_id) == ("partial", None)  # no backoff penalty
+    # The next run in this process: A's robots.txt slot is past the budget too.
+    (late,) = add_listing(session, f"https://{B}/late.png")
+    net.replies[late.url] = image(9)
+    run(session, settings)
+    assert len(net.hits(late.url)) == 1 and len(net.hits(f"https://{A}/robots.txt")) == 1
+
+
+def test_fractional_crawl_delay_slows_and_zero_request_rate_refuses(
+    session: Session, settings: Settings, net: Net
+) -> None:
+    # XR-14: urllib drops "10.5" and divides by the 0 in "0/1".
+    net.replies[f"https://{A}/robots.txt"] = Response(
+        b"User-agent: *\nCrawl-delay: 10.5\n", 200, "text/plain"
+    )
+    net.replies[f"https://{B}/robots.txt"] = Response(
+        b"User-agent: *\nRequest-rate: 0/1\n", 200, "text/plain"
+    )
+    slow = [add_listing(session, f"https://{A}/{n}.png")[0] for n in range(3)]
+    for n, img in enumerate(slow):
+        net.replies[img.url] = image(n)
+    (refused,) = add_listing(session, f"https://{B}/x.png")
+    result = run(session, settings)
+    assert result.error_code == "RobotsZeroRate" and not net.hits(refused.url)
+    assert target(session, result, refused).status == "partial"
+    times = [at for url, at, _ in net.calls if url.startswith(f"https://{A}/")]
+    assert len(times) == 4
+    assert all(b - a >= timedelta(seconds=10.5) for a, b in itertools.pairwise(times))
+
+
 def test_robots_disallow_skips_the_host_and_unavailable_robots_never_backs_off(
     session: Session, settings: Settings, net: Net
 ) -> None:
