@@ -56,6 +56,7 @@ def test_customs_fee_is_per_order_not_per_unit() -> None:
     assert one.customs_fee_minor == three.customs_fee_minor == 250
     assert one.landed_cost_minor == 1229 + 250
     assert three.goods_minor == 3 * 620
+    assert three.landed_cost_minor == 1860 + 485 + 372 + 250  # duty 20% of 18.60
 
 
 def test_duty_not_set_is_incomplete_and_has_no_margin() -> None:
