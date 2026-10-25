@@ -2927,3 +2927,25 @@ Superseded review defaults, not given entries: default #0 (move the repo) is don
   - (b1) Dimming only the value cells. The values are `--foreground`, `--positive` and `--negative`. At 70%, `--positive` measures 3.20 and `--negative` 3.85 in light (`--negative` 3.81 in dark): below AA for the breakdown's 13 px values.
   - (c1) Leaving the light palette and adding a "View as table" disclosure. It is still optional and is left as a backlog row. The lines themselves now clear 3:1.
 - **Why:** `src/styles/contrast.test.ts` has 17 new UI pairs per theme (34 tests). On the old tokens 14 of them fail: `--segment-mark` doesn't exist, light series 3 to 5 are below 3:1 on every surface, and light series 2 is below 3:1 on `secondary`. `e2e/imp-313/contrast-states.spec.ts` checks that the pressed thumb paints the bar in the token's colour at 2 px on Discover, Settings and Profit units, and that only the pressed option has it. In dark and light it checks that Profit's busy regions stay at opacity 1 and that every text run clears AA mid-recompute. That test fails on the old `profit-tab.tsx`, which gives `0.7`.
+
+### DEC-293 · Amazon ranks on the Product page (AMZ-1c): `GET /v1/products/{id}/amazon-ranks` gives one row per list the product is ranked in, at its newest ranked day; a section on the Trends tab
+**2026-10-25 · proposed (p3-07)** · Phase 3 task AMZ-1c (p3-07); builds on DEC-286 and DEC-279; DEC-040, DEC-238, DEC-267 (c); AGENTS.md §3, §8; vault Data/Sources/Source - Amazon, Features/Product Page - Trends; `docs/reports/p3-07.md`; no migration, dependency, settings flag or network
+- **Decision:**
+  - **(a) API.** `GET /v1/products/{id}/amazon-ranks` (operation `list_product_amazon_ranks`) is scoped exactly like `/v1/amazon/ranks`: signed-in, no workspace filter (global market data). It lives in the Amazon router and shares its helpers: `newest_captures()` (each list and day's newest capture), `rows_of()`, `rank_row()` and `is_stale()` (over 14 days). It reads the rows of every day's newest capture that carry GTINs and links them with `link_products()`. Per list (category × rank kind) it keeps the product's newest ranked day, and the best rank when two ASINs share the product's GTIN. Each row is an `AmazonRankRow`. The answer also carries `source`/`source_name` (null without the source row), `imported` (whether any list was imported), the rows' newest `as_of` and `captured_at`, and `stale`. Unknown id 404, merged id 409 (`live_product`, as the other product sub-resources do).
+  - **(b) A list the product dropped out of** shows its last ranked day, with that day on the row, and is never presented as current. A superseded capture (a corrected file for the same day) never shows.
+  - **(c) No source yet** covers both a missing source row ("Amazon: no source yet") and nothing imported ("No Amazon import yet"), with the copy `/amazon` uses. The source's `enabled` flag isn't read: Amazon is CSV-only, so live collection stays off by design (DEC-279).
+  - **(d) UI.** An "Amazon ranks" section after Search keywords on the Trends tab (its own `amazon.tsx`, one mount line). The label reads "Amazon · manual import, as of <day>", with the import time on hover. A compact table has one row per list (List, Rank, Day); every rank's hover names the source, day, import time and ASIN. "Every Amazon list" links to `/amazon`. States: loading skeleton, error with Retry, stale line on refetch failure, a stale banner over the rows, not ranked (links CSV import and names the `gtins` column), no import, no source row.
+- **Alternatives:**
+  - (a) Only each list's newest day, as `/amazon` defaults: a product that dropped one day out of a list would vanish with no trace; the brief asks for the newest day among the product's own rows.
+  - (a) Every linking ASIN per list: two rows for one product in one list read as two products.
+  - (a) A separate small router: the helpers live in the Amazon router, and a second module would import them back.
+  - (b) Carrying the last rank forward to the list's newest day: that fabricates an observation (AGENTS.md §4).
+  - (d) The section between the chart and keywords: most products have no Amazon row, so a not-ranked note there would push the keyword actions down.
+- **Why:** API tests (`apps/api/tests/test_amazon_ranks.py`, 9 new, on Postgres `pgvector/pgvector:0.8.7-pg18-trixie`) cover:
+  - a linked product in both of Home's lists;
+  - newest ranked day per list, best rank across two ASINs, a dropped-out list dated, a superseded capture hidden;
+  - an unlinked product, no import, a missing source row, unknown 404 and merged 409;
+  - stale at 15 days and not at 14;
+  - a second workspace reading the identical answer, and 401 without a session.
+
+  Five mutations each fail a test. Playwright (`apps/web/e2e/products/amazon.spec.ts`, 9) covers every state, the one-click link, keyboard focus and 375px.
