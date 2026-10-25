@@ -474,12 +474,13 @@ def apart(session: Session, merged: dict[UUID, UUID | None], a: Listing, b: List
 def manual(session: Session, listing_id: int) -> bool:
     """The listing's latest move is by an owner or user: the matcher never moves it.
 
-    A reject moves nothing: it holds only its pair, through the candidate's status.
+    A reject moves nothing: it holds only its pair, through the candidate's status. Latest
+    is the highest id, the order moves took the lock (XR-29, DEC-266).
     """
     actor = session.scalar(
         select(MatchDecision.actor)
         .where(MatchDecision.listing_id == listing_id, MatchDecision.action != "reject")
-        .order_by(MatchDecision.decided_at.desc(), MatchDecision.id.desc())
+        .order_by(MatchDecision.id.desc())
         .limit(1)
     )
     return actor not in (None, "algo")

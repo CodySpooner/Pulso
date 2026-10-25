@@ -868,7 +868,6 @@ def test_xr28_a_stored_row_rescores_to_its_stored_score(world: World) -> None:
     assert row.score == Decimal("0.9149")
 
 
-@pytest.mark.xfail(strict=True, reason="XR-29: replay orders by decided_at, the txn's start")
 def test_xr29_replay_follows_the_order_moves_took_the_lock(world: World, db_engine: Engine) -> None:
     session = world.session
     older = world.product()
@@ -885,3 +884,28 @@ def test_xr29_replay_follows_the_order_moves_took_the_lock(world: World, db_engi
         owner.commit()
     assert products(session, moved) == [older]
     assert membership(session, datetime.now(UTC) + timedelta(minutes=1))[moved.id] == older
+
+
+def test_xr29_manual_reads_the_move_that_took_the_lock_last(world: World) -> None:
+    session = world.session
+    product = world.product()
+    held = world.listing(world.store(), 0)
+    world.listing(world.store(), 0, product=product)
+    # The owner's unlink took the lock after the algo link, but its transaction began first.
+    for actor, action, to, decided_at in (
+        ("algo", "link", product, SEEN + timedelta(days=1)),
+        ("owner", "unlink", None, SEEN),
+    ):
+        session.add(
+            MatchDecision(
+                actor=actor,
+                action=action,
+                listing_id=held.id,
+                from_product_id=product if to is None else None,
+                to_product_id=to,
+                decided_at=decided_at,
+            )
+        )
+        session.flush()
+    world.run()
+    assert products(session, held) == [None]
