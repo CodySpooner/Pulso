@@ -39,6 +39,8 @@ from pulso_ml.phash import similarity
 RateLookup = Callable[[Session, str, date], FxRate | None]
 # match_candidates.scorer_version of a GTIN pair; bump it when gtin14's rules change.
 GTIN_VERSION = "gtin-1"
+# pg_advisory_xact_lock key ("PULSMATC"); bigint keys never meet the workers' two-int locks.
+MATCHING_LOCK = 0x50554C534D415443
 
 
 @dataclass
@@ -71,6 +73,35 @@ def canonical(merged: dict[UUID, UUID | None], product_id: UUID | None) -> UUID 
 def group(merged: dict[UUID, UUID | None], root: UUID) -> list[UUID]:
     """The live product and every product merged into it."""
     return [root, *(p for p in merged if canonical(merged, p) == root)]
+
+
+def redirects(session: Session) -> dict[UUID, UUID | None]:
+    return dict(
+        session.execute(
+            select(Product.id, Product.merged_into_id).where(Product.merged_into_id.is_not(None))
+        )
+        .tuples()
+        .all()
+    )
+
+
+def lock(session: Session) -> None:
+    """Every matching write holds one transaction lock, so a run and a decision never interleave.
+
+    A merge moves every listing of the merged product under it, so no pointer read after
+    the lock names a product merged since the run loaded its redirects.
+    ponytail: one global lock; per-product locks if decisions ever queue behind a run.
+    """
+    session.execute(select(func.pg_advisory_xact_lock(MATCHING_LOCK)))
+
+
+def new_product(session: Session, listings: Sequence[Listing]) -> UUID:
+    """A product named after the older listing (first_seen_at, then id), seen when it was."""
+    older = min(listings, key=lambda listing: (listing.first_seen_at, listing.id))
+    product = Product(name=older.title, first_seen_at=older.first_seen_at)
+    session.add(product)
+    session.flush()
+    return product.id
 
 
 def neighbours(
@@ -107,13 +138,7 @@ def match(session: Session, rates: RateLookup, config: ScorerConfig = CONFIG) ->
         )
         or 0
     )
-    merged = dict(
-        session.execute(
-            select(Product.id, Product.merged_into_id).where(Product.merged_into_id.is_not(None))
-        )
-        .tuples()
-        .all()
-    )
+    merged = redirects(session)
     gtins(session, merged, counts)
     usd_rates: dict[tuple[str, date], Decimal | None] = {}
     seen: set[tuple[int, int]] = set()
@@ -130,6 +155,7 @@ def match(session: Session, rates: RateLookup, config: ScorerConfig = CONFIG) ->
     for listing_id in session.scalars(
         select(Listing.id).where(embedded).order_by(Listing.id)
     ).all():
+        lock(session)
         # Filters past the first ef_search hits keep scanning the index (pgvector 0.8).
         session.execute(text("SET LOCAL hnsw.iterative_scan = strict_order"))
         source = session.get_one(Listing, listing_id)
@@ -164,6 +190,8 @@ def match(session: Session, rates: RateLookup, config: ScorerConfig = CONFIG) ->
             products = {canonical(merged, fact.listing.product_id) for fact in (a, b)}
             if len(products) == 1 and None not in products:
                 continue  # linked earlier in this run
+            if apart(session, merged, a.listing, b.listing):
+                continue
             candidate = session.scalar(
                 select(MatchCandidate)
                 .where(
@@ -240,10 +268,13 @@ def gtins(session: Session, merged: dict[UUID, UUID | None], counts: Counts) -> 
             if pair in seen:
                 continue
             seen.add(pair)
-            on = session.scalars(select(Listing.product_id).where(Listing.id.in_(pair)))
-            products = {canonical(merged, product_id) for product_id in on}
+            lock(session)  # held until this GTIN's commit; taking it again is a no-op
+            a, b = session.scalars(select(Listing).where(Listing.id.in_(pair))).all()
+            products = {canonical(merged, listing.product_id) for listing in (a, b)}
             if len(products) == 1 and None not in products:
                 continue  # already on one product
+            if apart(session, merged, a, b):
+                continue
             candidate = session.scalar(
                 select(MatchCandidate)
                 .where(
@@ -338,11 +369,7 @@ def link(
         if target is None or vetoed(session, movers[0].id, group(merged, target)):
             return False
     else:
-        older = min(pair, key=lambda listing: (listing.first_seen_at, listing.id))
-        product = Product(name=older.title, first_seen_at=older.first_seen_at)
-        session.add(product)
-        session.flush()
-        target = product.id
+        target = new_product(session, pair)
     for listing in movers:
         session.add(
             MatchDecision(
@@ -378,11 +405,39 @@ def vetoed(session: Session, listing_id: int, product_ids: list[UUID]) -> bool:
     )
 
 
+def apart(session: Session, merged: dict[UUID, UUID | None], a: Listing, b: Listing) -> bool:
+    """The owner split one listing off the other's product: never paired again (DEC-257 b)."""
+    off = [
+        (listing.id, group(merged, root))
+        for listing, other in ((a, b), (b, a))
+        if (root := canonical(merged, other.product_id)) is not None
+    ]
+    return bool(off) and bool(
+        session.scalar(
+            select(
+                exists().where(
+                    MatchDecision.action == "split",
+                    or_(
+                        *(
+                            (MatchDecision.listing_id == listing_id)
+                            & MatchDecision.from_product_id.in_(product_ids)
+                            for listing_id, product_ids in off
+                        )
+                    ),
+                )
+            )
+        )
+    )
+
+
 def manual(session: Session, listing_id: int) -> bool:
-    """The listing's latest decision is by an owner or user: the matcher never moves it."""
+    """The listing's latest move is by an owner or user: the matcher never moves it.
+
+    A reject moves nothing: it holds only its pair, through the candidate's status.
+    """
     actor = session.scalar(
         select(MatchDecision.actor)
-        .where(MatchDecision.listing_id == listing_id)
+        .where(MatchDecision.listing_id == listing_id, MatchDecision.action != "reject")
         .order_by(MatchDecision.decided_at.desc(), MatchDecision.id.desc())
         .limit(1)
     )
