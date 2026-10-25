@@ -36,7 +36,7 @@ function useCard(item: Item) {
   return { setNodeRef, isDragging, style: { transform: translate(transform), transition }, handle: { attributes, listeners, setActivatorNodeRef } };
 }
 
-/** A grid card: image, product link, stats, note, added date and freshness. Select and reorder sit on the image, shown on hover, focus,
+/** A grid card: image, product link, stats with their freshness, note, added date. Select and reorder sit on the image, shown on hover, focus,
  *  selection and touch; every move is also in the … menu, so a drag is never required (vault Features/Boards). */
 export function Card(props: CardProps) {
   const { item, now, selected, onSelect } = props;
@@ -66,10 +66,7 @@ export function Card(props: CardProps) {
           <NoteBox item={item} note={note} />
           <footer className="mt-auto flex min-h-7 items-center justify-between gap-2 text-micro text-subtle-foreground">
             <NoteStatus note={note} fallback={<>Added <Ago iso={item.added_at} now={now} source="When it was added to this board" /></>} />
-            <span className="flex items-center gap-1">
-              <Freshness item={item} now={now} />
-              <CardMenu {...props} />
-            </span>
+            <CardMenu {...props} />
           </footer>
         </div>
       </article>

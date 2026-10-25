@@ -108,7 +108,7 @@ function ScoreCard({ score, label, now }: { score: Score; label: string; now: nu
   );
 }
 
-/** The grid card's stats, labels left and numbers right in tabular numerals. */
+/** The grid card's stats, labels left and numbers right in tabular numerals, then how fresh they are. */
 export function StatList({ item, now }: { item: Item; now: number }) {
   const rows: [string, React.ReactNode][] = [
     ["Price", <Price key="p" item={item} now={now} />],
@@ -116,6 +116,7 @@ export function StatList({ item, now }: { item: Item; now: number }) {
     ["Trend", <ScoreValue key="t" score={item.trend} label="Trend Score" now={now} />],
     ["Lifecycle", <Lifecycle key="l" item={item} now={now} />],
     ["Saturation", <ScoreValue key="s" score={item.saturation} label="Saturation" now={now} />],
+    ["Data as of", <Freshness key="f" item={item} now={now} />],
   ];
   return (
     <dl className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-3 gap-y-1 border-t border-border-subtle pt-2 text-data">
@@ -133,7 +134,7 @@ export function StatList({ item, now }: { item: Item; now: number }) {
 export function Freshness({ item, now }: { item: Item; now: number }) {
   const { as_of, stale } = freshness(item);
   return (
-    <span className="inline-flex items-center gap-1.5 whitespace-nowrap text-subtle-foreground">
+    <span className="inline-flex items-center gap-1.5 text-label whitespace-nowrap text-subtle-foreground">
       <span aria-hidden className={cn("size-1.5 shrink-0 rounded-full", stale ? "bg-warning" : "bg-border-strong")} />
       {as_of ? (
         <time dateTime={as_of} title={`Oldest stat on this card: ${formatUtc(as_of)}`}>
