@@ -714,3 +714,22 @@ def test_decisions_and_the_matcher_share_one_transaction_lock(
     session.commit()
     with db_engine.connect() as other:
         assert other.scalar(select(func.pg_try_advisory_xact_lock(MATCHING_LOCK))) is True
+
+
+@pytest.mark.xfail(strict=True, reason="XR-29: replay orders by decided_at, the txn's start")
+def test_xr29_replay_follows_the_order_moves_took_the_lock(world: World, db_engine: Engine) -> None:
+    session = world.session
+    older = world.product()
+    world.listing(world.store(), 3, product=older)
+    moved = world.listing(world.store(), 0)
+    world.listing(world.store(), 0)
+    session.commit()
+    with Session(db_engine) as owner:
+        owner.execute(select(1))  # an API request's auth query opens its transaction first
+        assert world.run().linked == 1  # meanwhile the matcher links `moved` onto a new product
+        (new,) = products(session, moved)
+        assert new is not None
+        merge(owner, new, older, "owner", "same lamp")  # takes the lock after the matcher
+        owner.commit()
+    assert products(session, moved) == [older]
+    assert membership(session, datetime.now(UTC) + timedelta(minutes=1))[moved.id] == older
