@@ -72,11 +72,7 @@ def test_velocity_comes_first_with_its_own_version() -> None:
 
 def test_unbuilt_scores_name_their_phase_and_carry_no_numbers() -> None:
     planned = [s for s in methodology.build()["scores"] if s["status"] == "not built yet"]
-    assert [s["id"] for s in planned] == [
-        "opportunity",
-        "risk",
-        "supplier-reliability",
-    ]
+    assert [s["id"] for s in planned] == ["risk", "supplier-reliability"]
     for entry in planned:
         assert set(entry) == {"id", "title", "status", "phase", "task"}
 
@@ -99,6 +95,8 @@ def test_the_contract_names_its_fields_and_the_missing_rule() -> None:
         "penalties",
         "reason",
         "pending",
+        "confidence",
+        "cautions",
     ]
     coverage = contract["explanation"]["fields"][4]
     assert coverage["note"] == "present configured weight / all configured weight"

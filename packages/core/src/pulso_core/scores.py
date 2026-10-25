@@ -94,8 +94,10 @@ class Explanation(BaseModel):
     coverage: float = Field(ge=0, le=1)  # present configured weight / all configured weight
     panel_size: int | None = Field(default=None, ge=0)  # Saturation: stores tracked since t−28
     penalties: tuple[Penalty, ...] = ()  # Trend: points off after the weighted inputs
-    reason: str | None = None  # why the value is NULL, or the Lifecycle rule that fired tonight
+    reason: str | None = None  # why the value is NULL, the Lifecycle rule or Opportunity's cap
     pending: Stage | None = None  # Lifecycle: tonight's stage, shown once a 2nd night matches
+    confidence: float | None = Field(default=None, ge=0, le=1)  # Opportunity: coverage − cautions
+    cautions: tuple[str, ...] = ()  # Opportunity: what lowered confidence, e.g. duty_not_set
 
     @model_validator(mode="after")
     def _missing_names_the_missing_inputs(self) -> Self:
