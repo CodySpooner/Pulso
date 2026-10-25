@@ -16,7 +16,7 @@ import { $api, isProblem } from "@/lib/api/client";
 import { formatAgo, formatUtc } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
-import { useCoreDown, useHost, useRefreshAdmin, useSources } from "./api";
+import { useCoreDown, useCoreSettling, useHost, useRefreshAdmin, useSources } from "./api";
 import { Ago, Missing, Panel, PanelError, StaleLine, StatePill, TapTooltip } from "./atoms";
 import { GapsLink } from "./coverage";
 import { HostRetryLink } from "./summary-cards";
@@ -45,12 +45,13 @@ const planned = [
   { name: "TikTok ads", phase: 8, why: "Ads linked to the products they promote" },
 ];
 
-// First load: the loaded table and cards with one skeleton row per Phase 1 source, each as tall as a loaded
+// First load: the loaded table and cards with one skeleton row per seeded source, each as tall as a loaded
 // row (the name and type lines set it), so nothing below moves when the data lands (CLS < 0.1, imp-082).
-// ponytail: four rows fits Phase 1's seeded sources; derive the count if later phases make it vary.
-const loadingRows = [0, 1, 2, 3];
+// ponytail: five rows fit the seeded sources, Phase 1's four and AliExpress (p3-05, imp-372); add one when a
+// phase seeds another. A status note still adds its line when the data lands.
+const loadingRows = [0, 1, 2, 3, 4];
 // One bar per column, about as wide as its loaded content, so the header stays put too.
-const loadingCells = ["h-8 w-24", "h-4 w-48","h-4 w-28", "ml-auto h-4 w-24", "h-4 w-20", "h-4 w-4", "ml-auto h-4 w-8", "h-5 w-8", "ml-auto h-7 w-52"];
+const loadingCells = ["h-8.5 w-24", "h-4 w-48","h-4 w-28", "ml-auto h-4 w-24", "h-4 w-20", "h-4 w-4", "ml-auto h-4 w-8", "h-5 w-8", "ml-auto h-7 w-52"];
 
 const skeletonRows = loadingRows.map((i) => (
   <tr key={i} aria-hidden className="row-h-comfortable border-b border-border-subtle">
@@ -67,7 +68,8 @@ const pillSkeleton = <Skeleton className="h-5.5 w-18" />;
 const skeletonCards = loadingRows.map((i) => (
   <li key={i} aria-hidden className="flex flex-col gap-2 px-4 py-4">
     <div className="flex items-center justify-between gap-2">
-      <Skeleton className="h-8 w-32" />
+      {/* The card's name line is body size, outside zone-data: 38 px with the type line (imp-372). */}
+      <Skeleton className="h-9.5 w-32" />
       <Skeleton className="h-5.5 w-18" />
     </div>
     <Skeleton className="h-10 w-48" />
@@ -103,6 +105,8 @@ export function SourcesPanel({ now, onOpen, onImport }: { now: number; onOpen: (
   const host = useHost();
   const refresh = useRefreshAdmin();
   const coreDown = useCoreDown();
+  const settling = useCoreSettling();
+  const loading = sources.isPending || settling; // a failed first load waits for the host call (DEC-305)
   const online = useOnline();
   const patch = $api.useMutation("patch", "/v1/admin/sources/{key}");
   const run = $api.useMutation("post", "/v1/admin/sources/{key}/run");
@@ -238,7 +242,7 @@ export function SourcesPanel({ now, onOpen, onImport }: { now: number; onOpen: (
       {sources.isRefetchError && !coreDown && (
         <StaleLine what="Couldn't refresh sources" error={sources.error} asOf={sources.dataUpdatedAt} retry={() => sources.refetch()} />
       )}
-      {sources.isLoadingError ? (
+      {sources.isLoadingError && !loading ? (
         <PanelError title="Couldn't load sources" error={sources.error} retry={() => sources.refetch()} />
       ) : sources.data && rows.length === 0 ? (
         <EmptyState icon={Database} size="sm" title="No sources configured">
@@ -248,7 +252,7 @@ export function SourcesPanel({ now, onOpen, onImport }: { now: number; onOpen: (
         <>
           {/* Phone and small tablet: one card per source (vault Features/Data Health, Mobile). */}
           <ul className="flex flex-col divide-y divide-border-subtle md:hidden">
-            {sources.isPending && skeletonCards}
+            {loading && skeletonCards}
             {rows.map((s) => {
               const c = controls(s, "bottom");
               const state = sourceState(s, latestGapEnds, now);
@@ -322,7 +326,7 @@ export function SourcesPanel({ now, onOpen, onImport }: { now: number; onOpen: (
                 </tr>
               </thead>
               <tbody>
-                {sources.isPending && skeletonRows}
+                {loading && skeletonRows}
                 {rows.map((s) => {
                   const c = controls(s);
                   const lr = s.last_run;

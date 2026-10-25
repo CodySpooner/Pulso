@@ -6,7 +6,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { formatDuration, formatUtc } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
-import { BACKUP_RUNS, useBackupRuns, useCoreDown, useHost, useSources } from "./api";
+import { BACKUP_RUNS, useBackupRuns, useCoreDown, useCoreSettling, useHost, useSources } from "./api";
 import { Ago, Missing, Panel, PanelError, Pill, runStatus, StaleLine, type Tone } from "./atoms";
 import { backupState, hostState, mergeGaps, type BackupState, type HostState } from "./model";
 
@@ -57,6 +57,7 @@ export function HostCard({ now }: { now: number }) {
   const host = useHost();
   const sources = useSources();
   const coreDown = useCoreDown();
+  const settling = useCoreSettling();
   const state = host.data ? hostState(host.data, now) : null;
   const pill = state && hostPill[state];
   const gaps = host.data ? mergeGaps(host.data.open_gaps) : [];
@@ -71,7 +72,7 @@ export function HostCard({ now }: { now: number }) {
       {host.isRefetchError && !coreDown && (
         <StaleLine what="Couldn't refresh the collector host" error={host.error} asOf={host.dataUpdatedAt} retry={() => host.refetch()} />
       )}
-      {host.isPending ? (
+      {host.isPending || settling ? (
         // Run now's "Off here: …" and the Open gaps line take two lines on a phone (p1-53).
         // ponytail: sized to that copy below sm; other copy or widths shift a little, which the Skeleton keeps honest.
         <CardSkeleton phone={{ 2: "max-sm:h-9", 3: "max-sm:h-9" }} />
@@ -154,6 +155,7 @@ export function HostRetryLink({ children, className }: { children: React.ReactNo
 export function BackupCard({ now }: { now: number }) {
   const runs = useBackupRuns();
   const coreDown = useCoreDown();
+  const settling = useCoreSettling();
   const backup =runs.data ? backupState(runs.data.items, now) : null;
   const pill = backup && backupPill[backup.state];
   const shown = backup?.lastSuccess ?? backup?.latest;
@@ -163,7 +165,7 @@ export function BackupCard({ now }: { now: number }) {
       {runs.isRefetchError && !coreDown && (
         <StaleLine what="Couldn't refresh backups" error={runs.error} asOf={runs.dataUpdatedAt} retry={() => runs.refetch()} />
       )}
-      {runs.isPending ? (
+      {runs.isPending || (settling && !runs.data) ? (
         // The run strip's count wraps beside its cells on a phone: two label lines (p1-53).
         <CardSkeleton phone={{ 4: "max-sm:h-8" }} />
       ) : runs.isLoadingError ? (

@@ -13,7 +13,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { $api, isProblem } from "@/lib/api/client";
 import { cn } from "@/lib/utils";
 
-import { fileUpload, useRefreshAdmin, useSources } from "./api";
+import { fileUpload, useCoreSettling, useRefreshAdmin, useSources } from "./api";
 import { Missing, Panel, Pill, TapTooltip, WaitsLine } from "./atoms";
 import { IMPORT_MAX_BYTES, commitBlocker, defaultImportSource, importOutcome, previewSummary, sampleColumns, sampleNote, type ImportPreview } from "./model";
 import { useTakeLostFocus } from "./retry";
@@ -28,6 +28,7 @@ export interface ImportPanelHandle {
 
 export function ImportPanel({ onOpen, ref }: { onOpen: (key: string) => void; ref?: React.Ref<ImportPanelHandle> }) {
   const sources = useSources();
+  const settling = useCoreSettling();
   const refresh = useRefreshAdmin();
   // Whether the browser was offline when the check or import failed (imp-153), read at failure as actionFailure
   // does, so the line names the connection, not the API, and keeps that cause after reconnecting.
@@ -99,7 +100,7 @@ export function ImportPanel({ onOpen, ref }: { onOpen: (key: string) => void; re
   }));
 
   let body: React.ReactNode;
-  if (sources.isPending) {
+  if (sources.isPending || settling) {
     body = (
       <div className="flex flex-col gap-3 p-4">
         <Skeleton className="h-8 w-64 max-w-full" />

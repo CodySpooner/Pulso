@@ -8,7 +8,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { formatUtc } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
-import { useCoreDown, useCoverage, useHost, useOlderGaps, useSources } from "./api";
+import { useCoreDown, useCoreSettling, useCoverage, useHost, useOlderGaps, useSources } from "./api";
 import { Panel, PanelError, StaleLine, WaitsLine } from "./atoms";
 import { LoadMore } from "./load-more";
 import { coverageRows, gapReasons, gapsNote, mergeGaps, openGapsView, plural, utcDays, type CoverageDay, type CoverageRow, type MissedSlot } from "./model";
@@ -72,6 +72,7 @@ export function CoveragePanel({ now }: { now: number }) {
   const sources = useSources();
   const host = useHost();
   const coreDown = useCoreDown();
+  const settling = useCoreSettling();
   const days = utcDays(COVERAGE_DAYS, now);
   const firstPhoneDay = COVERAGE_DAYS - PHONE_DAYS;
 
@@ -80,12 +81,12 @@ export function CoveragePanel({ now }: { now: number }) {
       {coverage.isRefetchError && !coreDown && (
         <StaleLine what="Couldn't refresh coverage" error={coverage.error} asOf={coverage.dataUpdatedAt} retry={() => coverage.refetch()} />
       )}
-      {coverage.isPending || sources.isPending ? (
-        // The loaded layout (imp-082): a row per Phase 1 source, the axis line and the legend, so nothing below
-        // moves when the data lands. Open gaps keep their own skeleton below.
+      {coverage.isPending || sources.isPending || settling ? (
+        // The loaded layout (imp-082): a row per seeded source (the Sources skeleton's five, imp-372), the axis
+        // line and the legend, so nothing below moves when the data lands. Open gaps keep their own skeleton below.
         <div className="flex flex-col gap-3 px-4 pt-4 pb-3">
           <div aria-hidden className="flex flex-col gap-1.5">
-            {[0, 1, 2, 3].map((i) => (
+            {[0, 1, 2, 3, 4].map((i) => (
               <div key={i} className="grid grid-cols-[6.5rem_1fr] items-center gap-3 sm:grid-cols-[9rem_1fr]">
                 <Skeleton className="h-4 w-24" />
                 <Skeleton className="h-4" />
@@ -195,12 +196,13 @@ function OpenGaps({ names, host }: { names: Map<string, string> | null; host: Re
   const ranges = mergeGaps(gaps);
   const shown = older.on ? ranges : ranges.slice(0, SHOWN_GAPS);
   const hidden = ranges.length - shown.length;
-  const view = openGapsView(host, ranges.length);
+  const settling = useCoreSettling(); // the host card holds its error too, so this line can't point at a skeleton
+  const view = openGapsView(settling ? { isPending: true } : host, ranges.length);
   if (view === "loading" || (view === "ranges" && !names)) {
-    // Sized for the heading and two ranges (imp-082).
+    // Sized for the heading and two ranges (imp-082); below sm the heading wraps to two lines (imp-372).
     return (
       <div aria-hidden className="flex flex-col gap-2 border-t border-border-subtle pt-3">
-        <Skeleton className="h-4.5 w-72 max-w-full" />
+        <Skeleton className="h-4.5 w-72 max-w-full max-sm:h-9" />
         <div>
           {["h-7", "row-h-compact border-t", "row-h-compact border-t"].map((row, i) => (
             <div key={i} className={cn("flex items-center border-border-subtle", row)}>
