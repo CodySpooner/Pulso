@@ -2,6 +2,7 @@ import type { Page } from "@playwright/test";
 
 import type { components } from "../../src/lib/api/schema";
 import { healthySources, mockAdminApi, NOW, problem } from "../data-health/fixtures";
+import { trendsSeries } from "./trends-fixtures";
 
 // Fixture GET /v1/products/{id} responses for the product page e2e tests and screenshots, never a database restore.
 // Times are relative to Data Health's NOW, which mockAdminApi pins with page.clock (the shell's badge reads it too).
@@ -159,6 +160,7 @@ export async function mockProductApi(page: Page, options: ProductMock = {}) {
     }
     if (options.hold) return; // never answers: the first-load skeleton stays
     if (options.status) return route.fulfill(fail(options.status, `e2e-product-${options.status}`));
+    if (part === "series") return route.fulfill({ json: trendsSeries }); // the Trends tab (p2-09)
     return route.fulfill({ json: options.body ?? product });
   });
   return calls;
