@@ -1,7 +1,7 @@
 import { expect, type Page } from "@playwright/test";
 
 import { aliexpress, mockAdminApi, sources } from "../data-health/fixtures";
-import { PRODUCT_ID } from "../products/fixtures";
+import { product, PRODUCT_ID, unmatched } from "../products/fixtures";
 import { empty, mockSellersApi, sellers } from "../products/sellers-fixtures";
 import type { components } from "../../src/lib/api/schema";
 
@@ -21,6 +21,8 @@ export interface State {
 const SELLERS = `/products/${PRODUCT_ID}?tab=sellers`;
 const IMPORT = "/admin/data-health#import";
 const off = { status: "disabled" as const, since: null, reason: null }; // DEC-261: the store crawler never runs
+/** The header agrees with the tab: no store has been seen, so stores and retail price have no source either. */
+const noStores = { ...product, store_count: unmatched.store_count, price_min_minor: unmatched.price_min_minor, price_max_minor: unmatched.price_max_minor };
 /** Source 8 as migration 0012 seeds it: CSV only, its row the flag and off (DEC-279), no file imported yet. */
 export const amazon: components["schemas"]["SourceHealth"] = {
   ...aliexpress,
@@ -61,7 +63,10 @@ export const STATES: State[] = [
   {
     name: "sellers-no-source",
     url: SELLERS,
-    setup: (page) => mockSellersApi(page, { body: { ...empty, crawler: off } }),
+    setup: async (page) => {
+      await mockSellersApi(page, { body: { ...empty, crawler: off } });
+      await page.route((url) => url.pathname === `/api/v1/products/${PRODUCT_ID}`, (route) => route.fulfill({ json: noStores }));
+    },
     ready: async (page) => {
       const tab = page.getByRole("tabpanel");
       await expect(tab.getByRole("heading", { name: "Sellers: no source yet" })).toBeVisible();
