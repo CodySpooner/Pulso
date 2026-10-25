@@ -514,3 +514,47 @@ def test_ddp_drops_unused_estimates_and_amounts_past_bigint_are_named(
         None,
         ["amount_out_of_range"],
     )
+
+
+@pytest.mark.db
+@pytest.mark.xfail(strict=True, reason="XR-23 (P2-18): an empty newest answer keeps the old quote")
+def test_xr23_an_origin_whose_newest_answer_is_empty_is_not_priced(
+    api: TestClient, db_engine: Engine
+) -> None:
+    with Session(db_engine) as session:
+        ws = workspace(session, duty_default_bps=0, **FEES)
+        product = lamp(session)
+        cj = supplier_listing(session, product, 620)
+        variant = ListingVariant(listing_id=cj, external_id="vid-1")
+        session.add(variant)
+        session.flush()
+        capture(session, cj, DAY - timedelta(days=29), variant.id, "CN", CJPacket=500)
+        capture(session, cj, DAY - timedelta(days=29), variant.id, "US", USPS=300)
+        capture(session, cj, DAY, variant.id, "CN", CJPacket=500)
+        # Day 30's US answer is `data: []`: CJ keeps the raw capture and writes no row.
+        run = CollectorRun(source_id=CJ, trigger="manual", status="success")
+        session.add(run)
+        session.flush()
+        session.add(
+            RawPayload(
+                source_id=CJ,
+                run_id=run.id,
+                captured_at=DAY,
+                request={
+                    "endpoint": "/logistic/freightCalculate",
+                    "startCountryCode": "US",
+                    "endCountryCode": "US",
+                    "products": [{"vid": "vid-1", "quantity": 1}],
+                },
+                bytes=40,
+                sha256=uuid4().hex * 2,
+            )
+        )
+        session.commit()
+        product_id = product.id
+
+    body = calc(api, ws, product_id=product_id)
+    assert (body["method"], body["freight_minor"], body["complete"]) == ("CJPacket", 500, True)
+    assert body["margin_minor"] == 2999 - 620 - 500 - 117 - 150
+    usps = calc(api, ws, product_id=product_id, method="USPS")
+    assert (usps["freight_minor"], usps["missing"]) == (None, ["freight_missing"])
