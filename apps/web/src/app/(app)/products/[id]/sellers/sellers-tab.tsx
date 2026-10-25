@@ -4,7 +4,7 @@ import { useEffect } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { keepPreviousData } from "@tanstack/react-query";
-import { Check, ChevronRight, CircleHelp, CircleSlash, PauseCircle, SearchX, Store } from "lucide-react";
+import { Check, ChevronRight, CircleHelp, CircleSlash, PauseCircle, SearchX, Store, TriangleAlert } from "lucide-react";
 
 import { useApiReady } from "@/components/data-health/api";
 import { Ago, PanelError, Pill, StaleLine, TapTooltip } from "@/components/data-health/atoms";
@@ -22,7 +22,8 @@ import { apiQuery, day, FILTERS, filterSearch, money, nextFilter, original, pars
 import { Summary, SummarySkeleton } from "./summary";
 
 const isTyping = (t: EventTarget | null) => t instanceof HTMLElement && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName));
-const COLUMNS = ["Store", "Price", "Started", "Still listed", "Running ads", "Last seen"];
+// Last seen before Running ads: beside the context rail the table can scroll, and freshness must stay in view.
+const COLUMNS = ["Store", "Price", "Started", "Still listed", "Last seen", "Running ads"];
 const cell = "border-b border-border-subtle px-3 whitespace-nowrap";
 // Native history, like the tab bar: Next syncs useSearchParams without a server round trip.
 function setFilter(next: Filter) {
@@ -238,12 +239,17 @@ function Listed({ row }: { row: Row }) {
   );
 }
 
-function LastSeen({ row, now }: { row: Row; now: number }) {
+/** A stale row gets the warning glyph, not just a colour; the table keeps the word for screen readers only. */
+function LastSeen({ row, now, compact }: { row: Row; now: number; compact?: boolean }) {
   return (
     <span className="inline-flex items-center gap-1.5 text-subtle-foreground">
-      <span aria-hidden className={cn("size-1.5 shrink-0 rounded-full", row.stale ? "bg-warning" : "bg-border-strong")} />
+      {row.stale ? (
+        <TriangleAlert aria-hidden className="size-3 shrink-0 text-warning" />
+      ) : (
+        <span aria-hidden className="size-1.5 shrink-0 rounded-full bg-border-strong" />
+      )}
       <Ago iso={row.last_seen} now={now} source={row.source_name} />
-      {row.stale && <span className="text-warning">· stale</span>}
+      {row.stale && <span className={cn("text-warning", compact && "sr-only")}>· stale</span>}
     </span>
   );
 }
@@ -286,7 +292,7 @@ function onRowKey(e: React.KeyboardEvent<HTMLElement>, url: string) {
 function SellerTable({ rows, now }: { rows: Row[] | null; now: number }) {
   return (
     <div role="region" aria-label="Sellers" tabIndex={0} className="relative max-h-[max(24rem,calc(100dvh-20rem))] overflow-auto overscroll-contain rounded-lg border border-border max-md:hidden">
-      <table className="w-full min-w-200 border-separate border-spacing-0 zone-data">
+      <table className="w-full border-separate border-spacing-0 zone-data">
         <thead className="sticky top-0 z-20 bg-card">
           <tr className="row-h text-label text-muted-foreground">
             {COLUMNS.map((name, i) => (
@@ -319,12 +325,12 @@ function SellerTable({ rows, now }: { rows: Row[] | null; now: number }) {
                     <Listed row={row} />
                   </td>
                   <td className={cell}>
+                    <LastSeen row={row} now={now} compact />
+                  </td>
+                  <td className={cell}>
                     <span className="text-subtle-foreground" title={row.running_ads.reason}>
                       No source yet
                     </span>
-                  </td>
-                  <td className={cell}>
-                    <LastSeen row={row} now={now} />
                   </td>
                 </tr>
               ))
