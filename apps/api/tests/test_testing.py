@@ -162,7 +162,7 @@ def priced(session: Session, product: Product) -> dict[str, int]:
     quote = observe(session, ShippingOption, CJ, listing_id=cj.id, variant_id=variant.id,
                     destination_country="US", quantity=1, method="CJPacket", cost_minor=400,
                     currency="USD")  # fmt: skip
-    return {"listing": cj.id, "variant": variant.id, "quote": quote.id}
+    return {"listing": cj.id, "variant": variant.id, "quote": quote.id, "shop": shop.id}
 
 
 @pytest.fixture
@@ -324,8 +324,11 @@ def test_changed_since_start_compares_a_fresh_calc_and_keeps_the_snapshot(
         stored = session.get(ProductTest, test["id"])
         assert stored is not None and stored.start_snapshot == snap
 
-    # A new freight quote and a new duty rate; the owner's CPA estimate stays the scenario's.
+    # A new freight quote and a new duty rate; the test's price and the owner's CPA estimate stay
+    # the scenario's, whatever the store price and the default CPA do.
     with Session(db_engine) as session:
+        observe(session, ListingSnapshot, SHOPIFY, DAY + timedelta(days=1), listing_id=ids["shop"],
+                values_hash="h2", currency="USD", price_min_minor=4499)  # fmt: skip
         quote = observe(session, ShippingOption, CJ, DAY + timedelta(days=1),
                         listing_id=ids["listing"], variant_id=ids["variant"],
                         destination_country="US", quantity=1, method="CJPacket", cost_minor=500,
