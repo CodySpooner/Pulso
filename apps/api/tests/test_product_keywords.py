@@ -12,7 +12,9 @@ from sqlalchemy.orm import Session
 
 from pulso_api.auth import Principal, current_principal
 from pulso_api.dependencies import get_db
-from pulso_core.models import Listing, Product, ProductKeyword, User, Workspace
+from pulso_core.models import Listing, Product, ProductKeyword, Source, User, Workspace
+from pulso_core.settings import Settings
+from pulso_sources import google_trends as trends
 
 # KW-1 (DEC-281): candidates from the product's titles on read; the workspace's confirm, reject
 # and typed-in keywords as rows that a new decision updates and nothing deletes.
@@ -89,6 +91,8 @@ def test_candidates_come_from_the_name_and_listing_titles(rail: tuple[As, dict[s
         "source": "title",
         "status": "candidate",
         "decided_at": None,
+        "tracked": None,  # only a confirmed keyword can be in the weekly Trends set
+        "untracked_reason": None,
     }
     assert {k["status"] for k in keywords} == {"candidate"}
     assert "with" not in {w for k in keywords for w in k["keyword"].split()}
@@ -114,7 +118,7 @@ def test_confirm_reject_and_add_round_trip_with_who_and_when(
         0.833,
         True,
     )
-    assert client.get(url(ids)).json() == body
+    assert client.get(url(ids)).json()["keywords"] == body["keywords"]
 
     rejected = client.post(url(ids), json={"keyword": "Sunset", "status": "rejected"}).json()
     assert by_status(rejected, "rejected") == ["sunset"]
@@ -232,3 +236,75 @@ def test_decisions_on_a_merged_product_read_through_the_survivor(
         assert sorted(rows, key=str) == sorted(
             [(ids["merged"], "confirmed"), (ids["product"], "rejected")], key=str
         )
+
+
+@pytest.mark.db
+def test_tracked_is_exactly_the_weekly_plan(
+    rail: tuple[As, dict[str, UUID]],
+    db_engine: Engine,
+    settings: Settings,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """KW-2 (DEC-292): a confirmed keyword is tracked exactly when Monday's plan holds it."""
+    as_, ids = rail
+    settings.trends_confirmed_keywords, settings.trends_monthly_search_limit = True, 15  # 3 a week
+    monkeypatch.setattr(trends, "get_settings", lambda: settings)
+    entry = {"keyword": "Sunset Lamp", "geo": "US", "tz": 0, "enabled": True}
+    seed = {"version": "seed_v1", "status": "approved", "decision": "DEC-011"}
+    with Session(db_engine) as session:
+        session.get_one(Source, 3).config = {
+            "seed": seed | {"approved_on": "2026-01-01", "entries": [entry]}
+        }
+        session.commit()
+    for workspace, keyword, status in (
+        ("a", "sunset projection lamp", "confirmed"),
+        ("b", "rainbow night light", "confirmed"),  # another workspace's: it takes a slot too
+        ("a", "galaxy lamp", "confirmed"),  # the set is full
+        ("a", "lamp, light", "confirmed"),  # two keywords in one search
+        ("a", "SUNSET lamp", "confirmed"),  # the seed, so tracked whatever the setting
+        ("a", "usb", "rejected"),
+    ):
+        as_(workspace).post(url(ids), json={"keyword": keyword, "status": status})
+
+    def flags() -> tuple[dict[str, tuple[bool, str | None]], dict[str, Any]]:
+        body = as_("a").get(url(ids)).json()
+        assert {k["tracked"] for k in body["keywords"] if k["status"] != "confirmed"} == {None}
+        confirmed = {
+            k["keyword"]: (k["tracked"], k["untracked_reason"])
+            for k in body["keywords"]
+            if k["status"] == "confirmed"
+        }
+        return confirmed, body["trends"]
+
+    confirmed, budget = flags()
+    assert confirmed == {
+        "sunset projection lamp": (True, None),
+        "sunset lamp": (True, None),
+        "galaxy lamp": (False, "budget"),
+        "lamp, light": (False, "comma"),
+    }
+    with Session(db_engine) as session:
+        planned = {trends.normal(t.target_id) for t in trends.plan(session)}
+    assert planned == {"sunset lamp", "sunset projection lamp", "rainbow night light"}
+    assert {k: tracked for k, (tracked, _) in confirmed.items()} == {
+        k: k in planned for k in confirmed
+    }
+    assert {k: budget[k] for k in ("enabled", "weekly_used", "weekly_cap", "monthly_limit")} == {
+        "enabled": True,
+        "weekly_used": 3,
+        "weekly_cap": 3,
+        "monthly_limit": 15,
+    }
+    assert budget["as_of"]
+
+    settings.trends_confirmed_keywords = False  # the default: only the seeds are fetched
+    confirmed, budget = flags()
+    assert confirmed == {
+        "sunset projection lamp": (False, "disabled"),
+        "sunset lamp": (True, None),
+        "galaxy lamp": (False, "disabled"),
+        "lamp, light": (False, "disabled"),
+    }
+    assert (budget["enabled"], budget["weekly_used"]) == (False, 1)
+    with Session(db_engine) as session:
+        assert [t.target_id for t in trends.plan(session)] == ["Sunset Lamp"]

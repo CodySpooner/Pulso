@@ -35,12 +35,19 @@ class World:
                 "status": "approved",
                 "decision": "DEC-011",
                 "approved_on": "2026-01-01",
-                "entries": [{"keyword": k, "geo": "US", "tz": 0, "enabled": True} for k in keywords],
+                "entries": [
+                    {"keyword": k, "geo": "US", "tz": 0, "enabled": True} for k in keywords
+                ],
             }
         }
 
     def decide(
-        self, workspace: Workspace, product: Product, keyword: str, day: int, status: str = "confirmed"
+        self,
+        workspace: Workspace,
+        product: Product,
+        keyword: str,
+        day: int,
+        status: str = "confirmed",
     ) -> None:
         self.session.add(
             ProductKeyword(
@@ -71,7 +78,9 @@ def world(request: pytest.FixtureRequest) -> Iterator[World]:
                     column.type, column.server_default = JSON(), DefaultClause(text("'{}'"))
             table.create(engine)
         with Session(engine) as session:
-            session.add(Source(id=3, key="google_trends", name="Google Trends", type="vendor", phase=1))
+            session.add(
+                Source(id=3, key="google_trends", name="Google Trends", type="vendor", phase=1)
+            )
             session.commit()
     with Session(engine, expire_on_commit=False) as session:
         world = World(session)
