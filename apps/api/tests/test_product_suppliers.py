@@ -202,12 +202,13 @@ def test_the_picks_are_the_engines_and_an_unquoted_cheap_supplier_never_wins(
         dear = supplier(session, product, 700, 485, (8, 12))
         margin = supplier(session, product, 620, 485, (8, 12))
         fast = supplier(session, product, 900, 300, (3, 5), method="YunExpress")
+        tied = supplier(session, product, 950, 300, (2, 5))  # as fast at most; dearer landed cost
         session.commit()
         product_id = product.id
 
     body = suppliers(api, ws, product_id, "?country=US")
     by_id = {row["listing_id"]: row for row in body["rows"]}
-    expected = engine_picks(db_engine, ws, product_id, [cheap, dear, margin, fast])
+    expected = engine_picks(db_engine, ws, product_id, [cheap, dear, margin, fast, tied])
     assert expected == (margin, fast)
     assert (body["picks"]["best_margin"]["listing_id"], body["picks"]["fastest"]["listing_id"]) == (
         margin,
@@ -215,7 +216,7 @@ def test_the_picks_are_the_engines_and_an_unquoted_cheap_supplier_never_wins(
     )
     assert body["picks"]["best_margin"] == by_id[margin]  # the pick card shows the row itself
     assert by_id[margin]["picks"] == ["best_margin"] and by_id[fast]["picks"] == ["fastest"]
-    assert by_id[cheap]["picks"] == [] and by_id[dear]["picks"] == []
+    assert by_id[cheap]["picks"] == by_id[dear]["picks"] == by_id[tied]["picks"] == []
     unquoted = by_id[cheap]["cost"]
     assert (unquoted["complete"], unquoted["missing"], unquoted["margin_minor"]) == (
         False,
@@ -224,7 +225,7 @@ def test_the_picks_are_the_engines_and_an_unquoted_cheap_supplier_never_wins(
     )
     assert by_id[margin]["cost"]["margin_minor"] == 1653  # 2999 − landed 1229 − payment fee 117
     # Best margin first, then the incomplete row; the cheapest landed cost doesn't jump the queue.
-    assert [row["listing_id"] for row in body["rows"]] == [margin, dear, fast, cheap]
+    assert [row["listing_id"] for row in body["rows"]] == [margin, dear, fast, tied, cheap]
 
 
 @pytest.mark.db
@@ -253,13 +254,15 @@ def test_duty_not_set_leaves_no_best_margin_while_fastest_still_picks(
         ws = workspace(session)  # no duty default: every row reads duty_not_set (R-16)
         product = lamp(session)
         slow = supplier(session, product, 620, 485, (8, 12))
-        fast = supplier(session, product, 700, 485, (3, 12))  # same max days, dearer landed cost
+        fast = supplier(
+            session, product, 700, 485, (3, 12)
+        )  # same max days; landed withheld for both
         session.commit()
         product_id = product.id
 
     body = suppliers(api, ws, product_id)
     assert body["picks"]["best_margin"] is None
-    assert body["picks"]["fastest"]["listing_id"] == slow  # max days tie → lower landed cost
+    assert body["picks"]["fastest"]["listing_id"] == slow  # max days tie, no landed cost → lower id
     assert engine_picks(db_engine, ws, product_id, [slow, fast]) == (None, slow)
     assert {tuple(row["cost"]["missing"]) for row in body["rows"]} == {("duty_not_set",)}
 
@@ -310,7 +313,11 @@ def test_supplier_terms_carry_their_own_provenance_or_no_source(
                     listing_id=full,
                     moq=2,
                     warehouse_country="US",
-                    bulk_tiers=[{"min_quantity": 10, "unit_minor": 590}, {"bad": "tier"}],
+                    bulk_tiers=[
+                        {"min_quantity": 10, "unit_minor": 590},
+                        {"bad": "tier"},
+                        {"min_quantity": 50, "unit_minor": "5.40"},
+                    ],
                 ),
             ]
         )
@@ -376,6 +383,8 @@ def test_unknown_merged_empty_and_bad_cursor(api: TestClient, db_engine: Engine)
     with Session(db_engine) as session:
         ws = workspace(session, **FEES)
         product = lamp(session)
+        delisted = supplier(session, product, 300, 200, (3, 5))  # a delisted listing never shows
+        session.get_one(Listing, delisted).delisted_at = NOW
         gone = Product(name="Old lamp", merged_into_id=product.id)
         session.add(gone)
         session.commit()
