@@ -36,7 +36,9 @@ DEFAULT_PCT = 5
 PCT = ("supplier_price_change", "freight_change")  # a % change from the reference
 TYPES = (*PCT, "supplier_stock_out", "back_in_stock")  # in_stock() flips
 OPEN = TEST_STAGES[:3]
-TESTING = (  # R-23: a workspace's default rules once it has an open test
+TESTING: tuple[
+    tuple[str, str, dict[str, int]], ...
+] = (  # R-23: a workspace's default rules once it has an open test
     ("Testing: supplier cost change", "supplier_price_change", {"pct": DEFAULT_PCT}),
     ("Testing: freight change", "freight_change", {"pct": DEFAULT_PCT}),
     ("Testing: supplier stock-out", "supplier_stock_out", {}),
