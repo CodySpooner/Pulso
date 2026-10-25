@@ -1,6 +1,7 @@
 """Frankfurter blended FX; run through the framework's live/fixture boundary."""
 
 import json
+import logging
 from collections.abc import Sequence
 from contextlib import closing
 from datetime import UTC, datetime, time, timedelta
@@ -25,6 +26,7 @@ if TYPE_CHECKING:
 
 QUOTES = tuple(code for code in CURRENCY_EXPONENTS if code != "USD")
 SOURCE = "frankfurter_blended"
+logger = logging.getLogger("pulso.sources.fx_frankfurter")
 
 
 # One class per check: a run records only type(exc).__name__ as its error_code (data-06).
@@ -174,6 +176,14 @@ class FrankfurterAdapter:
         # DEC-230: a row dated after the capture's UTC day is an early blend; a later capture
         # stores it. Skipped rows stay counted as rows_fetched minus inserted and unchanged.
         kept = [row for row in records if row.date <= day]
+        if skipped := sorted({row.date for row in records if row.date > day}):
+            logger.info(
+                "fx_next_day_rows_skipped count=%s dates=%s raw_payload_id=%s",
+                len(records) - len(kept),
+                ",".join(d.isoformat() for d in skipped),
+                payload.id,
+                extra={"source": "fx_frankfurter"},
+            )
         source = "manual" if self.data is not None else SOURCE
         inserted, conflict = 0, False
         for row in kept:
