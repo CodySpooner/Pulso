@@ -34,6 +34,10 @@ def day(n: int) -> datetime:
     return T0 + timedelta(days=n)
 
 
+def cutoff(n: int) -> datetime:  # as_of for day n: d+1 00:00Z; a capture at as_of isn't read
+    return day(n) + timedelta(hours=18)
+
+
 def observe(session: Session, model: type[Any], at: datetime, **values: Any) -> None:
     run = CollectorRun(source_id=CJ, trigger="manual", status="success")
     session.add(run)
@@ -116,9 +120,9 @@ def test_a_cost_past_its_threshold_fires_once_and_again_only_after_crossing_back
         session.get_one(AlertRule, muted).muted_until = day(99)
         off = rule(session, ws, "supplier_price_change", ("product", product_id), enabled=False)
         snap(session, listing, day(0), price_min_minor=1000)
-        assert evaluate(session, ws, day(0)) == {cost: "ok"}  # first sight: the reference
+        assert evaluate(session, ws, cutoff(0)) == {cost: "ok"}  # first sight: the reference
         snap(session, listing, day(1), price_min_minor=1100)
-        evaluate(session, ws, day(1))
+        evaluate(session, ws, cutoff(1))
         [first] = alerts(session, ws)
         assert (first.rule_id, first.type, first.entity_type) == (
             cost,
@@ -127,7 +131,7 @@ def test_a_cost_past_its_threshold_fires_once_and_again_only_after_crossing_back
         )
         assert first.entity_id == str(listing)
         assert first.dedupe_key == f"{cost}:supplier_offer:{listing}:2026-11-03"
-        assert first.fired_at == day(1)
+        assert first.fired_at == cutoff(1)
         assert first.payload["old"] == {
             "value": 1000,
             "currency": "USD",
@@ -141,23 +145,23 @@ def test_a_cost_past_its_threshold_fires_once_and_again_only_after_crossing_back
         assert session.get_one(AlertRule, cost).armed is False
         for n in range(2, 12):  # ten more evaluations past the threshold
             snap(session, listing, day(n), price_min_minor=1100 + n)
-            evaluate(session, ws, day(n))
+            evaluate(session, ws, cutoff(n))
         snap(session, listing, day(12), price_min_minor=1048)  # 4.8%: inside the 4.75-5% band
-        evaluate(session, ws, day(12))
+        evaluate(session, ws, cutoff(12))
         snap(session, listing, day(13), price_min_minor=1100)
-        evaluate(session, ws, day(13))
+        evaluate(session, ws, cutoff(13))
         assert len(alerts(session, ws)) == 1
         snap(session, listing, day(14), price_min_minor=1040)  # 4%: back past the band, re-arms
-        evaluate(session, ws, day(14))
+        evaluate(session, ws, cutoff(14))
         assert session.get_one(AlertRule, cost).armed is True
         snap(session, listing, day(15), price_min_minor=940)  # -6% crosses too
-        evaluate(session, ws, day(15))
+        evaluate(session, ws, cutoff(15))
         second = alerts(session, ws)[1:]
         assert [a.payload["new"]["value"] for a in second] == [940]
         assert second[0].payload["old"]["value"] == 1000
         assert alerts(session, ws, muted) == alerts(session, ws, off) == []
         assert session.get_one(AlertRule, off).last_evaluated_at is None
-        assert session.get_one(AlertRule, cost).last_evaluated_at == day(15)
+        assert session.get_one(AlertRule, cost).last_evaluated_at == cutoff(15)
 
 
 @pytest.mark.db
@@ -167,17 +171,17 @@ def test_rerunning_an_evaluation_inserts_no_duplicate(db_engine: Engine) -> None
         _, listing = offer(session)
         cost = rule(session, ws, "supplier_price_change", ("supplier_offer", listing))
         snap(session, listing, day(0), price_min_minor=1000)
-        evaluate(session, ws, day(0))
+        evaluate(session, ws, cutoff(0))
         before = dict(session.get_one(AlertRule, cost).last_value or {})
         snap(session, listing, day(1), price_min_minor=1200)
-        evaluate(session, ws, day(1))
-        evaluate(session, ws, day(1))
+        evaluate(session, ws, cutoff(1))
+        evaluate(session, ws, cutoff(1))
         assert len(alerts(session, ws)) == 1
         # Even with the rule's state lost, the dedupe key keeps the crossing to one row.
         session.get_one(AlertRule, cost).last_value = before
         session.get_one(AlertRule, cost).armed = True
         session.flush()
-        evaluate(session, ws, day(1))
+        evaluate(session, ws, cutoff(1))
         assert len(alerts(session, ws)) == 1
 
 
@@ -191,19 +195,19 @@ def test_a_testing_product_gets_default_cost_freight_and_stock_alerts(
         session.add(ProductTest(workspace_id=ws, product_id=product_id, stage="testing"))
         snap(session, listing, day(0), price_min_minor=1000, available=True, stock=40)
         quote(session, listing, day(0), 500)
-        statuses = evaluate(session, ws, day(0))
+        statuses = evaluate(session, ws, cutoff(0))
         defaults = {
             r.type: r.id
             for r in session.scalars(select(AlertRule).where(AlertRule.workspace_id == ws))
         }
         assert set(defaults) == {"supplier_price_change", "freight_change", "supplier_stock_out"}
         assert statuses == dict.fromkeys(defaults.values(), "ok")
-        evaluate(session, ws, day(0))
+        evaluate(session, ws, cutoff(0))
         assert session.scalar(select(func.count()).select_from(AlertRule)) == 3  # seeded once
         snap(session, listing, day(1), price_min_minor=1100, available=False, stock=0)
         quote(session, listing, day(1), 600)
-        evaluate(session, ws, day(1))
-        evaluate(session, ws, day(2))
+        evaluate(session, ws, cutoff(1))
+        evaluate(session, ws, cutoff(2))
         fired = {a.type: a for a in alerts(session, ws)}
         assert set(fired) == set(defaults)
         cost = fired["supplier_price_change"]
@@ -229,7 +233,7 @@ def test_a_testing_change_across_a_collection_gap_is_skipped(db_engine: Engine) 
         session.add(ProductTest(workspace_id=ws, product_id=product_id, stage="testing"))
         own = rule(session, ws, "supplier_price_change", ("supplier_offer", listing))
         snap(session, listing, day(0), price_min_minor=1000)
-        evaluate(session, ws, day(0))
+        evaluate(session, ws, cutoff(0))
         [default] = session.scalars(
             select(AlertRule.id).where(
                 AlertRule.target_type == "test", AlertRule.type == "supplier_price_change"
@@ -245,7 +249,7 @@ def test_a_testing_change_across_a_collection_gap_is_skipped(db_engine: Engine) 
         )  # fmt: skip
         session.add_all([gap, later])
         snap(session, listing, day(1), price_min_minor=1100)
-        assert evaluate(session, ws, day(1))[default] == "skipped"
+        assert evaluate(session, ws, cutoff(1))[default] == "skipped"
         assert alerts(session, ws, default) == []
         assert session.get_one(AlertRule, default).last_value["skipped"] == {  # type: ignore[index]
             "reason": "gap",
@@ -253,10 +257,10 @@ def test_a_testing_change_across_a_collection_gap_is_skipped(db_engine: Engine) 
             "to": gap.slot_end.isoformat(),  # the gap known by as_of, not the one found later
         }
         assert len(alerts(session, ws, own)) == 1  # only Testing rules are gap-aware (R-23)
-        evaluate(session, ws, day(1) + timedelta(hours=1))  # no new observation: still held
+        evaluate(session, ws, cutoff(1) + timedelta(hours=1))  # no new observation: still held
         assert alerts(session, ws, default) == []
         snap(session, listing, day(2), price_min_minor=1100)  # a gap-free window confirms it
-        assert evaluate(session, ws, day(2))[default] == "ok"
+        assert evaluate(session, ws, cutoff(2))[default] == "ok"
         assert [a.payload["new"]["as_of"] for a in alerts(session, ws, default)] == [
             day(2).isoformat()
         ]
@@ -275,19 +279,19 @@ def test_a_rule_without_a_source_never_fires_and_reports_no_source(db_engine: En
         back = rule(session, ws, "back_in_stock", ("supplier_offer", listing))
         snap(session, listing, day(0), price_min_minor=1000)  # CJ's catalog: no stock fields
         snap(session, listing, day(1), price_min_minor=900)
-        assert evaluate(session, ws, day(1)) == {
+        assert evaluate(session, ws, cutoff(1)) == {
             none: "no_source",
             stock: "no_source",
             back: "no_source",
         }
         snap(session, listing, day(2), available=False)
         snap(session, listing, day(3), stock=7)
-        assert evaluate(session, ws, day(2))[back] == "ok"  # first sight: out of stock
-        evaluate(session, ws, day(3))
+        assert evaluate(session, ws, cutoff(2))[back] == "ok"  # first sight: out of stock
+        evaluate(session, ws, cutoff(3))
         assert [a.rule_id for a in alerts(session, ws)] == [back]
         assert alerts(session, ws)[0].payload["new"]["value"] is True
         snap(session, listing, day(4), stock=0)  # out again: old is the last state, not the first
-        evaluate(session, ws, day(4))
+        evaluate(session, ws, cutoff(4))
         out = alerts(session, ws, stock)[0].payload
         assert (out["old"], out["new"]["value"]) == (
             {"value": True, "as_of": day(3).isoformat()},
@@ -304,8 +308,8 @@ def test_rules_and_alerts_stay_in_their_workspace(db_engine: Engine) -> None:
         rule_b = rule(session, b, "supplier_price_change", ("supplier_offer", listing))
         snap(session, listing, day(0), price_min_minor=1000)
         snap(session, listing, day(1), price_min_minor=2000)
-        assert evaluate(session, a, day(0)) == {rule_a: "ok"}
-        evaluate(session, a, day(1))
+        assert evaluate(session, a, cutoff(0)) == {rule_a: "ok"}
+        evaluate(session, a, cutoff(1))
         assert [x.rule_id for x in alerts(session, a)] == [rule_a]
         assert alerts(session, b) == []
         assert session.get_one(AlertRule, rule_b).last_evaluated_at is None
