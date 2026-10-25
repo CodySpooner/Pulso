@@ -2,6 +2,7 @@
 
 import { useEffect, useId, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { keepPreviousData } from "@tanstack/react-query";
 import { PencilLine, RotateCcw, TriangleAlert, Truck } from "lucide-react";
 import { Slider, ToggleGroup } from "radix-ui";
@@ -20,6 +21,7 @@ import {
   cost, DEFAULTS, GAPS, money, needs, parseMinor, pct, priceRange, reasons, request, share, signedMoney, toInput,
   type Calc, type Missing, type Scenario, type Trace,
 } from "./model";
+import { parseSupplier, supplierSearch } from "../suppliers/model";
 
 const tile = "flex min-w-0 flex-col rounded-lg border border-border-subtle bg-background/40";
 const field = "h-(--input-h) w-full min-w-0 rounded-md border border-input bg-background px-2.5 text-body text-foreground";
@@ -61,8 +63,9 @@ export function ProfitTab({ id }: { id: string }) {
   const settled = useDebounced(scenario, 120);
   const options = { enabled: useApiReady(), retry: (failures: number, error: unknown) => !(isProblem(error) && error.status < 500) && failures < 1 };
   // The defaults (Settings and the market price, as the endpoint applies them) seed the inputs and Reset.
-  const base = $api.useQuery("post", "/v1/profit/calc", { body: request(id, DEFAULTS) }, options);
-  const calc = $api.useQuery("post", "/v1/profit/calc", { body: request(id, settled) }, { ...options, placeholderData: keepPreviousData });
+  const supplier = parseSupplier(useSearchParams()); // the Suppliers tab's choice (DEC-264)
+  const base = $api.useQuery("post", "/v1/profit/calc", { body: request(id, DEFAULTS, supplier) }, options);
+  const calc = $api.useQuery("post", "/v1/profit/calc", { body: request(id, settled, supplier) }, { ...options, placeholderData: keepPreviousData });
   // The last answer outlives a failed recompute, so the result never blanks (vault Design/UI States, Refreshing).
   const [last, setLast] = useState<{ calc: Calc; at: number } | null>(null);
   if (calc.data && !calc.isPlaceholderData && calc.data !== last?.calc) setLast({ calc: calc.data, at: calc.dataUpdatedAt });
@@ -82,7 +85,10 @@ export function ProfitTab({ id }: { id: string }) {
       <h2 className="sr-only">Profit</h2>
       {!shown || !defaults ? (
         calc.isError ? (
-          <PanelError headingLevel="h2" size="md" title="Couldn't calculate profit" error={calc.error} retry={retry} />
+          <>
+            <PanelError headingLevel="h2" size="md" title="Couldn't calculate profit" error={calc.error} retry={retry} />
+            {supplier !== null && <BestMarginLink />}
+          </>
         ) : (
           <ProfitSkeleton />
         )
@@ -126,6 +132,7 @@ export function ProfitTab({ id }: { id: string }) {
               typed={typed}
               setTyped={setTyped}
               reset={reset}
+              chosen={supplier !== null}
             />
             <div aria-busy={recomputing} className={cn("min-w-0 transition-opacity duration-(--duration-fast)", recomputing && "opacity-70")}>
               <Breakdown calc={shown} now={last?.at ?? calc.dataUpdatedAt} />
@@ -146,7 +153,7 @@ function summary(calc: Calc): string {
 }
 
 /** A number that opens its provenance on hover, focus and tap, styled like `<Metric>` (DEC-238 f). */
-function Amount({ label, text, hint, className, children }: { label: string; text: string; hint: React.ReactNode; className?: string; children?: React.ReactNode }) {
+export function Amount({ label, text, hint, className, children }: { label: string; text: string; hint: React.ReactNode; className?: string; children?: React.ReactNode }) {
   return (
     <TapTooltip
       hint={<div className="flex flex-col gap-2.5 py-0.5">{hint}</div>}
@@ -182,7 +189,7 @@ function TraceCard({ name, trace, now }: { name: string; trace: Trace; now: numb
 const traces = (calc: Calc, ...names: string[]) => names.flatMap((name) => (calc.sources[name] ? [[name, calc.sources[name]] as const] : []));
 type Traces = ReturnType<typeof traces>;
 
-function Computed({ formula, calc, now }: { formula: string; calc: Calc; now: number }) {
+export function Computed({ formula, calc, now }: { formula: string; calc: Calc; now: number }) {
   const observed = Object.values(calc.sources).filter((t) => t.as_of);
   const oldest = observed.sort((a, b) => Date.parse(a.as_of!) - Date.parse(b.as_of!))[0];
   return (
@@ -201,7 +208,7 @@ function Computed({ formula, calc, now }: { formula: string; calc: Calc; now: nu
 }
 
 const NET = "Sell price − landed cost − fees − returns − ad cost.";
-const MARGIN = "Sell price − landed cost − fees − returns: the most an order's ads can cost before it loses money.";
+export const MARGIN = "Sell price − landed cost − fees − returns: the most an order's ads can cost before it loses money.";
 
 function Results({ calc, now }: { calc: Calc; now: number }) {
   const withheld = <span className="font-sans text-body font-normal text-muted-foreground">Withheld</span>;
@@ -308,6 +315,7 @@ function ScenarioPanel({
   typed,
   setTyped,
   reset,
+  chosen,
 }: {
   scenario: Scenario;
   set: (change: Partial<Scenario>) => void;
@@ -316,6 +324,7 @@ function ScenarioPanel({
   typed: number | null;
   setTyped: (minor: number) => void;
   reset: () => void;
+  chosen: boolean;
 }) {
   const changed = (["price", "returns", "fee", "ad"] as const).some((k) => scenario[k] !== undefined) || scenario.quantity !== 1;
   const supplier = shown.sources.unit_cost?.source_name ?? "matched supplier";
@@ -385,12 +394,13 @@ function ScenarioPanel({
         note="your CPA"
       />
       <p className="text-micro text-subtle-foreground">
-        Costed from the {supplier} listing with the best complete margin. Defaults come from{" "}
+        Costed from the {supplier} listing {chosen ? "you opened from Suppliers" : "with the best complete margin"}. Defaults come from{" "}
         <Link href="/settings" className={link}>
           Settings
         </Link>
         .
       </p>
+      {chosen && <BestMarginLink />}
     </section>
   );
 }
@@ -760,5 +770,18 @@ function ProfitSkeleton() {
         </div>
       </div>
     </>
+  );
+}
+
+/** Back to the server's pick: drops `supplier=` from the URL, like the tab bar, with no history entry. */
+function BestMarginLink() {
+  const clear = () => {
+    const query = supplierSearch(window.location.search, null);
+    window.history.replaceState(null, "", query ? `?${query}` : window.location.pathname);
+  };
+  return (
+    <button type="button" onClick={clear} className={cn(link, "relative hit-area self-start text-micro")}>
+      Let Pulso pick the supplier
+    </button>
   );
 }
