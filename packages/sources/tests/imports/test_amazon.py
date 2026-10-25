@@ -52,6 +52,16 @@ def test_template_and_fixture_parse() -> None:
     )
 
 
+def test_whitespace_only_cells_take_the_column_default() -> None:
+    """XR-44: a blank-after-stripping rank_kind or currency defaults like an empty cell, so the
+    preview doesn't answer 500 and the run's parse accepts what the preview passed."""
+    body = f"{HEADER}\r\nB0EXAMPLE1,Lamp,Toys,1, ,, ,,,,2026-10-19\r\n".encode()
+    parsed = parse_csv(KEY, body, as_of=date(2026, 10, 25))
+    assert parsed.errors == []
+    assert (parsed.rows[0]["rank_kind"], parsed.rows[0]["currency"]) == ("bsr", "USD")
+    assert ImportAdapter(ImportData("csv", parsed, None)).parse(b"")[0].currency == "USD"
+
+
 def test_malformed_rows_are_rejected_with_row_numbers() -> None:
     body = (
         f"{HEADER}\r\n"

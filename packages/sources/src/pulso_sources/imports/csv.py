@@ -250,7 +250,9 @@ def parse_csv(
             row: Row = {}
             start = len(errors)
             for name, column in template.columns.items():
-                value = raw.get(name, "") or column.default
+                value = raw.get(name, "")
+                if not value.strip():  # a whitespace-only cell is blank: default it (XR-44)
+                    value = column.default
                 if not value.strip():
                     if column.required:
                         errors.append(RowError(line, name, "Required field is missing"))

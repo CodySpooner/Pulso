@@ -181,11 +181,13 @@ def list_popular_products(
         **{b: "major" for b in majors if rules.get(b) != "show"},
         **{b: "you" for b, action in rules.items() if action == "hide"},
     }
-    query = select(P).where(*in_report(report), P.rank > after)
+    # Each row's brand as lower() folds it, so its flags agree with the filter and counts (XR-43).
+    query = select(P, brand).where(*in_report(report), P.rank > after)
     if hidden_by and not include_major_brands:
         query = query.where(or_(P.brand.is_(None), brand.not_in(hidden_by)))
-    found = session.scalars(query.order_by(P.rank).limit(limit + 1)).all()
-    rows = found[:limit]
+    found = session.execute(query.order_by(P.rank).limit(limit + 1)).tuples().all()
+    rows = [row for row, _ in found[:limit]]
+    folded = {row.id: b for row, b in found}
 
     # Weekly change (DEC-267 d): Google's previous rank, else last week's report of the same
     # category matched on title and brand.
@@ -224,8 +226,8 @@ def list_popular_products(
             change=change(row),
             title=row.title,
             brand=row.brand,
-            major_brand=row.brand is not None and row.brand.lower() in majors,
-            hidden_by=hidden_by.get(row.brand.lower()) if row.brand is not None else None,
+            major_brand=folded[row.id] in majors,
+            hidden_by=hidden_by.get(b) if (b := folded[row.id]) is not None else None,
             availability=row.availability,
             price_min_minor=row.price_min_minor,
             price_max_minor=row.price_max_minor,
