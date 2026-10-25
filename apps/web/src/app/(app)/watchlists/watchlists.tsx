@@ -22,7 +22,7 @@ import { formatUtc } from "@/lib/format";
 import { duration, ease, spring } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 
-import { BestMargin, count, day, Freshness, Momentum, Price, Thumb, Velocity } from "../discover/feed-views";
+import { BestMargin, count, day, Freshness, Price, Thumb, Velocity } from "../discover/feed-views";
 import { isMerged, pickList, refreshWatchlists, undoWindow, type List, type Removal, type Row } from "./model";
 
 interface Note {
@@ -37,7 +37,9 @@ const menu =
 const menuItem = "flex h-8 cursor-pointer items-center gap-2 rounded-md px-2 text-data outline-none select-none pointer-coarse:h-(--hit-target) data-highlighted:bg-accent";
 const cell = "border-b border-border-subtle px-3 whitespace-nowrap";
 // imp-419 adds the 30-day sparkline after Velocity; nothing stands in for it until then.
-const COLUMNS = ["Product", "Price", "Velocity", "Momentum", "Best margin", "Stores", "Added", "Last seen"];
+const COLUMNS = ["Product", "Price", "Velocity", "Best margin", "Stores", "Added", "Last seen"];
+// Selected: brand over the card, opaque like --table-row-hover, so the sticky product cell matches its row.
+const PICKED = "bg-[color-mix(in_oklab,var(--brand)_10%,var(--card))]";
 
 // WF-2b (vault Features/Watchlists, DEC-322): the lists, and the list in the URL (?list=) as a dense table, cards on a
 // phone. Removal hides at once and is sent after the 5-second undo; a move is sent at once.
@@ -86,7 +88,7 @@ export function Watchlists() {
       </section>
     );
   return (
-    <div className="grid items-start gap-4 md:grid-cols-[13rem_minmax(0,1fr)]">
+    <div className="grid items-start gap-4 md:grid-cols-[12rem_minmax(0,1fr)]">
       {lists.isRefetchError && <StaleLine boxed className="md:col-span-2" what="Couldn't refresh your lists" error={lists.error} asOf={lists.dataUpdatedAt} retry={() => void lists.refetch()} />}
       <nav aria-label="Watchlists" className="max-md:hidden">
         <ul className="flex flex-col gap-0.5">
@@ -227,6 +229,7 @@ function ListPanel({ list, lists, onSettings }: { list: List; lists: List[]; onS
   }, [note]);
 
   const now = items.dataUpdatedAt;
+  const shown = Math.max(0, list.item_count - gone.size); // what's hidden meanwhile was all on this list
   const all = rows.length > 0 && pick.length === rows.length;
   return (
     <section aria-labelledby="watchlist-title" className="flex min-w-0 flex-col gap-3">
@@ -235,7 +238,7 @@ function ListPanel({ list, lists, onSettings }: { list: List; lists: List[]; onS
           {list.name}
         </h2>
         <p className="text-label text-subtle-foreground tabular-nums">
-          {count(list.item_count)} {list.item_count === 1 ? "product" : "products"}
+          {count(shown)} {shown === 1 ? "product" : "products"}
         </p>
         <DropdownMenu.Root>
           <DropdownMenu.Trigger asChild>
@@ -295,7 +298,7 @@ function ListPanel({ list, lists, onSettings }: { list: List; lists: List[]; onS
         <m.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: duration.fast }} className="flex flex-col gap-3">
           {/* Lists stay well under 200 rows and aren't virtualized, so a removed row may fade out (Motion System). */}
           <div role="region" aria-label={`${list.name} products`} tabIndex={0} className={cn(card, "max-h-[max(24rem,calc(100dvh-15rem))] overflow-auto overscroll-contain max-md:hidden")}>
-            <table className="w-full min-w-240 border-separate border-spacing-0 zone-data">
+            <table className="w-full min-w-200 border-separate border-spacing-0 zone-data">
               <thead className="sticky top-0 z-20 bg-card">
                 <tr className="row-h text-label text-muted-foreground">
                   {COLUMNS.map((name, i) => (
@@ -321,8 +324,8 @@ function ListPanel({ list, lists, onSettings }: { list: List; lists: List[]; onS
                     const p = row.product;
                     const on = selected.has(row.product_id);
                     return (
-                      <m.tr key={row.product_id} data-row={row.product_id} exit={{ opacity: 0, transition: { duration: duration.fast } }} className={cn("group row-h hover:bg-(--table-row-hover)", on && "bg-brand-muted")}>
-                        <th scope="row" className={cn(cell, "sticky left-0 z-10 max-w-96 bg-card text-left font-normal group-hover:bg-(--table-row-hover)", on && "bg-brand-muted")}>
+                      <m.tr key={row.product_id} data-row={row.product_id} exit={{ opacity: 0, transition: { duration: duration.fast } }} className={cn("group row-h hover:bg-(--table-row-hover)", on && PICKED)}>
+                        <th scope="row" className={cn(cell, "sticky left-0 z-10 max-w-60 bg-card text-left font-normal group-hover:bg-(--table-row-hover)", on && PICKED)}>
                           <span className="flex items-center gap-3">
                             <input type="checkbox" aria-label={`Select ${p.title}`} checked={on} onChange={() => setSelected((s) => new Set(on ? [...s].filter((id) => id !== row.product_id) : [...s, row.product_id]))} className="size-4 shrink-0 accent-brand" />
                             <Thumb url={p.image_url} className="size-6 shrink-0 rounded-sm" />
@@ -337,9 +340,6 @@ function ListPanel({ list, lists, onSettings }: { list: List; lists: List[]; onS
                         </td>
                         <td className={cn(cell, "num")}>
                           <Velocity item={p} now={now} />
-                        </td>
-                        <td className={cn(cell, "num")}>
-                          <Momentum item={p} now={now} />
                         </td>
                         <td className={cn(cell, "num")}>
                           <BestMargin item={p} now={now} />
@@ -646,7 +646,7 @@ function TableSkeleton() {
 
 function PageSkeleton() {
   return (
-    <div className="grid items-start gap-4 md:grid-cols-[13rem_minmax(0,1fr)]">
+    <div className="grid items-start gap-4 md:grid-cols-[12rem_minmax(0,1fr)]">
       <div className="flex flex-col gap-1.5 max-md:hidden" aria-hidden>
         {[0, 1, 2].map((i) => (
           <Skeleton key={i} className="h-8 rounded-md" />
