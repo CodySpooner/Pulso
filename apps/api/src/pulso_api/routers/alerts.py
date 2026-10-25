@@ -1,7 +1,7 @@
-"""Alerts (WF-4 part a, DEC-324): the in-app inbox and the workspace's alert rules.
-`pulso_core.alerts.evaluate()` fires the alerts; the bell and /alerts UI are WF-4b."""
+"""Alert rules (WF-4 part a, DEC-324): the workspace's rules, which `pulso_core.alerts.evaluate()`
+fires. The inbox endpoints are WF-4a2; the bell and /alerts UI are WF-4b."""
 
-from typing import Annotated, Any, Literal, Self
+from typing import Annotated, Any, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Query
@@ -13,68 +13,21 @@ from pydantic import (
     StringConstraints,
     TypeAdapter,
     ValidationError,
-    model_validator,
 )
-from sqlalchemy import func, select, tuple_, update
+from sqlalchemy import select, tuple_
 from sqlalchemy.orm import Session
 
 from pulso_api.errors import APIError
 from pulso_api.routers.products import DB, CurrentPrincipal, live_product
 from pulso_api.schemas.text import NoNulStr
-from pulso_core.models import Alert, AlertRule, Listing
+from pulso_core.models import AlertRule, Listing
 
-router = APIRouter(prefix="/v1/alerts")
 rules_router = APIRouter(prefix="/v1/alert-rules")
-ALERT_CURSOR = TypeAdapter(tuple[AwareDatetime, int])
 RULE_CURSOR = TypeAdapter(tuple[AwareDatetime, UUID])
 RuleType = Literal["supplier_price_change", "freight_change", "supplier_stock_out", "back_in_stock"]
 Name = Annotated[NoNulStr, StringConstraints(strip_whitespace=True, min_length=1, max_length=120)]
-Ids = Annotated[
-    list[Annotated[int, Field(ge=1, le=2**63 - 1)]], Field(min_length=1, max_length=500)
-]
 Limit = Annotated[int, Query(ge=1, le=100)]
 NOT_NULL = ("name", "params", "enabled")
-
-
-class AlertOut(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-    id: int
-    rule_id: UUID | None  # null for system alerts and when the rule was deleted
-    type: str
-    entity_type: str
-    entity_id: str
-    fired_at: AwareDatetime
-    payload: dict[str, Any] = Field(
-        description="old and new: {value, currency (money), as_of}, new also source and "
-        "raw_payload_id; threshold; as_of per source; link: the entity's page."
-    )
-    read_at: AwareDatetime | None
-
-
-class AlertPage(BaseModel):
-    items: list[AlertOut]  # newest first; archived alerts never list
-    next_cursor: str | None = Field(description="Pass as `cursor` with the same filters.")
-
-
-class UnreadCount(BaseModel):
-    count: int  # unread and not archived
-
-
-class ReadIn(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    ids: Ids | None = None
-    all: bool = False
-
-    @model_validator(mode="after")
-    def ids_or_all(self) -> Self:
-        if (self.ids is not None) == self.all:
-            raise ValueError("send ids or all: true, not both")
-        return self
-
-
-class ArchiveIn(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    ids: Ids
 
 
 class Params(BaseModel):
@@ -125,15 +78,6 @@ class RulePage(BaseModel):
     next_cursor: str | None = Field(description="Pass as `cursor` for the next page.")
 
 
-def unread(session: Session, workspace_id: UUID) -> UnreadCount:
-    count = session.scalar(
-        select(func.count()).where(
-            Alert.workspace_id == workspace_id, Alert.read_at.is_(None), Alert.archived_at.is_(None)
-        )
-    )
-    return UnreadCount(count=count or 0)
-
-
 def view(row: AlertRule) -> RuleOut:
     last = row.last_value or {}
     fields = RuleOut.model_fields.keys() - {"status", "skipped"}
@@ -162,69 +106,6 @@ def target(session: Session, body: RuleIn) -> str:
     elif not 0 < key < 2**63 or getattr(session.get(Listing, key), "supplier_id", None) is None:
         raise APIError(404, "not_found", "Supplier offer not found.")
     return str(key)
-
-
-@router.get("", response_model=AlertPage)
-def list_alerts(
-    principal: CurrentPrincipal,
-    session: DB,
-    unread: bool | None = None,
-    kind: Annotated[str | None, Query(alias="type", max_length=40)] = None,
-    cursor: str | None = None,
-    limit: Limit = 50,
-) -> AlertPage:
-    query = select(Alert).where(
-        Alert.workspace_id == principal.workspace_id, Alert.archived_at.is_(None)
-    )
-    if unread is not None:
-        query = query.where(Alert.read_at.is_(None) if unread else Alert.read_at.is_not(None))
-    if kind is not None:
-        query = query.where(Alert.type == kind)
-    if cursor is not None:
-        try:
-            query = query.where(
-                tuple_(Alert.fired_at, Alert.id) < ALERT_CURSOR.validate_json(cursor)
-            )
-        except ValidationError:
-            raise APIError(422, "invalid_cursor", "Invalid alerts cursor.") from None
-    rows = session.scalars(
-        query.order_by(Alert.fired_at.desc(), Alert.id.desc()).limit(limit + 1)
-    ).all()
-    last = rows[limit - 1] if len(rows) > limit else None
-    return AlertPage(
-        items=[AlertOut.model_validate(row) for row in rows[:limit]],
-        next_cursor=ALERT_CURSOR.dump_json((last.fired_at, last.id)).decode() if last else None,
-    )
-
-
-@router.get("/unread-count", response_model=UnreadCount)
-def count_unread_alerts(principal: CurrentPrincipal, session: DB) -> UnreadCount:
-    return unread(session, principal.workspace_id)
-
-
-@router.post("/read", response_model=UnreadCount)
-def read_alerts(body: ReadIn, principal: CurrentPrincipal, session: DB) -> UnreadCount:
-    """Mark the alerts read (the first read time is kept); returns the unread count."""
-    query = update(Alert).where(
-        Alert.workspace_id == principal.workspace_id, Alert.read_at.is_(None)
-    )
-    if body.ids is not None:
-        query = query.where(Alert.id.in_(body.ids))
-    session.execute(query.values(read_at=func.now()))
-    session.commit()
-    return unread(session, principal.workspace_id)
-
-
-@router.post("/archive", response_model=UnreadCount)
-def archive_alerts(body: ArchiveIn, principal: CurrentPrincipal, session: DB) -> UnreadCount:
-    session.execute(
-        update(Alert)
-        .where(Alert.workspace_id == principal.workspace_id, Alert.archived_at.is_(None))
-        .where(Alert.id.in_(body.ids))
-        .values(archived_at=func.now())
-    )
-    session.commit()
-    return unread(session, principal.workspace_id)
 
 
 @rules_router.get("", response_model=RulePage)

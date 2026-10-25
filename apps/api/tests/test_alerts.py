@@ -11,9 +11,9 @@ from sqlalchemy.orm import Session
 
 from pulso_api.auth import Principal, current_principal
 from pulso_api.dependencies import get_db
-from pulso_core.models import Alert, AlertRule, Listing, Product, Supplier, User, Workspace
+from pulso_core.models import AlertRule, Listing, Product, Supplier, User, Workspace
 
-# Alerts (WF-4 part a, DEC-324): the inbox and the rules endpoints.
+# Alert rules (WF-4 part a, DEC-324): the rules endpoints; the inbox is WF-4a2.
 
 As = Callable[[str], TestClient]
 T0 = datetime(2026, 11, 2, 6, tzinfo=UTC)
@@ -22,7 +22,7 @@ T0 = datetime(2026, 11, 2, 6, tzinfo=UTC)
 @pytest.fixture
 def setup(client: TestClient, db_engine: Engine) -> tuple[As, dict[str, object]]:
     """`as_("a")` makes the next requests workspace A's. ids: product, offer (a supplier
-    listing), shop (a store listing), the workspaces, and alerts a1..a3 (A) and b1 (B)."""
+    listing), shop (a store listing) and the workspaces."""
     with Session(db_engine) as session:
         users = {key: User(clerk_user_id=f"user_{key}") for key in "ab"}
         workspaces = {key: Workspace(name=f"Workspace {key}") for key in "ab"}
@@ -38,20 +38,6 @@ def setup(client: TestClient, db_engine: Engine) -> tuple[As, dict[str, object]]
         session.add_all([offer, shop])
         session.flush()
         ids: dict[str, object] = {"product": product.id, "offer": offer.id, "shop": shop.id}
-        for key, (ws, kind, hours) in {
-            "a1": ("a", "supplier_price_change", 0),
-            "a2": ("a", "supplier_stock_out", 1),
-            "a3": ("a", "supplier_price_change", 2),
-            "b1": ("b", "supplier_price_change", 3),
-        }.items():
-            row = Alert(
-                workspace_id=workspaces[ws].id, type=kind, entity_type="supplier_offer",
-                entity_id=str(offer.id), dedupe_key=key, fired_at=T0 + timedelta(hours=hours),
-                payload={"old": {"value": 1000}, "new": {"value": 1100}},
-            )  # fmt: skip
-            session.add(row)
-            session.flush()
-            ids[key] = row.id
         session.commit()
         principals = {key: Principal(users[key].id, workspaces[key].id) for key in "ab"}
         ids |= {f"workspace_{key}": workspace.id for key, workspace in workspaces.items()}
@@ -69,46 +55,6 @@ def setup(client: TestClient, db_engine: Engine) -> tuple[As, dict[str, object]]
         return client
 
     return as_, ids
-
-
-def inbox(client: TestClient, query: str = "") -> list[int]:
-    response = client.get(f"/v1/alerts{query}")
-    assert response.status_code == 200, response.text
-    return [item["id"] for item in response.json()["items"]]
-
-
-def unread(client: TestClient) -> int:
-    count = client.get("/v1/alerts/unread-count").json()["count"]
-    assert isinstance(count, int)
-    return count
-
-
-@pytest.mark.db
-def test_inbox_pages_filters_reads_and_archives(setup: tuple[As, dict[str, object]]) -> None:
-    as_, ids = setup
-    a1, a2, a3, b1 = (ids[key] for key in ("a1", "a2", "a3", "b1"))
-    client = as_("a")
-    assert inbox(client) == [a3, a2, a1]  # newest first
-    first = client.get("/v1/alerts?limit=2").json()
-    assert [item["id"] for item in first["items"]] == [a3, a2]
-    assert first["items"][0]["payload"]["new"] == {"value": 1100}
-    assert inbox(client, f"?limit=2&cursor={first['next_cursor']}") == [a1]
-    assert client.get("/v1/alerts?cursor=nope").json()["code"] == "invalid_cursor"
-    assert inbox(client, "?type=supplier_stock_out") == [a2]
-    assert unread(client) == 3
-    assert client.post("/v1/alerts/read", json={"ids": [a1, b1]}).json() == {"count": 2}
-    assert inbox(client, "?unread=true") == [a3, a2]
-    assert inbox(client, "?unread=false") == [a1]
-    assert client.post("/v1/alerts/archive", json={"ids": [a2, b1]}).json() == {"count": 1}
-    assert inbox(client) == [a3, a1]
-    assert client.post("/v1/alerts/read", json={"all": True}).json() == {"count": 0}
-    bad: list[dict[str, Any]] = [{}, {"ids": [a1], "all": True}, {"all": False}, {"ids": []}]
-    for body in bad:
-        assert client.post("/v1/alerts/read", json=body).status_code == 422
-    assert client.post("/v1/alerts/archive", json={"ids": []}).status_code == 422
-    client = as_("b")  # A's reads and archives never touched B's alert
-    assert inbox(client) == [b1]
-    assert unread(client) == 1
 
 
 @pytest.mark.db
