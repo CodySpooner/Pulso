@@ -4,7 +4,8 @@ from typing import Any
 
 import pytest
 
-from pulso_ml.matching.score import CONFIG, Price, combined, price_sane, route, usd_minor
+from pulso_core.landed_cost import Amount, to_usd
+from pulso_ml.matching.score import CONFIG, Price, combined, price_sane, route
 
 
 @pytest.mark.parametrize(
@@ -68,12 +69,12 @@ def test_fixed_vectors_route_end_to_end() -> None:
 
 
 def retail(minor: int, currency: str = "USD", rate: str | None = None) -> Price | None:
-    usd = usd_minor(minor, currency, None if rate is None else Decimal(rate))
+    usd = to_usd(Amount(minor, currency, None if rate is None else Decimal(rate)))
     return None if usd is None else Price(usd, supplier=False)
 
 
 def cost(minor: int, currency: str = "USD", rate: str | None = None) -> Price | None:
-    usd = usd_minor(minor, currency, None if rate is None else Decimal(rate))
+    usd = to_usd(Amount(minor, currency, None if rate is None else Decimal(rate)))
     return None if usd is None else Price(usd, supplier=True)
 
 
@@ -101,14 +102,14 @@ def test_price_band(a: Price | None, b: Price | None, expected: bool | None) -> 
 def test_cross_currency_prices_compare_in_usd_never_raw_minor_units() -> None:
     # JPY has exponent 0: 1500 JPY at 150 per USD is $10.00, the same as the $10.00 cost.
     # Raw minor units (1500 vs 1000) would read 1.5x, inside the band.
-    assert usd_minor(1500, "JPY", Decimal("150")) == 1000
+    assert to_usd(Amount(1500, "JPY", Decimal("150"))) == 1000
     assert price_sane(CONFIG, retail(1500, "JPY", "150"), cost(1000)) is False
     # KWD has exponent 3: 3.075 KWD at 0.3075 per USD is $10.00, so $20.00 retail is 2x.
     # Raw minor units (2000 vs 3075) would read 0.65x, outside the band.
-    assert usd_minor(3075, "KWD", Decimal("0.3075")) == 1000
+    assert to_usd(Amount(3075, "KWD", Decimal("0.3075"))) == 1000
     assert price_sane(CONFIG, retail(2000), cost(3075, "KWD", "0.3075")) is True
     # No rate for a non-USD price: unknown, never a guess.
-    assert usd_minor(1500, "JPY", None) is None
+    assert to_usd(Amount(1500, "JPY")) is None
 
 
 def test_version_is_derived_from_every_value() -> None:

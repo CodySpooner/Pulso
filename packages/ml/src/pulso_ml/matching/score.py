@@ -5,8 +5,6 @@ from dataclasses import astuple, dataclass
 from decimal import ROUND_HALF_EVEN, Decimal
 from typing import Literal
 
-from pulso_core.money import convert_minor
-
 STORED = Decimal("0.0001")  # match_candidates components and score are numeric(5,4)
 Route = Literal["link", "queue", "discard"]
 
@@ -82,19 +80,8 @@ def route(config: ScorerConfig, score: Decimal, price_sane: bool | None) -> Rout
 
 @dataclass(frozen=True)
 class Price:
-    usd_minor: int
+    usd_minor: int  # pulso_core.landed_cost.to_usd: never raw minor units of another currency
     supplier: bool
-
-
-def usd_minor(amount_minor: int, currency: str, usd_rate: Decimal | None) -> int | None:
-    """USD cents from minor units at an fx_rates rate (quote units per USD); None if unknown."""
-    if currency == "USD":
-        return amount_minor
-    if usd_rate is None:
-        return None
-    return convert_minor(
-        amount_minor, currency, "USD", usd_rate, rounding=ROUND_HALF_EVEN, inverse=True
-    )
 
 
 def price_sane(config: ScorerConfig, a: Price | None, b: Price | None) -> bool | None:

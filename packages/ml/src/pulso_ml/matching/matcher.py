@@ -10,6 +10,7 @@ from uuid import UUID
 from sqlalchemy import Select, case, exists, func, or_, select, text, true
 from sqlalchemy.orm import Session
 
+from pulso_core.landed_cost import Amount, to_usd
 from pulso_core.models import (
     FxRate,
     Image,
@@ -27,7 +28,6 @@ from pulso_ml.matching.score import (
     price_sane,
     route,
     stored,
-    usd_minor,
 )
 from pulso_ml.phash import similarity
 
@@ -115,7 +115,7 @@ def match(session: Session, rates: RateLookup, config: ScorerConfig = CONFIG) ->
         if currency != "USD" and (currency, day) not in usd_rates:
             row = rates(session, currency, day)
             usd_rates[currency, day] = None if row is None else row.rate
-        usd = usd_minor(minor, currency, usd_rates.get((currency, day)))
+        usd = to_usd(Amount(minor, currency, usd_rates.get((currency, day))))
         return None if usd is None else Price(usd, supplier=listing.supplier_id is not None)
 
     for listing_id in session.scalars(
