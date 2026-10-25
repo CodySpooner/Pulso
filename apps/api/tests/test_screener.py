@@ -335,8 +335,10 @@ def test_rows_trace_every_metric_and_name_each_missing_one(
     assert duck["price_minor"] == {"value": None, "reason": NO_PRICE}
     assert duck["acceleration"] == {"value": None, "reason": NO_ACCELERATION}
     assert duck["ship_days_us"] == {"value": None, "reason": NO_SHIPPING}
-    metrics = ("price_minor", "margin", "velocity", "acceleration", "supplier_rating")
-    metrics += ("ship_days_us", "trend", "saturation", "lifecycle", "opportunity")
+    metrics = [
+        key for key in bare if key not in ("id", "title", "image_url", "category", "currency")
+    ]
+    assert len(metrics) == 10
     assert all(bare[key]["value"] is None and bare[key]["reason"] for key in metrics)
 
 
