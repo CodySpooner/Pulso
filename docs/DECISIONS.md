@@ -3085,3 +3085,43 @@ Superseded review defaults, not given entries: default #0 (move the repo) is don
   - **(c) Relative deadline hint.** The Sources row and phone card read "Retry after <UTC> (in 1h)", using the dialog's `formatAgo` against the page's data time (`now`, DEC-184), so it holds still until the next refetch. A passed deadline reads "(1h ago)", so it shows as passed.
 - **Alternatives:** (a) Renaming every `LoadMore` caller: those footers are outside this task. Deriving the label from `errorTitle`: "Couldn't load more targets" would give "Retry loading more targets", not the backlog's wording. (b) One verb on both controls: two buttons with the same name doing the same thing is still a duplicate for screen readers. Keeping the header button invisible to reserve its space: on a phone that leaves an empty row above the error card. (c) A hint only before the deadline, as the dialog shows: a passed deadline would again need mental arithmetic against "As of".
 - **Why:** these are Playwright assertions, each RED before the change. `load-more.spec.ts`: the named retries, the heading without "loaded", and one "loaded" element. `data-health.spec.ts`: on the API-down page, no Refresh button and exactly one Retry. `retry-deadline.spec.ts`: "(in 1h)" painted unclipped at 1440 and 375; unchanged two minutes later with no refetch; "(in 58m)" after Refresh; "(1h ago)" past the deadline.
+
+### DEC-307 · Lifecycle Stage v0 (SC-4): a pure `lifecycle_stage()` over the primary family's rows at t and t−7, ordered rules on ±20% growth, no stage on a gap or a short history, thresholds versioned as `lifecycle_v0-<hash8>`
+**2026-10-25 · proposed (p4-02)** · Phase 4 task SC-4; SPEC §7; DEC-040, DEC-261, DEC-275; vault Intelligence/Lifecycle Stage, Intelligence/Velocity & Acceleration, Intelligence/Score Definitions §2 and §5; `docs/reports/p4-02.md`; no migration, table, endpoint, UI, flag or dependency
+- **Decision:**
+  - **(a) Function.** `pulso_ml.scores.lifecycle.lifecycle_stage()` is pure. It takes the primary demand family's feature rows (DEC-275) at t and t−7: `v7`, `v7_prev`, `g7`, `g7_prev` (acceleration = `g7 − g7_prev`), plus `days_observed` (the family's days up to t, t included; 0 means no family), `has_gap` (either row's flag), `age_days` (since the source's launch date, None when unknown) and `delisted_all`. It returns `Stage(name, reason)`: a stage and the rule that fired, or `None` and why.
+  - **(b) No stage, never a guessed one**, checked in this order:
+    - `no source`: no demand family, delisted or not (Score Definitions §5).
+    - `dead · delisted` comes next: it's an observed fact, not a trend.
+    - `insufficient history`: fewer than 15 days (G7(t) reads a covered t−14). Checked before the gap because DEC-275 also sets `has_gap` when V7 is NULL from a short history.
+    - `gap`: either row's gap flag, even when every value is present. Nothing is filled in.
+    - `insufficient history` again when V7(t), V7(t−7) or G7(t) is NULL without a gap (a stable listing set still too new).
+  - **(c) Rules, first match wins.** These are the vault's v0 thresholds, all working guesses to tune once two weeks of data exist:
+    - **dead · no sales:** at most 1 unit in each of the two weeks.
+    - **declining · two weeks down:** G7 ≤ ln 0.8 (−20%) at both t and t−7.
+    - **declining · sharp drop:** G7 ≤ 2 ln 0.8 (−36%) at t.
+    - **peaking · braking:** G7 ≥ ln 1.2 (+20%) and acceleration ≤ −0.25.
+    - **peaking · plateau:** G7 < ln 1.2.
+    - **emerging · new and growing:** +20% or more, launched 28 days ago or less, and at least 3 units.
+    - **rising · growing:** +20% or more otherwise.
+    - Without G7(t−7), the first 21 days, "two weeks down" and "braking" can't hold. Acceleration stays unknown and is never guessed.
+  - **(d) Version.** The thresholds live in a frozen `Config` with `revision = 0`. `VERSION = lifecycle_v{revision}-{sha256(sorted-key JSON)[:8]}` is now `lifecycle_v0-7674a25d`, the format in vault Score Definitions §2. Any threshold change is a new version.
+- **Alternatives:**
+  - **Staging through a gap that V7 tolerates** (up to 3 days, DEC-275 d). That V7 is exact, not filled in. But a stage is a judgement that feeds stage alerts, the brief asks for none on a gap, and Discover still shows the V7 with its gap marker. Revisit when tuning.
+  - **Age from `days_observed`:** for the first 28 days of collection, every growing product would read as emerging.
+  - **The vault's rule 3b ("stalled after a run") as its own rule:** it needs the stored stage history (the scores table, p4-01), and it gives the same stage as the plateau rule. Only the label differs.
+  - **Requiring G7(t−7)** (22 days of history): that holds every stage back another week. The vault already allows a NULL acceleration.
+  - **Taking `Demand` rows:** that ties the function to the writer's row type. Plain values keep the tests one table.
+- **Why:** `packages/ml/tests/test_lifecycle.py` has 42 pure cases:
+  - every threshold from both sides (exact binary steps, so 0.5 − 0.75 lands on −0.25 exactly);
+  - zero velocity (dead; declining after sales);
+  - braking at high velocity (V7 120 against 80, previous growth 0.7);
+  - a gap with every value present;
+  - 14 and 15 days of history;
+  - all-missing inputs;
+  - a version change for each `Config` field;
+  - 16 one-line mutations (each `<`/`≤` flipped, each guard dropped, `and`↔`or`), each of which fails a test (`docs/reports/p4-02.md`).
+- **Not here:**
+  - Hysteresis (two nights before a change shows) and storing the stage with its explanation: the scores writer (SC-6), on p4-01's table.
+  - Coverage in the explanation's confidence: Score Definitions §6.
+  - SPEC §7's own threshold text, and `/methodology` (MT-1).
