@@ -126,6 +126,7 @@ export const settingsItem: NavItem = {
   href: "/settings",
   icon: Settings,
   phase: 2,
+  built: true,
   summary: "Default country, currency, fee assumptions and target margin.",
 };
 
