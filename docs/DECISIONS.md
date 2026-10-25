@@ -2218,3 +2218,40 @@ Superseded review defaults, not given entries: default #0 (move the repo) is don
 - **Alternatives:** run-level `collector_runs.complete` for (c) (hides per-store delistings behind any one slow store); counting `unknown` as inactive in (d) (a paused crawler would zero the active count); the latest FX rate for (f) (rewrites history with today's rate); stores first seen in the last 14 days for (g) (Pulso's own coverage growth reads as market entry, the M15 trap); carrying a store's last known state across unobserved days in (h) (interpolation); SQL keyset paging (more code for a few hundred rows).
 - **Why:** fixture tests on Postgres (`apps/api/tests/test_product_sellers.py`): a listing omitted by a complete crawl reads delisted with its date while partial, blocked and untrackable stores read unknown; CAD converts at the snapshot date's 1.25, not today's 2; EUR without a rate is left out and counted; the untrackable and delisted prices stay out of the spread; only the stable-panel store counts as new; partial-only and uncrawled days are gaps; a two-row cursor walk returns every row once in the same order; the tracked flag follows the workspace; a blocked source reads `auto_disabled`; a merged id redirects. Breaking the incomplete-crawl rule fails a test.
 - **Not here:** the real suggested band (after UX-8 and UX-10), Add-by-URL, the price-war alert (Phase 7), per-seller unit estimates and the quantity-break column (Phase 3), store makeup chips (Phase 7), ads data, compare-at, availability and 30-day price change columns, column sorting, and the Store Spy row link.
+
+### DEC-255 · GTIN shortcut (M-4): valid shared GTINs link at score 1.0 before the image matcher, through M-3's link rules
+**2026-10-25 · proposed (p2-19)** · Phase 2 task M-4; R-15; DEC-042, DEC-249; AGENTS.md §3; vault Phases/Phase 2 - Core Product, Data/Product Matching; `docs/reports/p2-19.md`; no migration, flag or dependency
+- **Decision:**
+  - **(a) Validation** (`pulso_ml.matching.gtin.gtin14`, pure):
+    - whitespace and dashes are stripped, and only 8, 12, 13 or 14 ASCII digits pass;
+    - the code is left-padded to 14 digits (GS1's GTIN-14 form), so UPC-A `036000291452` and EAN-13 `0036000291452` compare equal;
+    - the GS1 mod-10 check digit must match.
+    - Rejected even with a valid check digit: placeholders (all zeros, one repeated digit, or an ascending or descending run once leading zeros are dropped, such as `123456789012`, `012345678905` and `987654321098`), and GS1 Restricted Circulation Numbers (GS1 prefixes 020–029, 040–049 and 200–299; GTIN-8 prefixes 0 and 2). Companies and regions issue RCNs internally, so two vendors can use one for different products.
+    - Anything else is ignored, never repaired or guessed. An 8-digit UPC-E reads as a GTIN-8, and its leading 0 makes it an RCN-8, so it never links: a missed link, never a false one.
+  - **(b) Groups:** every `listing_variants.barcode`, live or delisted, is normalised and grouped by GTIN-14. A vendor (a store or a supplier; a listing with neither is its own vendor) that puts one GTIN on two or more of its listings drops out of that GTIN, because it isn't using the code as an identifier. So no same-store pair links by GTIN, and one store reusing a code across its catalogue can't pull many products onto one.
+  - **(c) Precedence:** the GTIN pass runs first in `ml.match`, before candidate generation.
+    - Every pair left in a group gets a `match_candidates` row with score 1.0 and `scorer_version` `gtin-1`. The image, title and pHash components are untouched: NULL on a new row, kept as evidence on a row M-3 had queued.
+    - An existing `pending` row is raised to 1.0 / `gtin-1`. M-3 never re-scores a `gtin-1` row, so a GTIN pair is never lowered to its image score and re-runs don't flip it back and forth.
+    - There is no price gate: GTIN equality is exact evidence, and M-3's markup band is for fuzzy matches.
+    - `gtin-1` is a pinned version, bumped by hand when (a) changes. M-3 scores a row left at an older GTIN version again.
+  - **(d) Link:** each pair goes through M-3's `link()` (DEC-249 g, h) with confidence 1.0 and reason `gtin-1: GTIN <14 digits>`.
+    - Only product-less listings move. Two product-less listings form a new product named after the older one; one joins the other listing's canonical product. Two listings on different products stay `pending` for M-5 and the queue.
+    - Each moved listing gets one `match_decisions` row (actor `algo`, action `link`, `candidate_id`, confidence 1.0000) and `listings.match_confidence` 1.0, and the candidate becomes `accepted`.
+    - One transaction per GTIN.
+  - **(e) Manual decisions win:**
+    - `accepted`, `rejected`, `merged` and `split` pairs are never touched;
+    - a listing whose latest decision is manual never moves, and its pair stays `pending` at 1.0 for the owner;
+    - a listing never joins a product holding the other side of its rejected or split pair, so a rejected pair isn't linked through a third listing that shares their GTIN.
+  - **(f) Flag and counts:** behind the existing `MATCHER_ENABLED` (default off; off, the job never opens a session), with no new flag. The `matcher_done` line adds `gtin_linked` (pairs linked) and `gtin_queued` (pairs left pending).
+- **Alternatives:**
+  - links without a candidate row: nothing in the queue for two-product or manual pairs, and no `candidate_id`;
+  - a separate GTIN flag: the pass is part of the matcher job, which is already off by default;
+  - linking same-store pairs: stores reuse barcodes;
+  - accepting RCNs: internal numbering collides across vendors;
+  - expanding UPC-E: an 8-digit code is ambiguous between GTIN-8 and UPC-E, and precision matters more than recall here;
+  - a price gate on GTIN pairs.
+- **Why:**
+  - Pure tests cover each length, formatting, a wrong check digit, non-ASCII digits, placeholders with valid check digits, and each RCN range.
+  - Postgres tests show a UPC-A and an EAN-13 of one code linking at 1.0 with one algo decision per listing, and a second run writing nothing. A wrong check digit, a placeholder, an RCN and a store reusing a code never link. Rejected or split, owner-unlinked, two-product and queued pairs resolve as above.
+  - Mutating the check digit, the confidence, the reason, the decided-pair guard, the vendor-reuse rule or M-3's `gtin-1` skip each fails a test.
+- **Not here:** supplier barcodes (only Shopify's product `.js` parser stores `barcode` today; neither CJ writer does, so GTIN links are store-to-store until a supplier adapter keeps one), the queue UI, and M-5's merge of two-product pairs.
