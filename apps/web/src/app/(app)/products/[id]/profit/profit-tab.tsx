@@ -735,6 +735,9 @@ function SourceTag({ traces: [[, main]], now }: { traces: Traces; now: number })
 function ProfitSkeleton() {
   return (
     <>
+      <span className="sr-only" role="status">
+        Calculating profit…
+      </span>
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
         {[0, 1, 2].map((i) => (
           <div key={i} className={cn(tile, "gap-2 px-4 py-3", i === 2 && "col-span-2 sm:col-span-1")}>
