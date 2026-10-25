@@ -42,4 +42,13 @@ describe("nav config", () => {
     expect(isBuilt(resolveRoute("/stores/abc")!.item)).toBe(false);
     expect(isBuilt({ phase: CURRENT_PHASE - 1 })).toBe(true);
   });
+
+  // DEC-302 (a): the Shopify crawler stays off (DEC-261), so Store Spy has no source and stays unbuilt past Phase 3.
+  test("a route with no source stays unbuilt after its phase, and its detail route says so too", () => {
+    const stores = resolveRoute("/stores")!.item;
+    expect(stores.noSource).toMatch(/Shopify store crawler stays off/);
+    expect(resolveRoute("/stores/abc")!.item.noSource).toBe(stores.noSource);
+    expect(isBuilt({ phase: CURRENT_PHASE - 1, noSource: stores.noSource })).toBe(false);
+    expect(allNavItems.filter((i) => i.noSource).map((i) => i.href)).toEqual(["/stores"]);
+  });
 });

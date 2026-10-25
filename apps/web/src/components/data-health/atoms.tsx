@@ -63,6 +63,7 @@ export const sourceStates: Record<SourceState, { label: string; icon: LucideIcon
   running: { label: "Running", icon: LoaderCircle, tone: "info", hint: "A run is queued or running." },
   disabled: { label: "Disabled", icon: CirclePause, tone: "muted", hint: "Disabled by the owner. Nothing is collected." },
   never: { label: "Never run", icon: CircleDashed, tone: "muted", hint: "No run recorded yet." },
+  no_import: { label: "No import yet", icon: CircleDashed, tone: "muted", hint: "CSV only: rows arrive when you import a file in the CSV import panel below. Nothing runs on a schedule." },
   healthy: { label: "Healthy", icon: CircleCheck, tone: "neutral", hint: "The last run succeeded." },
   unknown: {
     label: "Unknown",

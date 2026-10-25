@@ -67,8 +67,8 @@ export function NavLink({
       <span className={cn("relative truncate", variant === "sidebar" && labelRail)}>{item.label}</span>
       {!built && (
         <span className={cn("relative ml-auto items-center text-micro font-medium text-subtle-foreground", variant === "sidebar" ? whenExpanded : "flex")}>
-          <span aria-hidden>P{item.phase}</span>
-          <span className="sr-only">, arrives in Phase {item.phase}</span>
+          <span aria-hidden>{item.noSource ? "No source yet" : `P${item.phase}`}</span>
+          <span className="sr-only">{item.noSource ? ", no source yet" : `, arrives in Phase ${item.phase}`}</span>
         </span>
       )}
       {built && item.href === "/admin/data-health" && (
@@ -84,7 +84,7 @@ export function NavLink({
       label={
         <>
           {item.label}
-          {!built && <span className="text-subtle-foreground"> · Phase {item.phase}</span>}
+          {!built && <span className="text-subtle-foreground"> · {item.noSource ? "No source yet" : `Phase ${item.phase}`}</span>}
         </>
       }
     >

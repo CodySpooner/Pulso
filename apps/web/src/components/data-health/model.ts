@@ -19,21 +19,24 @@ export const OVERDUE_WINDOW_MS = 24 * HOUR;
 /** No successful backup for longer than this raises the missing-backup state (DEC-060). */
 export const BACKUP_MAX_AGE_MS = 26 * HOUR;
 
-export type SourceState = "blocked" | "disabled" | "running" | "failing" | "overdue" | "skipped" | "partial" | "never" | "healthy" | "unknown";
+export type SourceState = "blocked" | "disabled" | "running" | "failing" | "overdue" | "skipped" | "partial" | "never" | "no_import" | "healthy" | "unknown";
 
 /** States that put a count on the Data Health nav badge (DH-3); `attentionCount` adds expired CJ activity (DEC-223). */
 export const ATTENTION: ReadonlySet<SourceState> = new Set(["blocked", "failing", "overdue"]);
 
 /** States settled before the gap check, so the host's gap summary can't change them. */
-const BEFORE_GAP_CHECK: ReadonlySet<SourceState> = new Set(["blocked", "disabled", "running", "failing"]);
+const BEFORE_GAP_CHECK: ReadonlySet<SourceState> = new Set(["blocked", "disabled", "running", "failing", "no_import"]);
 
 /** `latestGapEnds` is undefined while the host call is loading or failed (imp-133, DEC-196). */
 export function sourceState(source: SourceHealth, latestGapEnds: HostHealth["latest_gap_ends"] | undefined, now: number): SourceState {
   if (source.status === "blocked") return "blocked";
-  if (!source.enabled) return "disabled";
+  // DEC-302 (c): a CSV-only source's row is its flag and stays off (DEC-267 f, DEC-279), so it reads by its imports.
+  const csv = source.type === "csv";
+  if (!source.enabled && !csv) return "disabled";
   const run = source.last_run;
   if (run?.status === "queued" || run?.status === "running") return "running";
   if (run?.status === "failed" || run?.status === "blocked") return "failing";
+  if (csv && !run) return "no_import";
   const gapEnd = latestGapEnds?.[source.key];
   if (gapEnd && now - Date.parse(gapEnd) < OVERDUE_WINDOW_MS) return "overdue";
   // A suppressed slot collected nothing (DEC-108); the gap audit counts it as missed (imp-042, DEC-123).

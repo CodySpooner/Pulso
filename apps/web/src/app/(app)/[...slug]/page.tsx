@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { Unplug } from "lucide-react";
 
 import { EmptyState } from "@/components/pulso/empty-state";
 import { PageHeader } from "@/components/pulso/page-header";
@@ -23,6 +24,27 @@ export default async function ComingSoonPage({ params }: PageProps<"/[...slug]">
   const route = routeFor((await params).slug);
   if (!route) notFound();
   const { item } = route;
+  // DEC-302 (a): no phase builds a page until it has a source, so this state names none and has no phase bar.
+  if (item.noSource)
+    return (
+      <div className="flex w-full max-w-280 flex-col gap-6">
+        <PageHeader title={item.label} description={item.summary} />
+        <section aria-label="Status" className="rounded-xl border border-border bg-card shadow-card">
+          <EmptyState
+            icon={Unplug}
+            headingLevel="h2"
+            title={`${item.label}: no source yet`}
+            action={
+              <Button asChild variant="secondary">
+                <Link href="/admin/data-health#import">Import a CSV in Data Health</Link>
+              </Button>
+            }
+          >
+            {item.noSource}
+          </EmptyState>
+        </section>
+      </div>
+    );
   const now = item.phase === CURRENT_PHASE; // DEC-284: the phase in progress, whose task hasn't shipped this page yet
 
   return (
