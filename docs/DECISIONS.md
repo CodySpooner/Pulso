@@ -3567,3 +3567,37 @@ Superseded review defaults, not given entries: default #0 (move the repo) is don
 
   `packages/core/tests/test_models.py`'s `WorkspaceOwned` contract covers both tables, and the migration round trip matches the models. Eleven one-line mutations each fail a test (`docs/reports/p4-12.md`).
 - **Not here:** the `/boards` UI and the card stats (part b), the Add-to-board popover and `B` shortcut, CSV export and the Shopify product CSV (after WF-7's helper, p4-09), the "merged" note on cards, and the board validation summary (backlog rows in the report).
+
+### DEC-323 · Trend Score v0 (SC-2): a pure `trend_scores()` over day t's feature rows and day t−7's, robust z per input through the shared `robust_z`, the caller naming each product's primary demand family, the saturation penalty as `Explanation.penalties`, versioned through `pulso_core.scores.version`
+**2026-10-25 · proposed (p4-14)** · Phase 4 task SC-2; backlog imp-417 (SC-2 part); SPEC §7, §8 cold start; DEC-031, DEC-040, DEC-261, DEC-275 (d), DEC-306 (c–e), DEC-307, DEC-310, DEC-311 (b), DEC-313, DEC-318; vault Intelligence/Trend Score, Intelligence/Score Definitions §3–5, Intelligence/Demand Signals rules 1–3; `docs/reports/p4-14.md`; no migration, endpoint, UI, flag, Beat or dependency change
+- **Decision:**
+  - **(a) The function.** `pulso_ml.scores.trend.trend_scores(rows, week_ago, categories, primary, saturation)` is pure and returns a `Trend(value, explanation, reason)` per product in `categories`.
+    - **`rows`:** day t's `product_daily_features` rows, every family (a `Feature` or the ORM row). **`week_ago`:** day t−7's, read only for G7(t−7). Nothing else is read, so the point-in-time rule is the rows' own (DEC-031).
+    - **`categories`:** each product to score and its lineage, nearest first, as in Saturation. Only those products are scored or normalised over.
+    - **`primary`:** each product's primary demand family (`shp_inv` or `cj_stock`). Demand Signals rule 1 makes this a per-product choice, and Lifecycle (DEC-307) already takes the primary family's rows from its caller, so SC-6 picks it once for both.
+    - **`saturation`:** each product's Saturation value (SC-3), None or absent when it has none.
+  - **(b) Components.** Weights and the penalty cap are the vault's judgement calls, in a frozen `Config` with `min_n` 30 and `cap` 3:
+    - `<family>_g7` (0.40, required): G7 of the primary family, read as stored. It is already log growth over the stable listing set covered at t−14 and t (DEC-275 d), so 3 → 30 units reads ln(35/8) = 1.48 and newly tracked listings never read as growth.
+    - `<family>_acc` (0.20): G7(t) − G7(t−7) from the two days' rows in the same family, SC-1's definition (DEC-310 a). Missing when either G7 is.
+    - `gt_slope` (0.25): `features.gt_slope` on the `gt_interest` row, read as stored, never recomputed or stitched (R-18, DEC-311 b). Its `as_of` is the row's `gt_as_of`. Its `gap` is always false: a slope needs every day of 12 complete weeks in one capture.
+    - `ads_growth` (0.15): always missing with `source: null`, so it reads "no source yet". The stable advertiser panel waits for a source.
+  - **(c) Normalisation.** Each input is `robust_z` (DEC-318 a) over the products asked for with a value in that input, within the product's category, up its ancestors when n < 30 or MAD = 0, then global; winsorized to ±3. The cohort is per component name, so families never mix: a `cj_stock_g7` is normalised only against other `cj_stock_g7` values. A present input with no z (no spread at any level) is missing with its source set ("insufficient signal") and keeps its raw value.
+  - **(d) The value.** `pulso_core.scores.explain()` renormalises over the present inputs (DEC-040): T = Σ w_eff × z. pre = 50 + 50 × T / 3, penalty = 15 × max(0, (Saturation − 50) / 50) points, Trend = clamp(pre − penalty, 0, 100). Version `000-8236875f835c` today; any config change, or a new `FEATURE_VERSION`, makes a new one.
+  - **(e) No value, with its reason, never 0:** `no demand family` (no entry in `primary`; a search slope alone never scores), `no velocity growth` (no G7 in that family on day t: no row, or a NULL one), `velocity growth doesn't vary` (G7 has no z). `value` and `explanation` are then None; SC-6 decides how to store that, as for Saturation.
+  - **(f) The penalty in the explanation.** `pulso_core.scores` gains `Penalty{name, source, raw, points, missing}` and `Explanation.penalties` (default empty, so earlier explanations still validate; jsonb, no migration). This is the `penalties` field Score Definitions §3 and DEC-306 (c) name for Trend. The saturation penalty is recorded with its Saturation value and its points. When Saturation has no value (with the Shopify crawler off, DEC-261, that is every product today) the penalty takes nothing off, reads "insufficient signal" (`source: shopify_stores`), and `missing` names it: the validator now requires `missing` to list the missing components, then the missing penalties, in order.
+- **Alternatives:**
+  - **A family priority in `Config`** (`shp_inv` before `cj_stock`): Demand Signals rule 1 says "no fixed priority before measurement", a per-day pick would splice families against rule 2, Lifecycle would need the same rule twice, and /methodology's config table holds scalars only.
+  - **Calling `family_velocity()` for acceleration:** its `has_gap` and reasons need `days_observed`, which Trend doesn't use; the subtraction is its one line.
+  - **The penalty as a weight-0 component:** `explain()` refuses a present input without z, and a present component with no contribution reads as missing.
+  - **No penalty record, points derived from the cap:** the waterfall (points plus penalties) couldn't be read from a stored row.
+  - **A missing Saturation as a full 15-point penalty, or as 0 points shown as present:** both present "no data" as a number (DEC-040).
+- **Why:** `packages/ml/tests/test_trend.py` (32 cases):
+  - **The vault lamp:** 41 Lamps placed on the vault's medians and MADs score 68.61 (pre 75.60, penalty 6.99), points +15.3, +4.7, +5.5, the whole explanation JSON pinned to 3 decimals, `missing: ["ads_growth"]`, coverage 0.85.
+  - **Missing inputs:** ads (no source yet), the search slope, acceleration with no row a week ago, and Saturation with Shopify off (a `cj_stock` product scores 75.6 with `missing: ["ads_growth", "saturation"]`).
+  - **No value:** no primary family, no row in it, a NULL G7, flat G7, a search slope alone.
+  - **The 3 → 30 jump** through the real `product_demand()`: G7 1.48, both z capped at 3.
+  - **Fallback:** a one-product category uses the parent, then global; a seven-product category uses the parent; MAD = 0 with n = 30 uses the parent; a flat slope is missing, not 0.
+  - **Edges:** every input at the cap scores 100 (also at `cap` 4); the penalty at 20, 50, 73.3 and 100 and the clamp at 0; gap flags; families never mix; products not asked for stay out of the category and global cohorts; every `Config` field changes `model_version`.
+
+  20 one-line mutations each fail a test (`docs/reports/p4-14.md`). `packages/core/tests/test_scores.py` adds the penalty `missing` rule; `test_methodology.py` pins Trend's row.
+- **Not here:** storing scores, the nightly chain, the primary-family pick and hysteresis (SC-6); the Beta pill, confidence bar and top 3 reasons (SC-5/WF-1); confidence = coverage × freshness (MT-1); Component `as_of` for demand families (the rows carry no capture time); `ads_growth` (Phase 8 or a CSV import).
