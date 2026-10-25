@@ -1,5 +1,5 @@
 """Product resources (UX-3, UX-2, UX-4). Products are global market data, so auth applies and
-no workspace filter."""
+no workspace filter; only notes and tags are the workspace's own."""
 
 import json
 from collections import defaultdict
@@ -13,7 +13,9 @@ from pydantic import (
     AwareDatetime,
     BaseModel,
     BeforeValidator,
+    ConfigDict,
     Field,
+    StringConstraints,
     TypeAdapter,
     ValidationError,
 )
@@ -23,6 +25,7 @@ from sqlalchemy import (
     Select,
     and_,
     case,
+    delete,
     distinct,
     exists,
     func,
@@ -31,11 +34,12 @@ from sqlalchemy import (
     true,
     tuple_,
 )
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import InstrumentedAttribute, Session
 from sqlalchemy.sql import ColumnElement
 from starlette.responses import RedirectResponse, Response
 
-from pulso_api.auth import current_principal
+from pulso_api.auth import Principal, current_principal
 from pulso_api.dependencies import get_db
 from pulso_api.errors import APIError
 from pulso_api.schemas.provenance import NoSource, Sourced, Stat
@@ -46,6 +50,8 @@ from pulso_core.models import (
     ListingSnapshot,
     Product,
     ProductDailyFeature,
+    ProductNote,
+    ProductTag,
     RawPayload,
     Source,
     Supplier,
@@ -594,3 +600,114 @@ def get_product_overview(product_id: UUID, session: DB) -> ProductOverview:
         appearances=appearances,
         ad_count=NoSource(value=None, reason="No ad source is connected yet."),
     )
+
+
+# Notes and tags: this workspace's own context on a product (the page's context rail, DEC-243).
+CurrentPrincipal = Annotated[Principal, Depends(current_principal)]
+NOTE_CURSOR = TypeAdapter(tuple[AwareDatetime, UUID])
+Tag = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=80)]
+
+
+class NoteIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    body: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=10_000)]
+
+
+class Note(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: UUID
+    body: str
+    created_at: AwareDatetime
+
+
+class NotePage(BaseModel):
+    items: list[Note]  # newest first
+    next_cursor: str | None = Field(description="Pass as `cursor` for the next, older page.")
+
+
+class Tags(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    tags: Annotated[list[Tag], Field(max_length=20)]
+
+
+@router.get("/{product_id}/notes", response_model=NotePage)
+def list_product_notes(
+    product_id: UUID,
+    principal: CurrentPrincipal,
+    session: DB,
+    cursor: str | None = None,
+    limit: Annotated[int, Query(ge=1, le=100)] = 20,
+) -> NotePage:
+    live_product(session, product_id)
+    query = select(ProductNote).where(
+        ProductNote.workspace_id == principal.workspace_id, ProductNote.product_id == product_id
+    )
+    if cursor is not None:
+        try:
+            after = NOTE_CURSOR.validate_json(cursor)
+        except ValidationError:
+            raise APIError(422, "invalid_cursor", "Invalid note cursor.") from None
+        query = query.where(tuple_(ProductNote.created_at, ProductNote.id) < after)
+    notes = session.scalars(
+        query.order_by(ProductNote.created_at.desc(), ProductNote.id.desc()).limit(limit + 1)
+    ).all()
+    last = notes[limit - 1] if len(notes) > limit else None
+    return NotePage(
+        items=[Note.model_validate(note) for note in notes[:limit]],
+        next_cursor=json.dumps([last.created_at.isoformat(), str(last.id)]) if last else None,
+    )
+
+
+@router.post("/{product_id}/notes", response_model=Note, status_code=201)
+def create_product_note(
+    product_id: UUID, note: NoteIn, principal: CurrentPrincipal, session: DB
+) -> Note:
+    live_product(session, product_id)
+    row = ProductNote(
+        workspace_id=principal.workspace_id,
+        product_id=product_id,
+        author_id=principal.user_id,
+        body=note.body,
+    )
+    session.add(row)
+    session.commit()
+    return Note.model_validate(row)
+
+
+def tags_of(session: Session, workspace_id: UUID, product_id: UUID) -> Tags:
+    tags = session.scalars(
+        select(ProductTag.tag).where(
+            ProductTag.workspace_id == workspace_id, ProductTag.product_id == product_id
+        )
+    )
+    return Tags(tags=sorted(tags, key=str.casefold))
+
+
+@router.get("/{product_id}/tags", response_model=Tags)
+def list_product_tags(product_id: UUID, principal: CurrentPrincipal, session: DB) -> Tags:
+    live_product(session, product_id)
+    return tags_of(session, principal.workspace_id, product_id)
+
+
+@router.put("/{product_id}/tags", response_model=Tags)
+def put_product_tags(
+    product_id: UUID, body: Tags, principal: CurrentPrincipal, session: DB
+) -> Tags:
+    """Replace this workspace's tags on the product. Inner spaces collapse, and a tag that
+    differs only in case from an earlier one is dropped."""
+    live_product(session, product_id)
+    unique: dict[str, str] = {}
+    for tag in body.tags:
+        tag = " ".join(tag.split())
+        unique.setdefault(tag.casefold(), tag)
+    scope = (ProductTag.workspace_id == principal.workspace_id, ProductTag.product_id == product_id)
+    session.execute(delete(ProductTag).where(*scope))
+    if unique:
+        rows = [
+            {"workspace_id": principal.workspace_id, "product_id": product_id, "tag": tag}
+            for tag in unique.values()
+        ]
+        # A concurrent PUT may have inserted one first.
+        session.execute(insert(ProductTag).values(rows).on_conflict_do_nothing())
+    session.commit()
+    return tags_of(session, principal.workspace_id, product_id)

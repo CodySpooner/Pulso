@@ -81,7 +81,10 @@ def test_every_number_in_a_product_resource_carries_as_of() -> None:
 
 def test_product_requires_a_session(client: TestClient) -> None:
     assert client.get(f"/v1/products/{uuid4()}").status_code == 401
-    assert client.get(f"/v1/products/{uuid4()}/overview").status_code == 401
+    for path in ("overview", "notes", "tags"):
+        assert client.get(f"/v1/products/{uuid4()}/{path}").status_code == 401
+    assert client.post(f"/v1/products/{uuid4()}/notes", json={"body": "x"}).status_code == 401
+    assert client.put(f"/v1/products/{uuid4()}/tags", json={"tags": []}).status_code == 401
 
 
 @pytest.fixture
