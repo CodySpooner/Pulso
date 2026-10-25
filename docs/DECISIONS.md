@@ -3610,3 +3610,51 @@ Superseded review defaults, not given entries: default #0 (move the repo) is don
 
   20 one-line mutations each fail a test (`docs/reports/p4-14.md`). `packages/core/tests/test_scores.py` adds the penalty `missing` rule; `test_methodology.py` pins Trend's row.
 - **Not here:** storing scores, the nightly chain, the primary-family pick and hysteresis (SC-6); the Beta pill, confidence bar and top 3 reasons (SC-5/WF-1); confidence = coverage × freshness (MT-1); Component `as_of` for demand families (the rows carry no capture time); `ads_growth` (Phase 8 or a CSV import).
+### DEC-324 · Alerts engine (WF-4 part a): `alert_rules` and `alerts` (migration 0021), a pure `pulso_core.alerts.evaluate()` that fires once per crossing from a fixed per-offer reference with a 5% hysteresis band, a dedupe key, R-23 Testing defaults that hold back a crossing over a known collection gap, and the rules endpoints
+**2026-10-25 · proposed (p4-15)** · Phase 4 task WF-4 part a; R-23; SPEC §5 `alert_rules` / `alerts`, §6.10; DEC-028, DEC-243, DEC-261, DEC-264 (b), DEC-312 (c), DEC-314; AGENTS.md §3, §7; vault Features/Alerts & Notifications, Features/Testing Board; `docs/reports/p4-15.md`; migration 0021 (on p4-12's 0020), 4 endpoints and the regenerated client; no Celery task, Beat, flag, dependency, UI or collector change
+- **Decision:**
+  - **(a) Tables.**
+    - `alert_rules`: `id` uuid, `workspace_id`, `name` varchar(120), `type` varchar(40), `target_type` varchar(20), `target_id` text (a uuid or a bigint), `params` jsonb, `enabled`, `muted_until`, `armed`, `last_value` jsonb, `last_evaluated_at`, `created_at`. A CHECK holds `target_type` to the vault's seven targets. `type` has no CHECK: the API's Literal is the gate and `evaluate()` skips any other type, so a later rule type needs no migration.
+    - `alerts`: `id` bigint identity, `workspace_id`, `rule_id` (nullable), `type`, `entity_type`, `entity_id` text, `dedupe_key` UNIQUE, `fired_at`, `payload` jsonb, `read_at`, `archived_at`. The index `(workspace_id, fired_at, id)` serves the inbox newest first by a backward scan.
+    - The foreign key `(workspace_id, rule_id)` → `alert_rules (workspace_id, id)` is `ON DELETE SET NULL (rule_id)` (Postgres 15+ column list). An alert can't name another workspace's rule, and deleting a rule keeps its alerts with a null `rule_id`.
+    - Both tables are `WorkspaceOwned`. No `channel_ids` and no Phase 7 tables. The downgrade refuses while either table holds a row.
+  - **(b) What a rule watches.** Supplier offers: live supplier listings (`supplier_id` set, not delisted). `target_type` `supplier_offer` is one listing, `product` is its live supplier listings, and `test` (the R-23 defaults) is every open test's product (Idea, Researching or Testing: DEC-312 c's "open").
+    - Cost: the listing snapshot's `price_min_minor`, listing-level as the Suppliers tab reads it (DEC-264 b), not per variant.
+    - Freight: the cheapest US quote for one unit in the newest `shipping_options` capture.
+    - Stock: `in_stock(available, stock)` on the newest snapshot that carries a stock field. A CJ catalog snapshot without one says nothing about stock, so it reads as no source, not as in stock (DEC-243 counts it in stock for the supplier picks only).
+    - Point in time: only rows with `captured_at <= as_of`.
+  - **(c) Crossing, not level.**
+    - The first value a rule sees for an offer is its reference, and a first sight never fires.
+    - `supplier_price_change` and `freight_change` fire when |new − reference| / reference ≥ `pct` (default 5, either direction) and re-arm below `pct` × (1 − `HYSTERESIS`), with `HYSTERESIS = 0.05` a module constant.
+    - `supplier_stock_out` fires on in stock → out and re-arms when back in; `back_in_stock` is the reverse. Stock alerts compare with the previous state.
+    - Only an observation newer than the last one evaluated moves an offer's state. The state sits in `last_value.entities`, and `armed` is false while any offer sits past its threshold.
+    - The reference stays fixed: a later, larger move doesn't fire until the value comes back inside the band. A currency change resets the reference.
+  - **(d) Dedupe and payload.**
+    - `dedupe_key = rule_id:supplier_offer:listing_id:<UTC date of the crossing observation>`, inserted with ON CONFLICT DO NOTHING. `fired_at` is the evaluation's `as_of`.
+    - `payload`: `old` (the reference: `value`, `currency` for money, `as_of`), `new` (`value`, `currency`, `as_of`, `source`, `raw_payload_id`), `threshold` (`{pct}`, or `{}` for stock), `as_of` per source, and `link` (`/products/{id}/suppliers`, or null when the listing has no product).
+  - **(e) R-23 Testing defaults.**
+    - Once a workspace has an open test, `evaluate()` seeds three `target_type = 'test'` rules: "Testing: supplier cost change" (`supplier_price_change`, pct 5), "Testing: freight change" (`freight_change`, pct 5) and "Testing: supplier stock-out" (`supplier_stock_out`). Each type is seeded once.
+    - They can be renamed, re-thresholded, disabled or muted, but not deleted (409 `default_rule`), so a deleted default never comes back. POST can't make a `test` rule.
+    - Gaps: on Testing rules only, a crossing whose window, from the previous observation's `captured_at` to the new one's, overlaps a `collection_gaps` row of the observation's source detected by `as_of` is held. No alert is written, the status is `skipped` and `last_value.skipped` is `{reason: "gap", from, to}`. The offer stays armed, so the next new observation over a gap-free window fires it, with the reference as `old`.
+    - Other rules compare actual observations through gaps (vault Firing semantics).
+  - **(f) Statuses.** `evaluate(session, workspace_id, as_of)` returns `{rule_id: "ok" | "no_source" | "skipped"}` and writes the same into `last_value.status`. `no_source` means nothing the rule watches has an observation yet; that includes a Testing rule after every test has closed. Only enabled rules with `muted_until` null or ≤ `as_of` run. A muted rule isn't advanced, so a crossing during the mute fires after it ends. The caller commits.
+  - **(g) Endpoints.** `GET /v1/alert-rules?cursor=&limit=` (newest first, keyset `[created_at, id]`, `limit` 1–100, default 50), `POST /v1/alert-rules` (201; `target_type` `product` or `supplier_offer` with an existing product or supplier listing, normalised; otherwise 404 or 422), `PATCH /v1/alert-rules/{id}` (`name`, `params`, `enabled`, `muted_until`; `type` and target can't change) and `DELETE /v1/alert-rules/{id}` (returns the rule as it was). Rules show `status` and `skipped` from `last_value`. Another workspace's rule is a 404. Operation ids: `list_alert_rules`, `create_alert_rule`, `update_alert_rule`, `delete_alert_rule`.
+  - **(h) Call site.** SC-6's nightly chain, after scores and on the collector host only: `pulso_core.alerts.evaluate(session, workspace_id, as_of=<run time>)` for each workspace, then commit, from a `pulso_workers` job.
+- **Alternatives:**
+  - **Re-baselining on every fire:** the move back would fire too, so "crossing back and crossing again" would fire three alerts, not two. That's change detection, and the vault asks for crossings.
+  - **The test's start snapshot as R-23's reference:** it's in USD after FX, exists only from Testing, and names one listing. First sight works for every rule and every open stage.
+  - **Consuming a gap-held crossing** (disarming without an alert): a real stock-out over an offline weekend would never reach the owner while ads run. Holding it until a gap-free window confirms it is the honest middle.
+  - **Default rules in code, not rows:** then `skipped: gap`, mute and the threshold would have nowhere to live, and the rule list couldn't show them.
+  - **A CHECK on `alert_rules.type`:** every later rule type would need a migration.
+  - **ON DELETE CASCADE from rules to alerts:** deleting a rule would erase what it fired.
+- **Why:** `packages/core/tests/test_alerts_engine.py` (6 tests) and `apps/api/tests/test_alerts.py` on a throwaway `pgvector/pgvector:0.8.7-pg18-trixie`:
+  - a cost 10% past a 5% threshold for ten more evaluations fires once; 4.8% stays inside the 4.75% band, 4% re-arms, and −6% fires the second alert with the same reference;
+  - re-running an evaluation, and re-running it with the rule's state reset, leaves one row;
+  - a product in Testing gets the three defaults, seeded once, and fires cost 1000 → 1100, freight 500 → 600 and stock in → out;
+  - a crossing over a known gap is skipped with the gap's span (a gap detected later is ignored), stays held at a re-run without new data, then fires on the next gap-free observation, while the user's own rule on the same offer fires through the gap;
+  - a rule on a product without suppliers, and stock rules over stockless snapshots, report `no_source`; muted and disabled rules aren't evaluated;
+  - workspace B's rule isn't evaluated with A's, the database refuses an alert naming another workspace's rule, and a deleted rule leaves its alert;
+  - the rules endpoints create, page, patch, refuse bad targets and nulls, show `skipped`, refuse deleting a default, and 404 for workspace B.
+
+  Seventeen one-line mutations each fail a test (`docs/reports/p4-15.md`).
+- **Not here:** the inbox endpoints (`GET /v1/alerts`, `/unread-count`, `POST /v1/alerts/read`, `/archive`) are WF-4a2; `velocity_spike`, `saturation_cross` and `lifecycle_change` wait for stored scores (SC-6); `price_drop`, `new_competitor_seller` and `store_launch` wait for Shopify (off, DEC-261); variant-level stock; the Celery task and its place in the nightly chain (SC-6); the bell and `/alerts` UI (WF-4b); channels and deliveries (Phase 7); the backtest preview; per-entity mute (backlog rows in the report).

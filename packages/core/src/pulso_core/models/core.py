@@ -370,6 +370,56 @@ class BoardItem(WorkspaceOwned, Base):
     added_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
+ALERT_TARGETS = ("product", "watchlist", "store", "saved_screen", "supplier_offer", "test", "all")
+
+
+class AlertRule(WorkspaceOwned, CreatedAt, Base):
+    """A workspace's alert rule (WF-4, DEC-324). `last_value` is `pulso_core.alerts`' state:
+    the last evaluation's status and each watched entity's reference, value and armed flag;
+    `armed` is false while any entity sits past the threshold."""
+
+    __tablename__ = "alert_rules"
+    __table_args__ = (
+        UniqueConstraint("workspace_id", "id"),  # what alerts' foreign key points at
+        CheckConstraint(sql_in("target_type", ALERT_TARGETS), name="target_type_values"),
+    )
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    name: Mapped[str] = mapped_column(String(120))
+    type: Mapped[str] = mapped_column(String(40))  # the API's Literal is the gate (DEC-324 a)
+    target_type: Mapped[str] = mapped_column(String(20))
+    target_id: Mapped[str | None] = mapped_column(Text)  # a uuid or a bigint, as text
+    params: Mapped[dict[str, Any]] = mapped_column(JSONB, server_default=text("'{}'::jsonb"))
+    enabled: Mapped[bool] = mapped_column(server_default=text("true"))
+    muted_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    armed: Mapped[bool] = mapped_column(server_default=text("true"))
+    last_value: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+    last_evaluated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class Alert(WorkspaceOwned, BigId, Base):
+    """One fired alert; `dedupe_key` (rule:entity_type:entity_id:crossing date) keeps a
+    crossing to one row. Deleting its rule keeps the alert with a null `rule_id`."""
+
+    __tablename__ = "alerts"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["workspace_id", "rule_id"],
+            ["alert_rules.workspace_id", "alert_rules.id"],
+            ondelete="SET NULL (rule_id)",
+        ),
+        Index(None, "workspace_id", "fired_at", "id"),  # the inbox, by a backward scan
+    )
+    rule_id: Mapped[UUID | None]  # null for system alerts
+    type: Mapped[str] = mapped_column(String(40))
+    entity_type: Mapped[str] = mapped_column(String(30))
+    entity_id: Mapped[str] = mapped_column(Text)
+    dedupe_key: Mapped[str] = mapped_column(Text, unique=True)
+    fired_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    payload: Mapped[dict[str, Any]] = mapped_column(JSONB)  # old, new, threshold, as_of, link
+    read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
 # The default scenario's landed cost per workspace and product (migration 0010, DEC-265): a
 # view, so it sits outside Base.metadata and autogenerate never makes it a table.
 workspace_product_economics = Table(
