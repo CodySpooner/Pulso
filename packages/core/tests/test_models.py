@@ -34,6 +34,7 @@ def test_observation_contract() -> None:
             "metric",
         ),
         "popular_products": ("source_id", "country", "category", "observed_for", "rank"),
+        "amazon_ranks": ("asin", "category", "rank_kind", "observed_for"),
     }
     observed = []
     for mapper in Base.registry.mappers:
@@ -75,6 +76,7 @@ def test_observation_contract() -> None:
         "fx_rates",
         "search_trends",
         "popular_products",
+        "amazon_ranks",
     }
 
 

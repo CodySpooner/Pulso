@@ -14,6 +14,7 @@ from pulso_core.models.catalog import (
     VariantSnapshot,
 )
 from pulso_core.models.collection import (
+    AmazonRank,
     CollectionGap,
     CollectorRunTarget,
     HostHeartbeat,
@@ -40,6 +41,7 @@ from pulso_core.models.core import (
 from pulso_core.models.vendors import ShippingOption, Store, Supplier, SupplierOffer
 
 __all__ = [
+    "AmazonRank",
     "Category",
     "CategoryMapping",
     "CollectorRun",
