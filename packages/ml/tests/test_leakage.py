@@ -413,7 +413,7 @@ def test_search_slope_reads_one_capture_without_its_partial_point(db_engine: Eng
         build(session)
         build_inputs(session)
         rows = {
-            (i, f.product_id): f.features
+            (i, f.product_id): f.features or {}
             for i in [15, 20, 39, 40, 41, 44, 45]
             for f in compute(session, START + timedelta(days=i))
             if f.family == "gt_interest"

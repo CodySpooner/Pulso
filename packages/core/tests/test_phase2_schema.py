@@ -1,3 +1,4 @@
+from datetime import date
 from decimal import Decimal
 from pathlib import Path
 from uuid import UUID
@@ -15,6 +16,7 @@ from pulso_core.models import (
     Listing,
     MatchDecision,
     Product,
+    ProductDailyFeature,
     ProductNote,
     ProductTag,
     User,
@@ -55,6 +57,28 @@ def test_phase2_round_trip(db_engine: Engine) -> None:
         assert connection.scalar(version) == "0004"
         assert connection.scalar(text("SELECT to_regclass('match_decisions')")) is None
         command.upgrade(config, "head")
+        assert connection.scalar(version) == "0017"
+
+
+def test_feature_gap_flags_refuse_a_lossy_downgrade(db_engine: Engine) -> None:
+    config = Config(ALEMBIC_INI)
+    version = text("SELECT version_num FROM alembic_version")
+    row = {"family": "shp_sellers", "feature_version": "002-x", "coverage": 1, "has_gap": False}
+    with db_engine.begin() as connection:
+        config.attributes["connection"] = connection
+        command.downgrade(config, "0016")  # no flags yet: the columns drop
+        command.upgrade(config, "head")
+        connection.execute(
+            insert(ProductDailyFeature).values(
+                product_id=make_product(connection),
+                feature_date=date(2026, 12, 14),
+                features={"shp_sellers": 2},
+                gap_flags={"missed_runs": ["2026-12-13"]},
+                **row,
+            )
+        )
+        with pytest.raises(DBAPIError, match="lossy downgrade"), connection.begin_nested():
+            command.downgrade(config, "0016")
         assert connection.scalar(version) == "0017"
 
 

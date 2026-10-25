@@ -50,7 +50,7 @@ def test_seller_growth_reads_only_the_stable_panel() -> None:
     ]
     panel = {1, 2, 3, 4, 5}
     level, growth = seller_inputs(listings, panel, now, then)
-    assert (level, growth) == (3, pytest.approx(math.log(4 / 3)))  # panel 2 → 3
+    assert level == 3 and growth == pytest.approx(math.log(4 / 3))  # panel 2 → 3
     # Ten newly tracked stores sell it today: the level counts them, growth can't see them.
     batch = [Seller(100 + n, at(27), None) for n in range(10)]
     assert seller_inputs(listings + batch, panel, now, then) == (13, growth)
