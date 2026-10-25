@@ -3346,3 +3346,57 @@ Superseded review defaults, not given entries: default #0 (move the repo) is don
   - Freshness and confidence in explanations (MT-1's next part).
   - "How this is computed" links from score displays, since no score renders in the app yet.
   - Version history, which needs `model_versions` (Phase 6).
+
+### DEC-314 · Watchlists (WF-2 part a): workspace tables `watchlists` and `watchlist_items`, a star is a place on the list named "Main", an item keeps its first `added_at`, and a merged product resolves to its survivor on add
+**2026-10-25 · proposed (p4-07)** · Phase 4 task WF-2 part a; SPEC §5 (Workspace), §6.10, §6.4; DEC-263, DEC-287, DEC-306 (f); AGENTS.md §7; vault Features/Watchlists; `docs/reports/p4-07.md`; migration 0019, 10 endpoints and the regenerated client; no UI, flag, dependency, score, feature or collector change
+- **Decision:**
+  - **(a) Tables.**
+    - `watchlists`: `id` uuid, `workspace_id`, `name` varchar(80), `position` int, `created_at`. Names are UNIQUE per workspace, exactly as typed once trimmed (case counts).
+    - `watchlist_items`: `workspace_id`, `watchlist_id`, `product_id`, `added_at`, `position`, with primary key `(watchlist_id, product_id)`.
+    - The items' foreign key is `(workspace_id, watchlist_id)` → `watchlists (workspace_id, id)` ON DELETE CASCADE. An item can't sit in another workspace's list, and it goes when its list does.
+    - Both tables are `WorkspaceOwned` (`workspace_id` NOT NULL and indexed). The downgrade refuses while any list exists.
+  - **(b) The default list.**
+    - A star is the item on the list named "Main". There's no flag column.
+    - `PUT /v1/products/{id}/watch` creates Main and the item in one request. Main comes from INSERT … ON CONFLICT DO NOTHING, so two first stars can't make two Mains.
+    - Main can be renamed or deleted, and the next star then makes a new Main, placed last.
+    - Star and unstar touch Main only, so a product moved to another list reads as unstarred. Whether ★ should mean "on any list" is for the UI part (vault open question).
+  - **(c) `added_at` is the first add.**
+    - A re-add (`POST …/items`, or a second PUT) is ON CONFLICT DO NOTHING.
+    - A move keeps the row's `added_at`. When the target list already holds the product, it keeps the earlier of the two (LEAST). The later "since added" part reads from this.
+  - **(d) Merged products.**
+    - On add (`POST …/items`, `PUT …/watch`), each id follows `merged_into_id` through any chain of merges to the survivor, and the survivors are deduplicated. An unknown id is a 404, and nothing is added.
+    - Unstar removes the product and any product merged into it (`with_merged`, DEC-263).
+    - Items aren't rewritten when a merge lands after the add. The UI part shows the vault's "merged" note.
+  - **(e) Order and pages.**
+    - Lists sort by `position`, then `created_at`, then `id`. A new list, Main included, goes last.
+    - `PATCH` with a `position` moves the list to that 0-based place (past the end means last) and renumbers every list 0…n−1.
+    - `GET /v1/watchlists` isn't paged: a workspace keeps tens of lists, and the sub-nav shows them all.
+    - Items are newest `added_at` first, with `product_id` breaking ties (one request's adds share `added_at`). The keyset cursor is `[added_at, product_id]`, `limit` 1–100, default 50.
+    - The primary key's `watchlist_id` prefix serves the page; the vault keeps a list well under 200 rows.
+    - `watchlist_items.position` is stored (default 0) for a later manual order. Nothing reads it yet.
+  - **(f) Responses.**
+    - Every mutation returns the list with its `item_count`: `DELETE` returns the list as it was, and a move returns the target list.
+    - `DELETE …/watch` returns the item removed, or null.
+    - Another workspace's list is a 404, never a 403.
+    - A duplicate name is a 409 `conflict`, from the app's IntegrityError handler.
+    - Operation ids: `list_watchlists`, `create_watchlist`, `update_watchlist`, `delete_watchlist`, `list_watchlist_items`, `add_watchlist_items`, `remove_watchlist_item`, `move_watchlist_items`, `watch_product`, `unwatch_product`.
+- **Alternatives:**
+  - **An `is_default` column:** it needs a partial unique index and rules for deleting the default list. For one user, the name says the same thing.
+  - **Case-insensitive names** (unique on `lower(name)`): an expression index for a case one user rarely meets. Left for the UI part if "pet" next to "Pet" turns out to confuse.
+  - **A plain `watchlist_id` foreign key:** then only app code would keep items in their own workspace.
+  - **A surrogate item id:** `(watchlist_id, product_id)` is already the key the brief asks to be unique.
+  - **Resolving merged items on read:** that belongs to the UI part, together with the "merged" note.
+  - **Fractional or gap positions:** a workspace keeps tens of lists, so renumbering them is a handful of updates.
+- **Why:** `apps/api/tests/test_watchlists.py` runs 5 tests on a throwaway `pgvector/pgvector:0.8.7-pg18-trixie`:
+  - the first star creates Main and the item, and a second star changes nothing, `added_at` included;
+  - a merge chain stars its survivor, and an unknown product is a 404;
+  - unstarring is idempotent and reaches a product merged after its star;
+  - a deleted Main comes back last;
+  - create, rename, reorder and delete, with 409s and 422s, and the cascade;
+  - add, re-add, move (keeping the earlier `added_at`), skip and remove;
+  - pages are stable and newest first, ties included;
+  - workspace B gets a 404 from seven requests on A's list (items, rename, delete, add, remove, and a move from it and to it), and its star lands on its own Main;
+  - the database refuses an item in another workspace's list.
+
+  `packages/core/tests/test_models.py`'s `WorkspaceOwned` contract covers both tables, and the migration round trip matches the models. Ten one-line mutations each fail a test (`docs/reports/p4-07.md`).
+- **Not here:** the 30-day sparkline batch, "since added" deltas, `GET /v1/watchlists/summary`, the `/watchlists` UI, the `W` shortcut, and a read of a product's star state (backlog rows in the report).

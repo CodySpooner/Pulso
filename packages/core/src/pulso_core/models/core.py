@@ -13,6 +13,7 @@ from sqlalchemy import (
     Column,
     DateTime,
     ForeignKey,
+    ForeignKeyConstraint,
     Index,
     MetaData,
     Numeric,
@@ -21,6 +22,7 @@ from sqlalchemy import (
     String,
     Table,
     Text,
+    UniqueConstraint,
     Uuid,
     func,
     text,
@@ -297,6 +299,38 @@ class ProductTest(WorkspaceOwned, CreatedAt, BigId, Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
+
+
+class Watchlist(WorkspaceOwned, CreatedAt, Base):
+    """A named list of products the workspace watches (WF-2, DEC-314). A star adds to the list
+    named "Main", created by the first star."""
+
+    __tablename__ = "watchlists"
+    __table_args__ = (
+        UniqueConstraint("workspace_id", "name"),
+        UniqueConstraint("workspace_id", "id"),  # what watchlist_items' foreign key points at
+    )
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    name: Mapped[str] = mapped_column(String(80))
+    position: Mapped[int] = mapped_column(server_default="0")  # the sub-nav order, lowest first
+
+
+class WatchlistItem(WorkspaceOwned, Base):
+    __tablename__ = "watchlist_items"
+    __table_args__ = (
+        PrimaryKeyConstraint("watchlist_id", "product_id"),
+        # Keyed with the workspace, so an item can't sit in another workspace's list.
+        ForeignKeyConstraint(
+            ["workspace_id", "watchlist_id"],
+            ["watchlists.workspace_id", "watchlists.id"],
+            ondelete="CASCADE",
+        ),
+    )
+    watchlist_id: Mapped[UUID]
+    product_id: Mapped[UUID] = mapped_column(ForeignKey("products.id"))
+    # The first add; a re-add or a move keeps it, so "since added" reads from the first star.
+    added_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    position: Mapped[int] = mapped_column(server_default="0")  # manual order: not used yet
 
 
 # The default scenario's landed cost per workspace and product (migration 0010, DEC-265): a
