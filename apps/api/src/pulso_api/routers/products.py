@@ -3,8 +3,9 @@ no workspace filter; only notes, tags and the best margin (Settings) are the wor
 
 import json
 from collections import defaultdict
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterator, Sequence
 from datetime import UTC, datetime, time, timedelta
+from decimal import Decimal
 from typing import Annotated, Any, Literal
 from uuid import UUID
 
@@ -41,6 +42,7 @@ from sqlalchemy.sql import ColumnElement
 from starlette.responses import RedirectResponse, Response
 
 from pulso_api.auth import Principal, current_principal
+from pulso_api.csv_export import csv_response, major
 from pulso_api.dependencies import get_db
 from pulso_api.errors import APIError
 from pulso_api.schemas.provenance import NoSource, Sourced, Stat
@@ -353,7 +355,38 @@ CURSORS: dict[str, TypeAdapter[Any]] = {
 }
 
 
-@router.get("", response_model=DiscoverPage)
+# The table's columns in on-screen order (feed-views COLUMNS), plus id; Freshness is as_of.
+DISCOVER_CSV = (
+    "id",
+    "product",
+    "category",
+    "price_min",
+    "price_max",
+    "currency",
+    "velocity_7d",
+    "velocity_grade",
+    "velocity_gap",
+    "momentum_g7",
+    "stores",
+    "suppliers",
+    "best_margin",
+    "best_margin_pct",
+    "first_seen_at",
+    "as_of",
+    "stale",
+)
+
+
+@router.get(
+    "",
+    response_model=DiscoverPage,
+    responses={
+        200: {
+            "content": {"text/csv": {"schema": {"type": "string"}}},
+            "description": "JSON, or with format=csv every matching row as a CSV download.",
+        },
+    },
+)
 def list_products(
     session: DB,
     principal: Annotated[Principal, Depends(current_principal)],
@@ -378,7 +411,11 @@ def list_products(
     ] = None,
     cursor: str | None = None,
     limit: Annotated[int, Query(ge=1, le=100)] = 48,
-) -> DiscoverPage:
+    format: Annotated[
+        Literal["json", "csv"],
+        Query(description="csv: every matching row in this sort, no cursor or limit (DEC-316)"),
+    ] = "json",
+) -> DiscoverPage | Response:
     """Discover (UX-2): products neither merged nor emptied by an undo, filtered, sorted and
     keyset-paginated (DEC-239, DEC-271). An unknown store or supplier lists nothing (DEC-300)."""
     now = datetime.now(UTC)
@@ -465,7 +502,7 @@ def list_products(
         "fewest_sellers": feed.c.store_count,
     }[sort]
     ascending = sort == "fewest_sellers"
-    if cursor is not None:
+    if cursor is not None and format == "json":
         try:
             after, after_id = CURSORS[sort].validate_json(cursor)
         except ValidationError:
@@ -474,9 +511,7 @@ def list_products(
         position = tuple_(key, feed.c.id)
         filters.append(position > (after, after_id) if ascending else position < (after, after_id))
     order = (key.asc(), feed.c.id.asc()) if ascending else (key.desc(), feed.c.id.desc())
-    rows = session.execute(select(feed).where(*filters).order_by(*order).limit(limit + 1)).all()
-    page = rows[:limit]
-
+    ordered = select(feed).where(*filters).order_by(*order)
     sources = session.execute(
         select(
             Source,
@@ -489,6 +524,17 @@ def list_products(
             .label("feeding"),
         ).order_by(Source.id)
     ).all()
+    by_key = {row.Source.key: row.Source for row in sources}
+    if format == "csv":
+        return csv_response(
+            session,
+            "discover",
+            DISCOVER_CSV,
+            ordered,
+            lambda chunk: csv_rows(session, principal.workspace_id, chunk, by_key, now),
+        )
+    rows = session.execute(ordered.limit(limit + 1)).all()
+    page = rows[:limit]
     next_cursor = None
     if len(rows) > limit:
         last = rows[limit - 1]
@@ -500,7 +546,6 @@ def list_products(
         next_cursor = json.dumps([value, str(last.id)])
     snapshots = latest_snapshots(session, [row.id for row in page])
     margins = best_margins(session, principal.workspace_id, [row.id for row in page])
-    by_key = {row.Source.key: row.Source for row in sources}
     feeding = [row for row in sources if row.feeding]
     degraded = []
     for row in feeding:
@@ -568,6 +613,42 @@ def item(
         as_of=min((s.as_of for s in fed), default=None),
         stale=any(s.stale for s in fed),
     )
+
+
+def csv_rows(
+    session: Session,
+    workspace_id: UUID,
+    chunk: Sequence[Row[Any]],
+    sources: dict[str, Source],
+    now: datetime,
+) -> Iterator[list[object]]:
+    """One export chunk as DISCOVER_CSV cells: the same items the JSON page builds."""
+    ids = [row.id for row in chunk]
+    snapshots = latest_snapshots(session, ids)
+    margins = best_margins(session, workspace_id, ids)
+    for row in chunk:
+        each = item(row, snapshots[row.id], margins.get(row.id), sources, now)
+        velocity = each.velocity if isinstance(each.velocity, Velocity) else None
+        margin = each.best_margin_minor if isinstance(each.best_margin_minor, Margin) else None
+        yield [
+            each.id,
+            each.title,
+            each.category,
+            major(each.price_min_minor.value),
+            major(each.price_max_minor.value),
+            each.currency,
+            each.velocity.value,
+            velocity.grade if velocity else None,
+            velocity.gap if velocity else None,
+            velocity.growth if velocity else None,
+            each.store_count.value,
+            each.supplier_count.value,
+            major(margin.value) if margin else None,
+            Decimal(margin.margin_bps).scaleb(-2) if margin else None,  # 5012 bps is 50.12 %
+            each.first_seen_at,
+            each.as_of,
+            each.stale,
+        ]
 
 
 @categories_router.get("", response_model=list[CategoryOption])

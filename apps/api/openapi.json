@@ -17737,6 +17737,22 @@
             }
           },
           {
+            "description": "csv: every matching row in this sort, no cursor or limit (DEC-316)",
+            "in": "query",
+            "name": "format",
+            "required": false,
+            "schema": {
+              "default": "json",
+              "description": "csv: every matching row in this sort, no cursor or limit (DEC-316)",
+              "enum": [
+                "json",
+                "csv"
+              ],
+              "title": "Format",
+              "type": "string"
+            }
+          },
+          {
             "in": "cookie",
             "name": "__session",
             "required": false,
@@ -17760,9 +17776,14 @@
                 "schema": {
                   "$ref": "#/components/schemas/DiscoverPage"
                 }
+              },
+              "text/csv": {
+                "schema": {
+                  "type": "string"
+                }
               }
             },
-            "description": "Successful Response"
+            "description": "JSON, or with format=csv every matching row as a CSV download."
           },
           "401": {
             "content": {
