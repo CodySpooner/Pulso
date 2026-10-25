@@ -143,6 +143,7 @@ export const typeLabel: Record<string, string> = {
   public_endpoint: "Public endpoint",
   vendor: "Vendor API",
   internal: "Internal",
+  csv: "CSV only",
 };
 
 export interface MissedSlot {
