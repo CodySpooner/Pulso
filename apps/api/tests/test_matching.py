@@ -402,3 +402,24 @@ def test_a_split_or_rejected_pair_stays_apart_after_a_matcher_rerun(queue: Queue
     assert queue.decisions() == count  # the re-run wrote no decision
     with Session(queue.engine) as session:
         assert session.get_one(MatchCandidate, pair["id"]).status == "rejected"
+
+
+@pytest.mark.parametrize(
+    "method,path,body",
+    [
+        ("GET", "/v1/admin/matching/candidates", None),
+        ("GET", "/v1/admin/matching/candidates/1", None),
+        ("POST", "/v1/admin/matching/decisions", {"action": "reject", "candidate_id": 1}),
+        ("POST", "/v1/admin/matching/decisions/1/undo", None),
+    ],
+)
+def test_matching_routes_reject_non_admins(
+    client: TestClient,
+    signed_token: Callable[[dict[str, Any]], str],
+    method: str,
+    path: str,
+    body: dict[str, Any] | None,
+) -> None:
+    token = signed_token({"sub": "user_other"})
+    response = client.request(method, path, json=body, headers={"Authorization": "Bearer " + token})
+    assert (response.status_code, response.json()["code"]) == (403, "not_allowlisted")
