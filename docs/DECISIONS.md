@@ -4020,3 +4020,58 @@ Superseded review defaults, not given entries: default #0 (move the repo) is don
 
   `apps/workers/tests/test_ml.py` pins the order: scores, commit, then alerts, in both tasks. 16 one-line mutations each fail a test (`docs/reports/p4-23.md`).
 - **Not here:** a job-runs row for Data Health (backlog row); the "Last evaluation" footer (WF-4b reads `last_evaluated_at`); evaluation after `store_crawl` and supplier refreshes; the score-based rules (imp-466–468).
+
+### DEC-336 · Screener (WF-1 part a): `GET /v1/screener` takes one JSON `filters` object, the shape a saved screen stores; it sorts on any metric plus Trend and Opportunity, missing values last in either order, keyset `[value, id]`; `saved_screens` (migration 0022) with `GET/POST/DELETE /v1/screens`; imp-488's batch reads keep any page at 8 queries
+**2026-10-25 · proposed (p4-24)** · Phase 4 task WF-1 part a; backlog imp-488; SPEC §6.3; DEC-040, DEC-239, DEC-265, DEC-271, DEC-287, DEC-306 (f), DEC-314, DEC-322, DEC-331; AGENTS.md §3, §7; vault Features/Product Screener; `docs/reports/p4-24.md`; migration 0022, 5 endpoints and the regenerated client; no UI, flag, dependency, score, feature, collector or money change
+- **Decision:**
+  - **(a) One filter object, as JSON.** `GET /v1/screener?filters=<JSON>&sort=&order=&cursor=&limit=`. `filters` is a JSON `Filters` object (max 4,000 characters). The same Pydantic model, with `extra="forbid"`, validates the query and a saved screen's body, so a screen runs as stored and the web app's unsaved-screen URL (base64url JSON, vault note) holds the same object. Bad JSON, an unknown key, NaN or infinity, or an unknown stage gives `422 invalid_filters`.
+  - **(b) Filters.** Each pair is `<metric>_min` / `<metric>_max`, both inclusive, combined with AND. A product without the metric fails every bound on it, because SQL compares NULL as unknown, so missing data is never read as 0 (DEC-040). The vault's per-condition "include no data" toggle is WF-1b's to add. The metrics, in the units each row returns:
+    - `margin_bps`: the caller's `workspace_product_economics.margin_bps`, the Discover and Profit best margin (DEC-265). R-16 holds: an incomplete row has no margin, so it never passes.
+    - `velocity`: Discover's V7 from `best_feature()`, the latest feature day's best-graded demand family (DEC-239 c). The filter reads the raw value; the row shows it rounded, as Discover does.
+    - `acceleration`: Acc = G7(t) − G7(t−7), from the same family and `feature_version` rows a week apart. This is Lifecycle's input, read from the same rows as the velocity. No G7 a week earlier means no acceleration.
+    - `saturation`: the latest Saturation row (`pulso_core.scores.latest`). A NULL row or no row fails.
+    - `price`: the lowest live USD store price, Discover's `price_min_minor`, in minor units. It's one value per product, not Discover's band overlap, so the filter and the sort read the same number.
+    - `supplier_rating`: the best live supplier listing's rating, in hundredths of a star (460 is 4.60). Each listing's rating is read as on the Suppliers tab: its latest snapshot's rating, else the supplier's own.
+    - `ship_days_us`: the fewest worst-case days (`max_days`) among the live supplier listings' US quotes at quantity 1. Each listing's quotes come from its latest quoted day only, so a dropped method doesn't linger. A quote without `max_days` doesn't count.
+    - `lifecycle` (a non-empty set of stages): the latest Lifecycle row's stage is one of them. A NULL stage fails.
+    - `category`: the product's own `category_id`, exactly as on Discover. Subtrees aren't included.
+    - `risk_min` / `risk_max`: accepted (0–100) but not applied. The page's `unapplied` names each one given, with `"phase_5"`, and the result isn't narrowed. No risk score exists until Phase 5.
+  - **(c) Sorts.** `sort` = `trend` (default), `opportunity`, or any range metric above; `order` = `desc` (default) or `asc`.
+    - Missing values sort last in both orders, then by id in the sort's direction. The keyset cursor is `[value or null, id]`: after a value, the rest of its ties, then the values beyond it, then every missing one; after a null, the remaining nulls by id.
+    - Risk isn't a sort key (422), and neither are lifecycle nor category, which are categorical.
+    - `opportunity` is computed in Python, as DEC-331 computes it: one landed-cost function. The whole filtered set is scored with two batch `latest_rows()` reads and one economics read, then sorted and paged in Python with the same cursor.
+  - **(d) Rows.** Each row has every metric with its provenance:
+    - `price_minor`, `supplier_rating` and `ship_days_us` are `Sourced` from the row the filter read. A supplier's own rating has no capture, so it's as of the listing's `last_seen_at`, with no payload, as on the Suppliers tab.
+    - `margin` is Discover's `margin_stat`.
+    - `velocity` is Discover's `Velocity`. `acceleration` carries the velocity's family, source and `as_of`.
+    - `trend`, `saturation` and `lifecycle` are a lean `LatestScore` (value, stage, day, model_version, as_of, reason). Full explanations stay on `GET /v1/products/{id}/scores`, so a page doesn't carry four explanations per row.
+    - `opportunity` has value, as_of, confidence, reason and missing.
+    - A missing metric is `{value: null, reason}`, and a NULL score row keeps its explanation's reason. Nothing reads as 0.
+    - The universe is Discover's: neither merged nor emptied (DEC-271). A merged product never lists, because its survivor carries its listings.
+  - **(e) Query plan.**
+    - A lateral is joined only for the metrics a filter or the sort reads, because Postgres runs an unused lateral anyway. Then the page's rows read every metric through the same lateral builders, so a row shows the value it was screened on.
+    - Batch reads per page: `latest_rows()` per kind (`pulso_ml.scores.opportunity`, imp-488: `latest()` over a list of ids or a query of them), and one economics read over the page, or over the filtered set for the Opportunity sort.
+    - A page runs 8 queries whatever its size, for both the SQL sorts and the Opportunity sort (test).
+    - On 3,000 products, the default sort takes 10 ms (a backward scan of the scores unique key per product). Every lateral filter at once takes 4 ms; a margin filter takes 547 ms and the Opportunity sort 564 ms in the view (the report has the plans).
+  - **(f) Saved screens.**
+    - Table `saved_screens` (WorkspaceOwned, migration 0022 on 0021): `id`, `name` (1–80 characters, NUL-free, unique per workspace), `version` (smallint ≥ 1, now 1), `definition` (JSONB `{filters, sort, order}` with unset filters left out), `created_at`.
+    - A breaking change to `Filters` bumps `VERSION`, and a migration (or the read) upgrades older rows. Adding an optional field needs neither.
+    - The downgrade refuses while rows exist, as 0019–0021 do.
+    - Endpoints: `GET /v1/screens` (by name, keyset on the name, limit 1–100, default 50), `POST` (201; a used name is a 409), `GET /{id}`, and `DELETE /{id}` (returns the screen as it was, like a watchlist delete). Another workspace's screen is a 404, like a missing one.
+- **Alternatives:**
+  - **Flat query parameters** (a Pydantic query model): typed client parameters, but a second shape beside the saved one, and `extra="forbid"` can't be used with the other query parameters. A typo'd filter would be ignored silently.
+  - **`POST /screener/query`** (the vault's sketch): a cacheable, bookmarkable GET was asked for, and the endpoint table names the GET.
+  - **Opportunity in SQL:** a second Opportunity formula, and a second landed cost at duty 0 (DEC-331 b refuses both).
+  - **Every lateral always:** the default sort would pay for the economics view on every product: 550 ms instead of 10.
+  - **A materialised screener row:** imp-279's per-workspace economics table. The margin paths now pass 500 ms at 3,000 products, so its trigger ("when the sort is scheduled") is met. It's a backlog row, not this task's (no second migration).
+  - **Columns, `alert_enabled`, `updated_at` on `saved_screens` now:** WF-1b's column chooser can live in the definition JSON without a migration, and Phase 7 adds its alert columns.
+- **Why:** `apps/api/tests/test_screener.py` (41 tests):
+  - Each filter narrows the fixture set (20 cases), and a product missing the metric is out.
+  - Each sort orders with missing values last in both orders, and a cursor walk at limit 1 lists every row once (9 sorts × 2 orders). Ties break by id across pages, among values and among nulls.
+  - Risk returns the marker and doesn't narrow.
+  - Margin and Opportunity follow the caller's workspace.
+  - Bad input is a 422.
+  - A page of 50 runs as many queries as a page of 1.
+
+  `test_screens.py` covers CRUD, unique names, validation and two-workspace 404s. `test_saved_screens_schema.py` covers up/down/up and the refused downgrade. 18 mutations each fail a test.
+- **Not here:** the Screener page (WF-1b), `?format=csv` (imp-430), a result count and per-condition "removed by" counts, the metric catalog and histograms (`GET /screener/metrics`), OR groups, "include no data", rename and duplicate (PATCH), alerts on new matches (Phase 7), and forecast filters (Phase 6).

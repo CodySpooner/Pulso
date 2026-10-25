@@ -16,6 +16,7 @@ COVERED = (
     "/v1/popular-products",
     "/v1/amazon",
     "/v1/pulse",
+    "/v1/screener",
 )
 # At least these operations; a test fails if a prefix stops reaching one of them.
 COVERED_OPERATIONS = {
@@ -39,6 +40,7 @@ COVERED_OPERATIONS = {
     "list_amazon_ranks",
     "list_product_amazon_ranks",
     "get_pulse",
+    "screen_products",
 }
 # Numbers that are not observations, so no capture time applies. Each needs a reason, and one
 # the check no longer flags must be removed.
