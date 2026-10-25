@@ -351,6 +351,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/products/{product_id}/series": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Product Series
+         * @description The Trends tab (UX-5, DEC-245): one point per observed UTC day, never filled in.
+         */
+        get: operations["get_product_series"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/products/{product_id}/tags": {
         parameters: {
             query?: never;
@@ -607,30 +627,6 @@ export interface components {
              */
             next_cursor: string | null;
         };
-        /** Gap */
-        Gap: {
-            /**
-             * Detected At
-             * Format: date-time
-             */
-            detected_at: string;
-            /** Reason */
-            reason: string;
-            /**
-             * Slot End
-             * Format: date-time
-             */
-            slot_end: string;
-            /** Slot Key */
-            slot_key: string;
-            /**
-             * Slot Start
-             * Format: date-time
-             */
-            slot_start: string;
-            /** Source Key */
-            source_key: string;
-        };
         /** Health */
         Health: {
             /**
@@ -674,7 +670,7 @@ export interface components {
              * Open Gaps
              * @description Unfilled gaps starting in the last 90 days.
              */
-            open_gaps: components["schemas"]["Gap"][];
+            open_gaps: components["schemas"]["pulso_api__schemas__admin__Gap"][];
         };
         /** ImportPreview */
         ImportPreview: {
@@ -752,6 +748,18 @@ export interface components {
              */
             workspace_id: string;
         };
+        /** MissingSeries */
+        MissingSeries: {
+            /**
+             * Metric
+             * @enum {string}
+             */
+            metric: "price" | "store_count" | "search" | "velocity_js" | "velocity_bumps" | "ads";
+            /** Reason */
+            reason: string;
+            /** Value */
+            value: null;
+        };
         /**
          * NoSource
          * @description A number nothing backs yet: null with the reason, never 0 (DEC-040).
@@ -791,6 +799,23 @@ export interface components {
              * @description Pass as `cursor` for the next, older page.
              */
             next_cursor: string | null;
+        };
+        /** Point */
+        Point: {
+            /**
+             * As Of
+             * Format: date-time
+             */
+            as_of: string;
+            /**
+             * Day
+             * Format: date
+             */
+            day: string;
+            /** High */
+            high: number | null;
+            /** Value */
+            value: number;
         };
         /** ProductHeader */
         ProductHeader: {
@@ -855,6 +880,31 @@ export interface components {
             price_min_minor: components["schemas"]["Sourced"] | components["schemas"]["NoSource"];
             /** Velocity */
             velocity: components["schemas"]["Velocity"] | components["schemas"]["NoSource"];
+        };
+        /** ProductSeries */
+        ProductSeries: {
+            /**
+             * End
+             * Format: date
+             */
+            end: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Range
+             * @enum {string}
+             */
+            range: "7d" | "30d" | "90d" | "all";
+            /** Series */
+            series: (components["schemas"]["Series"] | components["schemas"]["MissingSeries"])[];
+            /**
+             * Start
+             * Format: date
+             */
+            start: string;
         };
         /** ProfitCalc */
         ProfitCalc: {
@@ -1188,6 +1238,36 @@ export interface components {
             series_90d: components["schemas"]["SeriesDay"][];
             spread: components["schemas"]["Spread"];
         };
+        /** Series */
+        Series: {
+            /**
+             * As Of
+             * Format: date-time
+             */
+            as_of: string;
+            /** Gaps */
+            gaps: components["schemas"]["pulso_api__routers__product_series__Gap"][];
+            /** Method */
+            method: string | null;
+            /**
+             * Metric
+             * @enum {string}
+             */
+            metric: "price" | "store_count" | "search" | "velocity_js" | "velocity_bumps" | "ads";
+            /** Points */
+            points: components["schemas"]["Point"][];
+            /** Source */
+            source: string;
+            /** Source Name */
+            source_name: string;
+            /** Stale */
+            stale: boolean;
+            /**
+             * Unit
+             * @enum {string}
+             */
+            unit: "usd_minor" | "stores" | "units_7d";
+        };
         /** SeriesDay */
         SeriesDay: {
             /** Active */
@@ -1430,6 +1510,43 @@ export interface components {
             stale: boolean;
             /** Value */
             value: number;
+        };
+        /** Gap */
+        pulso_api__routers__product_series__Gap: {
+            /**
+             * Day
+             * Format: date
+             */
+            day: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "gap" | "failed";
+        };
+        /** Gap */
+        pulso_api__schemas__admin__Gap: {
+            /**
+             * Detected At
+             * Format: date-time
+             */
+            detected_at: string;
+            /** Reason */
+            reason: string;
+            /**
+             * Slot End
+             * Format: date-time
+             */
+            slot_end: string;
+            /** Slot Key */
+            slot_key: string;
+            /**
+             * Slot Start
+             * Format: date-time
+             */
+            slot_start: string;
+            /** Source Key */
+            source_key: string;
         };
     };
     responses: never;
@@ -6045,6 +6162,244 @@ export interface operations {
                 };
             };
             /** @description Merged: the survivor's sellers, query string kept. */
+            308: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": {
+                        /** Code */
+                        code: string;
+                        /** Detail */
+                        detail: string;
+                        /** Errors */
+                        errors?: {
+                            [key: string]: unknown;
+                        }[];
+                        /** Request Id */
+                        request_id: string;
+                        /** Status */
+                        status: number;
+                        /** Title */
+                        title: string;
+                        /**
+                         * Type
+                         * @default about:blank
+                         */
+                        type: string;
+                    };
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": {
+                        /** Code */
+                        code: string;
+                        /** Detail */
+                        detail: string;
+                        /** Errors */
+                        errors?: {
+                            [key: string]: unknown;
+                        }[];
+                        /** Request Id */
+                        request_id: string;
+                        /** Status */
+                        status: number;
+                        /** Title */
+                        title: string;
+                        /**
+                         * Type
+                         * @default about:blank
+                         */
+                        type: string;
+                    };
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": {
+                        /** Code */
+                        code: string;
+                        /** Detail */
+                        detail: string;
+                        /** Errors */
+                        errors?: {
+                            [key: string]: unknown;
+                        }[];
+                        /** Request Id */
+                        request_id: string;
+                        /** Status */
+                        status: number;
+                        /** Title */
+                        title: string;
+                        /**
+                         * Type
+                         * @default about:blank
+                         */
+                        type: string;
+                    };
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": {
+                        /** Code */
+                        code: string;
+                        /** Detail */
+                        detail: string;
+                        /** Errors */
+                        errors?: {
+                            [key: string]: unknown;
+                        }[];
+                        /** Request Id */
+                        request_id: string;
+                        /** Status */
+                        status: number;
+                        /** Title */
+                        title: string;
+                        /**
+                         * Type
+                         * @default about:blank
+                         */
+                        type: string;
+                    };
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": {
+                        /** Code */
+                        code: string;
+                        /** Detail */
+                        detail: string;
+                        /** Errors */
+                        errors?: {
+                            [key: string]: unknown;
+                        }[];
+                        /** Request Id */
+                        request_id: string;
+                        /** Status */
+                        status: number;
+                        /** Title */
+                        title: string;
+                        /**
+                         * Type
+                         * @default about:blank
+                         */
+                        type: string;
+                    };
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": {
+                        /** Code */
+                        code: string;
+                        /** Detail */
+                        detail: string;
+                        /** Errors */
+                        errors?: {
+                            [key: string]: unknown;
+                        }[];
+                        /** Request Id */
+                        request_id: string;
+                        /** Status */
+                        status: number;
+                        /** Title */
+                        title: string;
+                        /**
+                         * Type
+                         * @default about:blank
+                         */
+                        type: string;
+                    };
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": {
+                        /** Code */
+                        code: string;
+                        /** Detail */
+                        detail: string;
+                        /** Errors */
+                        errors?: {
+                            [key: string]: unknown;
+                        }[];
+                        /** Request Id */
+                        request_id: string;
+                        /** Status */
+                        status: number;
+                        /** Title */
+                        title: string;
+                        /**
+                         * Type
+                         * @default about:blank
+                         */
+                        type: string;
+                    };
+                };
+            };
+        };
+    };
+    get_product_series: {
+        parameters: {
+            query?: {
+                range?: "7d" | "30d" | "90d" | "all";
+                /** @description A comma list of price, store_count, search, velocity_js, velocity_bumps, ads; all by default. */
+                metrics?: string;
+            };
+            header?: never;
+            path: {
+                product_id: string;
+            };
+            cookie?: {
+                __session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProductSeries"];
+                };
+            };
+            /** @description Merged: the survivor's series URL, query string kept. */
             308: {
                 headers: {
                     [name: string]: unknown;
