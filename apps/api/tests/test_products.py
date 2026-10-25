@@ -382,8 +382,10 @@ def test_feed_items_trace_every_number(api: TestClient, feed: dict[str, str]) ->
     assert (steady["store_count"]["value"], steady["supplier_count"]["value"]) == (2, 1)
     assert (steady["price_min_minor"]["value"], steady["price_max_minor"]["value"]) == (1500, 2500)
     assert steady["category"] == "Home & Garden > Lighting > Lamps"
-    # The card's freshness is its oldest feeding family: the CJ snapshot, 9 h ago.
-    assert datetime.fromisoformat(steady["as_of"]) == NOW - timedelta(hours=9)
+    # The card's freshness is its oldest feeding family: the CJ snapshot, 9 h ago, or from 09:00Z
+    # on the demand family, whose day ended at 00:00Z (imp-301).
+    assert datetime.fromisoformat(steady["supplier_count"]["as_of"]) == NOW - timedelta(hours=9)
+    assert datetime.fromisoformat(steady["as_of"]) == min(NOW - timedelta(hours=9), day_end)
     for each in items.values():  # the fixture's workspace has no settings row
         assert each["best_margin_minor"] == {
             "value": None,
