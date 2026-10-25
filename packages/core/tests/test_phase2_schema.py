@@ -57,7 +57,7 @@ def test_phase2_round_trip(db_engine: Engine) -> None:
         assert connection.scalar(version) == "0004"
         assert connection.scalar(text("SELECT to_regclass('match_decisions')")) is None
         command.upgrade(config, "head")
-        assert connection.scalar(version) == "0022"
+        assert connection.scalar(version) == "0023"
 
 
 def test_feature_gap_flags_refuse_a_lossy_downgrade(db_engine: Engine) -> None:
@@ -79,7 +79,7 @@ def test_feature_gap_flags_refuse_a_lossy_downgrade(db_engine: Engine) -> None:
         )
         with pytest.raises(DBAPIError, match="lossy downgrade"), connection.begin_nested():
             command.downgrade(config, "0017")
-        assert connection.scalar(version) == "0022"
+        assert connection.scalar(version) == "0023"
 
 
 @pytest.mark.parametrize(
@@ -115,7 +115,7 @@ def test_phase2_downgrade_refuses_owner_input(db_engine: Engine, owner_input: st
             connection.begin_nested(),
         ):
             command.downgrade(config, "0004")
-        assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "0022"
+        assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "0023"
 
 
 def test_embedding_knn_uses_hnsw(db_engine: Engine) -> None:

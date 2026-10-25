@@ -442,6 +442,43 @@ def test_margin_and_opportunity_are_the_callers_workspaces(
 
 
 @pytest.mark.db
+def test_the_opportunity_sort_costs_the_cheaper_supplier_while_duty_is_unset(
+    api: TestClient, db_engine: Engine
+) -> None:
+    """XR-66 (DEC-341): Twin's $20.00 listing is older than its $5.00 one; with duty unset the
+    sort scores the $5.00 one at duty 0 (69.8), never the $20.00 one's capped 25.0."""
+    with Session(db_engine) as session:
+        workspace = Workspace(name="A")
+        session.add(workspace)
+        session.flush()
+        session.add(WorkspaceSettings(workspace_id=workspace.id, **FEES))  # duty not set
+        twin = build(
+            session, "Twin", price=2999, cost=2000, ship=(410, 8), trend=68.6, saturation=73.3
+        )
+        supplier = Supplier(platform="cj", external_id=uuid4().hex, name="CJ supplier")
+        session.add(supplier)
+        session.flush()
+        cheaper = listing(session, twin, CJ, supplier_id=supplier.id)
+        observe(
+            session, ListingSnapshot, CJ, values_hash="h", currency="USD", price_min_minor=500,
+            listing_id=cheaper.id,
+        )  # fmt: skip
+        observe(
+            session, ShippingOption, CJ, listing_id=cheaper.id, destination_country="US",
+            quantity=1, method="CJPacket", cost_minor=410, currency="USD",
+        )  # fmt: skip
+        build(session, "Single", price=2999, cost=740, ship=(410, 8), trend=50.0, saturation=50.0)
+        session.commit()
+        as_workspace(api, workspace.id)
+    rows = screen(api, sort="opportunity")["items"]
+    # Twin: (0.4 × 68.6 + 0.3 × 100 + 0.2 × 26.7) / 0.9; Single: margin 0.5275, so 62.6.
+    assert [(row["title"], row["opportunity"]["value"]) for row in rows] == [
+        ("Twin", 69.8),
+        ("Single", 62.6),
+    ]
+
+
+@pytest.mark.db
 @pytest.mark.parametrize(
     ("params", "code"),
     [

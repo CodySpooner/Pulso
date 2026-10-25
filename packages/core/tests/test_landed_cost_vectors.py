@@ -184,6 +184,22 @@ def seed(session: Session, vector: dict[str, Any]) -> tuple[UUID, UUID, Provenan
     supplier = Supplier(platform="cj", external_id=uuid4().hex, name="CJ supplier")
     session.add(supplier)
     session.flush()
+    for earlier in vector.get("earlier_listings", []):  # created first, so the lower ids
+        rival = Listing(
+            source_id=CJ, external_id=uuid4().hex, url="https://cj.example.test/q",
+            title="Sunset lamp", product_id=product.id, supplier_id=supplier.id,
+        )  # fmt: skip
+        session.add(rival)
+        session.flush()
+        observe(
+            session, ListingSnapshot, CJ, COSTED, listing_id=rival.id, values_hash="h",
+            currency="USD", price_min_minor=earlier["unit_minor"],
+        )  # fmt: skip
+        observe(
+            session, ShippingOption, CJ, PRICED, listing_id=rival.id, origin_country="CN",
+            destination_country="US", quantity=1, method="CJPacket",
+            cost_minor=earlier["freight_minor"], currency="USD",
+        )  # fmt: skip
     listing = Listing(
         source_id=CJ, external_id=uuid4().hex, url="https://cj.example.test/p",
         title="Sunset lamp", product_id=product.id, supplier_id=supplier.id,
@@ -276,7 +292,7 @@ def test_the_view_matches_every_golden_vector_and_the_loader(db_engine: Engine) 
                 }
             savepoint.rollback()
     assert wrong == {}
-    assert sum(vector["view"] for vector in VECTORS) == 27
+    assert sum(vector["view"] for vector in VECTORS) == 28
 
 
 @pytest.mark.db

@@ -295,6 +295,18 @@ def calculate(
     # In stock first, as Suppliers' Best margin (DEC-264 b); with none, the out-of-stock ones.
     pool = {key: calc for key, calc in calcs.items() if calc.in_stock} or calcs
     pick = best({listing: calc.cost for listing, calc in pool.items()})
-    if pick is None:  # nothing complete: the fewest missing inputs, then the lowest id
-        pick = min(pool, key=lambda listing: len(pool[listing].cost.missing))
+    if pick is None:  # nothing complete: the fewest missing inputs, then fallback()
+        pick = min(pool.items(), key=fallback)[0]
     return calcs[pick]
+
+
+def fallback(item: tuple[int, Calc]) -> tuple[int, bool, int, int]:
+    """The fewest missing inputs, then the lowest goods + freight, then the lowest id (DEC-341).
+
+    With duty the only gap, price, fees and returns are the same for every listing, so the
+    lowest goods + freight is the best margin at duty 0, the one Opportunity scores (XR-66).
+    """
+    listing, calc = item
+    goods, freight = calc.cost.goods_minor, calc.cost.freight_minor
+    total = None if goods is None or freight is None else goods + freight
+    return len(calc.cost.missing), total is None, total or 0, listing
