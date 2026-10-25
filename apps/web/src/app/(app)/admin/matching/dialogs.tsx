@@ -176,7 +176,7 @@ export function SplitDialog({
             <Button variant="ghost">Cancel</Button>
           </DialogClose>
           <Button variant="secondary" onClick={() => void confirm("unlink")} aria-disabled={!ready}>
-            Unlink
+            {ticked.size ? `Unlink ${plural(ticked.size, "listing")}` : "Unlink"}
           </Button>
           <Button variant="primary" onClick={() => void confirm("split")} aria-disabled={!ready}>
             {busy ? "Splitting…" : ticked.size ? `Split ${plural(ticked.size, "listing")} off` : "Split off"}

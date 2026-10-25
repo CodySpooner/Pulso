@@ -12,7 +12,7 @@ export default function MatchingPage() {
     <div className="flex w-full flex-col gap-5">
       <PageHeader
         title="Matching"
-        description="Confirm or reject possible matches between listings. Every decision is logged, and the matcher never undoes one."
+        description="Accept or reject possible matches between listings. Every decision is logged, and the matcher never undoes one."
       />
       <MatchingQueue />
     </div>

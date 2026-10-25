@@ -42,8 +42,8 @@ export function Thumb({ url, className, label }: { url: string | null | undefine
 function Side({ side, image, label, now }: { side: ListingDetail; image: number; label: "A" | "B"; now: number }) {
   const shown = Math.min(image, Math.max(side.images.length - 1, 0));
   return (
-    <article aria-label={`Listing ${label}: ${side.title}`} className="flex min-w-0 flex-col gap-3">
-      <div className="relative overflow-hidden rounded-lg border border-border">
+    <article aria-label={`Listing ${label}: ${side.title}`} className="flex min-w-0 flex-col gap-3 rounded-lg border border-border bg-card p-3">
+      <div className="relative overflow-hidden rounded-md border border-border">
         <Thumb url={side.images[shown]} label={side.title} className="aspect-square w-full" />
         <span className="absolute top-2 left-2 rounded-sm bg-card/90 px-1.5 py-0.5 text-micro font-medium text-muted-foreground">{label}</span>
       </div>
@@ -112,15 +112,7 @@ function ScoreBar({ label, value, weight, missing, ticks, strong }: { label: str
         {weight != null && <span className="ml-1 text-micro text-subtle-foreground">×{weight.toFixed(2)}</span>}
       </span>
       <div className="relative h-1.5 rounded-full bg-secondary" aria-hidden>
-        {value != null && (
-          <m.div
-            className={cn("absolute inset-y-0 left-0 origin-left rounded-full", strong ? "bg-brand" : "bg-muted-foreground")}
-            style={{ width: pct(value) }}
-            initial={{ scaleX: 0 }}
-            animate={{ scaleX: 1 }}
-            transition={{ duration: duration.fast, ease: ease.out }}
-          />
-        )}
+        {value != null && <div className={cn("absolute inset-y-0 left-0 rounded-full", strong ? "bg-brand" : "bg-muted-foreground")} style={{ width: pct(value) }} />}
         {ticks?.map((tick) => (
           <span key={tick} className="absolute -inset-y-1 w-px bg-foreground/60" style={{ left: pct(tick) }} />
         ))}
@@ -197,14 +189,15 @@ function ClusterStrip({ clusters }: { clusters: Cluster[] }) {
   );
 }
 
-/** One pair side by side. It enters with a fade only and never exits, so no keypress waits for it. */
+/** One pair side by side. It enters with a short fade only and never exits, so no keypress waits for it; the
+ *  score bars stay still, as a pair changes up to 200 times a session. */
 export function Compare({ detail, image, now }: { detail: Detail; image: number; now: number }) {
   return (
     <m.div
       key={detail.id}
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
-      transition={{ duration: duration.base, ease: ease.out }}
+      transition={{ duration: duration.fast, ease: ease.out }}
       className="flex flex-col gap-4"
     >
       <div className="grid gap-4 sm:grid-cols-2">

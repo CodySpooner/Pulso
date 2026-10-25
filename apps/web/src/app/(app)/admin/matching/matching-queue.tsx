@@ -249,7 +249,16 @@ export function MatchingQueue() {
             </p>
           </EmptyState>
         ) : (
-          <EmptyState icon={CircleCheck} title="Queue clear" headingLevel="h2">
+          <EmptyState
+            icon={CircleCheck}
+            title="Queue clear"
+            headingLevel="h2"
+            action={
+              <Button onClick={() => void list.refetch()} aria-disabled={list.isFetching}>
+                {list.isFetching ? "Checking…" : "Check for new pairs"}
+              </Button>
+            }
+          >
             <p>
               {hidden.size > 0 ? `You decided ${hidden.size} ${hidden.size === 1 ? "pair" : "pairs"} this session. ` : ""}
               {summary.last_auto_link_at
