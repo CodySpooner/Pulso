@@ -1515,6 +1515,33 @@
             ],
             "title": "Status",
             "type": "string"
+          },
+          "tracked": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tracked"
+          },
+          "untracked_reason": {
+            "anyOf": [
+              {
+                "enum": [
+                  "budget",
+                  "disabled",
+                  "comma"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Untracked Reason"
           }
         },
         "required": [
@@ -1523,7 +1550,9 @@
           "as_of",
           "source",
           "status",
-          "decided_at"
+          "decided_at",
+          "tracked",
+          "untracked_reason"
         ],
         "title": "Keyword",
         "type": "object"
@@ -1562,10 +1591,14 @@
             },
             "title": "Keywords",
             "type": "array"
+          },
+          "trends": {
+            "$ref": "#/components/schemas/TrendsBudget"
           }
         },
         "required": [
-          "keywords"
+          "keywords",
+          "trends"
         ],
         "title": "KeywordList",
         "type": "object"
@@ -5756,6 +5789,41 @@
           "markup_high"
         ],
         "title": "Thresholds",
+        "type": "object"
+      },
+      "TrendsBudget": {
+        "description": "The weekly Google Trends set across every workspace, counted as the Monday job plans it.",
+        "properties": {
+          "as_of": {
+            "format": "date-time",
+            "title": "As Of",
+            "type": "string"
+          },
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "monthly_limit": {
+            "title": "Monthly Limit",
+            "type": "integer"
+          },
+          "weekly_cap": {
+            "title": "Weekly Cap",
+            "type": "integer"
+          },
+          "weekly_used": {
+            "title": "Weekly Used",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "enabled",
+          "weekly_used",
+          "weekly_cap",
+          "monthly_limit",
+          "as_of"
+        ],
+        "title": "TrendsBudget",
         "type": "object"
       },
       "Velocity": {

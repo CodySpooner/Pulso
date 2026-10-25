@@ -14,7 +14,7 @@ import { formatUtc } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 import { Failed } from "./context-rail";
-import { checkKeyword, decide, MAX_KEYWORD_LENGTH, type Decision, type Keyword } from "./keywords-model";
+import { checkKeyword, decide, MAX_KEYWORD_LENGTH, tracking, type Decision, type Keyword, type TrendsBudget } from "./keywords-model";
 
 type KeywordList = components["schemas"]["KeywordList"];
 
@@ -30,7 +30,8 @@ const provenance = (k: Keyword) =>
 
 // KW-1 (vault Features/Product Page - Trends, DEC-281): the owner confirms the search keywords for this product.
 // Candidates are phrases from its listing titles, never a link until confirmed (DEC-245 d). One click confirms or
-// rejects; saves are optimistic and roll back on error, as the context rail's tags do. No Trends fetch happens here.
+// rejects; saves are optimistic and roll back on error, as the context rail's tags do. No Trends fetch happens here:
+// KW-2 (DEC-292) shows what confirming costs and whether each confirmed keyword is in the weekly Trends set.
 export function KeywordsSection({ id }: { id: string }) {
   const init = { params: { path: { product_id: id } } };
   const queryClient = useQueryClient();
@@ -53,7 +54,7 @@ export function KeywordsSection({ id }: { id: string }) {
     const previous = queryClient.getQueryData<KeywordList>(queryKey);
     const n = ++latest.current;
     void queryClient.cancelQueries({ queryKey });
-    queryClient.setQueryData<KeywordList>(queryKey, { keywords: decide(previous?.keywords ?? [], keyword, status, new Date().toISOString()) });
+    queryClient.setQueryData<KeywordList>(queryKey, (old) => old && { ...old, keywords: decide(old.keywords, keyword, status, new Date().toISOString()) });
     setFailure(null);
     // mutateAsync settles every call (mutate's own callbacks fire for the latest call only). Only the newest answer
     // replaces the list, so an older one never drops a newer optimistic decision.
@@ -115,15 +116,24 @@ export function KeywordsSection({ id }: { id: string }) {
       ) : (
         <>
           <div className="flex flex-col gap-2">
-            <h3 className="text-label font-medium text-foreground">
-              Confirmed <span className="font-normal text-subtle-foreground">· {confirmed.length}</span>
+            <h3 className="flex flex-wrap items-center gap-x-1.5 text-label font-medium text-foreground">
+              Confirmed <span className="font-normal text-subtle-foreground">· {confirmed.length}</span>{" "}
+              {/* The chips' marker, explained once: a filled dot is in the weekly Trends set. */}
+              {confirmed.length > 0 && (
+                <span className="inline-flex items-center gap-1 font-normal text-subtle-foreground">
+                  · <Marker tracked /> {confirmed.filter((k) => k.tracked).length} tracked
+                </span>
+              )}
             </h3>
             {confirmed.length === 0 ? (
               <p className="text-data text-muted-foreground">{candidates.length > 0 ? "None yet. Confirm a suggestion below, or add your own." : "None yet."}</p>
             ) : (
               <ul data-list="confirmed" aria-label="Confirmed keywords" className="flex flex-wrap gap-1.5">
-                {confirmed.map((k, i) => (
-                  <li key={k.keyword} title={provenance(k)} className="inline-flex h-6 max-w-full items-center gap-1 rounded-sm border border-border-strong bg-secondary pr-0.5 pl-2 text-label text-foreground">
+                {confirmed.map((k, i) => {
+                  const track = tracking(k, query.data.trends);
+                  return (
+                  <li key={k.keyword} title={track ? `${track.reason}\n${provenance(k)}` : provenance(k)} className="inline-flex h-6 max-w-full items-center gap-1 rounded-sm border border-border-strong bg-secondary pr-0.5 pl-2 text-label text-foreground">
+                    {track && <Marker tracked={k.tracked === true} label={track.label} />}
                     {/* Only the minority carries a mark: a keyword typed in rather than taken from a title. */}
                     {k.source === "manual" && (
                       <>
@@ -142,7 +152,8 @@ export function KeywordsSection({ id }: { id: string }) {
                       <X className="size-3" aria-hidden />
                     </button>
                   </li>
-                ))}
+                  );
+                })}
               </ul>
             )}
             <form
@@ -163,16 +174,19 @@ export function KeywordsSection({ id }: { id: string }) {
                 enterKeyHint="done"
                 placeholder="Add a keyword"
                 aria-label="Add a keyword"
-                aria-describedby="keyword-hint"
+                aria-describedby="keyword-hint keyword-cost"
                 className={field}
               />
               <Button type="submit" size="md" variant="secondary">
                 Add
               </Button>
             </form>
-            <p id="keyword-hint" aria-live="polite" className={cn("text-micro", message ? "text-foreground" : "text-subtle-foreground")}>
-              {message ?? "Press Enter to add. A keyword you add is confirmed."}
-            </p>
+            <div className="flex flex-col gap-1">
+              <p id="keyword-hint" aria-live="polite" className={cn("text-micro", message ? "text-foreground" : "text-subtle-foreground")}>
+                {message ?? "Press Enter to add. A keyword you add is confirmed."}
+              </p>
+              <TrendsCost budget={query.data.trends} />
+            </div>
             {failure != null && <Failed what="Couldn't save the keyword. Your change was undone" error={failure} />}
           </div>
 
@@ -196,7 +210,7 @@ export function KeywordsSection({ id }: { id: string }) {
                     <span className="min-w-0 flex-1 basis-40 text-data break-words text-foreground">{k.keyword}</span>
                     <Relevance k={k} />
                     <span className="ml-auto flex gap-1.5">
-                      <Button size="sm" variant="secondary" aria-label={`Confirm ${k.keyword}`} onClick={() => decideAt("candidates", i, k.keyword, "confirmed")}>
+                      <Button size="sm" variant="secondary" aria-label={`Confirm ${k.keyword}`} aria-describedby="keyword-cost" onClick={() => decideAt("candidates", i, k.keyword, "confirmed")}>
                         <Check aria-hidden className="size-3.5" />
                         Confirm
                       </Button>
@@ -222,7 +236,7 @@ export function KeywordsSection({ id }: { id: string }) {
                   <li key={k.keyword} className="flex flex-wrap items-center gap-x-3 gap-y-1.5 border-t border-border-subtle py-2">
                     <span className="min-w-0 flex-1 basis-40 text-data break-words text-muted-foreground">{k.keyword}</span>
                     <Relevance k={k} />
-                    <Button size="sm" variant="ghost" className="ml-auto" aria-label={`Confirm ${k.keyword} instead`} onClick={() => decideAt("rejected", i, k.keyword, "confirmed")}>
+                    <Button size="sm" variant="ghost" className="ml-auto" aria-label={`Confirm ${k.keyword} instead`} aria-describedby="keyword-cost" onClick={() => decideAt("rejected", i, k.keyword, "confirmed")}>
                       <Check aria-hidden className="size-3.5" />
                       Confirm instead
                     </Button>
@@ -235,13 +249,59 @@ export function KeywordsSection({ id }: { id: string }) {
           {/* The no-source state for per-keyword interest: one line, since the Search interest pane above says it too. */}
           <p className="flex items-start gap-1.5 text-micro text-subtle-foreground">
             <Search className="mt-px size-3 shrink-0" aria-hidden />
-            <span>
-              <span className="font-medium text-muted-foreground">Search interest per keyword · No source yet.</span> Confirmed keywords join the weekly Google Trends fetch in a later step, within the free search budget.
-            </span>
+            <span className="font-medium text-muted-foreground">Search interest per keyword · No source yet.</span>
           </p>
         </>
       )}
     </section>
+  );
+}
+
+/** In the weekly Trends set or not: a filled or a hollow neutral dot. Shape carries it, and tracked is the normal state,
+ *  so neither takes a status colour. */
+function Marker({ tracked, label }: { tracked: boolean; label?: string }) {
+  return (
+    <span
+      role={label ? "img" : undefined}
+      aria-label={label}
+      aria-hidden={label ? undefined : true}
+      className={cn("size-2 shrink-0 rounded-full border border-muted-foreground", tracked && "bg-muted-foreground")}
+    />
+  );
+}
+
+/** What confirming costs, before the click: one SerpApi search a week per tracked keyword, from the count the Monday
+ *  Trends job plans with (KW-2, DEC-292). Off, nothing is fetched for confirmed keywords, so no slots show. */
+function TrendsCost({ budget }: { budget: TrendsBudget }) {
+  const { weekly_used: used, weekly_cap: cap } = budget;
+  const line = "flex items-start gap-2 text-micro text-muted-foreground";
+  if (!budget.enabled)
+    return (
+      <p id="keyword-cost" className={line} title="TRENDS_CONFIRMED_KEYWORDS is off: the Monday Google Trends fetch takes only the approved seed keywords.">
+        <span>
+          <span className="font-medium text-foreground">Trends tracking is off.</span> Confirmed keywords are saved, but nothing is fetched for them.
+        </span>
+      </p>
+    );
+  const full = used >= cap;
+  const slots = <span className="font-medium text-foreground">{`${used} of ${cap} weekly slots used.`}</span>;
+  return (
+    <p
+      id="keyword-cost"
+      className={line}
+      title={`Counted ${formatUtc(budget.as_of)} from the approved seed keywords and every workspace's confirmed keywords. The fetch runs Mondays at 05:00 UTC, within ${budget.monthly_limit} SerpApi searches a month.`}
+    >
+      <span aria-hidden className="mt-1.5 h-1 w-14 shrink-0 overflow-hidden rounded-full bg-secondary">
+        <span className={cn("block h-full rounded-full", full ? "bg-warning" : "bg-muted-foreground")} style={{ width: `${cap ? Math.min(used / cap, 1) * 100 : 100}%` }} />
+      </span>
+      {full ? (
+        <span>{slots} A keyword you confirm now is saved but not tracked until a slot frees.</span>
+      ) : (
+        <span>
+          Each tracked keyword is 1 SerpApi search a week, about 4–5 of the {budget.monthly_limit} a month. {slots}
+        </span>
+      )}
+    </p>
   );
 }
 

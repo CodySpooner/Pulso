@@ -2927,3 +2927,53 @@ Superseded review defaults, not given entries: default #0 (move the repo) is don
   - (b1) Dimming only the value cells. The values are `--foreground`, `--positive` and `--negative`. At 70%, `--positive` measures 3.20 and `--negative` 3.85 in light (`--negative` 3.81 in dark): below AA for the breakdown's 13 px values.
   - (c1) Leaving the light palette and adding a "View as table" disclosure. It is still optional and is left as a backlog row. The lines themselves now clear 3:1.
 - **Why:** `src/styles/contrast.test.ts` has 17 new UI pairs per theme (34 tests). On the old tokens 14 of them fail: `--segment-mark` doesn't exist, light series 3 to 5 are below 3:1 on every surface, and light series 2 is below 3:1 on `secondary`. `e2e/imp-313/contrast-states.spec.ts` checks that the pressed thumb paints the bar in the token's colour at 2 px on Discover, Settings and Profit units, and that only the pressed option has it. In dark and light it checks that Profit's busy regions stay at opacity 1 and that every text run clears AA mid-recompute. That test fails on the old `profit-tab.tsx`, which gives `0.7`.
+
+### DEC-292 · Weekly Trends set (KW-2): approved seeds, then every workspace's confirmed keywords, cut at the monthly limit // 5, behind `TRENDS_CONFIRMED_KEYWORDS`; the Trends tab counts with the same function
+**2026-10-25 · proposed (p3-06)** · Phase 3 task KW-2; DEC-011, DEC-065, DEC-073, DEC-099, DEC-154, DEC-157, DEC-263, DEC-281; SPEC §5 Signals, §6.4 Trends; vault Phases/Phase 3 - Signals Expansion, Features/Product Page - Trends, Data/Sources/Source - Google Trends; no migration, no dependency, no source request, no schedule change; `google_trends` stays disabled
+- **Decision:**
+  - **(a) The set.** `google_trends.weekly_set(session, settings)` builds it, and `plan()` only turns it into targets.
+    - The approved seeds come first, read by `approved_targets` exactly as before (DEC-065, DEC-073). A seed with a comma still fails the plan.
+    - With the setting on, every workspace's confirmed keywords follow (DEC-281 a), deduplicated on a normal form: casefolded, with spacing collapsed. The first spelling wins, so a seed keeps its spelling and its place.
+    - **Confirmed order:** most workspaces confirming, then the earliest confirmation (the oldest `decided_at` among the current confirmed decisions), then A to Z. In v1 there is one workspace, so the set fills first-come and a tracked keyword keeps its slot when another is confirmed.
+    - **Which decision counts:** a workspace's newest one per keyword across a product and the products merged into it (DEC-263), the way the Trends tab reads them. A later rejection on the survivor therefore wins over an older confirmation on the merged product.
+    - Plural folding (`lamps` is `lamp`) stays in the API's `key()`. Two plural twins decided separately on two products before a merge both count here, as two searches. The code names this limit.
+  - **(b) The cap.** The weekly cap is `TRENDS_MONTHLY_SEARCH_LIMIT // 5` (50 at 250), because a UTC month has at most five Mondays. Seeds take slots first.
+    - A keyword past the cap, or a confirmed keyword holding a comma, is left out of that week's plan. It gets no target row, no queue and no retry.
+    - With the setting on, seeds past the cap are cut too, so `len(set) × 5 ≤ limit` holds at every limit, 0 included.
+    - The cap is a projection guard only. The monthly `reserve` (DEC-099) and the hourly `reserve_hourly` (DEC-154) still gate every attempt, retries included (DEC-157), and they are unchanged.
+  - **(c) The gate.** `TRENDS_CONFIRMED_KEYWORDS` is a bool, default off, documented in `.env.example`. Off, `plan()` returns exactly the seed-only plan, uncapped, as before KW-2. The owner turns it on; agents never write an `.env`.
+  - **(d) API.**
+    - Each `Keyword` gains `tracked` (true or false for a confirmed keyword, null otherwise) and `untracked_reason`: `budget` (past the cap), `disabled` (setting off) or `comma`.
+    - `KeywordList` gains `trends: TrendsBudget {enabled, weekly_used, weekly_cap, monthly_limit, as_of}`. `as_of` is when it was counted, for the provenance contract.
+    - Both are computed from `weekly_set`, so the page and the Monday job can't disagree.
+    - `weekly_used` counts every workspace's keywords as a number only, never the keywords themselves, because the SerpApi budget is shared.
+  - **(e) UI.**
+    - **Cost line:** under the add field, and it is the accessible description of the field and of every Confirm. It has three states:
+      - room: "Each tracked keyword is 1 SerpApi search a week, about 4–5 of the 250 a month. N of 50 weekly slots used.";
+      - full: "50 of 50 weekly slots used. A keyword you confirm now is saved but not tracked until a slot frees.";
+      - off: "Trends tracking is off. Confirmed keywords are saved, but nothing is fetched for them."
+    - **Chip marker:** a filled neutral dot when tracked, a hollow ring when not. The reason shows on hover and is the marker's accessible name. The Confirmed heading explains the dot once ("· ● N tracked").
+    - **While a save is in flight:** a keyword shows no marker until the API answers.
+    - **Clicks:** confirming is still one click on the tab (two from the product page). Adding is type plus Enter.
+- **Alternatives:**
+  - A cap of `limit // 4` (62 at 250): a five-Monday month would need 310, and the monthly reservation would cut the last Monday partway through.
+  - Budget left this month instead of a fixed cap: the set would change week to week, so a keyword's Tracked flag would flicker and the page couldn't promise anything before the click.
+  - Never capping seeds: at limit 0, or with more seeds than the cap, the five-Monday projection breaks.
+  - Rotating overflow keywords week to week: one `today 3-m` fetch returns 90 daily points, so fetching every other week would cover more keywords for the same cost. The brief says never queued and never retried, so this is a backlog idea (p3-06-b2).
+  - Ordering by the newest confirmation: every new confirmation would push an older tracked keyword out.
+  - Folding plurals in the plan: `pulso_sources` can't import the API package, and copying its tokenizer would drift.
+- **Why:**
+  - `packages/sources/tests/google_trends/test_weekly_set.py` (9 cases, on SQLite and the migrated PostgreSQL schema) covers:
+    - setting off gives exactly today's seed plan, uncapped;
+    - seeds come first; confirmed keywords are deduplicated across two workspaces and against a seed in another case and spacing; the order is the same on every run; a rejected keyword and a comma keyword are left out;
+    - a rejection wins across a merge;
+    - the 51st keyword is left out at 250;
+    - `weekly × 5 ≤ limit` at 0, 1, 49, 50 and 250.
+  - `apps/api/tests/test_product_keywords.py::test_tracked_is_exactly_the_weekly_plan` (PostgreSQL) checks that every confirmed keyword's `tracked` equals its membership in `plan()` for the same rows, with the setting on and off. It also checks the budget block.
+  - Eight mutations each fail a test: no merge read, no cap, rejected keywords joining, no workspace count, the setting ignored, seeds after the confirmed keywords, comma keywords kept, and the router always reporting tracked.
+  - Playwright (`keywords.spec.ts`, 13) covers the cost line as the Confirm's description, the full set and setting-off copy, and the Tracked marker.
+- **Not here:**
+  - interest, slope and sparkline columns (p3-02-b3);
+  - a `today 5-y` backfill per tracked keyword;
+  - the series `search` reason in `product_series.py`, which still says confirmed keywords join the weekly fetch "in a later step" (outside this task's files; report follow-up);
+  - turning the setting on, which is the owner's call.

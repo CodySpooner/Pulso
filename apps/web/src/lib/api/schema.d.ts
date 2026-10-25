@@ -1216,6 +1216,10 @@ export interface components {
              * @enum {string}
              */
             status: "candidate" | "confirmed" | "rejected";
+            /** Tracked */
+            tracked: boolean | null;
+            /** Untracked Reason */
+            untracked_reason: ("budget" | "disabled" | "comma") | null;
         };
         /** KeywordIn */
         KeywordIn: {
@@ -1234,6 +1238,7 @@ export interface components {
         KeywordList: {
             /** Keywords */
             keywords: components["schemas"]["Keyword"][];
+            trends: components["schemas"]["TrendsBudget"];
         };
         /** ListingDetail */
         ListingDetail: {
@@ -2550,6 +2555,25 @@ export interface components {
             title_weight: number;
             /** Version */
             version: string;
+        };
+        /**
+         * TrendsBudget
+         * @description The weekly Google Trends set across every workspace, counted as the Monday job plans it.
+         */
+        TrendsBudget: {
+            /**
+             * As Of
+             * Format: date-time
+             */
+            as_of: string;
+            /** Enabled */
+            enabled: boolean;
+            /** Monthly Limit */
+            monthly_limit: number;
+            /** Weekly Cap */
+            weekly_cap: number;
+            /** Weekly Used */
+            weekly_used: number;
         };
         /**
          * Velocity
