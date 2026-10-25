@@ -1,4 +1,5 @@
 from datetime import date, datetime
+from datetime import date as date_type
 from decimal import Decimal
 from typing import Any
 from uuid import UUID, uuid4
@@ -22,6 +23,7 @@ from sqlalchemy import (
     func,
     text,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from pulso_core.db import Base, BigId, CreatedAt, Observation
@@ -247,6 +249,43 @@ class ProductDailyFeature(Base):
     growth_7d: Mapped[float | None] = mapped_column(Double)
     coverage: Mapped[Decimal] = mapped_column(Numeric(5, 4))
     has_gap: Mapped[bool]
+    computed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+
+class Score(BigId, Base):
+    """One market score per product, UTC day, kind and model_version (SPEC §7, DEC-306).
+
+    Append-only (DB trigger): a fix is a new model_version, never an edit (DEC-040). The unique
+    key leads with kind, so a backward scan serves `pulso_core.scores.latest`. Opportunity is a
+    workspace view, not a row here (DEC-041).
+    """
+
+    __tablename__ = "scores"
+    __table_args__ = (
+        UniqueConstraint("kind", "product_id", "date", "model_version"),
+        CheckConstraint(
+            "kind IN ('trend', 'saturation', 'lifecycle', 'risk', 'refund_risk')",
+            name="kind_values",
+        ),
+        CheckConstraint("value BETWEEN 0 AND 100", name="value_range"),
+        CheckConstraint(
+            "stage IN ('emerging', 'rising', 'peaking', 'declining', 'dead')", name="stage_values"
+        ),
+        # Lifecycle is categorical: a stage, never a value; every other kind is the reverse.
+        CheckConstraint(
+            "CASE WHEN kind = 'lifecycle' THEN value IS NULL ELSE stage IS NULL END",
+            name="value_or_stage",
+        ),
+    )
+    product_id: Mapped[UUID] = mapped_column(ForeignKey("products.id"))
+    date: Mapped[date_type]
+    kind: Mapped[str] = mapped_column(String(20))
+    model_version: Mapped[str] = mapped_column(String(80))
+    value: Mapped[Decimal | None] = mapped_column(Numeric(5, 1))  # NULL: every input missing
+    stage: Mapped[str | None] = mapped_column(String(20))
+    explanation: Mapped[dict[str, Any]] = mapped_column(JSONB)  # pulso_core.scores.Explanation
     computed_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

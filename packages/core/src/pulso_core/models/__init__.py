@@ -11,6 +11,7 @@ from pulso_core.models.catalog import (
     MatchDecision,
     Product,
     ProductDailyFeature,
+    Score,
     VariantSnapshot,
 )
 from pulso_core.models.collection import (
@@ -66,6 +67,7 @@ __all__ = [
     "ProductTag",
     "RawPayload",
     "ShippingOption",
+    "Score",
     "SearchTrend",
     "Source",
     "SourceEvent",
