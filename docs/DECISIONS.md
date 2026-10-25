@@ -3258,3 +3258,53 @@ Superseded review defaults, not given entries: default #0 (move the repo) is don
   - (b) Reserving every row at its tallest (57 px): loaded rows without a note would carry an empty line. Deriving the count before the data lands: nothing gives it before the sources call answers.
   - (c) Turning the page into "Can't reach the API" as soon as one core call fails without an answer: a single failed call would replace the whole page. Changing only the test: the panel errors really did flash, for about 3 s on CI's runner.
 - **Why:** (a) Chrome's layout-shift attribution reported the shimmer `::after` of a moved Coverage skeleton bar as moving from `(0,0,0×0)` to its bar, so a real move of 18–28 px scored 0.137 per frame. With the same geometry offset by `left`, the same frames score 0.007. Turning the shimmer off also gives 0.0095, while keeping the `translate` on a bar-sized box still gives 0.099. (b) p3-05 removed the AliExpress "Planned" row. That lifted the Coverage skeleton 32 px into the 1440×900 window, where the move first counted. With the row put back, the worst landing order scored 0.007. (c) With the hold off, the new `retry-focus.spec.ts` case (the host call answers 1.5 s late after the press) records the Backups card's Retry while the page is still refreshing, and fails. The other 13 retry-focus cases are unchanged.
+
+### DEC-311 · Feature store FS-1: `gt_interest` and `shp_sellers` rows with their inputs in `features`, every row's missed runs in `gap_flags`, migration 0018, feature version 002
+**2026-10-25 · proposed (p4-04)** · Phase 4 task FS-1; R-18; review M15; DEC-031, DEC-040, DEC-060 (D4), DEC-247 (g, h), DEC-261, DEC-275, DEC-278, DEC-281, DEC-292, DEC-306 (g); AGENTS.md §3; vault Intelligence/Feature Store & Leakage Test, Intelligence/Trend Score, Intelligence/Saturation Score, Features/Data Health; `docs/reports/p4-04.md`; migration 0018 (on p4-05's 0017); no flag, dependency, endpoint, UI, Beat or nightly-chain change
+- **Decision:**
+  - **(a) Layout.** Migration 0018 adds nullable `features` and `gap_flags` jsonb columns to `product_daily_features`: the vault's hybrid layout, typed columns for filters and jsonb for the rest. The two new inputs come as two new families, one row each per (product, day, version): `gt_interest` and `shp_sellers`. Their `velocity_7d` and `growth_7d` are NULL, and their inputs sit in `features` under source-prefixed keys. Demand rows keep their columns and carry `features` NULL. Discover's `best_feature` and the Trends tab already filter by family, so they don't see the new rows. `Config.revision` goes to 2, so `FEATURE_VERSION` becomes `002-<hash>`. Rows from version 001 stay, with NULL in both new columns. The downgrade refuses while any row holds gap flags.
+  - **(b) `gt_slope` (R-18).**
+    - **Keywords:** the product's `product_keywords` rows with status `confirmed` and `decided_at` before the cutoff, from any workspace. The weekly Trends set reads them the same way (DEC-292).
+    - **Captures:** US `search_trends` rows with `captured_at` before the cutoff, grouped by raw payload. A capture is either SerpApi's 90-day answer or a manual CSV import. Keywords match casefolded with spacing collapsed, and the newest parse of a capture wins.
+    - **Inside one capture:** partial points are dropped. L is the last complete day. The last 4 complete weeks are L−27..L and the 8 before are L−83..L−28: 7-day blocks counted back from L, not calendar weeks. Every one of the 84 days must be there, or the slope is None. The slope is ln((m4 + 1) / (m8 + 1)), where m4 and m8 are those blocks' means.
+    - **Per keyword:** the newest capture known by the cutoff that holds 12 complete weeks. A newer capture that doesn't is skipped, never stitched onto an older one: an empty answer, or a short or weekly-spaced CSV backfill.
+    - **Per product:** `gt_slope` is the median of its keywords' slopes. `gt_keywords` counts the keywords that have one, and `gt_as_of` is the oldest used capture's `captured_at`.
+    - **Rows:** a product gets a row when it has a member listing at the cutoff and one of its keywords has a capture. `coverage` is the keywords with a slope over the keywords with a capture, and `has_gap` means no slope.
+    - **Ceilings:** a later decision rewrites a keyword's row (DEC-281), so a re-decided keyword drops out of earlier days: missing, never leaked. A merged-away product's keywords aren't carried to the survivor; only the survivor's own confirmations count.
+  - **(c) Sellers (Saturation).**
+    - **Listings:** store listings (`store_id` set) placed on the product by membership at cutoff(t). A listing is live at a cutoff c when `first_seen_at < c` and it wasn't delisted before c. That is the Sellers tab series rule (DEC-247 h).
+    - **`shp_sellers`:** distinct stores with a live member listing at cutoff(t), counting every tracked store.
+    - **Panel:** stores with `first_seen_at` before cutoff(t−28), which is DEC-247 (g) at day grain.
+    - **`shp_seller_g28`:** ln((p_t + 1) / (p_t−28 + 1)), where p counts the panel stores with a live member listing. Both ends use membership at cutoff(t), as G7's stable sets do, so a merge can't read as growth. It is None while the panel is empty.
+    - **Stored with it:** `panel_size` is the panel's store count, `coverage` is panel stores over tracked stores, and `has_gap` means no growth.
+    - **Rows:** a product gets a row when it has a member store listing first seen by the cutoff. With the crawler off (DEC-261), only CSV imports and old history feed it.
+    - **Ceiling:** a live crawl that relisted a listing reset its `delisted_at`, and that history isn't rebuilt (DEC-247 h). No live crawl runs any more.
+  - **(d) `gap_flags`.** Every new-version row carries `{"missed_runs": [ISO dates]}`.
+    - **Which slots:** the UTC dates touched by `collection_gaps` slots of the family's source, with `detected_at` before the cutoff, within t−28..t. `cj_stock` reads `cj`; `shp_inv` and `shp_sellers` read `shopify_stores`; `gt_interest` reads `google_trends`. Days expand as `source_daily_coverage` expands them.
+    - **Fills:** a fill doesn't clear a missed run (DEC-060 D4). Data Health's heatmap shows a healed day as `filled` and its Open gaps list drops it; the feature keeps the date.
+    - **Late detection:** the audit records a missed slot when the host wakes. A gap detected after day t's cutoff appears from the next day's row on. Day t's own demand row already carries `has_gap` from target coverage.
+    - **Existing columns:** `has_gap` and `coverage` keep their DEC-275 meaning for demand rows.
+  - **(e) Leakage fixture.** `build()` is unchanged, so the Discover momentum end-to-end test keeps its fixture. A new `build_inputs()` adds:
+    - confirmed keywords: P1 on day 0, P6 on day 25, P3 on day 44;
+    - SerpApi captures on Mondays 13, 20 and 41, each ending in a partial point. Day 18's spike rescales the captures from day 20 against day 13's. Mondays 27 and 34 were missed;
+    - a day-45 CSV: 30 days for P1's keyword and 86 for P3's;
+    - four stores (two old, one first seen on day 10, one from the day-45 CSV import) and five store listings, one delisted on day 38;
+    - gaps for `cj` day 30, `shopify_stores` days 30–34 and `google_trends` days 27 and 34, each detected at 00:05 the next day.
+
+    The truncated copy also deletes Trends rows captured at or after the cutoff, gaps detected at or after it, and keyword rows decided at or after it, and it clears later delistings. The comparison now runs on 11 dates (30 and 44 added).
+- **Alternatives:**
+  - (a) Typed columns per input: a migration for every new input. One product-level row instead of one per family: it changes 0005's key and every reader.
+  - (b) The newest capture by `captured_at` even when it holds no slope (the vault's literal "latest capture"): a one-off backfill import would blank `gt_slope` until the next Monday. SerpApi captures only, as `series_as_of` reads them: the CSV fallback (AGENTS.md §3) would never feed Trend. Calendar weeks: a 90-day answer minus its partial day doesn't always hold 12 whole ISO weeks. The mean over keywords: one noisy keyword moves it more.
+  - (c) Liveness from snapshot dates: a second rule beside the Sellers tab's. Membership at each end's own cutoff: a merge would read as seller growth. A workspace's tracked-store list as the panel: workspace-owned, and scores are global market data.
+  - (d) Honouring fills: a fill would rewrite what a past feature knew (D4). Gaps by slot time instead of `detected_at`: reads evidence written after the cutoff.
+- **Why:** pure tests (`packages/ml/tests/test_market.py`) and Postgres tests on `pgvector/pgvector:0.8.7-pg18-trixie` (`test_leakage.py`, `packages/core/tests/test_phase2_schema.py`):
+  - R-18 maths: a partial point excluded, a missing day, fewer than 84 days;
+  - the day-13, day-20 and day-41 captures each read alone, and day 20's slope differs from a stitched series;
+  - the 30-day CSV doesn't replace day 41's capture, and P3's first capture is the CSV;
+  - a keyword decided later, and a merged-away product;
+  - seller level, growth and panel on four dates; adding 10 newly tracked stores leaves P1's growth and panel size and P2's whole row unchanged;
+  - every day-45 row's `missed_runs` equals `source_daily_coverage`'s gap days, and day 30's row can't see day 30's late-detected gap;
+  - the 0018 downgrade refused once a row holds flags.
+
+  Twenty one-line mutations each fail a test, and so does removing the downgrade guard (`docs/reports/p4-04.md`). Six of them read past the cutoff. The truncation test fails for five: future captures, captures cut by `observed_for`, later keyword decisions, later-detected gaps and later delistings. The seller test catches the sixth, stores first seen after the cutoff, which the truncated copy keeps because their listings still reference them.
+- **Not here:** SC-1, SC-2 and SC-3's maths, the explanation fields, the Beat slot (imp-284), CJ listing counts as a saturation input (open in the vault), and `ads_*` (no source yet).

@@ -15,7 +15,7 @@ from typing import NamedTuple
 
 @dataclass(frozen=True)
 class Config:
-    revision: int = 1  # bump with any change to the maths below
+    revision: int = 2  # bump with any change to the maths below or in market.py
     k: int = 5  # G7's prior count (DEC-040)
     max_gap_days: int = 3  # a longer target-coverage gap can hide a restock
     # Guesses from the vault, tuned in Phase 4 once two weeks of data exist.
@@ -24,6 +24,10 @@ class Config:
     median_days: int = 28
     sync_share: float = 0.6  # more of a store's listings dropping in one crawl is a sync
     sync_min_listings: int = 5
+    # Non-demand inputs (market.py, DEC-311).
+    gt_weeks: tuple[int, int] = (4, 8)  # R-18: the last 4 complete weeks against the 8 before
+    panel_days: int = 28  # seller growth reads stores tracked since t−28 (M15)
+    gap_days: int = 28  # gap_flags list the missed runs over t−28..t
 
 
 CONFIG = Config()

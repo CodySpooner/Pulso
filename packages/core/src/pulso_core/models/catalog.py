@@ -249,6 +249,9 @@ class ProductDailyFeature(Base):
     growth_7d: Mapped[float | None] = mapped_column(Double)
     coverage: Mapped[Decimal] = mapped_column(Numeric(5, 4))
     has_gap: Mapped[bool]
+    # A non-demand family's inputs and every row's missed runs (DEC-311); NULL before version 002.
+    features: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+    gap_flags: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
     computed_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
