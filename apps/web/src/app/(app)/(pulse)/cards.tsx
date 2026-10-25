@@ -126,22 +126,33 @@ export function PulseCard({ id, pulse, index, animate }: { id: CardId; pulse: Pu
       </header>
       {section.status === "ok" ? (
         <ul className="flex flex-col py-1 zone-data">{rows(id, pulse, down, list)}</ul>
-      ) : (
+      ) : fed ? (
         <EmptyState
-          icon={fed ? card.icon : CircleDashed}
-          title={fed ? card.empty : "No source yet"}
+          icon={card.icon}
+          title={card.empty}
           size="sm"
           className="flex-1 justify-center"
           action={
-            !fed && (
-              <Button asChild size="sm">
-                <Link href="/admin/data-health">Open Data Health</Link>
+            id === "watchlists" && (
+              <Button asChild size="sm" variant="ghost">
+                <Link href="/discover">Find products in Discover</Link>
               </Button>
             )
           }
         >
           {section.reason}
         </EmptyState>
+      ) : (
+        // No source (DEC-040): a status line, never zeros, so a source that is off takes little room.
+        <p className="flex flex-1 items-start gap-2.5 px-4 py-4 text-data text-muted-foreground">
+          <CircleDashed className="mt-0.5 size-4 shrink-0 text-subtle-foreground" strokeWidth={1.5} aria-hidden />
+          <span>
+            <span className="font-medium text-foreground">No source yet.</span> {section.reason}{" "}
+            <Link href="/admin/data-health" className="relative hit-area rounded-sm font-medium whitespace-nowrap text-foreground underline underline-offset-4">
+              Open Data Health
+            </Link>
+          </span>
+        </p>
       )}
       {(id === "alerts" || (id === "watchlists" && list)) && (
         <Link
@@ -163,7 +174,7 @@ function rows(id: CardId, pulse: Pulse, down: boolean, list: Pulse["sections"]["
     case "emerging":
       return sections.emerging.items.map((e) => (
         <Row key={e.product.id} href={product(e.product.id)} lead={thumb(e.product.image_url)} name={e.product.name} title={stamp(e.as_of, "Trend Score")}>
-          <StagePill stage={e.stage} className="max-sm:hidden" />
+          <StagePill stage={e.stage} neutral className="max-sm:hidden" />
           <span className="w-10 text-right text-foreground">{e.value.toFixed(1)}</span>
           <Delta value={e.since_yesterday?.change} missing="No comparable score the day before" />
         </Row>
@@ -291,12 +302,13 @@ function Delta({ value, good = "up", unit, missing }: { value: number | null | u
   return <DeltaBadge value={value} goodDirection={good} unit={unit} missingReason={missing} className="min-w-14 justify-end" />;
 }
 
-function StagePill({ stage, from, className }: { stage: Stage; from?: Stage | null; className?: string }) {
+/** `neutral` where every row shares a stage (Top emerging), so colour marks only the rows that differ. */
+function StagePill({ stage, from, neutral, className }: { stage: Stage; from?: Stage | null; neutral?: boolean; className?: string }) {
   const [Icon, label, tone] = STAGES[stage];
   return (
     <span
       title={from ? `Entered ${label} on this day, from ${STAGES[from][1]}` : undefined}
-      className={cn("inline-flex h-5.5 items-center gap-1 rounded-sm border px-1.5 text-label font-medium whitespace-nowrap", tone, className)}
+      className={cn("inline-flex h-5.5 items-center gap-1 rounded-sm border px-1.5 text-label font-medium whitespace-nowrap", neutral ? "border-border text-muted-foreground" : tone, className)}
     >
       <Icon className="size-3.5" aria-hidden />
       {label}
@@ -312,7 +324,7 @@ function Sparkline({ values }: { values: (number | null)[] }) {
   const [w, h] = [64, 20];
   const points = values.filter((v) => v !== null).length;
   return (
-    <svg width={w} height={h} aria-hidden className="shrink-0 text-muted-foreground max-[400px]:hidden">
+    <svg width={w} height={h} aria-hidden className="shrink-0 text-muted-foreground">
       {points < 3 ? (
         <line x1="0" x2={w} y1={h / 2} y2={h / 2} className="stroke-border" strokeDasharray="2 3" />
       ) : (
@@ -346,7 +358,8 @@ function AsOf({ asOf, sources, pulse }: { asOf: string | null; sources: string[]
       className="relative hit-area inline-flex items-center gap-1.5 rounded-sm text-label whitespace-nowrap text-subtle-foreground hover:text-foreground"
     >
       {stale && <StatusDot state="warning" />}
-      as of {asOf ? when(asOf, pulse.day) : "—"}
+      {stale && <span className="sr-only">Stale,</span>}
+      As of {asOf ? when(asOf, pulse.day) : "—"}
     </TapTooltip>
   );
 }

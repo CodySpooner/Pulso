@@ -26,7 +26,7 @@ describe("each card in each status", () => {
     const html = render(id, full());
     expect(html).toContain('data-status="ok"');
     expect(html).toMatch(/href="\/(products|testing)[^"]*"/);
-    expect(html).toMatch(/as of (\d\d:\d\d UTC|Oct \d+)/);
+    expect(html).toMatch(/As of (\d\d:\d\d UTC|Oct \d+)/);
     expect(html).not.toContain("No source yet");
   });
 
@@ -36,7 +36,7 @@ describe("each card in each status", () => {
     expect(html).toContain(`Reason for ${id} empty.`);
     expect(html).not.toContain("<li ");
     expect(html).not.toContain("No source yet");
-    expect(html).toContain("as of —");
+    expect(html).toContain("As of —");
   });
 
   test.each(CARDS)("%s no source: says No source yet with the reason and Data Health, never a 0", (id) => {

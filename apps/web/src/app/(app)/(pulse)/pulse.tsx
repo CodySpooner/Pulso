@@ -10,6 +10,7 @@ import { useApiReady } from "@/components/data-health/api";
 import { PanelError, StaleLine } from "@/components/data-health/atoms";
 import { PageHeader } from "@/components/pulso/page-header";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import { $api } from "@/lib/api/client";
 import { duration } from "@/lib/motion";
 import { useOncePerSession } from "@/lib/navigation";
@@ -42,12 +43,14 @@ export function DailyPulse() {
       <PageHeader
         title="Daily Pulse"
         meta={
-          day && (
+          day ? (
             <>
               <time dateTime={day}>{format(day)} (UTC day)</time>
               <span aria-hidden>·</span>
               <span>{date ? "as the data stood when the day closed" : "the latest scored day"}</span>
             </>
+          ) : (
+            <Skeleton className="h-4 w-72 max-w-full" />
           )
         }
         actions={
@@ -56,9 +59,9 @@ export function DailyPulse() {
               <Button variant="ghost" size="icon-sm" aria-label="Previous day" disabled={!day} onClick={() => go(shiftDay(day!, -1))}>
                 <ChevronLeft aria-hidden />
               </Button>
-              <span aria-live="polite" className="min-w-22 px-1 text-center text-data font-medium text-foreground tabular-nums">
-                {day ? format(day, shortDay) : "…"}
-              </span>
+              <div aria-live="polite" className="min-w-22 px-1 text-center text-data font-medium text-foreground tabular-nums">
+                {day ? format(day, shortDay) : <Skeleton className="mx-auto h-3.5 w-12" />}
+              </div>
               <Button variant="ghost" size="icon-sm" aria-label="Next day" disabled={!date || !now || date >= utcDay(now)} onClick={() => go(shiftDay(date!, 1))}>
                 <ChevronRight aria-hidden />
               </Button>
