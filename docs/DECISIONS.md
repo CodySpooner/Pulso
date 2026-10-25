@@ -2463,7 +2463,7 @@ Superseded review defaults, not given entries: default #0 (move the repo) is don
 - **Not here:** XR-30 (stale redirects mid-run) and the other P2-24 lows. Any `ALTER SEQUENCE … CACHE n` on `match_decisions_id_seq` would break (b); none exists.
 
 ### DEC-263 · Matching Queue (UX-1): `/v1/admin/matching` endpoints over the M-5 service, undo as compensating decisions, owner unlink, notes and tags read through `merged_into_id`, one key per decision
-**2026-10-25 · proposed (p2-25)** · Phase 2 task UX-1, imp-249, imp-250; R-15; DEC-028, DEC-040, DEC-249, DEC-255, DEC-257, DEC-261; AGENTS.md §3, §8; vault Features/Matching Queue, Data/Product Matching; `docs/reports/p2-25.md`; no migration, flag or dependency
+**2026-10-25 · proposed (p2-25)** · Phase 2 task UX-1, imp-249, imp-250; R-15; DEC-028, DEC-040, DEC-249, DEC-255, DEC-257, DEC-261, DEC-266; AGENTS.md §3, §8; vault Features/Matching Queue, Data/Product Matching; `docs/reports/p2-25.md`; no migration, flag or dependency
 - **Decision:**
   - **(a) Endpoints.** A `/v1/admin/matching` router, signed in (`current_principal`), with stable operation ids:
     - `list_match_candidates` (GET `/candidates`): pending pairs whose sides aren't already on one canonical product. Sorts: `impact` (pairs touching a canonical product this workspace has notes or tags on, then score), `score`, and `age` (oldest first). Filters: `source_pair` (`cj+shopify_stores`, sorted), `min_score`/`max_score`, and `version` (`scorer_version`). Keyset `cursor`, limit 1..200. Each page also carries the queue summary (pending count, sources with a stored listing, listings the matcher linked and when it last did, `MATCHER_ENABLED`), the facets, and the scorer thresholds.
@@ -2473,7 +2473,7 @@ Superseded review defaults, not given entries: default #0 (move the repo) is don
     - Skip is client-only and writes nothing. Market rows are global, so only the counts are workspace-scoped.
   - **(b) Undo (imp-250) is new rows, never an edit.**
     - A decision is every row one call wrote: one actor at one `decided_at`, which is the transaction time.
-    - It can be undone only while each of its listings' latest decision is still that decision's own row; otherwise a 409 reports it as superseded. "Latest" is in id order, which is the order the rows took the matching lock: `decided_at` is the transaction's start and can precede the lock (XR-29).
+    - It can be undone only while each of its listings' latest decision is still that decision's own row; otherwise a 409 reports it as superseded. "Latest" is in id order, which is the order the rows took the matching lock: `decided_at` is the transaction's start and can precede the lock (XR-29). This is the same order DEC-266 gives `membership(t)` and `manual()`.
     - Each row gets a compensating row from its `to` back to its `from`: accept → `unlink`, unlink → `link`, reject → `reject` (nothing moves), merge → `merge`, split → `merge`. The reason starts `undo #<id>`.
     - Undoing a merge makes the merged product `active` again, with `merged_into_id` NULL.
     - Candidates the decision settled go back to `pending`, or to `accepted` where the pair still ends on one product.
