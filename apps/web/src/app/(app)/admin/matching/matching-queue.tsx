@@ -188,7 +188,8 @@ export function MatchingQueue() {
       return setSelected(next === current ? (ids[0] ?? null) : next); // the last pair wraps to the first
     }
     // Decide on what is on screen, never on a pair still loading.
-    if (!shown) return current != null && setNote({ tone: "done", text: `Pair #${current} is still loading.` });
+    if (!shown)
+      return current != null && setNote({ tone: "done", text: detail.isError ? `Pair #${current} didn't load. J skips to the next one.` : `Pair #${current} is still loading.` });
     if (type.type === "accept" || type.type === "reject") return void decide(type.type);
     if (type.type === "merge") return canMerge ? setDialog("merge") : setNote({ tone: "done", text: "Merge needs both listings on products. Accept links them instead." });
     if (type.type === "split") return canSplit ? setDialog("split") : setNote({ tone: "done", text: "Split needs a product with two listings or more." });
@@ -391,7 +392,9 @@ function QueueList({
   total: number;
 }) {
   const active = useRef<HTMLButtonElement>(null);
-  useEffect(() => active.current?.scrollIntoView({ block: "nearest" }), [current]);
+  useEffect(() => {
+    active.current?.scrollIntoView({ block: "nearest" }); // newer Chrome returns a Promise; never hand it to React as a cleanup
+  }, [current]);
   // Rows never animate: a decided row leaves at once (vault Design/Motion System).
   return (
     <section aria-labelledby="queue-title" className="flex flex-col rounded-xl border border-border bg-card shadow-card">
