@@ -239,6 +239,66 @@ class ProductKeyword(WorkspaceOwned, CreatedAt, Base):
     decided_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
+TEST_STAGES = ("idea", "researching", "testing", "winner", "killed")
+KILL_REASONS = (  # vault Features/Testing Board
+    "no_sales_over_stop_loss",
+    "cpa_above_break_even",
+    "low_ctr_creatives",
+    "supplier_issue",
+    "sample_quality",
+    "margin_too_thin",
+    "saturated",
+    "ad_account_rejection",
+    "other",
+)
+
+
+def sql_in(column: str, values: tuple[str, ...]) -> str:
+    return f"{column} IN ({', '.join(f"'{value}'" for value in values)})"
+
+
+class ProductTest(WorkspaceOwned, CreatedAt, BigId, Base):
+    """A product test on the Testing Board (WF-5, DEC-312). CPA and ROAS are computed on read,
+    never stored. start_snapshot is the Profit calc when the test first entered Testing; a
+    trigger refuses to change it once taken (R-21)."""
+
+    __tablename__ = "product_tests"
+    __table_args__ = (
+        Index(
+            "uq_product_tests_open",
+            "workspace_id",
+            "product_id",
+            unique=True,
+            postgresql_where=text(sql_in("stage", TEST_STAGES[:3])),
+        ),
+        CheckConstraint(sql_in("stage", TEST_STAGES), name="stage_values"),
+        CheckConstraint(sql_in("kill_reason", KILL_REASONS), name="kill_reason_values"),
+        CheckConstraint(
+            "(stage = 'killed') = (kill_reason IS NOT NULL)", name="kill_reason_killed"
+        ),
+        CheckConstraint("ended_on >= started_on", name="date_order"),
+        CheckConstraint(
+            "ad_spend_minor >= 0 AND revenue_minor >= 0 AND orders >= 0", name="metrics_range"
+        ),
+    )
+    product_id: Mapped[UUID] = mapped_column(ForeignKey("products.id"))
+    stage: Mapped[str] = mapped_column(String(20), server_default="idea")
+    started_on: Mapped[date_type | None]  # UTC calendar dates
+    ended_on: Mapped[date_type | None]
+    currency: Mapped[str] = mapped_column(
+        CHAR(3), ForeignKey("currencies.code"), server_default="USD"
+    )
+    ad_spend_minor: Mapped[int] = mapped_column(BigInteger, server_default="0")
+    revenue_minor: Mapped[int] = mapped_column(BigInteger, server_default="0")
+    orders: Mapped[int] = mapped_column(server_default="0")
+    notes: Mapped[str | None] = mapped_column(Text)
+    kill_reason: Mapped[str | None] = mapped_column(String(40))
+    start_snapshot: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
 # The default scenario's landed cost per workspace and product (migration 0010, DEC-265): a
 # view, so it sits outside Base.metadata and autogenerate never makes it a table.
 workspace_product_economics = Table(
