@@ -192,7 +192,7 @@ function ViewToggle({ view, setView }: { view: View; setView: (v: View) => void 
             view === value ? "text-foreground" : "text-muted-foreground hover:text-foreground",
           )}
         >
-          {view === value && <m.span layoutId="discover-view" transition={spring.snappy} className="absolute inset-0 rounded-sm bg-card shadow-card" />}
+          {view === value && <m.span layoutId="discover-view" transition={spring.snappy} className="absolute inset-0 rounded-sm segment-thumb" />}
           <Icon className="relative size-3.5" aria-hidden />
           <span className="relative">{label}</span>
         </button>

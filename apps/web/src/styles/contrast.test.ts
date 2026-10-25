@@ -132,6 +132,11 @@ const uiPairs: Pair[] = [
   // p2-39: the active bar on an accent row, in the sidebar and the Ctrl+K palette.
   ["brand", "accent", "sidebar"],
   ["brand", "accent", "popover"],
+  // imp-313: a segmented control's pressed mark, on its thumb and on the track (the card thumb alone was 1.07:1).
+  ["segment-mark", "card"],
+  ["segment-mark", "secondary"],
+  // imp-313: chart series lines on the surfaces a chart sits on, and Trends' pressed pane-toggle swatch on secondary.
+  ...[1, 2, 3, 4, 5].flatMap((i): Pair[] => [[`series-${i}`, "card"], [`series-${i}`, "background"], [`series-${i}`, "secondary"]]),
 ];
 
 for (const theme of ["dark", "light"] as const) {

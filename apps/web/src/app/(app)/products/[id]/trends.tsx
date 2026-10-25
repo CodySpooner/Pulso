@@ -147,7 +147,7 @@ function Loaded({ series, start, end, params }: { series: AnySeries[]; start: st
                   range === r.value ? "text-foreground" : "text-muted-foreground hover:text-foreground",
                 )}
               >
-                {range === r.value && <m.span layoutId="trends-range" transition={spring.snappy} className="absolute inset-0 rounded-sm bg-card shadow-card" />}
+                {range === r.value && <m.span layoutId="trends-range" transition={spring.snappy} className="absolute inset-0 rounded-sm segment-thumb" />}
                 <span className="relative font-mono">{r.label}</span>
               </button>
             ))}
