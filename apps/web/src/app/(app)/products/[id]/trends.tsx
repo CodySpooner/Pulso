@@ -18,6 +18,7 @@ import { formatUtc } from "@/lib/format";
 import { spring } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 
+import { AmazonSection } from "./amazon";
 import { KeywordsSection } from "./keywords";
 import {
   align, hasData, LAYOUT, PANES, RANGES, readState, gapBands, windowDays, writeState,
@@ -55,6 +56,7 @@ export function TrendsTab({ id }: { id: string }) {
     <>
       <SeriesView id={id} />
       <KeywordsSection id={id} />
+      <AmazonSection id={id} />
     </>
   );
 }
