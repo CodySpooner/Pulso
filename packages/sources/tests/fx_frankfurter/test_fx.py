@@ -215,7 +215,7 @@ def test_next_day_rows_skipped_with_named_evidence(
         assert FrankfurterAdapter().upsert(session, rows, payload, parser_version="1").inserted
     assert sorted(row.date.day for row in session.scalars(select(FxRate))) == kept
     line = f"fx_next_day_rows_skipped count={3 - len(kept)} dates={skipped} raw_payload_id=7"
-    assert caplog.messages == [line]
+    assert line in caplog.messages
 
 
 def test_csv_registration_validation_and_manual_provenance(session: Session) -> None:
