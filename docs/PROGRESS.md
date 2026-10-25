@@ -1,15 +1,16 @@
 # Pulso — Progress
 
-**Last updated:** 2026-10-25 (p2-32, on `origin/main` `8855082`)
+**Last updated:** 2026-10-25 (p2-39 Phase 2 end, on `origin/main` `16abd9a`)
 
 ## Current status
 
-**Phase 2 (core product) is being built. Phase 1's build is done; its data checks run in the background.**
+**Phase 3 (signals expansion) is being built. Phase 2's build is done; its data checks wait on real data and the owner. Phase 1's data checks run in the background.**
 
 - On 2026-10-24 at 22:23Z the owner moved the build on: "we are not gonna wait until oct 31st if we need to skip this and build the rest of the site" (vault `Agents/Lead State`, `current_phase`). Phase 1's open exit criteria never block (DEC-049).
 - **Phase 0:** built. Left: CI-4 (the Clerk secrets in GitHub Actions, optional) and the DOC-4 fresh-agent walkthrough.
 - **Phase 1:** every build task is merged except P1-10 (coverage memo CLI) and P1-15 (exit checks). Five data- or owner-gated exit criteria are pending ([Phase 1 exit criteria](#phase-1-exit-criteria)).
-- **Phase 2:** 26 tasks merged, the last as `8855082` (UX-1). At the lead run of 07:34Z, UX-6, UX-8 part c and Q-2 were delivered and waiting for merge, and M-2 part b and P2-29 were running.
+- **Phase 2:** build done. Every Phase 2 task is merged on `origin/main`, the last as `16abd9a` (P2-37). The phase-end UI checklist and design review ran in p2-39 (`docs/reports/p2-39.md`). Six of eight exit criteria are met or met on fixtures; the other two wait on real data and the owner ([Phase 2 exit criteria](#phase-2-exit-criteria)). None blocks Phase 3 (DEC-049).
+- **Phase 3:** in progress since 2026-10-25, overlapping Phase 2's end. p3-01 (AMZ-1 Amazon CSV import, DEC-279), p3-02 (KW-1 product keywords, DEC-281) and p3-03 (AE-1 + AE-2 AliExpress client and 24 h cache, DEC-283) are running. The web app's `CURRENT_PHASE` is 3 (DEC-284).
 - **Data:** only Frankfurter FX collects. It has been enabled on the collector host since 2026-10-24T18:47Z (`docs/DATA_SOURCES.md`). `seed_v1` was loaded there on 2026-10-24 at 21:18Z (30 stores, 10 CJ categories, 50 keywords). The host runs `88ce93b` (migration 0004). Its update to the current head waits for the open DEC-072 review batch.
 - **Shopify is off for good** (DEC-261, `3abfd73`). No `enable shopify_stores` and no new crawler work. Store-based views show "no source yet" until a replacement source fills them. The owner chose Google Merchant Center Popular products as the replacement (P2-29, running).
 - **CI** runs on GitHub (the repo went public on 2026-10-22). **Docker** runs on the PC (engine 29.9.2) since 2026-10-23, so the database tests run locally.
@@ -21,8 +22,8 @@
 |---|---|---|---|
 | 0 | Foundation | built | Left: CI-4 Clerk secrets in GitHub Actions (optional), DOC-4 walkthrough |
 | 1 | Data engine | build done (owner, 2026-10-24); data checks pending | FX collects since 2026-10-24. CJ is next (DEC-136). Shopify off for good (DEC-261). Trends waits on OPEN-1/2 evidence |
-| 2 | Core product experience | in progress | 26 tasks merged. Open: UX-6, UX-8 part c, Q-2 (delivered), M-2 part b, P2-29 (running), exit checks |
-| 3 | Signals expansion | not started | The AliExpress app review has a lead time; the application is the owner's |
+| 2 | Core product experience | build done; data checks pending | p2-01..p2-39 merged or delivered. Exit criteria wait on `enable cj`, `listing_images`, the owner's labels and Settings values |
+| 3 | Signals expansion | in progress | p3-01 AMZ-1, p3-02 KW-1, p3-03 AE-1/AE-2 running. The AliExpress app review has a lead time; the application is the owner's |
 | 4 | Scores and workflow | not started | |
 | 5 | AI layer | not started | Needs an Anthropic API key and AI caps at entry |
 | 6 | Forecasting v1 | not started | Build work may start after 6–8 weeks of collection. First 14-day forecasts need about 12 weeks of continuous collection, 30-day about 17 (DEC-044) |
@@ -126,7 +127,7 @@ Pending items are non-blocking (DEC-049).
 | Railway runbook (not live) | Written in P1-13 (`374ebb2`) | The lead's walkthrough (RW-1) |
 | Lint, typecheck, tests; docs updated | Green at every merge (lead checks). This file is now current | — |
 
-## Phase 2 (in progress)
+## Phase 2 (build done; data checks pending)
 
 ### Merged tasks
 
@@ -158,33 +159,38 @@ Pending items are non-blocking (DEC-049).
 | p2-24 | P2-24 | Cross-review of p2-16 + p2-19 + p2-21 + p2-22: 0 high, 1 medium, 6 low | `70f32cc` | — |
 | p2-25 | UX-1 | Matching Queue `/admin/matching`, undo as compensating decisions | `8855082` | DEC-263 |
 | p2-28 | P2-28 | XR-29: replay `match_decisions` in lock order | `3a0b02c` | DEC-266 |
+| p2-26 | UX-6 | Suppliers tab: per-supplier Profit calc, Best margin and Fastest shipping picks, `?supplier=` | `672d46d` | DEC-264 |
+| p2-29 | P2-29 part a | Merchant Center Popular products CSV import: `merchant_bestsellers` source (disabled), append-only `popular_products` (migration 0009), GTIN links on read | `ce50c4c` | DEC-267 |
+| p2-32 | P2-32 | PROGRESS refresh and the Phase 1 summary (docs only) | `fb7e39c` | — (DEC-270 unused) |
+| p2-30 | Q-2 | Loading, empty, error, stale and no-source states across the Phase 2 views | `5d35ef4` | — (DEC-268 unused) |
+| p2-27 | UX-8 part c | `workspace_product_economics` view (migration 0010), golden landed-cost vectors, Discover best margin | `98d0bc5` | DEC-265 |
+| p2-31 | M-2 part b | `ml.embed` OpenCLIP image + title embeddings, flag off, optional `clip` extra | `4381db8` | DEC-269 |
+| p2-33 | P2-29 part b | Google popular page `/google-popular`, `GET /v1/popular-products`, major brands hidden by default | `d48d935` | DEC-272 |
+| p2-35 | P2-35 part a | Feature store: as-of repository, `daily_units`, V7/G7, `cj_stock` + `shp_inv`, truncation leakage test | `c0b48c2` | DEC-275 |
+| p2-34 | P2-34 | Cross-review of p2-20 + p2-29, riders p2-25, p2-26, p2-28: 0 high, 1 medium, 5 low (rode in p2-36) | `19dc46e` | — (DEC-273 unused) |
+| p2-36 | P2-36 | XR-36: an undone accept frees its listings for the matcher | `19dc46e` | DEC-276 |
+| p2-38 | P2-35 part b | `ml.features` task behind a flag, Discover momentum end-to-end test | `fd6ca2d` | DEC-278 |
+| p2-37 | P2-37 | Workspace brand hide list for Google popular (migration 0011) | `16abd9a` | DEC-277 |
+| p2-39 | Phase end | UI checklist and design review of every Phase 2 screen, small fixes, `CURRENT_PHASE` 3, this refresh | this branch | DEC-284 |
 
-Also merged during Phase 2: imp-136 + imp-179 (`2f7fa02`, DEC-236), imp-154 + imp-186 + imp-187 (`aef2ef7`, DEC-235), imp-183 + imp-182 (`933cc24`, DEC-233), imp-224 (`7f9054d`, DEC-260) and the owner's DEC-261 (`3abfd73`).
+Also merged during Phase 2: imp-136 + imp-179 (`2f7fa02`, DEC-236), imp-154 + imp-186 + imp-187 (`aef2ef7`, DEC-235), imp-183 + imp-182 (`933cc24`, DEC-233), imp-224 (`7f9054d`, DEC-260), imp-273 (`4b8334d`, DEC-271), imp-278 (`504441b`), imp-301 (`1d84f67`) and the owner's DEC-261 (`3abfd73`).
 
-The matcher runs behind `MATCHER_ENABLED=off`. It has no real-data work until M-2 part b fills embeddings, and that needs `listing_images` enabled (an owner decision).
+Every Phase 2 data path ships off: the matcher (`MATCHER_ENABLED`), embeddings (`EMBEDDINGS_ENABLED`), the feature job (`FEATURES_ENABLED`), and the `listing_images` and `merchant_bestsellers` sources stay disabled until the owner decides and real data arrives. The M-2 verify (95% of listings embedded in one nightly run) waits on `listing_images`, the ml worker image and an ml consumer (imp-284).
 
-### In flight (lead run of 07:34Z)
+### Phase 2 exit criteria
 
-| Task | Item | State | DEC |
-|---|---|---|---|
-| p2-26 | UX-6 Suppliers tab | delivered, waiting for merge | DEC-264 |
-| p2-27 | UX-8 part c economics view (migration 0009, money math) | delivered, waiting for merge | DEC-265 |
-| p2-30 | Q-2 UI states | delivered, waiting for merge | DEC-268 |
-| p2-29 | P2-29 Merchant Center Popular products weekly CSV import | running | DEC-267 |
-| p2-31 | M-2 part b OpenCLIP embeddings | running | DEC-269 |
-| p2-32 | This PROGRESS refresh and the Phase 1 summary | running | DEC-270 |
+Pending items are non-blocking (DEC-049). Phase 3 runs alongside them.
 
-### Phase 2 exit criteria (all open)
-
-| Criterion | Waits on |
-|---|---|
-| The owner finds a product, sees its suppliers and sellers, and gets landed margin from real data | `enable cj` (supplier data), UX-6 merging, and a seller source to replace Shopify (P2-29 is the owner's pick) |
-| Auto-merge precision at least 95% on the owner's labels | M-2 part b, the owner's `listing_images` decision, then the owner labelling about 200 pairs |
-| Manual merge and split hold across matcher re-runs | Met on fixtures (p2-21 `a8ded78`, p2-28 `3a0b02c`); a real-data check later |
-| Every product-page number traces to source and as-of | Q-1 is merged (`74b1d6d`); Q-2 (p2-30) is delivered |
-| Tests and lint green; PROGRESS, DECISIONS and vault notes current | The phase-end run. The CLIP checkpoint DEC comes with M-2 part b |
-| Polish checklist for Discover, the product page tabs, the Matching Queue and Settings | The phase-end design review |
-| Summary to the owner | The phase end |
+| Criterion | State | Waits on |
+|---|---|---|
+| The owner finds a product (Discover or Ctrl+K), sees its suppliers and sellers, and calculates landed margin from real data | **Pending.** Built and tested on fixtures: Discover (`3bc3a01`), Ctrl+K (`600ae0f`), Suppliers (`672d46d`), Sellers (`53ae1ef`), Profit (`786fce6`, `98d0bc5`). The collector has only FX data | `enable cj` for suppliers (the lead, DEC-136, after the collector update). A seller source: Shopify is off (DEC-261), so the owner's weekly Merchant Center CSV fills Google popular, and Phase 3's Amazon CSV (p3-01) adds a marketplace. The owner's fee and duty defaults in Settings |
+| Auto-merge precision ≥ 95% on the owner-labelled set; queue precision reported | **Pending.** Matcher, GTIN pass, queue and undo are built (`9f09e74`, `b076203`, `8855082`) | The owner's `listing_images` decision (DEC-240), the ml worker image and consumer (imp-284), real CJ plus a second source with images, then the owner labelling about 200 pairs (about 30 minutes, keyboard only) |
+| Manual merge/split overrides hold across matcher re-runs | **Met on fixtures** (p2-21 `a8ded78`, p2-28 `3a0b02c`, p2-36 `19dc46e`) | A real-data check once the matcher runs |
+| Every product-page number traces to source + as-of | **Met on fixtures** (Q-1 `74b1d6d`, Q-2 `5d35ef4`, the p2-39 hovers). Two backlog rows remain: the Sellers summary tile and the Suppliers pick cards name their source in the tile, not per number | Real data, and those two p2-39 backlog rows |
+| Tests: matching thresholds, profit math, landed cost, endpoints; lint/typecheck green | **Met** at every merge; p2-39 re-ran the web checks | — |
+| PROGRESS, DECISIONS (CLIP checkpoint, thresholds, ECharts theming) and vault notes updated | **Met** for PROGRESS (this file) and DECISIONS (CLIP checkpoint DEC-269 a, thresholds DEC-249, ECharts DEC-245) | The lead applies the vault lines in `docs/reports/p2-39.md` |
+| Polish checklist passes for Discover, the product page tabs, the Matching Queue and Settings | **Passes, with backlog rows** (p2-39): design-review scores of 87–98 per screen. Every checklist line passes except three contrast items (one appears only while Profit recalculates), now backlog rows | The p2-39 backlog rows |
+| Summary to the owner | **Written** (`docs/reports/p2-39.md`, Phase summary) | The lead pastes it into the Phase 2 note and Owner To-Dos |
 
 ## §6 items done and pending (DEC-048)
 
@@ -193,12 +199,12 @@ Phases 0–2 only. Everything else is pending in its phase (vault `00 Home`).
 | §6 item | Phase | State |
 |---|---|---|
 | 6.1 Daily Pulse | 4 | Empty shell since Phase 0 (`f03e4e0`) |
-| 6.2 Discover feed, filters, sort | 2 | Built (p2-03 `3bc3a01`). Score columns wait for Phase 4. Best margin from complete rows comes with p2-27. Quick actions are Phase 4 |
+| 6.2 Discover feed, filters, sort | 2 | Built (p2-03 `3bc3a01`); best margin from complete rows (p2-27 `98d0bc5`); momentum from the feature store (p2-38 `fd6ca2d`). Score columns wait for Phase 4; margin sort and filter are imp-279. Quick actions are Phase 4 |
 | 6.4 Overview: key stats, notes, tags | 2 | Built (p2-07 `8bde264`). The watchlist toggle is Phase 4; the forecast card is v2 |
 | 6.4 Trends tab | 2 | Built (p2-09 `dec9661`). Search and ads rows show "no source yet"; search fills once Trends is enabled |
-| 6.4 Suppliers tab | 2 | Delivered (p2-26), waiting for merge |
+| 6.4 Suppliers tab | 2 | Built (p2-26 `672d46d`). Supplier rows fill once `enable cj` runs |
 | 6.4 Sellers tab | 2 | Built (p2-11 `53ae1ef`). It shows "no source yet" while Shopify is off (DEC-261) |
-| 6.4 Profit tab: calculator, scenario sliders | 2 | Built (p2-10 `b560704`, p2-20 `786fce6`). The economics view comes with p2-27 |
+| 6.4 Profit tab: calculator, scenario sliders | 2 | Built (p2-10 `b560704`, p2-20 `786fce6`, economics view p2-27 `98d0bc5`) |
 | 6.4 Risk tab: saturation | 4 | Not started |
 | 6.17 Data Health | 1 | Built (P1-11 `9e2d4b7`, P1-11b `1aea91a`, P1-11c `81c2bed`, P1-12 `415f197`). Real runs: FX only so far |
 | 6.17 Matching queue | 2 | Built (p2-25 `8855082`) |
@@ -207,6 +213,8 @@ Phases 0–2 only. Everything else is pending in its phase (vault `00 Home`).
 | 6.18 CSV export on every table | 4 | Not started. CSV import is built (P1-05 `6c54ae4`) |
 | 6.18 Responsive layout and PWA install | 0, 4 | Manifest since Phase 0 (`f03e4e0`); install in Phase 4 |
 | Added: `/admin/ui` gallery (WEB-9) | 0 | Built (`f012f7f`) |
+| Added: Google popular (Merchant Center weekly report) | 2 | Built (p2-29 `ce50c4c`, p2-33 `d48d935`, p2-37 `16abd9a`). Fills once the owner imports the weekly CSV |
+| Added: feature store and leakage test | 2 | Built (p2-35 `c0b48c2`, p2-38 `fd6ca2d`), flag off. The nightly Beat entry waits on imp-284 |
 
 ## Improvement and audit work
 
@@ -222,10 +230,10 @@ Phases 0–2 only. Everything else is pending in its phase (vault `00 Home`).
 
 ## Next
 
-1. The lead merges p2-26, p2-27 and p2-30, then sends the open DEC-072 review batch to a fresh Claude worker (due at 3 risky merges or 08:27Z).
-2. Once the batch clears and CI is green: the collector `update` from 0004 to the current head, `status`, then p2-17's `map` run.
+1. The lead merges p2-39, pastes its Phase summary, Owner To-Dos and 00 Home lines into the vault, and sets Lead State `current_phase` to 3.
+2. The open DEC-072 review batch of the risky merges since P2-34 (Lead State), then the collector `update` to the current head, `status`, and p2-17's `map` run.
 3. The FX first-run check after 2026-10-25T17:00Z, then `enable cj` (DEC-136).
-4. Finish Phase 2: M-2 part b (p2-31) and P2-29 (p2-29). Then the Phase 2 exit checks and summary, and Phase 3.
+4. Phase 3: p3-01 AMZ-1, p3-02 KW-1, p3-03 AE-1/AE-2, then the rest of the Phase 3 note's task table.
 
 ## Owner to-dos (summary)
 
@@ -236,7 +244,7 @@ The canonical list is the vault note `Phases/Owner To-Dos`. Open items that affe
 | Register the nightly backup task (vault `Platform/Backups & Restore`) | The 3-night backup criterion | open |
 | Turn on Docker Desktop autostart and the never-sleep power plan (vault `Platform/Collector Host`) | Collection after every restart; the 7-day criterion | open |
 | Run the Trends test for OPEN-1 and OPEN-2 | Enabling Google Trends | open |
-| Download the weekly US Popular products CSV from Merchant Center | P2-29, the Shopify replacement | open (steps in the Owner To-Dos log, 2026-10-25 06:04Z) |
+| Download the weekly US Popular products CSV from Merchant Center and import it in Data Health | Google popular (P2-29), the Shopify replacement | open (steps in the Owner To-Dos log, 2026-10-25 06:04Z) |
 | Decide whether to enable `listing_images` (DEC-240) | M-2 part b on real data, matching | open |
 | Label about 200 match pairs in `/admin/matching` | Matching thresholds | after real data from two sources |
 | Enter real fees and duty defaults in Settings | Landed margin from real data | open |
