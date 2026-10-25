@@ -2834,10 +2834,10 @@ Superseded review defaults, not given entries: default #0 (move the repo) is don
 - **Not here:** the endpoint and the Suppliers-tab rows (AE-3), the `aliexpress` source row, the DS token create/refresh flow, and the R-17 CSV fallback.
 
 ### DEC-281 · Product keywords (KW-1): a workspace's confirmed or rejected keyword per product, candidates scored from the product's titles on read, one-click confirm on the Trends tab
-**2026-10-25 · proposed (p3-02)** · Phase 3 task KW-1; DEC-029, DEC-040, DEC-238, DEC-245 (d), DEC-263; SPEC §5 Signals, §6.4 Trends; vault Phases/Phase 3 - Signals Expansion, Features/Product Page - Trends, Data/Data Model; migration 0012; no dependency, flag, source request or schedule
+**2026-10-25 · proposed (p3-02)** · Phase 3 task KW-1; DEC-029, DEC-040, DEC-238, DEC-245 (d), DEC-263; SPEC §5 Signals, §6.4 Trends; vault Phases/Phase 3 - Signals Expansion, Features/Product Page - Trends, Data/Data Model; migration 0013; no dependency, flag, source request or schedule
 - **Decision:**
   - **(a) Workspace scope.** Confirming a keyword is a workspace's choice, like `product_tags` and `workspace_tracked_stores` (DEC-029 "Workspace choices"). So `product_keywords` is `WorkspaceOwned`: `workspace_id` NOT NULL and indexed. This narrows the vault Data Model, which lists it under global Signals. KW-2's weekly Trends set will read the union of confirmed keywords across workspaces, the way the crawl reads tracked stores.
-  - **(b) Table (0012).**
+  - **(b) Table (0013).**
     - Columns: primary key `(workspace_id, product_id, keyword)`; `keyword` varchar(100) in normal form (casefolded, curly apostrophe made straight, spacing collapsed); `relevance` numeric(4,3), the title score at the first decision, null for a typed-in keyword; `source` `title` · `manual`; `status` `confirmed` · `rejected`; `decided_by` (FK users); `decided_at`; `created_at`; CHECKs on all three.
     - A new decision updates `status`, `decided_by` and `decided_at` in place, so `created_at` keeps the first decision and `decided_at` the current one. Earlier flips aren't kept.
     - Nothing deletes a row: no endpoint does, triggers refuse DELETE and TRUNCATE, and the downgrade refuses while any row exists. Taking a keyword back means rejecting it.
