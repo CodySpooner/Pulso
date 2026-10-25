@@ -124,6 +124,7 @@ def test_single_migration_head_and_offline_sql(
     assert "'Shopify stores', 'public_endpoint', false" in sql
     assert sql.count("ADD CONSTRAINT fk_products_main_image_id_images") == 1
     assert "CREATE VIEW source_daily_coverage" in sql
+    assert "CREATE VIEW workspace_product_economics" in sql
     assert "WHERE template_version IS NOT NULL" in sql
     assert "'backup', 'Backups', 'internal', false" in sql
     assert "CREATE INDEX ix_host_heartbeats_at ON host_heartbeats (at)" in sql
