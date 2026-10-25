@@ -121,7 +121,7 @@ test("the drawer's CPA and ROAS match a hand calculation, and saving recomputes 
 
   await drawer.getByLabel("Ad spend").fill("48.65");
   await drawer.getByLabel("Orders").fill("2");
-  await drawer.getByRole("button", { name: "Save" }).click();
+  await drawer.getByRole("button", { name: "Save metrics" }).click();
   await expect(drawer.getByRole("status")).toHaveText("Saved.");
   // $48.65 / 2 = $24.325 → $24.32 half-even; $259.99 / $48.65 = 5.344 → 5.34×
   await expect(figure("CPA")).toHaveText("$24.32");

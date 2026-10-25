@@ -215,7 +215,7 @@ function Card({ test, now, layout, instant, hidden, onOpen, onMove }: { test: Te
 function CardBody({ test, now, onOpen, menu, className }: { test: Test; now: number; onOpen?: () => void; menu?: React.ReactNode; className?: string }) {
   const stale = staleMetrics(test, now);
   return (
-    <article aria-label={test.product_title} className={cn("relative flex flex-col gap-2.5 rounded-lg border border-border bg-card p-2.5 shadow-card hover:border-border-strong", className)}>
+    <article aria-label={test.product_title} className={cn("@container relative flex flex-col gap-2.5 rounded-lg border border-border bg-card p-2.5 shadow-card hover:border-border-strong", className)}>
       <div className="flex items-start gap-2.5">
         <Thumb url={test.product_image_url} />
         <button
@@ -229,7 +229,8 @@ function CardBody({ test, now, onOpen, menu, className }: { test: Test; now: num
         </button>
         {menu}
       </div>
-      <dl className="grid grid-cols-2 gap-x-3 gap-y-1 text-label">
+      {/* One stat a row in a narrow card (five columns), two a row from 15rem, so a value never meets a label. */}
+      <dl className="grid gap-x-6 gap-y-1 text-label @min-[15rem]:grid-cols-2">
         <Stat label="Spend">{money(test.ad_spend_minor)}</Stat>
         <Stat label="Orders">{test.orders.toLocaleString("en-US")}</Stat>
         <Stat label="CPA">{test.cpa_minor == null ? <Missing reason="No source yet: no orders recorded" /> : money(test.cpa_minor)}</Stat>
@@ -237,8 +238,10 @@ function CardBody({ test, now, onOpen, menu, className }: { test: Test; now: num
       </dl>
       <p className="text-micro text-subtle-foreground">
         {stale ? (
-          <Pill tone="warning" icon={Clock}>
-            Metrics last updated <Ago iso={test.updated_at} now={now} source="Metrics you entered" />
+          <Pill tone="warning" icon={Clock} className="h-auto min-h-5.5 py-0.5 whitespace-normal">
+            <span>
+              Metrics last updated <Ago iso={test.updated_at} now={now} source="Metrics you entered" />
+            </span>
           </Pill>
         ) : (
           <>
@@ -275,7 +278,7 @@ function MoveMenu({ test, onMove }: { test: Test; onMove: (stage: Stage) => void
         >
           <DropdownMenu.Label className="px-2 pt-1 pb-1.5 text-micro font-medium text-subtle-foreground uppercase">Move to</DropdownMenu.Label>
           {STAGES.filter((s) => s.value !== test.stage).map((s) => (
-            <DropdownMenu.Item key={s.value} onSelect={() => onMove(s.value)} className="flex h-8 cursor-pointer items-center rounded-md px-2 text-data outline-none select-none data-highlighted:bg-accent">
+            <DropdownMenu.Item key={s.value} onSelect={() => onMove(s.value)} className="flex h-8 cursor-pointer items-center rounded-md px-2 text-data outline-none select-none pointer-coarse:h-(--hit-target) data-highlighted:bg-accent">
               {s.label}
               {s.value === "killed" && "…"}
             </DropdownMenu.Item>

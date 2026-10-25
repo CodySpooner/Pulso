@@ -25,7 +25,13 @@ export function TestDrawer({ test, onClose }: { test: Test | undefined; onClose:
   if (test && test !== shown) setShown(test); // keeps the last test on screen while the sheet slides out
   return (
     <Sheet open={test != null} onOpenChange={(open) => !open && onClose()}>
-      <SheetContent side="right" closeLabel="Close test" className="overflow-y-auto">
+      <SheetContent
+        side="right"
+        closeLabel="Close test"
+        className="overflow-y-auto"
+        // The sheet itself takes focus, so a phone doesn't open its keypad on the first field; Tab goes on from there.
+        onOpenAutoFocus={(e) => (e.preventDefault(), (e.currentTarget as HTMLElement).focus())}
+      >
         {shown && <Body key={shown.id} test={shown} />}
       </SheetContent>
     </Sheet>
@@ -87,7 +93,7 @@ function Body({ test }: { test: Test }) {
             {test.cpa_minor == null ? <Missing reason="No source yet: no orders recorded" /> : money(test.cpa_minor)}
           </Figure>
           <Figure label="ROAS" hint="Revenue ÷ ad spend, from the API">
-            {test.roas == null ? <Missing reason="No source yet: no ad spend recorded" /> : `${test.roas.toFixed(2)}×`}
+            {test.roas == null ? <Missing reason="No source yet: no ad spend recorded" /> : <Times value={test.roas} />}
           </Figure>
         </dl>
       </section>
@@ -111,7 +117,7 @@ function Body({ test }: { test: Test }) {
         </label>
         <div className="flex flex-wrap items-center gap-3">
           <Button type="submit" variant="primary" aria-disabled={invalid || saving}>
-            {saving ? "Saving…" : "Save"}
+            {saving ? "Saving…" : "Save metrics"}
           </Button>
           <p role="status" className={cn("text-data", result?.tone === "error" ? "text-negative" : "text-muted-foreground")}>
             {invalid ? "Enter amounts like 120.50 and a whole number of orders." : result?.text}
@@ -141,7 +147,7 @@ function Body({ test }: { test: Test }) {
                 {money(economics.cpa)}
               </Figure>
               <Figure label="Break-even ROAS" hint="Price ÷ break-even CPA">
-                {economics.roas == null ? <Missing reason="No break-even: the margin before ads is not positive" /> : `${economics.roas.toFixed(2)}×`}
+                {economics.roas == null ? <Missing reason="No break-even: the margin before ads is not positive" /> : <Times value={economics.roas} />}
               </Figure>
             </dl>
             <p className="text-label text-subtle-foreground">
@@ -166,6 +172,14 @@ function Figure({ label, hint, children }: { label: string; hint?: string; child
     </div>
   );
 }
+
+/** A ROAS with its unit a step down, so the number leads. */
+const Times = ({ value }: { value: number }) => (
+  <>
+    {value.toFixed(2)}
+    <span className="ml-0.5 text-body text-muted-foreground">×</span>
+  </>
+);
 
 function Input({ label, invalid, money: isMoney, className, ...props }: React.ComponentProps<"input"> & { label: string; invalid?: boolean; money?: boolean }) {
   const id = useId();
