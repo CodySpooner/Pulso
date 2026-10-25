@@ -5,9 +5,9 @@ import { mockFeedApi, PRODUCT_ID } from "../products/fixtures";
 import { mockProfitApi } from "../products/profit-fixtures";
 import { mockSettingsApi } from "../settings/fixtures";
 
-// imp-313 (p2-39 B1, B2): a segmented control's pressed option carries a 2 px --segment-mark bar, the state the card
-// thumb alone showed at 1.07:1; and Profit keeps its last answer at full contrast while a recompute is out. The token
-// ratios themselves are in src/styles/contrast.test.ts.
+// imp-313 (p2-39 B1, B2): a segmented control's pressed option (Discover, Settings, Profit units) carries a 2 px
+// --segment-mark bar, the state the card thumb alone showed at 1.07:1; and Profit keeps its last answer at full
+// contrast while a recompute is out. The token ratios themselves are in src/styles/contrast.test.ts.
 
 /** The ::before bar of a pressed thumb, and --segment-mark resolved to rgb() for comparison. */
 const mark = (thumb: Locator) =>
@@ -51,6 +51,15 @@ test("Settings' duty selector marks the checked option with the bar, and only th
   await options.filter({ has: page.locator("input:not(:checked)") }).click();
   await expect(checked).toHaveCount(1);
   await expectMarked(checked);
+});
+
+test("Profit's units selector marks the chosen quantity with the bar", async ({ page }) => {
+  await mockProfitApi(page);
+  await page.goto(`/products/${PRODUCT_ID}?tab=profit`);
+  await expectMarked(page.getByRole("radio", { name: "1 unit", checked: true }));
+  await page.getByRole("radio", { name: "3 units" }).click();
+  await expectMarked(page.getByRole("radio", { name: "3 units", checked: true }));
+  expect((await mark(page.getByRole("radio", { name: "1 unit" }))).painted).toBe(false);
 });
 
 async function holdRecompute(page: Page) {
