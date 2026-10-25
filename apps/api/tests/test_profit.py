@@ -548,7 +548,7 @@ def test_unknown_inputs_are_not_found(api: TestClient, db_engine: Engine) -> Non
     calc(api, ws, 404, product_id=ids["product"], supplier_listing_id=cj)
     calc(api, ws, 404, product_id=ids["product"], variant_id=1)
     none = calc(api, ws, product_id=ids["product"])
-    assert none["supplier_listing_id"] is None
+    assert (none["supplier_listing_id"], none["in_stock"]) == (None, True)  # nothing known sold out
     assert none["missing"] == ["supplier_cost_missing", "freight_missing", "duty_not_set"]
     # No store price stands in at quantity 2, so only settings feed it: nothing observed.
     assert calc(api, ws, product_id=ids["product"], quantity=2)["as_of"] is None
@@ -950,8 +950,11 @@ def test_profit_and_discover_both_skip_a_known_out_of_stock_supplier(
         session.commit()
         product_id = str(product.id)
 
-    assert calc(api, ws, product_id=product_id)["supplier_listing_id"] == kept  # = the view's
+    default = calc(api, ws, product_id=product_id)  # = the view's
+    assert (default["supplier_listing_id"], default["in_stock"]) == (kept, True)
     assert discover(api, ws)[product_id]["supplier_listing_id"] == kept
+    chosen = calc(api, ws, product_id=product_id, supplier_listing_id=gone)  # imp-351 (DEC-295)
+    assert (chosen["supplier_listing_id"], chosen["in_stock"]) == (gone, False)
 
     with Session(db_engine) as session:  # nothing in stock: the best out-of-stock one, in both
         observe(
@@ -959,5 +962,6 @@ def test_profit_and_discover_both_skip_a_known_out_of_stock_supplier(
             price_min_minor=620, available=False,
         )  # fmt: skip
         session.commit()
-    assert calc(api, ws, product_id=product_id)["supplier_listing_id"] == gone
+    default = calc(api, ws, product_id=product_id)
+    assert (default["supplier_listing_id"], default["in_stock"]) == (gone, False)  # flagged
     assert discover(api, ws)[product_id]["supplier_listing_id"] == gone

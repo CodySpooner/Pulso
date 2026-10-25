@@ -1713,6 +1713,11 @@ export interface components {
             freight_minor: number | null;
             /** Goods Minor */
             goods_minor: number | null;
+            /**
+             * In Stock
+             * @description The costed listing isn't known to be out of stock (DEC-243). False on the default when no supplier is in stock (DEC-291), or on a chosen sold-out listing; true with no listing.
+             */
+            in_stock: boolean;
             /** Landed Cost Minor */
             landed_cost_minor: number | null;
             /** Margin Bps */
