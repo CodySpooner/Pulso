@@ -8,7 +8,7 @@ import { Archive, ArchiveRestore, BellOff, Check, CheckCheck, SearchX, SkipForwa
 import * as m from "motion/react-m";
 
 import { useAlertRules, useAlertWrites, useUnreadCount } from "@/components/alerts/api";
-import { describeAlert, entityHref, FIRES, gapSpan, lastEvaluation, rulesLine, TYPES, type Alert } from "@/components/alerts/model";
+import { describeAlert, entityHref, FIRES, gapSpan, lastEvaluation, rulesLine, TYPES, type Alert, type Rule } from "@/components/alerts/model";
 import { useApiReady } from "@/components/data-health/api";
 import { Ago, PanelError, StaleLine } from "@/components/data-health/atoms";
 import { LoadMore } from "@/components/data-health/load-more";
@@ -71,33 +71,11 @@ export function AlertsInbox() {
   const failed = Object.values(writes).find((w) => w.isError);
   const now = query.dataUpdatedAt;
   const rows = query.data?.pages.flatMap((page) => page.items) ?? [];
-  const last = rules && now ? lastEvaluation(rules, now) : null;
-  const tab = (view: string | null) => {
-    const search = new URLSearchParams(params);
-    if (view) search.set("view", view);
-    else search.delete("view");
-    return `/alerts${search.size ? `?${search}` : ""}`;
-  };
 
   if (!hydrated) return <Loading />;
   return (
     <div className="flex flex-col gap-4">
-      <nav aria-label="Alert views" className="flex gap-4 border-b border-border-subtle">
-        {[
-          ["Inbox", null],
-          ["Archived", "archived"],
-        ].map(([label, view]) => (
-          <Link
-            key={label}
-            href={tab(view)}
-            aria-current={archived === (view !== null) ? "page" : undefined}
-            className="relative flex h-9 items-center gap-1.5 rounded-sm text-data font-medium text-muted-foreground hover:text-foreground aria-[current=page]:text-foreground"
-          >
-            {label}
-            {archived === (view !== null) && <m.span layoutId="alerts-view" transition={spring.snappy} className="absolute inset-x-0 -bottom-px h-0.5 rounded-full bg-brand" />}
-          </Link>
-        ))}
-      </nav>
+      <Views current={archived ? "archived" : null} />
       <div className="flex flex-wrap items-center gap-2">
         <select aria-label="Type" className={control} value={type ?? ""} onChange={(e) => set({ type: e.target.value || null })}>
           <option value="">All types</option>
@@ -144,18 +122,7 @@ export function AlertsInbox() {
       </div>
       {rules && (
         <div className="flex flex-col gap-1 text-label text-subtle-foreground">
-          <p>
-            {last?.stale && <TriangleAlert className="mr-1 inline size-3.5 align-[-2px] text-warning" aria-hidden />}
-            {rulesLine(rules)}{" "}
-            {last ? (
-              <span className={cn(last.stale && "text-foreground")}>
-                Last evaluation <time dateTime={last.iso} title={formatUtc(last.iso)}>{formatAgo(last.iso, now)}</time>
-                {last.stale ? ": over 26 h ago, so the collector host may be off." : "."}
-              </span>
-            ) : (
-              "No rule has been evaluated yet."
-            )}
-          </p>
+          <EvaluationLine rules={rules} now={now} />
           {rules
             .filter((r) => r.status === "skipped")
             .map((r) => (
@@ -337,7 +304,59 @@ function Row({
   );
 }
 
-function Action({ hint, name, icon: Icon, onClick }: { hint: string; name: string; icon: LucideIcon; onClick: () => void }) {
+const VIEWS = [
+  ["Inbox", null],
+  ["Archived", "archived"],
+  ["Rules", "rules"],
+] as const;
+
+/** The /alerts tabs. Inbox and Archived share the type and read filters; Rules (WF-4c, DEC-339) has none. */
+export function Views({ current }: { current: "archived" | "rules" | null }) {
+  const params = useSearchParams();
+  const href = (view: string | null) => {
+    if (view === "rules" || current === "rules") return view ? `/alerts?view=${view}` : "/alerts";
+    const search = new URLSearchParams(params);
+    if (view) search.set("view", view);
+    else search.delete("view");
+    return `/alerts${search.size ? `?${search}` : ""}`;
+  };
+  return (
+    <nav aria-label="Alert views" className="flex gap-4 border-b border-border-subtle">
+      {VIEWS.map(([label, view]) => (
+        <Link
+          key={label}
+          href={href(view)}
+          aria-current={current === view ? "page" : undefined}
+          className="relative flex h-9 items-center gap-1.5 rounded-sm text-data font-medium text-muted-foreground hover:text-foreground aria-[current=page]:text-foreground"
+        >
+          {label}
+          {current === view && <m.span layoutId="alerts-view" transition={spring.snappy} className="absolute inset-x-0 -bottom-px h-0.5 rounded-full bg-brand" />}
+        </Link>
+      ))}
+    </nav>
+  );
+}
+
+/** How many rules are on and when they were last evaluated, flagged past 26 h (the collector host may be off). */
+export function EvaluationLine({ rules, now }: { rules: Rule[]; now: number }) {
+  const last = now ? lastEvaluation(rules, now) : null;
+  return (
+    <p>
+      {last?.stale && <TriangleAlert className="mr-1 inline size-3.5 align-[-2px] text-warning" aria-hidden />}
+      {rulesLine(rules)}{" "}
+      {last ? (
+        <span className={cn(last.stale && "text-foreground")}>
+          Last evaluation <time dateTime={last.iso} title={formatUtc(last.iso)}>{formatAgo(last.iso, now)}</time>
+          {last.stale ? ": over 26 h ago, so the collector host may be off." : "."}
+        </span>
+      ) : (
+        "No rule has been evaluated yet."
+      )}
+    </p>
+  );
+}
+
+export function Action({ hint, name, icon: Icon, onClick }: { hint: string; name: string; icon: LucideIcon; onClick: () => void }) {
   return (
     <Tooltip>
       <TooltipTrigger asChild>
