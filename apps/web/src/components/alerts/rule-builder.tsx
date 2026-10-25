@@ -110,7 +110,7 @@ function Form({ product, rule, close, onSaved }: Omit<Props, "open" | "onOpenCha
   return (
     <form onSubmit={submit} noValidate className="flex min-h-0 flex-1 flex-col gap-4">
       <div className="flex flex-col gap-1">
-        <DialogTitle className="truncate">{rule ? "Edit alert rule" : `New alert on ${product?.name}`}</DialogTitle>
+        <DialogTitle className="truncate">{rule ? "Edit alert rule" : `New alert rule on ${product?.name}`}</DialogTitle>
         <DialogDescription>Fires once each time it crosses, then waits until the change falls back.</DialogDescription>
       </div>
       <fieldset className="flex flex-wrap items-center gap-2 text-body text-muted-foreground max-sm:flex-col max-sm:items-stretch">
@@ -203,7 +203,7 @@ function Form({ product, rule, close, onSaved }: Omit<Props, "open" | "onOpenCha
           </Button>
         </DialogClose>
         <Button type="submit" variant="brand" aria-disabled={save.isPending}>
-          {save.isPending ? (rule ? "Saving…" : "Creating…") : rule ? "Save" : "Create alert"}
+          {save.isPending ? (rule ? "Saving…" : "Creating…") : rule ? "Save rule" : "Create rule"}
         </Button>
       </div>
     </form>

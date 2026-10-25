@@ -40,12 +40,12 @@ test("two clicks make a supplier price rule from the Product Page, and it shows 
   const api = await mockAlertsApi(page);
   await page.goto(`/products/${PRODUCT_ID}`);
   await page.getByRole("button", { name: "Create alert" }).click(); // 1
-  const dialog = page.getByRole("dialog", { name: /^New alert on Sunset projection lamp/ });
+  const dialog = page.getByRole("dialog", { name: /^New alert rule on Sunset projection lamp/ });
   await expect(dialog.getByRole("combobox", { name: "Watch" })).toHaveValue("product");
   await expect(dialog.getByRole("combobox", { name: "Event" })).toHaveValue("supplier_price_change");
   await expect(dialog.getByRole("textbox", { name: "Change, %" })).toHaveValue("5");
   await expect(dialog).toContainText("Discord · Phase 7");
-  await dialog.getByRole("button", { name: "Create alert" }).click(); // 2
+  await dialog.getByRole("button", { name: "Create rule" }).click(); // 2
   await expect(dialog).toBeHidden();
   const name = "Sunset projection lamp with 16 colour modes and remote: supplier price ±5%";
   await expect(page.getByRole("status").filter({ hasText: `${name} is on.` })).toBeVisible();
@@ -108,7 +108,7 @@ test("enable, mute and unmute persist across a reload, and an edit saves the nam
   await expect(dialog).toContainText("changes price by");
   await dialog.getByRole("textbox", { name: "Change, %" }).fill("7");
   await dialog.getByRole("textbox", { name: "Name" }).fill("Testing: cost ±7%");
-  await dialog.getByRole("button", { name: "Save" }).click();
+  await dialog.getByRole("button", { name: "Save rule" }).click();
   await expect(dialog).toBeHidden();
   await expect(edit).toBeHidden(); // renamed
   await expect(row(page, "Testing: cost ±7%")).toContainText("±7%");

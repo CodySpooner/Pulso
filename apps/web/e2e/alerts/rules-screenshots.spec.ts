@@ -50,7 +50,7 @@ for (const theme of ["dark", "light"] as const) {
         await page.getByRole("button", { name: "Edit: Lamp: supplier price ±8%" }).click();
         const dialog = page.getByRole("dialog");
         await dialog.getByRole("textbox", { name: "Change, %" }).fill("0");
-        await dialog.getByRole("button", { name: "Save" }).click();
+        await dialog.getByRole("button", { name: "Save rule" }).click();
         await expect(dialog.getByRole("alert")).toBeVisible();
         await shot(page, "builder-edit-422", false);
       });
