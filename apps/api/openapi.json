@@ -12359,7 +12359,7 @@
     },
     "/v1/categories": {
       "get": {
-        "description": "Categories that hold at least one non-merged product: Discover's category filter.",
+        "description": "Categories that hold a product Discover lists: Discover's category filter.",
         "operationId": "list_categories",
         "parameters": [
           {
@@ -13188,7 +13188,7 @@
     },
     "/v1/products": {
       "get": {
-        "description": "Discover (UX-2): non-merged products, filtered, sorted and keyset-paginated (DEC-239).",
+        "description": "Discover (UX-2): products neither merged nor emptied by an undo, filtered, sorted and\nkeyset-paginated (DEC-239, DEC-271).",
         "operationId": "list_products",
         "parameters": [
           {

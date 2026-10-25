@@ -315,7 +315,7 @@ export interface paths {
         };
         /**
          * List Categories
-         * @description Categories that hold at least one non-merged product: Discover's category filter.
+         * @description Categories that hold a product Discover lists: Discover's category filter.
          */
         get: operations["list_categories"];
         put?: never;
@@ -352,7 +352,8 @@ export interface paths {
         };
         /**
          * List Products
-         * @description Discover (UX-2): non-merged products, filtered, sorted and keyset-paginated (DEC-239).
+         * @description Discover (UX-2): products neither merged nor emptied by an undo, filtered, sorted and
+         *     keyset-paginated (DEC-239, DEC-271).
          */
         get: operations["list_products"];
         put?: never;
