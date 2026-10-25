@@ -25,6 +25,7 @@ for (const theme of ["dark", "light"] as const) {
       const shot = async (page: Page, name: string) => {
         await page.evaluate(() => document.fonts.ready);
         await page.waitForTimeout(300);
+        expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width); // no page scroll
         await page.screenshot({ path: `${OUT}/${name}-${width}-${theme}.png` });
       };
 
