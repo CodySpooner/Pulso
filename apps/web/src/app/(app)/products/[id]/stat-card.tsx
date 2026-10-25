@@ -47,7 +47,7 @@ export function StatCard({
           </>
         )}
       </dd>
-      {action && <dd className="mt-0.5">{action}</dd>}
+      {action && <dd>{action}</dd>}
     </div>
   );
 }

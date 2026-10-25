@@ -29,9 +29,6 @@ const ago = (days: number) => (days === 0 ? "Today" : days === 1 ? "1 day ago" :
 const day = new Intl.DateTimeFormat("en-US", { dateStyle: "medium", timeZone: "UTC" });
 const platform = (key: string) => (key.length <= 3 ? key.toUpperCase() : key[0].toUpperCase() + key.slice(1));
 const chip = "rounded-sm border px-1 font-sans text-micro font-normal";
-// A withheld margin's next action (imp-368): underlined like the tabs' own fixes, with a hit area on touch.
-const fixLink =
-  "relative hit-area inline-flex w-fit items-center gap-0.5 rounded-sm text-label font-medium text-foreground underline decoration-border-strong underline-offset-2 hover:decoration-current";
 // Card spans keep both grids full: phone 2 + 2 + 2 (price on its own row), desktop 3 + 2 (velocity wide).
 const SKELETON_SPANS = ["col-span-2 md:col-span-1", "", "", "", "md:col-span-2 3xl:col-span-1"];
 
@@ -68,7 +65,7 @@ export function Overview({ id, goTo }: { id: string; goTo: (tab: Tab) => void })
   const fixBody = fix && (
     <>
       {fix.label}
-      <ChevronRight className="size-3.5" aria-hidden />
+      <ChevronRight aria-hidden />
     </>
   );
   return (
@@ -110,16 +107,17 @@ export function Overview({ id, goTo }: { id: string; goTo: (tab: Tab) => void })
             stat={margin}
             now={now}
             detail={!("reason" in margin) && `${pct(margin.margin_bps)} margin · before ads`}
+            // The same ghost chevron button as Where it appears, text aligned with the card's.
             action={
               fix &&
               ("href" in fix ? (
-                <Link href={fix.href} className={fixLink}>
-                  {fixBody}
-                </Link>
+                <Button asChild variant="ghost" size="sm" className="-ml-2.5">
+                  <Link href={fix.href}>{fixBody}</Link>
+                </Button>
               ) : (
-                <button type="button" onClick={() => goTo(fix.tab)} className={fixLink}>
+                <Button variant="ghost" size="sm" onClick={() => goTo(fix.tab)} className="-ml-2.5">
                   {fixBody}
-                </button>
+                </Button>
               ))
             }
           >
