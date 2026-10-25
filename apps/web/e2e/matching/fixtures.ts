@@ -192,5 +192,5 @@ export async function mockMatchingApi(page: Page, options: MatchingMock = {}) {
     }
     return json(problem(404, "e2e-matching-404"), 404);
   });
-  return { posts, undos, all };
+  return { posts, undos, all, failLists: (status = 503) => (options.status = status) };
 }

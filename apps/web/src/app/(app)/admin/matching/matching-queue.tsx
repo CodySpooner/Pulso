@@ -219,7 +219,7 @@ export function MatchingQueue() {
 
   const { summary, facets, thresholds } = first;
   const filtered = filters.pair !== "" || filters.band !== "" || filters.version !== "";
-  const stale = list.isRefetchError && <StaleLine what="queue" error={list.error} asOf={list.dataUpdatedAt} retry={() => void list.refetch()} boxed />;
+  const stale = list.isRefetchError && <StaleLine what="Couldn't refresh the queue" error={list.error} asOf={list.dataUpdatedAt} retry={() => void list.refetch()} boxed />;
   let body: React.ReactNode;
   if (items.length === 0 && list.isFetchingNextPage) body = <Layout list={<ListSkeleton />} compare={<CompareSkeleton />} />;
   else if (items.length === 0)
@@ -305,7 +305,7 @@ export function MatchingQueue() {
 
   return (
     <div className="flex flex-col gap-4">
-      <Toolbar filters={filters} setFilters={setFilters} facets={facets} thresholds={thresholds} />
+      {(summary.pending > 0 || filtered) && <Toolbar filters={filters} setFilters={setFilters} facets={facets} thresholds={thresholds} />}
       {stale}
       {body}
       <Toast note={note} onUndo={() => void undo()} />
@@ -392,8 +392,14 @@ function QueueList({
   total: number;
 }) {
   const active = useRef<HTMLButtonElement>(null);
+  const box = useRef<HTMLOListElement>(null);
+  // Keep the selected row in view by scrolling the list only: scrollIntoView would also scroll the page, which on a
+  // phone (the queue under the pair) jumps away from the pair after every decision.
   useEffect(() => {
-    active.current?.scrollIntoView({ block: "nearest" }); // newer Chrome returns a Promise; never hand it to React as a cleanup
+    const [row, list] = [active.current, box.current];
+    if (!row || !list) return;
+    if (row.offsetTop < list.scrollTop) list.scrollTop = row.offsetTop;
+    else if (row.offsetTop + row.offsetHeight > list.scrollTop + list.clientHeight) list.scrollTop = row.offsetTop + row.offsetHeight - list.clientHeight;
   }, [current]);
   // Rows never animate: a decided row leaves at once (vault Design/Motion System).
   return (
@@ -402,7 +408,7 @@ function QueueList({
         Queue
         <span className="font-mono text-label font-normal tabular-nums text-muted-foreground">{Math.max(total, items.length)} pending</span>
       </h2>
-      <ol className="flex max-h-[min(70vh,44rem)] flex-col overflow-y-auto p-1">
+      <ol ref={box} className="relative flex max-h-[min(70vh,44rem)] flex-col overflow-y-auto p-1">
         {items.map((item) => {
           const selected = item.id === current;
           return (
@@ -483,7 +489,7 @@ function DecisionBar({
     </Button>
   );
   return (
-    <div role="toolbar" aria-label="Decision" className="sticky top-2 z-10 flex flex-wrap items-center gap-1.5 rounded-xl border border-border bg-card/95 p-2 shadow-card backdrop-blur">
+    <div role="toolbar" aria-label="Decision" className="sticky top-16 z-10 flex lg:top-2 flex-wrap items-center gap-1.5 rounded-xl border border-border bg-card/95 p-2 shadow-card backdrop-blur">
       {button("accept", "Accept", "A", "primary", shown)}
       {button("reject", "Reject", "R", "secondary", shown)}
       {button("skip", "Skip", "S", "ghost", true)}
