@@ -1,3 +1,5 @@
+import csv
+import io
 import json
 from collections.abc import Callable, Iterator
 from datetime import UTC, datetime, timedelta
@@ -16,7 +18,7 @@ from pulso_api.auth import Principal, current_principal
 from pulso_api.dependencies import get_db
 from pulso_api.routers.product_scores import NO_ROW
 from pulso_api.routers.products import NO_PRICE, NO_SETTINGS, NO_SIGNAL
-from pulso_api.routers.screener import NO_ACCELERATION, NO_RATING, NO_SHIPPING
+from pulso_api.routers.screener import NO_ACCELERATION, NO_RATING, NO_SHIPPING, SCREENER_CSV
 from pulso_core.db import Base
 from pulso_core.models import (
     Category,
@@ -532,3 +534,101 @@ def test_a_page_of_50_runs_as_many_queries_as_a_page_of_1(
         )
         assert one == fifty, sort
         print(f"query count, sort={sort}: {fifty}")  # reported in docs/reports/p4-24.md
+
+
+def export(api: TestClient, **params: Any) -> tuple[list[dict[str, str]], Any]:
+    """The screen's CSV and its response, checked for the format every export shares (DEC-316)."""
+    if isinstance(params.get("filters"), dict):
+        params["filters"] = json.dumps(params["filters"])
+    response = api.get("/v1/screener", params={**params, "format": "csv"})
+    assert response.status_code == 200, response.text
+    assert response.headers["content-type"] == "text/csv; charset=utf-8"
+    assert response.headers["content-disposition"] == (
+        f'attachment; filename="pulso_screener_{datetime.now(UTC).date().isoformat()}.csv"'
+    )
+    assert response.content.startswith(b"\xef\xbb\xbf")  # the BOM, for Excel on Windows
+    text = response.content.decode("utf-8-sig")
+    assert text.splitlines()[0] == ",".join(SCREENER_CSV)
+    rows = list(csv.DictReader(io.StringIO(text)))
+    assert response.headers["x-total-count"] == str(len(rows))
+    return rows, response
+
+
+@pytest.mark.db
+@pytest.mark.parametrize("sort", ["trend", "opportunity", "price"])  # SQL, Python, a lateral
+def test_the_csv_export_is_the_screens_rows_in_the_jsons_order(
+    screened: tuple[TestClient, dict[str, UUID]], sort: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr("pulso_api.csv_export.CHUNK", 2)  # three fetches, each batching lookups
+    api, ids = screened
+    for order in ("desc", "asc"):
+        page = [row["id"] for row in screen(api, sort=sort, order=order)["items"]]
+        rows, _ = export(api, sort=sort, order=order)
+        assert [row["id"] for row in rows] == page, order
+    narrowed = {"price_min": 2000}
+    page = [row["id"] for row in screen(api, filters=narrowed, sort=sort)["items"]]
+    rows, _ = export(api, filters=narrowed, sort=sort)
+    assert [row["id"] for row in rows] == page and len(page) == 2  # Lamp and Fan
+    # A cursor is the JSON page's; the export starts at the first row anyway.
+    cursor = screen(api, sort=sort, limit=1)["next_cursor"]
+    assert len(export(api, sort=sort, cursor=cursor)[0]) == len(LIVE)
+
+
+@pytest.mark.db
+def test_a_csv_row_is_the_jsons_row_and_a_missing_value_is_an_empty_cell(
+    screened: tuple[TestClient, dict[str, UUID]],
+) -> None:
+    api, ids = screened
+    rows, response = export(api)
+    assert "x-unapplied" not in response.headers
+    by_title = {row["product"]: row for row in rows}
+    lamp, bare = by_title["Lamp"], by_title["Bare"]
+    json_lamp = next(row for row in screen(api)["items"] if row["title"] == "Lamp")
+    assert {key: lamp[key] for key in SCREENER_CSV[:16]} == {
+        "id": str(ids["Lamp"]),
+        "product": "Lamp",
+        "category": "Home > Lamps",
+        "lifecycle": "rising",
+        "velocity_7d": "30",
+        "velocity_grade": json_lamp["velocity"]["grade"],
+        "acceleration": str(json_lamp["acceleration"]["value"]),
+        "trend": "70.0",
+        "saturation": "40.0",
+        "opportunity": str(json_lamp["opportunity"]["value"]),
+        "margin": "15.82",  # 1582 minor units
+        "margin_pct": "52.75",  # 5275 bps
+        "price": "29.99",
+        "currency": "USD",
+        "supplier_rating": "4.60",  # 460 hundredths of a star
+        "ship_days_us": "8",
+    }
+    assert lamp["as_of"].endswith("Z") and lamp["stale"] in ("true", "false")
+    # Bare has no data at all: every metric is an empty cell, never 0 (DEC-040).
+    metrics = [key for key in SCREENER_CSV[3:] if key not in ("currency", "stale")]
+    assert [bare[key] for key in metrics] == [""] * len(metrics)
+    assert (bare["currency"], bare["stale"]) == ("USD", "false")
+
+
+@pytest.mark.db
+def test_the_csv_export_marks_risk_phase_5_and_caps_at_the_limit(
+    screened: tuple[TestClient, dict[str, UUID]], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    api, _ = screened
+    rows, response = export(api, filters={"risk_min": 10, "risk_max": 90})
+    assert len(rows) == len(LIVE)  # accepted, not applied
+    assert json.loads(response.headers["x-unapplied"]) == {
+        "risk_min": "phase_5",
+        "risk_max": "phase_5",
+    }
+    monkeypatch.setattr("pulso_api.csv_export.MAX_ROWS", 4)  # the screen has 5
+    for sort in ("trend", "opportunity"):
+        response = api.get("/v1/screener", params={"format": "csv", "sort": sort})
+        assert response.status_code == 422, sort
+        assert response.headers["content-type"] == "application/problem+json"
+        assert (response.json()["code"], response.json()["detail"]) == (
+            "export_too_large",
+            "5 rows exceed the 4 export limit. Narrow your filters.",
+        )
+    assert len(export(api, filters={"price_min": 2000})[0]) == 2  # narrowed, it exports
+    bad = api.get("/v1/screener", params={"format": "csv", "filters": "{"})
+    assert (bad.status_code, bad.json()["code"]) == (422, "invalid_filters")

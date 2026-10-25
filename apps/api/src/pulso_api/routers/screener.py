@@ -1,8 +1,10 @@
 """Screener (WF-1 part a, DEC-336): stock-screener filters and sorts over every live product,
 keyset-paginated. Margin and Opportunity are the caller's workspace's; the rest is global market
-data. A page runs the same number of queries whatever its size (imp-488)."""
+data. A page runs the same number of queries whatever its size (imp-488). `?format=csv` exports
+the whole filtered set in the requested sort through the JSON's own rows (DEC-345)."""
 
 import json
+from collections.abc import Iterator
 from datetime import UTC, date, datetime
 from decimal import Decimal
 from typing import Annotated, Any, Literal
@@ -10,13 +12,29 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, TypeAdapter, ValidationError
-from sqlalchemy import Integer, Select, and_, case, cast, func, or_, select, true, tuple_
+from sqlalchemy import (
+    ARRAY,
+    Integer,
+    Select,
+    Uuid,
+    and_,
+    case,
+    cast,
+    func,
+    literal,
+    or_,
+    select,
+    true,
+    tuple_,
+)
 from sqlalchemy.engine import RowMapping
 from sqlalchemy.orm import Session, aliased
 from sqlalchemy.sql import ColumnElement, Subquery
 from sqlalchemy.sql.selectable import LateralFromClause as Lateral
+from starlette.responses import Response
 
 from pulso_api.auth import current_principal
+from pulso_api.csv_export import csv_response, major
 from pulso_api.errors import APIError
 from pulso_api.routers.product_scores import KINDS, NO_ROW
 from pulso_api.routers.products import (
@@ -73,6 +91,28 @@ NO_RATING = "No live supplier listing has a rating yet."
 NO_SHIPPING = "No live supplier listing has a US delivery estimate yet."
 NO_ACCELERATION = "No 7-day growth a week earlier in this family yet."
 UNSCORED = "Insufficient signal."
+# The results table's order (vault Features/Product Screener), then the rest of a row; money in
+# dollars, margin in percent, rating in stars; as_of is the row's oldest metric (DEC-345).
+SCREENER_CSV = (
+    "id",
+    "product",
+    "category",
+    "lifecycle",
+    "velocity_7d",
+    "velocity_grade",
+    "acceleration",
+    "trend",
+    "saturation",
+    "opportunity",
+    "margin",
+    "margin_pct",
+    "price",
+    "currency",
+    "supplier_rating",
+    "ship_days_us",
+    "as_of",
+    "stale",
+)
 
 
 class Filters(BaseModel):
@@ -361,7 +401,17 @@ def opportunity_of(
     return op.opportunity(op.stored(trend), op.stored(saturation), op.margin_of(row, settings))
 
 
-@router.get("", response_model=ScreenerPage)
+@router.get(
+    "",
+    response_model=ScreenerPage,
+    responses={
+        200: {
+            "content": {"text/csv": {"schema": {"type": "string"}}},
+            "description": "JSON, or with format=csv every matching product as a CSV download; "
+            "an X-Unapplied header names the unapplied filters, as `unapplied` does.",
+        },
+    },
+)
 def screen_products(
     principal: CurrentPrincipal,
     session: DB,
@@ -373,7 +423,11 @@ def screen_products(
     order: Literal["desc", "asc"] = "desc",
     cursor: str | None = None,
     limit: Annotated[int, Query(ge=1, le=100)] = 50,
-) -> ScreenerPage:
+    format: Annotated[
+        Literal["json", "csv"],
+        Query(description="csv: every matching product in this sort, no cursor or limit (DEC-345)"),
+    ] = "json",
+) -> ScreenerPage | Response:
     """Every product neither merged nor emptied that meets `filters`, sorted with missing values
     last in either order and then by id, keyset-paginated (DEC-336)."""
     try:
@@ -381,7 +435,7 @@ def screen_products(
     except ValidationError:
         raise APIError(422, "invalid_filters", "Invalid screener filters.") from None
     after = None
-    if cursor is not None:
+    if cursor is not None and format == "json":
         try:
             after = CURSOR.validate_json(cursor)
         except ValidationError:
@@ -392,6 +446,22 @@ def screen_products(
     settings = session.get(WorkspaceSettings, workspace_id)
     scores: dict[str, dict[UUID, Score]] = {}
     margins: dict[UUID, RowMapping] | None = None
+    unapplied: dict[str, Literal["phase_5"]] = {
+        name: "phase_5" for name in ("risk_min", "risk_max") if getattr(given, name) is not None
+    }
+
+    def export(query: Select[Any]) -> Response:
+        response = csv_response(
+            session,
+            "screener",
+            SCREENER_CSV,
+            query,
+            lambda chunk: csv_rows(session, workspace_id, settings, [row.id for row in chunk]),
+        )
+        if unapplied:
+            response.headers["X-Unapplied"] = json.dumps(unapplied)
+        return response
+
     if sort == "opportunity":
         # ponytail: Opportunity is Python (one landed-cost function, DEC-331), so the whole
         # filtered set is scored and sorted here; fine to a few thousand products, then
@@ -413,6 +483,10 @@ def screen_products(
             return value is None, sign * (value or 0), sign * product.int
 
         ranked = sorted(found, key=lambda product: place(found[product], product))
+        if format == "csv":  # the ranking, in order, as a query the export can count and stream
+            ids = func.unnest(literal(ranked, ARRAY(Uuid())))
+            rank = ids.table_valued("id", with_ordinality="n").render_derived()
+            return export(select(rank.c.id).order_by(rank.c.n))
         if after is not None:
             mark = place(None if after[0] is None else float(after[0]), after[1])
             ranked = [product for product in ranked if place(found[product], product) > mark]
@@ -438,12 +512,10 @@ def screen_products(
                 )
                 query = query.where(or_(beyond, key.is_(None)))
         ordered = (key.desc(), id_.desc()) if order == "desc" else (key.asc(), id_.asc())
-        rows = [
-            (row[0], row[1])
-            for row in session.execute(
-                query.order_by(ordered[0].nulls_last(), ordered[1]).limit(limit + 1)
-            )
-        ]
+        query = query.order_by(ordered[0].nulls_last(), ordered[1])
+        if format == "csv":
+            return export(query)
+        rows = [(row[0], row[1]) for row in session.execute(query.limit(limit + 1))]
     page = [product for _, product in rows[:limit]]
     for kind in KINDS:  # the Opportunity sort has trend and saturation for the whole set
         if kind not in scores:
@@ -458,10 +530,41 @@ def screen_products(
     return ScreenerPage(
         items=items(session, page, settings, scores, margins),
         next_cursor=next_cursor,
-        unapplied={
-            name: "phase_5" for name in ("risk_min", "risk_max") if getattr(given, name) is not None
-        },
+        unapplied=unapplied,
     )
+
+
+def csv_rows(
+    session: Session, workspace_id: UUID, settings: WorkspaceSettings | None, page: list[UUID]
+) -> Iterator[list[object]]:
+    """One export chunk as SCREENER_CSV cells: the same rows the JSON page builds."""
+    scores: dict[str, dict[UUID, Score]] = {k: op.latest_rows(session, k, page) for k in KINDS}
+    for row in items(session, page, settings, scores, economics(session, workspace_id, page)):
+        velocity = row.velocity if isinstance(row.velocity, Velocity) else None
+        margin = row.margin if isinstance(row.margin, Margin) else None
+        rating = row.supplier_rating.value
+        stats = (row.price_minor, row.margin, row.velocity, row.acceleration, row.supplier_rating,
+                 row.ship_days_us, row.trend, row.saturation, row.lifecycle)  # fmt: skip
+        yield [
+            row.id,
+            row.title,
+            row.category,
+            getattr(row.lifecycle, "stage", None),
+            row.velocity.value,
+            velocity.grade if velocity else None,
+            row.acceleration.value,
+            row.trend.value,
+            row.saturation.value,
+            row.opportunity.value,
+            major(row.margin.value),
+            Decimal(margin.margin_bps).scaleb(-2) if margin else None,  # 5275 bps is 52.75 %
+            major(row.price_minor.value),
+            row.currency,
+            None if rating is None else Decimal(rating).scaleb(-2),  # 460 is 4.60 stars
+            row.ship_days_us.value,
+            min((s.as_of for s in stats if not isinstance(s, NoSource)), default=None),
+            any(getattr(s, "stale", False) for s in stats),
+        ]
 
 
 def score_value(row: Score | None) -> LatestScore | NoSource:
