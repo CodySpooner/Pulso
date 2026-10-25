@@ -15,6 +15,7 @@ from pulso_api.dependencies import get_db
 from pulso_api.errors import APIError
 from pulso_api.routers.account import BasisPoints, MinorUnits, workspace_settings
 from pulso_api.routers.products import is_stale, latest_snapshots
+from pulso_api.schemas.text import NoNulStr
 from pulso_core.landed_cost_loader import Provenance, calculate
 from pulso_core.models import Product, Source
 
@@ -53,7 +54,7 @@ class ProfitCalcRequest(BaseModel):
     )
     variant_id: Id | None = Field(None, description="A variant of `supplier_listing_id`.")
     quantity: int = Field(1, ge=1, le=10000, strict=True, description="Units per order.")
-    method: str | None = Field(
+    method: NoNulStr | None = Field(
         None, min_length=1, max_length=200, description="Omitted: the cheapest exact quote."
     )
     ddp: bool = Field(False, strict=True, description="Freight includes duties.")

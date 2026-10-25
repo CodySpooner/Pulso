@@ -6,6 +6,7 @@ from typing import Annotated, Literal
 
 from pydantic import AfterValidator, BaseModel, ConfigDict, Field
 
+from pulso_api.schemas.text import NoNulStr
 from pulso_sources.cj.activity import Currency, Evidence, Utc
 
 
@@ -111,7 +112,7 @@ class SourceHealth(BaseModel):
 class SourcePatch(BaseModel):
     model_config = ConfigDict(extra="forbid")
     enabled: bool
-    reason: str | None = Field(None, max_length=1000)
+    reason: NoNulStr | None = Field(None, max_length=1000)
 
 
 class CoverageDay(BaseModel):

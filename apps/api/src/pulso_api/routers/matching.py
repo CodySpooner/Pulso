@@ -20,6 +20,7 @@ from pulso_api.auth import Principal, current_principal
 from pulso_api.dependencies import get_db
 from pulso_api.errors import APIError
 from pulso_api.routers.products import with_merged
+from pulso_api.schemas.text import NoNulStr
 from pulso_core.models import (
     Image,
     Listing,
@@ -177,7 +178,7 @@ class Pair(BaseModel):
     model_config = ConfigDict(extra="forbid")
     action: Literal["accept", "reject"]
     candidate_id: int
-    reason: str | None = Field(default=None, max_length=500)
+    reason: NoNulStr | None = Field(default=None, max_length=500)
 
 
 class Merge(BaseModel):
@@ -185,7 +186,7 @@ class Merge(BaseModel):
     action: Literal["merge"]
     product_id: UUID
     into: UUID
-    reason: str | None = Field(default=None, max_length=500)
+    reason: NoNulStr | None = Field(default=None, max_length=500)
 
 
 class Move(BaseModel):
@@ -195,7 +196,7 @@ class Move(BaseModel):
     action: Literal["split", "unlink"]
     listing_ids: Annotated[list[int], Field(min_length=1, max_length=500)]
     into: UUID | None = None
-    reason: str | None = Field(default=None, max_length=500)
+    reason: NoNulStr | None = Field(default=None, max_length=500)
 
 
 class Decision(BaseModel):

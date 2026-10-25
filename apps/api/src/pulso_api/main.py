@@ -6,7 +6,7 @@ from uuid import uuid4
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import DataError, IntegrityError
 from starlette.exceptions import HTTPException
 from starlette.middleware.base import RequestResponseEndpoint
 from starlette.responses import Response
@@ -91,6 +91,15 @@ def create_app() -> FastAPI:
     async def conflict(request: Request, exc: IntegrityError) -> Response:
         return problem_response(
             request, 409, "conflict", "The request conflicts with existing data."
+        )
+
+    @app.exception_handler(DataError)
+    async def nul_text(request: Request, exc: DataError) -> Response:
+        # Path, query or cursor text that reached SQL with a NUL (DEC-287); others stay 500s.
+        if "cannot contain NUL" not in str(exc.orig):
+            raise exc
+        return problem_response(
+            request, 422, "invalid_text", "Text cannot contain a NUL character."
         )
 
     app.include_router(health.router)

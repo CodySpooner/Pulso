@@ -137,6 +137,7 @@
           "brand": {
             "maxLength": 500,
             "minLength": 1,
+            "pattern": "^[^\\x00]*$",
             "title": "Brand",
             "type": "string"
           }
@@ -1534,6 +1535,7 @@
             "anyOf": [
               {
                 "maxLength": 500,
+                "pattern": "^[^\\x00]*$",
                 "type": "string"
               },
               {
@@ -1619,6 +1621,7 @@
             "anyOf": [
               {
                 "maxLength": 500,
+                "pattern": "^[^\\x00]*$",
                 "type": "string"
               },
               {
@@ -1685,6 +1688,7 @@
           "body": {
             "maxLength": 10000,
             "minLength": 1,
+            "pattern": "^[^\\x00]*$",
             "title": "Body",
             "type": "string"
           }
@@ -1821,6 +1825,7 @@
             "anyOf": [
               {
                 "maxLength": 500,
+                "pattern": "^[^\\x00]*$",
                 "type": "string"
               },
               {
@@ -2909,6 +2914,7 @@
               {
                 "maxLength": 200,
                 "minLength": 1,
+                "pattern": "^[^\\x00]*$",
                 "type": "string"
               },
               {
@@ -4667,6 +4673,7 @@
             "anyOf": [
               {
                 "maxLength": 1000,
+                "pattern": "^[^\\x00]*$",
                 "type": "string"
               },
               {
@@ -5338,6 +5345,7 @@
             "items": {
               "maxLength": 80,
               "minLength": 1,
+              "pattern": "^[^\\x00]*$",
               "type": "string"
             },
             "maxItems": 20,
@@ -14207,6 +14215,7 @@
             "schema": {
               "maxLength": 500,
               "minLength": 1,
+              "pattern": "^[^\\x00]*$",
               "title": "Brand",
               "type": "string"
             }
