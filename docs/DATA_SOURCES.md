@@ -31,8 +31,8 @@ Canonical compliance record required by SPEC §4.2: for every data source, its a
 | Google Trends | `google_trends` | SerpApi free tier; official alpha if granted | planned | 1 | Free (≤ 250 searches/mo) |
 | Frankfurter FX | `fx_frankfurter` | Official, keyless | enabled (collector host since 2026-10-24) | 1 | Free |
 | Listing images | `listing_images` | Public image CDNs named in `IMAGE_HOSTS` (unauthenticated GET) | planned (built, disabled; hosts to verify before enabling, owner decision) | 2 | Free |
-| AliExpress | `aliexpress` | Open Platform Affiliate + DS APIs (app approval) | client + 24 h cache built (p3-03), Suppliers rows (p3-05), off; live-lookup only | 3 | Free ("temporarily") |
-| Amazon | `amazon` | Manual CSV only (no usable official API) | CSV import built (p3-01, DEC-279); source row disabled; Creators API disabled (ineligible) | 3 | Free |
+| AliExpress | `aliexpress` | Open Platform DS API (app approval + the owner's DS access token); affiliate methods not called | client + 24 h cache built (p3-03, DEC-283), Suppliers-tab lookup (p3-05, DEC-289), source 9 seeded disabled, `ALIEXPRESS_ENABLED=off`; live-lookup only (DEC-037) | 3 | Free ("temporarily") |
+| Amazon | `amazon` | Manual CSV only (no usable official API) | CSV import built (p3-01, DEC-279), `/amazon` page (p3-04, DEC-286), Trends-tab rows (p3-07, DEC-293); source 8 disabled (CSV only); Creators API disabled (ineligible) | 3 | Free |
 | Meta Ad Library | `meta_ad_library` | Graph API v26.0 `ads_archive` (EU/UK commercial only); CSV for US | planned | 8 (CSV optional earlier) | Free |
 | TikTok Creative Center | `tiktok_cc` | Manual CSV only | planned (CSV); automation disabled | 8 | Free |
 | Keepa | `keepa` | Official paid API | candidate (owner must approve cost) | later | ~€49/mo (unverified) |
@@ -207,14 +207,15 @@ Static files vendored into the repo once, changed only by a reviewed PR. No adap
 
 ## AliExpress (`aliexpress`)
 
-- **Access:** Open Platform app (review ~2 business days; may need business licence/ID) + AliExpress Portals affiliate application. Affiliate API (`aliexpress.affiliate.hotproduct.query` etc.) and DS API (`aliexpress.ds.product.get`, `ds.image.searchV2`, `ds.freight.query`); OAuth 2.0 for DS; gateway `https://api-sg.aliexpress.com/sync`.
-- **Terms (checked 2026-10-22):** API Use Agreement (2022-01-25) — https://terms.alicdn.com/legal-agreement/terms/suit_bu1_aliexpress/suit_bu1_aliexpress202201220006_10755.html
+- **Checked 2026-10-25 (Q-1, p3-09):** docs-only review of this entry against `main` (`fe15473`); no page was fetched and no request was sent. **Terms version:** API Use Agreement "Updated on: 25 Jan, 2022", last read 2026-10-25 in the p3-03 docs check below (first read 2026-10-22). **Written-storage answer: not received.** The owner's written request is still open (Owner To-Dos, "Start the AliExpress applications"), so the live-only rule (DEC-037) stands: Redis for at most 24 h, nothing durable.
+- **Access:** Open Platform app (review ~2 business days; may need business licence/ID) + AliExpress Portals affiliate application. Affiliate API (`aliexpress.affiliate.hotproduct.query` etc.) and DS API (`aliexpress.ds.product.get`, `ds.image.searchV2`, `ds.freight.query`); OAuth 2.0 for DS; gateway `https://api-sg.aliexpress.com/sync`. Pulso calls only DS `product.get` and `freight.query` (DEC-283 a, below).
+- **Terms (checked 2026-10-22; re-read unchanged 2026-10-25, below):** API Use Agreement (2022-01-25) — https://terms.alicdn.com/legal-agreement/terms/suit_bu1_aliexpress/suit_bu1_aliexpress202201220006_10755.html
   - §7.6/§9.2: no storing platform operation data without prior written approval.
   - §7.3.2: no resale/redistribution. §7.5.4: user data only in the collecting app. §7.10: no AliExpress/Alibaba marks in our name/URL.
   - §6.5 unilateral suspension; §11.1 termination without notice. §6.1 "temporarily free of charge".
-- **Design consequence:** live lookup only, Redis 24 h TTL, on demand from the UI; nothing written to `raw_payloads`, snapshots or features until AliExpress approves storage in writing (owner to ask during application).
-- **CSV fallback:** parse transiently into the same ≤24 h Redis cache; no raw file/object or durable market rows, including owner-entered quotes (`Source - AliExpress` R-17; DEC-037).
-- **Limits:** unpublished (third-party: 5,000/day; 500/day for new apps — unverified). Our cap: 500 calls/day.
+- **Design consequence:** live lookup only, Redis 24 h TTL, on demand from the UI; nothing written to `raw_payloads`, snapshots or features until AliExpress approves storage in writing (DEC-037; owner to ask during application; no answer as of 2026-10-25).
+- **CSV fallback:** parse transiently into the same ≤24 h Redis cache; no raw file/object or durable market rows, including owner-entered quotes (`Source - AliExpress` R-17; DEC-037). **Not built yet** (R-17 is open; "Not here" in DEC-283 and DEC-289).
+- **Limits:** no daily quota published (third-party: 5,000/day; 500/day for new apps — unverified); per-method QPS is documented (docs check 2026-10-25, below). Our cap: 500 calls/day.
 - **Count semantics:** `lastest_volume` (window unverified, reportedly 30 days), `sales_count` — not storable today, so no AliExpress demand history.
 - **Risk:** app review / OAuth revocation, frequency bans and unilateral suspension; storage permission remains unresolved. Evidence: `Source - AliExpress`, SF §1.
 - **Cost:** temporarily free (§6.1); first paid tier not published, charges may be introduced on notice. **Status:** client and 24 h cache built (p3-03, DEC-283), Suppliers-tab rows built (p3-05, DEC-289), off: `ALIEXPRESS_ENABLED=off`, no keys, and source 9 `aliexpress` seeded disabled (migration 0015). **Phase:** 3.
@@ -228,9 +229,11 @@ Static files vendored into the repo once, changed only by a reviewed PR. No adap
 - **Block rule (DEC-283):** HTTP 403/429/430, or the throttle message above, counts as a block. `Retry-After`, or else the message's ban seconds, sets `retry_not_before`. Five consecutive blocks disable the source with one Data Health event, `consecutive_blocks:aliexpress`. A `SYSTEM` `error_response` (auth, permission or signature) disables it at once with `aliexpress_auth_rejected`. `ISP`/other errors and transport failures only fail that lookup.
 - **Cache (DEC-283):** key `pulso:aliexpress:v1:<product_id>:<sku_id or ->:US`, TTL 86,400 s, holding the parsed answer and its `as_of`. Found and not-found answers are cached; failures are not. Nothing goes to `raw_payloads`, S3, snapshots, observations, features, `collector_runs` or logs.
 - **Suppliers tab (DEC-289):** the user pastes the AliExpress link or number; Pulso stores no AliExpress id. `POST /v1/products/{id}/aliexpress` runs the lookup, and `GET` only reads. The answer is copied to `pulso:aliexpress:v1:lookup:<workspace_id>:<product_id>` with an absolute expiry of `as_of` + 24 h, so its rows vanish with the lookup's own entry. Both send `Cache-Control: no-store`. Lookups run only where the collector guard passes (`COLLECTORS_LIVE=on` outside a worktree), so the API answers `disabled` until the owner turns the source on there.
+- **Before enabling:** the p3-08 cross-review's XR-45 (`Retry-After` measured from the lookup's start) and XR-46 (a transaction held open across the HTTPS calls) are to be fixed before `ALIEXPRESS_ENABLED` goes on (imp-341).
 
 ## Amazon (`amazon`)
 
+- **Checked 2026-10-25 (Q-1, p3-09):** docs-only review of this entry against `main` (`fe15473`); no request was sent to Amazon or a vendor. The official-route and terms checks are those of 2026-10-22 below, carried forward unchanged by p3-01 and here. The "Why CSV" entry (2026-10-25, p3-01) still matches main: the `amazon_ranks` CSV import (DEC-279, migration 0012), source 8 disabled as CSV only, the `/amazon` page (p3-04, DEC-286) and the Product page Trends-tab rows (p3-07, DEC-293).
 - **Access:** manual CSV import only (DEC-279), in Data Health › CSV import › Source "Amazon". Pulso never sends a request to Amazon or to a vendor; the owner supplies a file of their own export or compilation.
 - **Why CSV (2026-10-25, p3-01):** every automated route is closed. PA-API 5.0 is retired, the Creators API is ineligible and against program intent, and the Conditions of Use exclude robots and data mining (the checks of 2026-10-22 below, carried forward: per the task brief no new request was sent to Amazon). Vendor scrapers stay disabled pending DEC-010.
 - **Template (`csv-v1`, header only):** `asin,title,category,rank,rank_kind,price,currency,rating,review_count,gtins,observed_for`.
@@ -243,6 +246,7 @@ Static files vendored into the repo once, changed only by a reviewed PR. No adap
   - `observed_for`: the day the ranks are from (`YYYY-MM-DD`, not after the import day); blank means the import day.
   - **Help text:** obtain the data lawfully. CSV is not an exemption from Amazon's terms: use an export from a tool or account whose terms allow it, or a list you compiled by hand. Never a scrape, by you or a vendor.
 - **Rows:** `amazon_ranks`, one append-only row per ASIN × category × rank kind × day (a trigger rejects UPDATE and DELETE), carrying `captured_at`, `observed_for` and `raw_payload_id`, unique on that key plus `raw_payload_id` and `parser_version` (DEC-028). Re-importing a file writes nothing. Money is `price_minor` + `currency`. Malformed rows are reported with their row numbers and the valid rows import; an ASIN repeated in the same list and day rejects the file.
+- **Surface:** `GET /v1/amazon/ranks` and its `/amazon` page (p3-04, DEC-286), and `GET /v1/products/{id}/amazon-ranks` with an "Amazon ranks" section on the Product page Trends tab (p3-07, DEC-293). Both read "Amazon · manual import, as of <day>", and a rank shows only within its own list (category × rank kind).
 - **Terms / official routes (checked 2026-10-22):**
   - PA-API 5.0: retired, returns HTTP 403 `AccessDeniedException` — https://affiliate-program.amazon.com/creatorsapi/docs/en-us/paapiv5-deprecation
   - Creators API: requires Associates enrollment and ≥ 10 qualifying sales in the past 30 days; 1 TPS / 8,640 TPD to start; affiliate-data use for research is against program intent → **disabled** — https://affiliate-program.amazon.com/creatorsapi/docs/en-us/introduction . Free Associates enrollment; no paid API tier documented — https://affiliate-program.amazon.com/creatorsapi/docs/en-us/onboarding (checked 2026-10-22). Access can lapse after 30 days without qualifying sales (`Source - Amazon`); CSV remains the fallback.
@@ -251,7 +255,7 @@ Static files vendored into the repo once, changed only by a reviewed PR. No adap
 - **Limits:** manual CSV has no source API quota; disabled Creators API limits above are not a CSV limit.
 - **Count semantics:** ranks (BSR per category, Movers & Shakers 24 h gain), not counts; review count cumulative. Features prefixed `amz_`.
 - **Risk:** no key for CSV; obtain data lawfully, since CSV is not an exemption from source terms. Official affiliate eligibility and direct-scrape blocking prevent an automated route today. Evidence: `Source - Amazon`, TA §2.11 / SF §8.
-- **Cost:** free CSV, no paid CSV tier; optional paid Keepa is separate below. **Status:** CSV import built (p3-01, DEC-279); the source row stays disabled because no collector exists. A surface (a page, or Product page rows) is a follow-up. **Phase:** 3.
+- **Cost:** free CSV, no paid CSV tier; optional paid Keepa is separate below. **Status:** CSV import built (p3-01, DEC-279); surface built (p3-04, DEC-286; p3-07, DEC-293); source 8 stays disabled because no collector exists (CSV only). **Phase:** 3.
 
 ## Meta Ad Library (`meta_ad_library`)
 
