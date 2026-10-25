@@ -1,0 +1,10 @@
+# Google_Product_Taxonomy_Version: 2021-09-21
+1 - Animals & Pet Supplies
+2 - Animals & Pet Supplies > Pet Supplies
+4 - Animals & Pet Supplies > Pet Supplies > Cat Supplies
+5 - Animals & Pet Supplies > Pet Supplies > Dog Supplies
+4434 - Animals & Pet Supplies > Pet Supplies > Dog Supplies > Dog Beds
+536 - Home & Garden
+638 - Home & Garden > Kitchen & Dining
+594 - Home & Garden > Lighting
+4636 - Home & Garden > Lighting > Lamps

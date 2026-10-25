@@ -180,6 +180,18 @@ The report's own caveat: states are observations, and a 404 alone cannot establi
 - **CSV fallback:** none of its own: image URLs arrive with the listing sources and their CSV imports. An unfetched image has no pHash, and matching treats it as a missing input (weight 0, DEC-040).
 - **Risk:** CDN terms unchecked; a 403 for a single missing object counts toward the source-wide block rule. **Cost:** free. **Status:** planned: built and registered disabled (`sources.id` 6); enabling needs an owner decision (DEC-073 does not cover it). **Phase:** 2.
 
+## Reference data (not collected sources)
+
+Static files vendored into the repo once, changed only by a reviewed PR. No adapter, no schedule, no `sources` row.
+
+### Google Product Taxonomy (`packages/core/src/pulso_core/data/google_product_taxonomy.txt`)
+
+- **What:** Google's product category tree, en-US with numeric ids: 5,595 categories, at most 7 levels. It is the `categories` table (Google's id is `categories.id`), loaded by `python -m pulso_core.taxonomy load` (M-6, DEC-253).
+- **Fetched:** once, 2026-10-25, from `https://www.google.com/basepages/producttype/taxonomy-with-ids.en-US.txt` (linked from the Merchant Center help page [Google product category](https://support.google.com/merchants/answer/6324436)). The file is unmodified: version line `# Google_Product_Taxonomy_Version: 2021-09-21`, `Last-Modified: Thu, 23 Sep 2021`, sha256 `30039729880ec5ac4851de088ad228a6898aa253f0de5d5ebea5bb1437478fce`.
+- **Terms (checked 2026-10-25):** neither the help page nor the file states a licence or reuse terms; the page carries only Google's generic Terms of Service. Google publishes the file free so merchants can classify products, and says it "will translate" any version published after August 2011 to the latest. We use it only to classify products inside Pulso and attribute it to Google here and in DEC-253. **Owner awareness:** no explicit licence (logged in the p2-17 report as an Owner To-Do).
+- **Updates:** Google calls the taxonomy "continuously evolving", but this version has been current since 2021. A new version is re-vendored by PR. The loader updates changed names and paths in place and never deletes a category, so products keep their ids.
+- **Cost:** free. **Risk:** low; the file could be withdrawn. Our copy stays usable.
+
 ## AliExpress (`aliexpress`)
 
 - **Access:** Open Platform app (review ~2 business days; may need business licence/ID) + AliExpress Portals affiliate application. Affiliate API (`aliexpress.affiliate.hotproduct.query` etc.) and DS API (`aliexpress.ds.product.get`, `ds.image.searchV2`, `ds.freight.query`); OAuth 2.0 for DS; gateway `https://api-sg.aliexpress.com/sync`.
@@ -391,3 +403,4 @@ These read only the owner's own data. They are listed here because each still ad
 - 2026-10-23 — aud-007 / audit D second pass (Claude): public-documentation recheck of the audit D candidates (CPSC and Wikimedia gaps closed; Google Ads permissible-use wording recorded) and new candidates (USITC HTS general duty rates, openFDA device recalls, Merchant price competitiveness, ShopifyQL sessions and Meta Insights for the owner's own accounts), plus a checked-not-proposed table. Candidate sections only; no data requests, enablement, compliance or decision changes (DEC-151 unused).
 - 2026-10-25 — P2-04 (Claude): added `listing_images` (M-2 part a, DEC-240): host allowlist, robots per host, per-host rate limit, validation, storage and backoff recorded; hosts' robots and terms still to verify before enabling. No requests to any host; source disabled.
 - 2026-10-25 — P2-06 (Claude): DEC-242 (cross-review XR-11, XR-12 to XR-15): robots.txt no longer resets the block count (both crawlers); fractional and file-wide `Crawl-delay`, `Request-rate: 0/n` refusal; `IMAGE_HOSTS` validation; `NoListedHost`; a slow host sits the run out. No requests to any source.
+- 2026-10-25 — P2-17 (Claude): added a "Reference data" section with the Google Product Taxonomy (M-6, DEC-253). The one static file was fetched once and vendored unmodified, with its URL, version, hash and terms (no licence stated). No request to any collected source.
