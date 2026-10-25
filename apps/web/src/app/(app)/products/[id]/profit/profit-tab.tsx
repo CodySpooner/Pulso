@@ -108,7 +108,8 @@ export function ProfitTab({ id }: { id: string }) {
         </EmptyState>
       ) : (
         <>
-          {/* A 2 px hairline while a recompute is out: opacity only (vault Features/Product Page - Profit, Motion). */}
+          {/* A 2 px hairline while a recompute is out: opacity only (vault Features/Product Page - Profit, Motion). The last
+              answer stays at full contrast, no dim (imp-314); aria-busy marks it for assistive tech. */}
           <span
             aria-hidden
             className={cn(
@@ -119,7 +120,7 @@ export function ProfitTab({ id }: { id: string }) {
           {calc.isError && last && <StaleLine boxed what="Couldn't recompute this scenario" error={calc.error} asOf={last.at} retry={retry} />}
           <StaleInputs calc={shown} now={last?.at ?? calc.dataUpdatedAt} />
           {!shown.complete && <Withheld calc={shown} />}
-          <div aria-busy={recomputing} className={cn("transition-opacity duration-(--duration-fast)", recomputing && "opacity-70")}>
+          <div aria-busy={recomputing}>
             <Results calc={shown} now={last?.at ?? calc.dataUpdatedAt} />
           </div>
           <div className="grid items-start gap-4 lg:grid-cols-[17rem_minmax(0,1fr)]">
@@ -134,7 +135,7 @@ export function ProfitTab({ id }: { id: string }) {
               reset={reset}
               chosen={supplier !== null}
             />
-            <div aria-busy={recomputing} className={cn("min-w-0 transition-opacity duration-(--duration-fast)", recomputing && "opacity-70")}>
+            <div aria-busy={recomputing} className="min-w-0">
               <Breakdown calc={shown} now={last?.at ?? calc.dataUpdatedAt} />
             </div>
           </div>
