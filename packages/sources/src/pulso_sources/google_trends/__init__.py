@@ -129,7 +129,9 @@ def confirmed_keywords(session: Session) -> list[str]:
     merged = dict(
         session.execute(
             select(Product.id, Product.merged_into_id).where(Product.merged_into_id.is_not(None))
-        ).tuples().all()
+        )
+        .tuples()
+        .all()
     )
 
     def live(product_id: UUID) -> UUID:
