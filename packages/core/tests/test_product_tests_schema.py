@@ -40,7 +40,7 @@ def test_checks_and_the_lossy_downgrade_guard(db_engine: Engine) -> None:
         connection.execute(insert(ProductTest).values(**ids))
         with pytest.raises(DBAPIError, match="lossy downgrade"), connection.begin_nested():
             command.downgrade(config, "0016")
-        assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "0019"
+        assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "0020"
         connection.execute(text("DELETE FROM product_tests"))
         command.downgrade(config, "0016")
         assert connection.scalar(text("SELECT to_regclass('product_tests')")) is None

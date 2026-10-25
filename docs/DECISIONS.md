@@ -3519,3 +3519,51 @@ Superseded review defaults, not given entries: default #0 (move the repo) is don
   - **In-column order (imp-401):** needs a `position` column, so a migration; left for later.
 - **Why:** `apps/web/e2e/testing/board.spec.ts` (11 tests, fixtures, E2E auth bypass): a card goes Idea → Researching → Testing → Winner → Killed by keys only, focus following it; Killed without a reason sends nothing, with one updates the Killed count and reason chips, and Undo restores them; a pointer drag persists after a reload; a failed PATCH rolls back with its reason; the drawer shows $66.67 / 1.30× for $200.00 / 3 orders and $259.99, the worked example's $24.33 / 1.64×, and $24.32 / 5.34× after saving $48.65 / 2 orders (half-even); null metrics say no source yet; loading, empty, error and stale; 375 px has no horizontal scroll; Start a test adds an Idea test and opens it, and a second says "Already on the board". `testing/model.test.ts` (9 tests): counts, a rollback that keeps a concurrent move, break-even and stale metrics. `apps/api/tests/test_testing.py::test_tests_carry_their_product_title_and_image_in_one_query`.
 - **Not here (WF-5c and later):** the stop-loss and winner-candidate chips with k and N in Settings (imp-398), "changed since start" (imp-399), re-snapshot (imp-400), CSV export (imp-403), in-column order (imp-401), the table view, the Shift+←/→ and `N` shortcuts.
+
+### DEC-319 · Boards backend (WF-3 part a): workspace tables `boards` and `board_items`, cards in an integer order renumbered on a move with a board-only note, send-to-testing through `create_test`, and every write bumping the board's `updated_at`
+**2026-10-25 · proposed (p4-12)** · Phase 4 task WF-3 part a; SPEC §5 (Workspace), §6.10, §6.11; DEC-263, DEC-287, DEC-306 (f), DEC-312, DEC-314; AGENTS.md §7; vault Features/Boards; `docs/reports/p4-12.md`; migration 0020, 11 endpoints and the regenerated client; no UI, flag, dependency, score, feature, collector or money change
+- **Decision:**
+  - **(a) Tables.**
+    - `boards`: `id` uuid, `workspace_id`, `name` varchar(80), `description` text, `position` int, `archived_at`, `created_at`, `updated_at`. Names are UNIQUE per workspace, exactly as typed once trimmed, archived boards included. `position` is stored (default 0) for a later manual tile order; nothing reads it yet.
+    - `board_items`: `workspace_id`, `board_id`, `product_id`, `position` int, `note` text, `added_at`, with primary key `(board_id, product_id)`.
+    - The items' foreign key is `(workspace_id, board_id)` → `boards (workspace_id, id)` ON DELETE CASCADE, as DEC-314 (a) does for watchlists. Both tables are `WorkspaceOwned`. The downgrade refuses while any board exists.
+  - **(b) Order.**
+    - An add appends after the last card, in the order given (the highest position + 1, + 2, …).
+    - `PATCH …/items/{product_id} {position}` puts the card at that 0-based place (past the end means last) and renumbers every card 0…n−1.
+    - A removal leaves a gap that the next move closes, so clients sort by `position` and never read it as a dense index.
+    - `ponytail:` a move is one UPDATE per card. Past about 500 cards a board wants fractional indexing (vault Features/Boards).
+    - Cards page by `position`, with `product_id` breaking ties. The keyset cursor is `[position, product_id]`; `limit` is 1–100, default 50. The primary key's `board_id` prefix serves the page.
+    - Boards sort by `updated_at` newest first, then `id`. `GET /v1/boards` isn't paged (the index shows every board, as DEC-314 (e) does for lists); `archived=false` (the default) lists active boards and `archived=true` archived ones.
+  - **(c) Notes.** `board_items.note` is the card's board-only note, the vault open question's default; product notes stay in `product_notes`. `note: null` clears it. Notes and `description` are trimmed, at most 10,000 characters, and refuse NUL (DEC-287).
+  - **(d) Activity.**
+    - Every write bumps `boards.updated_at` to the transaction's `now()`: PATCH, archive, unarchive, add, item PATCH, remove and send-to-testing, even when nothing else changes (an empty PATCH, a skipped re-add, an idempotent remove).
+    - A request refused before it saves anything (a 404, a 409 on the name, a 422) rolls back and bumps nothing.
+    - Archiving again keeps the first `archived_at`. Archived boards keep their cards and accept writes.
+  - **(e) Merged products.**
+    - Add and send-to-testing resolve each id through `merged_into_id` to its survivor with the watchlists router's `survivors()` (DEC-314 d), deduplicated. An unknown id is a 404, and nothing changes.
+    - An add returns `{added, skipped}`; a skipped product was already on the board and keeps its place and note.
+    - Cards aren't rewritten when a merge lands after the add. The item PATCH and DELETE take the stored product id. The UI part shows the vault's "merged" note.
+  - **(f) Send to testing.**
+    - `POST /v1/boards/{id}/items/send-to-testing {product_ids[]}` calls `testing.create_test` once per survivor without an open test (Idea, Researching or Testing: `uq_product_tests_open`'s stages). Stage rules, the start snapshot and CPA/ROAS stay in one place (DEC-312).
+    - It returns `{created: [the new tests], skipped: [product ids]}`. A product whose tests all ended (Winner or Killed) gets a new Idea test.
+    - The products needn't be on the board: the board scopes ownership and activity only, so a stale card or a merge survivor still sends.
+    - `create_test` commits each test. A concurrent open test on a product makes the request a 409 after the earlier tests are saved; a retry skips those.
+  - **(g) Responses.**
+    - Board mutations return the board with `item_count`: `DELETE` returns it as it was, and an item DELETE returns the board. The item PATCH returns the card.
+    - Another workspace's board is a 404, never a 403. A duplicate name is a 409 `conflict` from the app's IntegrityError handler, and a bad cursor a 422 `invalid_cursor`.
+    - Operation ids: `list_boards`, `create_board`, `update_board`, `archive_board`, `unarchive_board`, `delete_board`, `list_board_items`, `add_board_items`, `update_board_item`, `remove_board_item`, `send_board_items_to_testing`.
+- **Alternatives:**
+  - **Fractional or gapped positions now:** a board holds tens of cards for one user, so renumbering is a handful of updates. The ponytail comment names the upgrade.
+  - **Renumbering on every removal:** an extra UPDATE per card for nothing a client can see, since the order is the same.
+  - **Inserting `product_tests` rows directly, or one transaction for the batch:** that would copy `create_test`'s rules, which the brief forbids.
+  - **Refusing products not on the board in send-to-testing:** a 404 for a card removed in another tab or a merge survivor, for no safety gain (any product can already be sent from `POST /v1/tests`).
+  - **Returning the board from the add:** `{added, skipped}` is what the Add-to-board popover needs to say "Added" or "Already on"; the count is one `GET` away.
+- **Why:** `apps/api/tests/test_boards.py` runs 5 tests on a throwaway `pgvector/pgvector:0.8.7-pg18-trixie`:
+  - CRUD round trip: create, rename, rewrite and clear the description, archive (twice), unarchive and delete, with the 409s, the 422s, the archived filter and the cascade;
+  - append order, a re-add and a merged id reported as skipped, an unknown id a 404, a note round trip that survives a move and clears with null, and a move to the end, past the end and between two cards, read back as 0…n−1 from a fresh session;
+  - a stable keyset walk in board order, and six kinds of write each putting the board back on top;
+  - send-to-testing on p1 (open test), p2 (Winner only) and a merged id: two Idea tests created (p2 and the survivor p0), p1 skipped, a second send skipping all three, workspace B's test untouched;
+  - workspace B gets a 404 from nine requests on A's board and sees no boards, and the database refuses a card on another workspace's board.
+
+  `packages/core/tests/test_models.py`'s `WorkspaceOwned` contract covers both tables, and the migration round trip matches the models. Eleven one-line mutations each fail a test (`docs/reports/p4-12.md`).
+- **Not here:** the `/boards` UI and the card stats (part b), the Add-to-board popover and `B` shortcut, CSV export and the Shopify product CSV (after WF-7's helper, p4-09), the "merged" note on cards, and the board validation summary (backlog rows in the report).

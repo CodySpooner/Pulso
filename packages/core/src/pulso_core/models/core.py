@@ -333,6 +333,43 @@ class WatchlistItem(WorkspaceOwned, Base):
     position: Mapped[int] = mapped_column(server_default="0")  # manual order: not used yet
 
 
+class Board(WorkspaceOwned, CreatedAt, Base):
+    """A named collection of product ideas, ordered and noted per card (WF-3, DEC-319)."""
+
+    __tablename__ = "boards"
+    __table_args__ = (
+        UniqueConstraint("workspace_id", "name"),
+        UniqueConstraint("workspace_id", "id"),  # what board_items' foreign key points at
+    )
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    name: Mapped[str] = mapped_column(String(80))
+    description: Mapped[str | None] = mapped_column(Text)
+    position: Mapped[int] = mapped_column(server_default="0")  # manual tile order: not used yet
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Every write to the board or its items bumps it: the index sorts by recent activity.
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class BoardItem(WorkspaceOwned, Base):
+    __tablename__ = "board_items"
+    __table_args__ = (
+        PrimaryKeyConstraint("board_id", "product_id"),
+        # Keyed with the workspace, so an item can't sit on another workspace's board.
+        ForeignKeyConstraint(
+            ["workspace_id", "board_id"],
+            ["boards.workspace_id", "boards.id"],
+            ondelete="CASCADE",
+        ),
+    )
+    board_id: Mapped[UUID]
+    product_id: Mapped[UUID] = mapped_column(ForeignKey("products.id"))
+    position: Mapped[int]  # the card order, 0 first
+    note: Mapped[str | None] = mapped_column(Text)  # board-only; product notes stay separate
+    added_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 # The default scenario's landed cost per workspace and product (migration 0010, DEC-265): a
 # view, so it sits outside Base.metadata and autogenerate never makes it a table.
 workspace_product_economics = Table(

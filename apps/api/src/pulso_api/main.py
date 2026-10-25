@@ -17,6 +17,7 @@ from pulso_api.routers import (
     account,
     admin,
     amazon,
+    boards,
     health,
     matching,
     popular_products,
@@ -112,6 +113,7 @@ def create_app() -> FastAPI:
     app.include_router(admin.router)
     app.include_router(amazon.router)
     app.include_router(amazon.products_router)
+    app.include_router(boards.router)
     app.include_router(matching.router)
     app.include_router(popular_products.router)
     app.include_router(products.router)
