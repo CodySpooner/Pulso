@@ -1,5 +1,5 @@
 {
-  "about": "Golden vectors for landed_cost() and the workspace_product_economics view (R-16, DEC-246, DEC-250, DEC-256, DEC-265). Money is minor units, rates are basis points, FX rates are currency per 1 USD. `view: false` vectors need an input the view's default scenario lacks (quantity above 1, DDP); they reach its arithmetic through the SQL landed_cost() only.",
+  "about": "Golden vectors for landed_cost() and the workspace_product_economics view (R-16, DEC-246, DEC-250, DEC-256, DEC-265). Money is minor units, rates are basis points, FX rates are currency per 1 USD. `view: false` vectors need an input the view's default scenario lacks (quantity above 1, DDP); they reach its arithmetic through the SQL landed_cost() only. `earlier_listings` are USD supplier listings of the same product created before the vector's own (lower ids); the vector's inputs are the listing that must cost.",
   "vectors": [
     {
       "name": "worked example: $29.99, CJ $6.20, freight $4.85, duty 20%, 2.9% + $0.30, returns 5%",
@@ -173,6 +173,61 @@
         "price_minor": 2999,
         "goods_minor": 620,
         "freight_minor": 485,
+        "duty_minor": null,
+        "customs_fee_minor": 0,
+        "payment_fee_minor": 117,
+        "shopify_fee_minor": 0,
+        "returns_minor": 150,
+        "landed_cost_minor": null,
+        "margin_minor": null,
+        "margin_bps": null,
+        "ad_cost_minor": 0,
+        "net_minor": null,
+        "net_bps": null,
+        "complete": false,
+        "missing": [
+          "duty_not_set"
+        ],
+        "estimates": []
+      }
+    },
+    {
+      "name": "duty not set, two listings: the dearer one created first, the cheaper one costs (XR-66)",
+      "view": true,
+      "earlier_listings": [
+        {
+          "unit_minor": 2000,
+          "freight_minor": 410
+        }
+      ],
+      "inputs": {
+        "price_minor": 2999,
+        "unit_cost": {
+          "minor": 500,
+          "currency": "USD",
+          "usd_rate": null
+        },
+        "freight": {
+          "minor": 410,
+          "currency": "USD",
+          "usd_rate": null
+        },
+        "duty_bps": null,
+        "quantity": 1,
+        "ddp": false,
+        "customs_fee_minor": 0,
+        "payment_fee_bps": 290,
+        "payment_fee_fixed_minor": 30,
+        "shopify_fee_bps": 0,
+        "returns_bps": 500,
+        "ad_cost_minor": 0,
+        "freight_gap": "freight_missing",
+        "estimates": []
+      },
+      "expected": {
+        "price_minor": 2999,
+        "goods_minor": 500,
+        "freight_minor": 410,
         "duty_minor": null,
         "customs_fee_minor": 0,
         "payment_fee_minor": 117,

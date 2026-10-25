@@ -95,8 +95,9 @@ def workspace(session: Session, **settings: Any) -> UUID:
     return row.id
 
 
-def lamp(session: Session) -> UUID:
-    """The note's worked example: $29.99 in a store, $7.40 at CJ, $4.10 to the US."""
+def lamp(session: Session, costs: tuple[int, ...] = (740,)) -> UUID:
+    """The note's worked example: $29.99 in a store, $7.40 at CJ, $4.10 to the US. `costs` are
+    the CJ listings' prices in creation order, each with that quote."""
     product = Product(name="Sunset lamp")
     store = Store(domain=f"{uuid4().hex}.example.test", platform="shopify")
     supplier = Supplier(platform="cj", external_id=uuid4().hex, name="CJ supplier")
@@ -104,7 +105,7 @@ def lamp(session: Session) -> UUID:
     session.flush()
     for source, owner, price in (
         (SHOPIFY, {"store_id": store.id}, 2999),
-        (CJ, {"supplier_id": supplier.id}, 740),
+        *((CJ, {"supplier_id": supplier.id}, cost) for cost in costs),
     ):
         listing = Listing(
             source_id=source, external_id=uuid4().hex, url="https://example.test/p",
@@ -116,10 +117,11 @@ def lamp(session: Session) -> UUID:
             session, ListingSnapshot, source, listing_id=listing.id, values_hash="h",
             currency="USD", price_min_minor=price,
         )  # fmt: skip
-    observe(
-        session, ShippingOption, CJ, listing_id=listing.id, destination_country="US", quantity=1,
-        method="CJPacket", cost_minor=410, currency="USD",
-    )  # fmt: skip
+        if source == CJ:
+            observe(
+                session, ShippingOption, CJ, listing_id=listing.id, destination_country="US",
+                quantity=1, method="CJPacket", cost_minor=410, currency="USD",
+            )  # fmt: skip
     return product.id
 
 
@@ -144,8 +146,8 @@ def score(
     assert write(session, [ScoreRow(product_id, day, kind, value, explanation, stage)]) == 1
 
 
-def scored_lamp(session: Session) -> UUID:
-    product_id = lamp(session)
+def scored_lamp(session: Session, costs: tuple[int, ...] = (740,)) -> UUID:
+    product_id = lamp(session, costs)
     score(session, product_id, "trend", 68.6)
     score(session, product_id, "saturation", 73.3)
     score(session, product_id, "lifecycle", stage="rising", reason="growth over +20% a week")
@@ -224,6 +226,31 @@ def test_a_fee_change_moves_opportunity_and_no_scores_row(
         assert xmins(session) == before  # no row rewritten, none added: Opportunity is not stored
         kinds = session.scalars(text("SELECT DISTINCT kind FROM scores")).all()
         assert sorted(kinds) == ["lifecycle", "saturation", "trend"]
+
+
+@pytest.mark.db
+@pytest.mark.parametrize("costs", [(2000, 500), (500, 2000)], ids=["dearer first", "cheaper first"])
+def test_duty_not_set_costs_the_best_supplier_as_duty_0_does(
+    api: TestClient, db_engine: Engine, costs: tuple[int, ...]
+) -> None:
+    """XR-66 (DEC-341): with duty unset, Opportunity costs the cheaper listing at duty 0 in either
+    creation order, so it matches the duty-0 workspace but for confidence and the caution."""
+    with Session(db_engine) as session:
+        unset = workspace(session, **LAMP_FEES)
+        zero = workspace(session, **LAMP_FEES, duty_default_bps=0)
+        product_id = scored_lamp(session, costs)
+        session.commit()
+
+    found = {key: scores(api, key, product_id)["opportunity"] for key in (unset, zero)}
+    for key, confidence, cautions in ((unset, 0.7, ["duty_not_set"]), (zero, 0.9, [])):
+        explanation = found[key]["explanation"]
+        assert found[key]["value"] == 69.8  # (0.4 × 68.6 + 0.3 × 100 + 0.2 × 26.7) / 0.9
+        assert explanation["components"][1]["raw"] == 0.6075  # (2999 − 910 − 117 − 150) / 2999
+        assert (explanation["confidence"], explanation["cautions"]) == (confidence, cautions)
+        assert explanation["penalties"] == []  # never "margin below your floor" from the $20 one
+    assert {**found[unset]["explanation"], "confidence": 0.9, "cautions": []} == found[zero][
+        "explanation"
+    ]
 
 
 @pytest.mark.db
