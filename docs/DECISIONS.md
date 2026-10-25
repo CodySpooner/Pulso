@@ -3346,3 +3346,72 @@ Superseded review defaults, not given entries: default #0 (move the repo) is don
   - Freshness and confidence in explanations (MT-1's next part).
   - "How this is computed" links from score displays, since no score renders in the app yet.
   - Version history, which needs `model_versions` (Phase 6).
+
+### DEC-318 · Saturation Score v0 (SC-3): a pure `saturation_scores()` over one day's `shp_sellers` rows, robust z within category through a shared `robust_z` helper, ads always missing, CJ listings left out of v0, versioned through `pulso_core.scores.version`
+**2026-10-25 · proposed (p4-11)** · Phase 4 task SC-3; SPEC §7; review M15; DEC-031, DEC-040, DEC-261, DEC-306 (d), DEC-310, DEC-311 (c, d), DEC-313; vault Intelligence/Saturation Score, Intelligence/Score Definitions §3–5, Intelligence/Demand Signals; `docs/reports/p4-11.md`; no migration, endpoint, UI, flag, Beat or dependency change
+- **Decision:**
+  - **(a) The shared helper.** `pulso_ml.scores.robust_z(values, lineage, *, min_n, cap)` is pure and generic over the item key, so SC-2 (Trend) can reuse it.
+    - **Formula:** z = (x − median) / (1.4826 × MAD), winsorized to ±cap.
+    - **Which median and MAD:** `lineage` holds each item's category and its ancestors, nearest first. The median and MAD come from the nearest category in that chain with at least `min_n` items holding a value and MAD > 0. Failing that, they come from every item (global), whatever its n.
+    - **No spread anywhere:** the item gets no z, never a guessed 0 or ±cap.
+    - **The whole chain is walked** (parent, then each further ancestor), as Score Definitions §4 says. The brief's "parent then global" is the two-level case.
+    - **Config:** `min_n` (30) and `cap` (3) sit in each score's config, so they're part of its version.
+  - **(b) The function.** `pulso_ml.scores.saturation.saturation_scores(rows, categories)`:
+    - **`rows`:** day t's `shp_sellers` feature rows. A `Feature` or the ORM row works (`product_id`, `features`, `gap_flags`).
+    - **`categories`:** maps every product to score to its lineage. Only those products are scored or normalised over, so a row for a product not asked for (one merged away, say) stays out of every cohort.
+    - **Result:** a `Saturation(value, band, explanation, reason)` per product.
+  - **(c) Components and weights.** All weights are judgement calls in a frozen `Config`:
+    - `shp_sellers`: ln(1 + s), where s is DEC-311 (c)'s count over every tracked store (weight 0.40). It's required.
+    - `shp_seller_g28`: DEC-311 (c)'s growth over the stable panel, read as stored (0.25).
+    - `ads_active`: always missing with `source: null` (0.25), so the UI reads "no source yet".
+    - **CJ listings are left out of v0.** Demand Signals still has it as an open question (a Saturation input or a demand candidate, not both), and no feature row holds it. Configuring it as always missing would show "insufficient signal" for an input nobody has approved.
+    - **Effect on coverage:** leaving CJ out changes coverage, not the value. With three inputs configured, the lamp's coverage is 0.65 / 0.90 = 0.72. The vault's "0.65 without CJ" counted CJ as configured but missing. The value is the vault's 73.7 either way, because renormalisation only reads present weights.
+  - **(d) The value.** `pulso_core.scores.explain()` renormalises the present inputs (DEC-040).
+    - **Formula:** Saturation = clamp(50 + 50 × T / 3, 0, 100).
+    - **Bands:** low below 35, high above 65 and medium between, with both cut-offs medium. They're read on the unrounded value.
+    - **Version:** `000-719f633dfc99` today. Any change to a weight, a cut-off, `min_n`, `cap` or `FEATURE_VERSION` makes a new version.
+  - **(e) No value, with its reason, never 0.**
+    - **`no seller count`:** the product has no `shp_sellers` row, or only a version-001 row with no `features`.
+    - **`seller counts don't vary`:** the seller count has no z at any level.
+    - **What's returned:** in both cases `value`, `band` and `explanation` are None. Score Definitions §5 says no row is written then; SC-6 decides how to store that.
+    - **A present growth with no z** counts as missing with its source set ("insufficient signal") and keeps its raw value.
+  - **(f) Explanation fields.** Score Definitions §3 has each score add its own optional fields. Two are added to `pulso_core.scores`. Both default to None, so earlier explanations still validate, and no migration is needed (the column is jsonb).
+    - `Component.normalization` is `{category_id, n}`: the cohort the z was taken over, with `category_id` null for global. It's per component rather than one `explanation.normalization` (Score Definitions §4), because each input falls back on its own: one product's seller count can use its category while its growth uses the parent.
+    - `Explanation.panel_size` is the row's stable-panel store count (M15).
+  - **(g) Gaps.**
+    - **Growth:** its `gap` is set when the row's `gap_flags.missed_runs` isn't empty: the `shopify_stores` source over t−28..t (DEC-311 d), which is the growth window.
+    - **Level:** it's a count at the cutoff with no window, so it has no gap flag.
+    - **`has_gap`:** DEC-311's `has_gap` on these rows means "no growth", and the growth's `missing` already says that.
+  - **(h) Coverage drift.** Growth is taken over the stable panel alone, and the level over every tracked store (vault rules).
+    - **The test:** ten newly tracked stores run through the real `seller_inputs()`. Every product they don't list keeps an identical score and explanation. The product they list moves only through its level.
+    - **Ceiling:** the z is cross-sectional. A batch that re-ranks a category moves untouched products' z: many products' levels crossing the category's median or its MAD. A handful of touched products can't, because the median and MAD are rank statistics. Growth never moves.
+- **Alternatives:**
+  - **CJ listings as an always-missing component (0.10):** it matches the vault's coverage figures, but an unapproved input would read "insufficient signal" on every product.
+  - **The level's z over the stable panel's stores:** "9 stores sell this now" would undercount whenever stores were added. That goes against the vault's level rule.
+  - **A product-level `explanation.normalization`:** it can't hold two components that fall back to different levels.
+  - **Recording the fallback as a word ("parent"):** past the parent, a word doesn't say which category was used. The id is exact, and the UI can name it.
+  - **A z of 0 when MAD = 0 everywhere:** reads as "typical" when nothing was measured.
+  - **±cap for anything off the median when MAD = 0:** one product with growth 0.1 among flat zeros would score far into the top band.
+  - **Bands on the value rounded to 0.1:** this only matters within 0.05 of a cut-off, and the stored rounding is SC-6's.
+- **Why:** `packages/ml/tests/test_robust_z.py` (10 cases) and `test_saturation.py` (21 cases):
+  - **The vault lamp:** 41 Lamps whose ln(1 + s) and growth values are placed on the vault's medians and MADs. It scores 73.72 (high), with z 1.24 and 1.72, `missing: ["ads_active"]`, coverage 0.72, `panel_size` and the cohort `{Lamps, 41}`. The points sum back to the value.
+  - **Missing inputs:** missing growth renormalises onto the level, and missing ads is listed.
+  - **No value:** no row, a version-001 row and flat counts each give a reason and no value.
+  - **The fallback chain:**
+    - n = 30 keeps its own category;
+    - n = 29, and a one-product category, use the parent;
+    - a small parent uses the next ancestor;
+    - every level small uses global;
+    - MAD = 0 with n = 30 uses the parent;
+    - a flat global gives no z.
+  - **Winsorization:** at ±3, and at ±4 with `cap` 4.
+  - **Drift:** the ten-new-stores test through `seller_inputs()`.
+  - **Edges:** the bands at 34.99, 35, 65 and 65.01; the clamp at 0 and 100; five config changes that each change the model_version.
+
+  24 one-line mutations each fail a test (`docs/reports/p4-11.md`).
+- **Not here:**
+  - storing scores, the nightly job and hysteresis (SC-6);
+  - Component `as_of`: the rows carry no capture time, and SC-6 has it;
+  - the saturation-crossing alert (WF-4) and the Risk tab UI;
+  - CJ listings (Demand Signals) and `ads_active` (Phase 8 or a CSV import);
+  - SC-2's use of `robust_z`.
