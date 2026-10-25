@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { Box, ChevronRight, Megaphone, Store } from "lucide-react";
 
 import { useApiReady } from "@/components/data-health/api";
@@ -12,6 +13,7 @@ import type { components } from "@/lib/api/schema";
 import { formatDelta, formatUtc } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
+import { marginFix } from "./overview-model";
 import { card, newest, StatCard } from "./stat-card";
 import { TABS, type Tab } from "./tabs";
 
@@ -56,9 +58,16 @@ export function Overview({ id, goTo }: { id: string; goTo: (tab: Tab) => void })
   const prices = [data.price_min_minor, data.price_max_minor];
   const cost = data.best_supplier_cost_minor;
   const velocity = data.velocity;
-  // Discover's best margin (imp-280). R-16 withholds it and the card names the gaps; duty is the one Settings closes.
+  // Discover's best margin (imp-280). R-16 withholds it and the card names the gaps, with one next action (imp-368).
   const margin = data.landed_margin_minor;
   const noDuty = "reason" in margin && margin.missing.includes("duty_not_set");
+  const fix = "reason" in margin && marginFix(margin.missing);
+  const fixBody = fix && (
+    <>
+      {fix.label}
+      <ChevronRight aria-hidden />
+    </>
+  );
   return (
     <div className="flex flex-col gap-4">
       {overview.isError && <StaleLine boxed what="Couldn't refresh the overview" error={error} asOf={now} retry={retry} />}
@@ -93,7 +102,25 @@ export function Overview({ id, goTo }: { id: string; goTo: (tab: Tab) => void })
           <StatCard label="Best supplier cost" stat={cost} now={now} detail={!("reason" in cost) && `Lowest in-stock unit cost · ${platform(cost.platform)}`}>
             <Metric stat={cost} label="Best supplier cost" format={money} now={now} />
           </StatCard>
-          <StatCard label="Landed margin" stat={margin} now={now} detail={!("reason" in margin) && `${pct(margin.margin_bps)} margin · before ads`}>
+          <StatCard
+            label="Landed margin"
+            stat={margin}
+            now={now}
+            detail={!("reason" in margin) && `${pct(margin.margin_bps)} margin · before ads`}
+            // The same ghost chevron button as Where it appears, text aligned with the card's.
+            action={
+              fix &&
+              ("href" in fix ? (
+                <Button asChild variant="ghost" size="sm" className="-ml-2.5">
+                  <Link href={fix.href}>{fixBody}</Link>
+                </Button>
+              ) : (
+                <Button variant="ghost" size="sm" onClick={() => goTo(fix.tab)} className="-ml-2.5">
+                  {fixBody}
+                </Button>
+              ))
+            }
+          >
             <Metric
               stat={margin}
               label="Landed margin"

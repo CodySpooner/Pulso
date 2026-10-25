@@ -3180,3 +3180,17 @@ Superseded review defaults, not given entries: default #0 (move the repo) is don
   - five CHECK cases, and 0015 ↔ 0016 down and up, with the downgrade refused once a row exists.
 
   Eleven one-line mutations each fail a test (`docs/reports/p4-01.md`).
+
+### DEC-309 · A withheld landed margin on the Overview offers one next action, chosen by its gap; Settings opens the duty rate focused on arrival at #duty
+**2026-10-25 · proposed (imp-368)** · Improvement backlog row imp-368; DEC-299, DEC-040, DEC-251, DEC-243; vault Features/Product Page - Overview, Features/Settings; `docs/reports/imp-368.md`; web only: no API, schema, migration, dependency or flag change
+- **Decision:**
+  - **(a) One action per withheld state.** `products/[id]/overview-model.ts` `marginFix(missing)` checks the gaps in this order. `duty_not_set` gives "Set duty", a link to `/settings#duty`; it wins because the card's amber label is "Duty not set" whenever duty is a gap (DEC-299 c). No gaps at all (no settings row yet, DEC-299 b) gives "Open Settings", a link to `/settings`, whose first read creates the row. A missing supplier price or freight quote (`supplier_cost_missing`, `freight_missing`, `freight_variant_mismatch`) gives "Open Suppliers", which opens the Suppliers tab. It beats a missing price because without a supplier the Profit tab shows only "No supplier cost yet". Otherwise the action opens the Profit tab: "Enter a price" when `price_missing` is a gap, "Open Profit" for a USD rate or an out-of-range amount.
+  - **(b) The control.** The card's last line uses the same ghost chevron button as "Where it appears", with its text aligned to the card's. A tab action goes through the page's `goTo`, so focus lands on the tab it opened. The card's states, its "never 0" rule and its as-of line are unchanged; `StatCard` gains an optional `action` slot after the reason.
+  - **(c) Settings arrival.** On `/settings#duty`, the form's first draft has "Set a rate" chosen, and the empty Default duty rate box takes focus once. This is what the page's own "Set duty" check does. The form then reads "Unsaved changes" until a save or Reset, as it does after that check. A later refetch never reopens the rate, and an already-set duty is just focused.
+- **Alternatives:**
+  - (a1) Following the API's first gap: a product with no supplier would send the owner to a Profit tab that has nothing to cost.
+  - (a2) One action per gap: the brief asks for one.
+  - (c1) Focusing the "Not set" radio and leaving the rate closed: one more keystroke, and the in-page check already opens it.
+  - (c2) Opening the rate from an effect: the React Compiler lint (`react-hooks/set-state-in-effect`) rejects a setState in an effect. The existing adjust-during-render sync builds the first draft instead.
+- **Why:** `overview-model.test.ts` covers the order: duty beside a supplier gap, no gaps, a supplier gap beside a price gap, variant mismatch, price, FX and amount. `overview.spec.ts` clicks each state's action once: Set duty lands on Settings with "Set a rate" checked and the rate box focused; Open Suppliers, by keyboard from the margin's number, has a solid focus outline and focuses the Suppliers tab; Enter a price focuses the Profit tab; Open Settings opens Settings. Each test failed before the change. `settings.spec.ts` still passes.
+- **Not here:** focusing the Profit tab's sell price box (not the tab) after "Enter a price", and per-state next actions on the other cards (price, supplier cost, velocity). Both are backlog rows in the report.
