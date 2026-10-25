@@ -3,9 +3,9 @@
 from collections import defaultdict
 from collections.abc import Sequence
 from dataclasses import dataclass
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
-from typing import NamedTuple
+from typing import Any, NamedTuple
 from uuid import UUID
 
 from sqlalchemy import ColumnElement, select
@@ -13,16 +13,20 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
 from pulso_core.models import (
+    CollectionGap,
     CollectorRunTarget,
     Listing,
     ListingVariant,
     ProductDailyFeature,
+    ProductKeyword,
     RawPayload,
+    SearchTrend,
     Source,
     Store,
     VariantSnapshot,
 )
 from pulso_ml.features.demand import Level
+from pulso_ml.features.market import Seller, TrendPoint
 from pulso_ml.matching.decisions import membership
 
 
@@ -63,6 +67,8 @@ class Feature(NamedTuple):
     growth_7d: float | None
     coverage: Decimal
     has_gap: bool
+    features: dict[str, Any] | None  # a non-demand family's inputs (DEC-311)
+    gap_flags: dict[str, list[str]]
 
 
 class AsOf:
@@ -150,6 +156,81 @@ class AsOf:
         for listing_id, captured_at in rows:
             days[listing_id].add(captured_at.astimezone(UTC).date())
         return days
+
+    def missed_runs(self) -> dict[str, set[date]]:
+        """Each source's UTC days that a missed slot touches, as the gap audit had recorded them
+        by the cutoff: Data Health's gap days. A fill doesn't clear one: fills are Data Health's
+        display state, never feature coverage (DEC-060 D4)."""
+        rows = self.session.execute(
+            select(Source.key, CollectionGap.slot_start, CollectionGap.slot_end)
+            .join(Source, Source.id == CollectionGap.source_id)
+            .where(CollectionGap.detected_at < self.cutoff)
+        )
+        days: dict[str, set[date]] = defaultdict(set)
+        for key, start, end in rows:
+            day, last = (
+                at.astimezone(UTC).date() for at in (start, end - timedelta(microseconds=1))
+            )
+            while day <= last:
+                days[key].add(day)
+                day += timedelta(days=1)
+        return days
+
+    def keywords(self) -> dict[UUID, set[str]]:
+        """Each product's keywords that some workspace had confirmed by the cutoff, as the weekly
+        Trends set reads them (DEC-292). A later decision rewrites its row, so that keyword drops
+        out of earlier days: missing, never leaked."""
+        keywords: dict[UUID, set[str]] = defaultdict(set)
+        for product_id, keyword in self.session.execute(
+            select(ProductKeyword.product_id, ProductKeyword.keyword).where(
+                ProductKeyword.status == "confirmed", ProductKeyword.decided_at < self.cutoff
+            )
+        ):
+            keywords[product_id].add(keyword)
+        return keywords
+
+    def trends(self) -> dict[str, list[tuple[datetime, list[TrendPoint]]]]:
+        """Each keyword's US Trends captures (a SerpApi answer or a CSV import), newest first,
+        keyed like product_keywords (casefolded, spacing collapsed). One capture's points are
+        never mixed with another's; a re-parse supersedes the older parse.
+
+        ponytail: reads every capture's points per day; bound it if backfills get slow.
+        """
+        st = SearchTrend
+        rows = self.session.execute(
+            select(st.keyword, st.raw_payload_id, st.captured_at, st.observed_for)
+            .add_columns(st.value, st.is_partial)
+            .where(st.geo == "US", st.captured_at < self.cutoff)
+            # A capture's rows share its captured_at, so this keeps one row per parse.
+            .order_by(st.captured_at.desc(), st.raw_payload_id.desc(), st.keyword)
+            .order_by(st.observed_for, st.id.desc())
+            .distinct(st.captured_at, st.raw_payload_id, st.keyword, st.observed_for)
+        )
+        captures: dict[str, dict[int, tuple[datetime, list[TrendPoint]]]] = defaultdict(dict)
+        for r in rows:
+            keyword = " ".join(r.keyword.casefold().split())
+            _, points = captures[keyword].setdefault(r.raw_payload_id, (r.captured_at, []))
+            points.append(TrendPoint(r.observed_for, float(r.value), r.is_partial))
+        return {keyword: list(found.values()) for keyword, found in captures.items()}
+
+    def sellers(self) -> tuple[dict[int, Seller], dict[int, datetime]]:
+        """Store listings Pulso had seen by the cutoff, and when Pulso first saw each store it
+        tracked by then (DEC-247 g, h)."""
+        listings = {
+            listing_id: Seller(*row)
+            for listing_id, *row in self.session.execute(
+                select(
+                    Listing.id,
+                    Listing.store_id,
+                    Listing.first_seen_at,
+                    Listing.delisted_at,  # today's value: `live()` ignores one after its time
+                ).where(Listing.store_id.is_not(None), Listing.first_seen_at < self.cutoff)
+            )
+        }
+        stores = self.session.execute(
+            select(Store.id, Store.first_seen_at).where(Store.first_seen_at < self.cutoff)
+        )
+        return listings, dict(stores.tuples().all())
 
 
 def write(session: Session, rows: Sequence[Feature]) -> int:

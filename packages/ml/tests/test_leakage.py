@@ -4,6 +4,8 @@ Part (b), the backtest splitter's purge assertion, arrives with the Phase 6 harn
 """
 
 import ast
+import math
+from collections import defaultdict
 from datetime import UTC, date, datetime, time, timedelta
 from decimal import Decimal
 from pathlib import Path
@@ -15,17 +17,22 @@ from sqlalchemy.orm import Session
 
 import pulso_ml.features
 from pulso_core.models import (
+    CollectionGap,
     CollectorRun,
     CollectorRunTarget,
     Listing,
     ListingVariant,
     MatchDecision,
     Product,
+    ProductKeyword,
     RawPayload,
+    SearchTrend,
     Source,
     Store,
     Supplier,
+    User,
     VariantSnapshot,
+    Workspace,
 )
 from pulso_ml.features.daily import compute, cutoff, run
 
@@ -174,6 +181,131 @@ def build(session: Session) -> None:
     session.flush()
 
 
+def interest(capture: int, day: int) -> int:
+    """Each Trends capture scales by its own window's peak: day 18's spike, inside every capture
+    from day 20 on, rescales them against day 13's."""
+
+    def raw(d: int) -> int:
+        return 200 if d == 18 else 20 + max(0, d)
+
+    return round(100 * raw(day) / max(raw(d) for d in range(capture - 89, capture + 1)))
+
+
+def sell(session: Session, store: Store, name: str, product: str, seen: datetime) -> Listing:
+    """A store listing first seen at `seen` and linked to the product then."""
+    shopify = session.scalars(select(Source.id).where(Source.key == "shopify_stores")).one()
+    listing = Listing(
+        source_id=shopify,
+        external_id=name,
+        url="https://example.test/p",
+        title=name,
+        store_id=store.id,
+        first_seen_at=seen,
+    )
+    session.add(listing)
+    session.flush()
+    session.add(
+        MatchDecision(
+            actor="algo",
+            action="link",
+            listing_id=listing.id,
+            to_product_id=P[product],
+            decided_at=seen,
+        )
+    )
+    return listing
+
+
+def build_inputs(session: Session) -> None:
+    """Non-demand inputs over build()'s days (DEC-311): confirmed keywords, Monday Trends captures
+    and a day-45 CSV backfill, store listings for sellers, and Data Health's missed slots."""
+    source = {key: id_ for key, id_ in session.execute(select(Source.key, Source.id))}
+    workspace, user = Workspace(name="w"), User(clerk_user_id="u")
+    session.add_all([workspace, user])
+    session.flush()
+    keywords = [("p1", "sunset lamp", 0), ("p6", "sunset lamp", 25), ("p3", "dog bed", 44)]
+    for product, keyword, i in keywords:
+        session.add(
+            ProductKeyword(
+                workspace_id=workspace.id,
+                product_id=P[product],
+                keyword=keyword,
+                source="manual",
+                status="confirmed",
+                decided_by=user.id,
+                decided_at=on(i),
+            )
+        )
+
+    def capture(key: str, at: datetime) -> RawPayload:
+        collector_run = CollectorRun(source_id=source[key], trigger="schedule")
+        session.add(collector_run)
+        session.flush()
+        payload = RawPayload(
+            source_id=source[key],
+            run_id=collector_run.id,
+            captured_at=at,
+            request={},
+            bytes=1,
+            sha256=f"{key}{at:%j%H}".ljust(64, "0"),
+        )
+        session.add(payload)
+        session.flush()
+        return payload
+
+    def trend(payload: RawPayload, keyword: str, i: int, value: int, window: str) -> None:
+        session.add(
+            SearchTrend(
+                source_id=payload.source_id,
+                raw_payload_id=payload.id,
+                captured_at=payload.captured_at,
+                observed_for=START + timedelta(days=i),
+                keyword=keyword,
+                geo="US",
+                window=window,
+                granularity="day",
+                metric="relative_interest",
+                value=value,
+                is_partial=START + timedelta(days=i) == payload.captured_at.date(),  # today's
+            )
+        )
+
+    for i in [13, 20, 41]:  # Mondays; 27 and 34 were missed
+        payload = capture("google_trends", on(i, 9))
+        for d in range(i - 89, i):
+            trend(payload, "Sunset  Lamp", d, interest(i, d), "today 3-m")  # the seed's spelling
+        trend(payload, "Sunset  Lamp", i, 100, "today 3-m")
+    backfill = capture("google_trends", on(45, 12))  # the owner's CSV, describing past days
+    for d in range(1, 31):
+        trend(backfill, "sunset lamp", d, 50, "manual")  # not 12 weeks: day 41's capture stays
+    for d in range(-55, 31):
+        trend(backfill, "dog bed", d, 60 if d > 2 else 40, "manual")
+
+    stores = [Store(domain=f"s{n}.example.test", platform="shopify") for n in range(4)]
+    for store, i in zip(stores, [-60, -60, 10, 45], strict=True):
+        store.first_seen_at = on(i, 12)
+    session.add_all(stores)
+    session.flush()
+    sell(session, stores[0], "S0", "p1", on(-30, 12))
+    sell(session, stores[1], "S1", "p1", on(20, 12))  # a panel store starts selling P1
+    sell(session, stores[1], "S2", "p2", on(-30, 12)).delisted_at = on(38)  # a complete crawl
+    sell(session, stores[2], "S3", "p1", on(10, 12))  # its store joins the panel on day 38
+    sell(session, stores[3], "S4", "p1", on(45, 12))  # from the day-45 CSV import
+    for key, days in [("cj", [30]), ("shopify_stores", range(30, 35)), ("google_trends", [27, 34])]:
+        for i in days:
+            session.add(
+                CollectionGap(
+                    source_id=source[key],
+                    slot_key=f"{key}:{i}",
+                    slot_start=on(i),
+                    slot_end=on(i + 1),
+                    reason="host_offline",
+                    detected_at=on(i + 1, 0, 5),  # the audit on wake
+                )
+            )
+    session.flush()
+
+
 TRUNCATE = [
     "ALTER TABLE match_decisions DISABLE TRIGGER match_decisions_append_only",
     "DELETE FROM match_decisions WHERE decided_at >= :cutoff",
@@ -182,6 +314,11 @@ TRUNCATE = [
     "DELETE FROM collector_run_targets WHERE captured_at >= :cutoff",
     "DELETE FROM variant_snapshots WHERE captured_at >= :cutoff",
     "DELETE FROM listing_snapshots WHERE captured_at >= :cutoff",
+    "DELETE FROM search_trends WHERE captured_at >= :cutoff",
+    "DELETE FROM collection_gaps WHERE detected_at >= :cutoff",
+    "ALTER TABLE product_keywords DISABLE TRIGGER product_keywords_no_delete",
+    "DELETE FROM product_keywords WHERE decided_at >= :cutoff",
+    "UPDATE listings SET delisted_at = NULL WHERE delisted_at >= :cutoff",
     "DELETE FROM raw_payloads WHERE captured_at >= :cutoff",
     # Today's pointers hold later merges and splits; nothing knew them then.
     "UPDATE listings SET product_id = NULL",
@@ -193,7 +330,8 @@ TRUNCATE = [
 def test_features_equal_those_from_a_copy_truncated_at_the_cutoff(db_engine: Engine) -> None:
     with Session(db_engine) as session:
         build(session)
-        for i in [15, 20, 29, 33, 36, 39, 40, 41, 45]:
+        build_inputs(session)
+        for i in [15, 20, 29, 30, 33, 36, 39, 40, 41, 44, 45]:
             day = START + timedelta(days=i)
             full = compute(session, day)
             truncated = session.begin_nested()
@@ -218,7 +356,7 @@ def test_membership_follows_the_decisions_known_at_the_cutoff(db_engine: Engine)
     assert (P["p6"], "cj_stock") not in after
     assert after[P["p1"], "shp_inv"].velocity_7d == 7 and after[P["p7"], "shp_inv"].velocity_7d == 3
     assert after[P["p1"], "shp_inv"].growth_7d is None  # t−14 fell in the Shopify outage
-    assert after[P["p2"], "shp_inv"][4:] == (None, None, Decimal(0), True)  # unknown, not 0
+    assert after[P["p2"], "shp_inv"][4:8] == (None, None, Decimal(0), True)  # unknown, not 0
     assert after[P["p4"], "shp_inv"].coverage == 1  # L6 never showed a level: not tracked
     cj = after[P["p5"], "cj_stock"]
     assert cj.growth_7d is not None and cj.has_gap  # no CJ evidence on day 41
@@ -257,3 +395,117 @@ def test_only_the_repository_imports_table_models() -> None:
         }
         tables = {m for m in modules if m.startswith(("pulso_core.models", "pulso_ml.matching"))}
         assert path.name == "repository.py" or not tables, path.name
+
+
+def r18(values: list[int]) -> float:
+    """R-18 by hand over 84 daily values, oldest first."""
+    return math.log((sum(values[56:]) / 28 + 1) / (sum(values[:56]) / 56 + 1))
+
+
+def slope(capture: int) -> float:
+    """A capture's slope: its complete days end the day before it."""
+    return r18([interest(capture, d) for d in range(capture - 84, capture)])
+
+
+@pytest.mark.db
+def test_search_slope_reads_one_capture_without_its_partial_point(db_engine: Engine) -> None:
+    with Session(db_engine) as session:
+        build(session)
+        build_inputs(session)
+        rows = {
+            (i, f.product_id): f.features
+            for i in [15, 20, 39, 40, 41, 44, 45]
+            for f in compute(session, START + timedelta(days=i))
+            if f.family == "gt_interest"
+        }
+    p1 = {i: rows[i, P["p1"]] for i in [15, 20, 39, 41, 45]}
+    assert p1[15]["gt_slope"] == pytest.approx(slope(13))
+    # Day 18's spike rescales day 20's capture: it stands alone, never stitched onto day 13's.
+    stitched = r18([interest(13, d) if d < 13 else interest(20, d) for d in range(-64, 20)])
+    assert p1[20]["gt_slope"] == pytest.approx(slope(20)) != pytest.approx(slope(13))
+    assert p1[20]["gt_slope"] != pytest.approx(stitched)
+    assert p1[39] == p1[20] == rows[39, P["p6"]]  # the Mondays between were missed
+    assert (20, P["p6"]) not in rows  # its keyword is confirmed on day 25
+    assert (40, P["p6"]) not in rows  # merged into P5 on day 40
+    assert p1[41]["gt_slope"] == pytest.approx(slope(41))
+    # The day-45 CSV holds only 30 days of P1's keyword, so day 41's capture still counts. P3's
+    # keyword, confirmed on day 44, has its first capture in that CSV.
+    assert p1[45] == p1[41] and (44, P["p3"]) not in rows
+    assert rows[45, P["p3"]] == {
+        "gt_slope": pytest.approx(math.log(61 / 41)),
+        "gt_keywords": 1,
+        "gt_as_of": on(45, 12).isoformat(),
+    }
+
+
+@pytest.mark.db
+def test_seller_growth_holds_its_panel_while_the_level_counts_every_store(
+    db_engine: Engine,
+) -> None:
+    def inputs(level: int, now: int, then: int, panel: int) -> dict[str, object]:
+        growth = pytest.approx(math.log((now + 1) / (then + 1)))
+        return {"shp_sellers": level, "shp_seller_g28": growth, "panel_size": panel}
+
+    with Session(db_engine) as session:
+        build(session)
+        build_inputs(session)
+
+        coverage: dict[int, set[Decimal]] = {}
+
+        def sellers(i: int) -> dict[UUID, object]:
+            rows = compute(session, START + timedelta(days=i))
+            coverage[i] = {f.coverage for f in rows if f.family == "shp_sellers"}
+            return {f.product_id: f.features for f in rows if f.family == "shp_sellers"}
+
+        assert sellers(15) == {P["p1"]: inputs(2, 1, 1, 2), P["p2"]: inputs(1, 1, 1, 2)}
+        # S1 joins in a panel store; S3's store isn't 28 days old yet; S2 is delisted on day 38.
+        assert sellers(36) == {P["p1"]: inputs(3, 2, 1, 2), P["p2"]: inputs(1, 1, 1, 2)}
+        assert sellers(39) == {P["p1"]: inputs(3, 3, 2, 3), P["p2"]: inputs(0, 0, 1, 3)}
+        assert coverage[39] == {1}  # the panel holds every store tracked by then
+        before = sellers(45)
+        assert before[P["p1"]] == inputs(4, 3, 2, 3)  # S4's store, imported today, isn't in it
+        assert coverage[45] == {Decimal("0.75")}
+        for n in range(10):  # a batch of newly tracked stores, each already selling P1
+            store = Store(domain=f"new{n}.example.test", platform="shopify")
+            store.first_seen_at = on(45, 13)
+            session.add(store)
+            session.flush()
+            sell(session, store, f"N{n}", "p1", on(45, 13))
+        after = sellers(45)
+    assert after == {P["p1"]: {**inputs(4, 3, 2, 3), "shp_sellers": 14}, P["p2"]: before[P["p2"]]}
+    assert coverage[45] == {Decimal("0.2143")}  # 3 of 14 tracked stores
+
+
+SOURCES = {"cj_stock": "cj", "shp_inv": "shopify_stores"}
+SOURCES |= {"gt_interest": "google_trends", "shp_sellers": "shopify_stores"}
+
+
+@pytest.mark.db
+def test_gap_flags_list_data_healths_gap_days(db_engine: Engine) -> None:
+    health = text(
+        "SELECT s.key, c.day FROM source_daily_coverage c JOIN sources s ON s.id = c.source_id "
+        "WHERE c.status = 'gap' ORDER BY c.day"
+    )
+    with Session(db_engine) as session:
+        build(session)
+        build_inputs(session)
+        gaps: dict[str, list[date]] = defaultdict(list)
+        for key, day in session.execute(health):
+            gaps[key].append(day)
+        day30, day45, day59 = (compute(session, START + timedelta(days=i)) for i in [30, 45, 59])
+    days = {key: [(d - START).days for d in found] for key, found in gaps.items()}
+    assert days == {"cj": [30], "shopify_stores": [30, 31, 32, 33, 34], "google_trends": [27, 34]}
+    assert {f.family for f in day45} == set(SOURCES)
+    for f in day45:  # t−28..t is days 17..45
+        expected = [d.isoformat() for d in gaps[SOURCES[f.family]] if d >= START + timedelta(17)]
+        assert f.gap_flags == {"missed_runs": expected}, f.family
+    # The audit found day 30's missed slots on waking, after day 30's cutoff.
+    trends = [(START + timedelta(27)).isoformat()]
+    assert all(
+        f.gap_flags["missed_runs"] == (trends if f.family == "gt_interest" else []) for f in day30
+    )
+    first = {f.family: f.gap_flags["missed_runs"][:1] for f in day59}  # days 31..59 only
+    assert first == {"shp_inv": ["2026-10-02"], "gt_interest": ["2026-10-05"]} | {
+        "shp_sellers": ["2026-10-02"],
+        "cj_stock": [],
+    }
