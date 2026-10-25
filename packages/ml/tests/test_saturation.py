@@ -113,7 +113,11 @@ def test_without_a_usable_seller_count_there_is_no_score_never_0(
 
 def test_only_the_products_asked_for_are_scored_and_normalised_over() -> None:
     rows, lineage = lamps()
-    for categories, used in [(lineage, LAMPS), (dict.fromkeys(lineage, ()), None)]:
+    cases: list[tuple[dict[UUID, tuple[int, ...]], int | None]] = [
+        (lineage, LAMPS),
+        (dict.fromkeys(lineage, ()), None),
+    ]
+    for categories, used in cases:
         del categories[UUID(int=40)]  # a row for a product not asked for: merged away, say
         scores = saturation_scores(rows, categories)
         assert set(scores) == set(categories)
