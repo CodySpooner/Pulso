@@ -1383,14 +1383,23 @@ export interface components {
         SettingsPatch: {
             /** Currency */
             currency?: "USD" | null;
+            /** Customs Fee Minor */
+            customs_fee_minor?: number | null;
             /** Default Country */
             default_country?: "US" | null;
             /** Default Cpa Minor */
             default_cpa_minor?: number | null;
+            /**
+             * Duty Default Bps
+             * @description Null: duty not set, so margins that need it stay incomplete (never 0).
+             */
+            duty_default_bps?: number | null;
             /** Payment Fee Bps */
             payment_fee_bps?: number | null;
             /** Payment Fee Fixed Minor */
             payment_fee_fixed_minor?: number | null;
+            /** Returns Bps */
+            returns_bps?: number | null;
             /** Shopify Fee Bps */
             shopify_fee_bps?: number | null;
             /** Target Margin Bps */
@@ -1403,6 +1412,8 @@ export interface components {
              * @constant
              */
             currency: "USD";
+            /** Customs Fee Minor */
+            customs_fee_minor: number;
             /**
              * Default Country
              * @constant
@@ -1410,10 +1421,17 @@ export interface components {
             default_country: "US";
             /** Default Cpa Minor */
             default_cpa_minor: number;
+            /**
+             * Duty Default Bps
+             * @description Null: duty not set, so margins that need it stay incomplete (never 0).
+             */
+            duty_default_bps: number | null;
             /** Payment Fee Bps */
             payment_fee_bps: number;
             /** Payment Fee Fixed Minor */
             payment_fee_fixed_minor: number;
+            /** Returns Bps */
+            returns_bps: number;
             /** Shopify Fee Bps */
             shopify_fee_bps: number;
             /** Target Margin Bps */
