@@ -370,6 +370,22 @@ class BoardItem(WorkspaceOwned, Base):
     added_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
+class SavedScreen(WorkspaceOwned, CreatedAt, Base):
+    """A workspace's saved Screener definition (WF-1, DEC-336). `definition` is the API's
+    validated {filters, sort, order} at `version`: a later filter change bumps the version and
+    migrates older rows. Current preference, not history: deleted in place."""
+
+    __tablename__ = "saved_screens"
+    __table_args__ = (
+        UniqueConstraint("workspace_id", "name"),  # also the list's order, by name
+        CheckConstraint("version >= 1", name="version_range"),
+    )
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    name: Mapped[str] = mapped_column(String(80))
+    version: Mapped[int] = mapped_column(SmallInteger)
+    definition: Mapped[dict[str, Any]] = mapped_column(JSONB)
+
+
 ALERT_TARGETS = ("product", "watchlist", "store", "saved_screen", "supplier_offer", "test", "all")
 
 

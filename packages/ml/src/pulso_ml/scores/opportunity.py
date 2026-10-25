@@ -9,10 +9,14 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, NamedTuple
+from uuid import UUID
+
+from sqlalchemy import Select
+from sqlalchemy.orm import Session
 
 from pulso_core.landed_cost import Amount, Inputs, landed_cost
 from pulso_core.models import Score, WorkspaceSettings
-from pulso_core.scores import Component, Explanation, Penalty, explain, version
+from pulso_core.scores import Component, Explanation, Kind, Penalty, explain, latest, version
 from pulso_ml.features.daily import cutoff
 
 VIEW = "workspace_product_economics"  # the margin component's source
@@ -62,6 +66,15 @@ def stored(row: Score | None) -> Stored | None:
         return None
     value = None if row.value is None else float(row.value)
     return Stored(value, min(cutoff(row.date), row.computed_at))
+
+
+def latest_rows(
+    session: Session, kind: Kind, products: Sequence[UUID] | Select[tuple[UUID]]
+) -> dict[UUID, Score]:
+    """Each product's newest `kind` row, in one query for any number of products (imp-488):
+    `pulso_core.scores.latest` over a list of ids or a query of them."""
+    query = latest(kind).where(Score.product_id.in_(products))
+    return {row.product_id: row for row in session.scalars(query)}
 
 
 def margin_of(row: Mapping[Any, Any] | None, settings: WorkspaceSettings | None) -> Margin | None:
