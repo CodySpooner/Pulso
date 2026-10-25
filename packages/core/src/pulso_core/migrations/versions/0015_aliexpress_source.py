@@ -7,8 +7,8 @@ Frozen schema: do not import live application models into a revision.
 import sqlalchemy as sa
 from alembic import op
 
-revision = "0014"
-down_revision = "0013"
+revision = "0015"
+down_revision = "0014"
 branch_labels = None
 depends_on = None
 

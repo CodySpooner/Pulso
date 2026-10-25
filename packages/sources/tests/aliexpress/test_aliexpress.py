@@ -175,7 +175,7 @@ def engine(request: pytest.FixtureRequest) -> Iterator[Engine]:
 @pytest.fixture
 def session(engine: Engine) -> Iterator[Session]:
     with Session(engine, expire_on_commit=False) as session:
-        # Postgres has the row migration 0014 seeds (DEC-289); SQLite builds bare tables.
+        # Postgres has the row migration 0015 seeds (DEC-289); SQLite builds bare tables.
         session.merge(
             Source(id=9, key="aliexpress", name="AliExpress", type="official_api", phase=3)
         )
