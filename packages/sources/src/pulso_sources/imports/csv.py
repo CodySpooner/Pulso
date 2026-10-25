@@ -52,6 +52,27 @@ def decode_upload(body: bytes) -> str:
     return body.decode("utf-8-sig")
 
 
+def _merchant_filters(text: str) -> tuple[str, dict[str, str]]:
+    """Merchant Center's download opens with `Name:` and `Filters:` lines (DEC-267 a).
+
+    Its Country, Category and Time period filters become every row's columns. Only a
+    weekly report names its week, as `W` and the Monday that starts it.
+    """
+    lines = text.splitlines(keepends=True)
+    extra: dict[str, str] = {}
+    while lines and lines[0].lstrip('"').startswith(("Name:", "Filters:")):
+        cell = next(csv.reader([lines.pop(0)]))[0]
+        for part in cell.removeprefix("Filters:").split(";") if cell.startswith("Filters:") else []:
+            name, _, value = (side.strip() for side in part.partition("="))
+            if name == "Time period":
+                if not re.fullmatch(r"W\d{8}", value):
+                    raise ValueError("Download the weekly report: its Time period starts with W")
+                extra["report_week"] = datetime.strptime(value[1:], "%Y%m%d").date().isoformat()
+            elif name in {"Country", "Category"}:
+                extra[name.lower()] = value
+    return "".join(lines), extra
+
+
 def _cell(value: str, column: Column, currency: str) -> Cell:
     if "\x00" in value:
         raise ValueError("NUL characters are not allowed")
@@ -142,6 +163,9 @@ def _entity_errors(source_key: str, rows: dict[int, Row], as_of: date) -> list[R
                 checks.append((("cj_product_id", "sku", sku), (pid,)))
         elif source_key == "fx_frankfurter":
             checks = [(("date", row["date"], row["base"], row["quote"]), None)]
+        elif source_key == "merchant_bestsellers":
+            report = (row["country"], row.get("category"), row["report_week"])
+            checks = [(("popularity_rank", *report, row["popularity_rank"]), None)]
         for identity, values in checks:
             prior, prior_values = seen.setdefault(identity, (line, values))
             if prior != line and (values is None or prior_values != values):
@@ -163,6 +187,7 @@ def parse_csv(
     """Mapping is uploaded header -> template column; unknown/duplicate headers fail closed."""
     template = TEMPLATES[source_key]
     text = decode_upload(body)
+    text, extra = _merchant_filters(text) if source_key == "merchant_bestsellers" else (text, {})
     as_of = as_of or datetime.now(UTC).date()
 
     def normalize(name: str) -> str:
@@ -177,8 +202,9 @@ def parse_csv(
         trailing = len(headers) > 1 and headers[-1] == ""
         if trailing:
             headers.pop()
-        unknown = [h for h in headers if h not in template.columns]
-        duplicate = sorted({h for h in headers if headers.count(h) > 1})
+        named = headers + list(extra)
+        unknown = [h for h in named if h not in template.columns]
+        duplicate = sorted({h for h in named if named.count(h) > 1})
         problems = [
             f"{label} columns: " + ", ".join(name[:60] or "(blank)" for name in names[:10])
             for label, names in (("Unknown", unknown), ("Duplicate", duplicate))
@@ -189,10 +215,10 @@ def parse_csv(
         missing = [
             name
             for name, col in template.columns.items()
-            if col.required and not col.default and name not in headers
+            if col.required and not col.default and name not in named
         ]
-        missing += [name for name in template.required_headers if name not in headers]
-        if template.one_of and not any(name in headers for name in template.one_of):
+        missing += [name for name in template.required_headers if name not in named]
+        if template.one_of and not any(name in named for name in template.one_of):
             missing.append(" or ".join(template.one_of))
         if missing:
             raise ValueError("Missing required columns: " + ", ".join(missing))
@@ -210,7 +236,7 @@ def parse_csv(
             if len(values) != len(headers):
                 errors.append(RowError(line, "", "Row width differs from header"))
                 continue
-            raw = dict(zip(headers, values, strict=True))
+            raw = extra | dict(zip(headers, values, strict=True))
             row: Row = {}
             start = len(errors)
             for name, column in template.columns.items():
@@ -220,7 +246,8 @@ def parse_csv(
                         errors.append(RowError(line, name, "Required field is missing"))
                     continue
                 try:
-                    cell = _cell(value, column, raw.get("currency") or "USD")
+                    currency = raw.get("currency") or raw.get("price_range_currency")
+                    cell = _cell(value, column, currency or "USD")
                     row[name] = cell
                     if isinstance(cell, date) and cell > as_of:
                         errors.append(
@@ -243,6 +270,9 @@ def parse_csv(
                 errors.append(RowError(line, "max_days", "Must be at least min_days"))
             if row.get("moq") == 0:  # the CJ adapter's PositiveInt (imp-151)
                 errors.append(RowError(line, "moq", "Must be at least 1"))
+            week = row.get("report_week")
+            if isinstance(week, date) and week.weekday():
+                errors.append(RowError(line, "report_week", "Use the Monday that starts the week"))
             if len(errors) == start:
                 rows[line] = row
         duplicates = _entity_errors(source_key, rows, as_of)

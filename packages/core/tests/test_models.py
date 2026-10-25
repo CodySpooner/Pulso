@@ -33,6 +33,7 @@ def test_observation_contract() -> None:
             "observed_for",
             "metric",
         ),
+        "popular_products": ("source_id", "country", "category", "observed_for", "rank"),
     }
     observed = []
     for mapper in Base.registry.mappers:
@@ -73,6 +74,7 @@ def test_observation_contract() -> None:
         "shipping_options",
         "fx_rates",
         "search_trends",
+        "popular_products",
     }
 
 
@@ -102,7 +104,8 @@ def test_single_migration_head_and_offline_sql(
     output = StringIO()
     config = Config(str(Path(__file__).resolve().parents[3] / "alembic.ini"), output_buffer=output)
     scripts = ScriptDirectory.from_config(config)
-    assert scripts.get_heads() == ["0008"]
+    assert scripts.get_heads() == ["0009"]
+    assert scripts.get_revision("0009").down_revision == "0008"
     assert scripts.get_revision("0008").down_revision == "0007"
     assert scripts.get_revision("0007").down_revision == "0006"
     assert scripts.get_revision("0006").down_revision == "0005"

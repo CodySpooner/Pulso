@@ -76,6 +76,25 @@ TEMPLATES = {
             "rate": Column("rate", True),
         }
     ),
+    # Google's download headers, normalized; its Filters line fills the first three (DEC-267).
+    "merchant_bestsellers": Template(
+        {
+            "report_week": Column("date", True),
+            "country": Column("country", True),
+            "category": Column("text"),
+            "popularity_rank": Column("int", True),
+            "previous_rank": Column("int"),
+            "title": Column("text", True),
+            "brand": Column("text"),
+            "availability": Column("text"),
+            "relative_demand": Column("text"),
+            "relative_demand_change": Column("text"),
+            "gtins": Column("text"),
+            "price_range_min": Column("money"),
+            "price_range_max": Column("money"),
+            "price_range_currency": Column("currency"),
+        }
+    ),
 }
 
 
