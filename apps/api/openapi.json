@@ -1158,7 +1158,8 @@
                 "freight_missing",
                 "freight_variant_mismatch",
                 "duty_not_set",
-                "fx_missing"
+                "fx_missing",
+                "amount_out_of_range"
               ],
               "type": "string"
             },
