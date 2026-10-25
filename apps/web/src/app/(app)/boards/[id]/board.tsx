@@ -486,8 +486,22 @@ function Cards({ board, setNote, saved }: { board: Board; setNote: ReturnType<ty
                         <th scope="col" className="py-2 pr-4 text-left font-medium">
                           Product
                         </th>
+                        {["Price", "Best margin", "Trend"].map((label) => (
+                          <th key={label} scope="col" className="py-2 pr-4 text-right font-medium whitespace-nowrap">
+                            {label}
+                          </th>
+                        ))}
+                        <th scope="col" className="py-2 pr-4 text-left font-medium">
+                          Lifecycle
+                        </th>
+                        <th scope="col" className="py-2 pr-4 text-right font-medium">
+                          Saturation
+                        </th>
                         <th scope="col" className="py-2 pr-4 text-left font-medium">
                           Note
+                        </th>
+                        <th scope="col" className="py-2 pr-4 text-left font-medium whitespace-nowrap">
+                          Data as of
                         </th>
                         <th scope="col" className="py-2 pr-2 text-right font-medium">
                           Added
@@ -557,6 +571,11 @@ function CardsSkeleton() {
           <Skeleton className="aspect-[4/3] w-full rounded-none" />
           <div className="flex flex-col gap-2 p-3">
             <Skeleton className="h-4 w-3/4" />
+            <div className="flex flex-col gap-2 border-t border-border-subtle pt-2">
+              {[0, 1, 2, 3, 4].map((row) => (
+                <Skeleton key={row} className="h-3.5" />
+              ))}
+            </div>
             <Skeleton className="h-8" />
             <Skeleton className="h-3 w-1/3" />
           </div>
