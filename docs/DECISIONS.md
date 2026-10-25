@@ -3125,3 +3125,26 @@ Superseded review defaults, not given entries: default #0 (move the repo) is don
   - Hysteresis (two nights before a change shows) and storing the stage with its explanation: the scores writer (SC-6), on p4-01's table.
   - Coverage in the explanation's confidence: Score Definitions §6.
   - SPEC §7's own threshold text, and `/methodology` (MT-1).
+
+### DEC-300 · Discover `store` and `supplier` filters: a vendor's live listings, named on the page for their chips; an unknown id lists nothing; the palette's vendor rows open them
+**2026-10-25 · proposed (imp-242)** · Improvement backlog row imp-242 (p2-16 report backlog row 1); amends DEC-252's "a store or supplier opens its top product"; DEC-239, DEC-261; vault Features/Discover, Features/Command Palette & Search; `docs/reports/imp-242.md`; no migration, dependency, flag or new endpoint
+- **Decision:**
+  - **(a) Filters.** `GET /v1/products` takes `store` and `supplier` (a `stores.id` / `suppliers.id`, 1 to 2^63 − 1, else 422). A product matches when it has a live (not delisted) listing at that store or from that supplier: the same `EXISTS` the `source` filter uses, now one shared shape for all three. They AND with each other and every other filter, and keep the keyset cursor.
+  - **(b) Named on the page.** `DiscoverPage` gains `store` and `supplier`, each `{id, name}` (a store's domain, a supplier's name) or null. The chip reads its name from the page it already loads, so there is no lookup endpoint and nothing in the URL but the id.
+  - **(c) Unknown id.** An id that names no store or supplier answers 200 with no items and a null echo, as an unknown `category` or `source` already does. The chip then reads "#id, not found" and the filtered empty state offers to remove it.
+  - **(d) The palette.** A store or supplier row opens `/discover?store=<id>` or `?supplier=<id>`: Enter, or 1 click or tap once the row shows. The footer reads "Show products". A row whose vendor has no live product (`top_product_id` null) stays disabled with "No products yet", sorted last: opening an empty list would be a dead end.
+  - **(e) Chips.** Only the store and supplier filters show as chips, since they have no control. The others keep their visible controls. The chips sit in the toolbar's wrap under the filters at every width, outside the phone's filter sheet, and count in "Filters (n)". "Clear filters" clears them too. A removal moves focus to the other chip, else to the page's h1 (as after a navigation). They leave with Motion pattern 5. Layout reflows only when a chip leaves, not when a name loads, and reduced motion keeps the fade without the scale.
+  - **(f) No index.** On p2-16's realistic catalog (10,000 products, 30,000 listings, 2,000 stores, 500 suppliers, VACUUM ANALYZE), the planner drives both filters from the existing `ix_listings_store_id` / `ix_listings_supplier_id` (bitmap scan, a semi-join, then `pk_products`). Feed-query execution is 0.19 ms for a store and 0.56 ms for a supplier, against 158 ms unfiltered.
+- **Alternatives:**
+  - (b) The name in the URL from the palette: a shared or edited link could show the wrong name. A `GET /v1/stores/{id}`: Store Spy's job (Phase 3), and a second request for one string.
+  - (c) A 404 problem: a stale link would show "Couldn't load products" instead of a removable filter. It would also break the category and source precedent.
+  - (d) Enable the empty rows too: one click to an empty state the row already predicts.
+  - (e) Chips for every active filter: duplicates controls that are already on screen. That is the Screener's pattern (Phase 4).
+- **Why:** `apps/api/tests/test_products.py`, three new tests on `pgvector/pgvector:0.8.7-pg18-trixie`:
+  - match, one product per page so the cursor is exercised, with AND across filters;
+  - a delisted listing and a merged product don't match;
+  - no match and an unknown id each give an empty page; bad ids answer 422;
+  - global market data: two workspaces get identical pages. Margins stay per workspace, as `test_discover_best_margin_reads_only_the_callers_workspace` already checks.
+
+  Playwright `e2e/discover/vendor-filters.spec.ts` (6 tests) covers the palette row reaching filtered Discover in 1 click, the chip removing the filter, keyboard focus, the empty and unknown states, reduced motion and the phone layout.
+- **Not here:** Store Spy store pages (Phase 3) would make the palette's store row open the store; a store or supplier picker in the filter bar (Product Screener, Phase 4).
