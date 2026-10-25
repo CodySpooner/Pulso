@@ -142,7 +142,7 @@ export function AliExpressLookup({ id }: { id: string }) {
           <p className="text-data text-muted-foreground">
             {data.status === "not_found" && data.as_of
               ? `AliExpress found no product for the last link, as of ${formatUtc(data.as_of)}. Check the link and look it up again.`
-              : "No lookup yet. Paste this product's AliExpress link to see each variant's unit cost and stock, and US shipping when the link names a variant (skuId)."}
+              : "No lookup yet. Paste this product's AliExpress link to see each variant's unit cost and stock. A link copied with a variant chosen adds US shipping."}
           </p>
         )}
       </>
@@ -246,7 +246,7 @@ function Answer({ data, now }: { data: Found; now: number }) {
   return (
     <div className="flex flex-col gap-3">
       <div className="flex flex-col gap-0.5">
-        <p className="truncate text-body font-medium text-foreground" title={product.title}>
+        <p className="truncate text-title-3 font-semibold text-foreground" title={product.title}>
           {product.title}
         </p>
         <p className="flex flex-wrap items-center gap-x-2 text-label text-muted-foreground">
