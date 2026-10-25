@@ -177,7 +177,7 @@ function Toolbar({ page, week, all, set }: { page: Page; week: string | null; al
           {!page.categories.includes(page.category) && <option value={page.category ?? ""}>{leaf(page.category)}</option>}
         </select>
       </Field>
-      <Button aria-pressed={all} onClick={() => set({ brands: all ? null : "all" })} className="aria-pressed:border-border-strong aria-pressed:bg-accent sm:ml-auto">
+      <Button aria-pressed={all} onClick={() => set({ brands: all ? null : "all" })} className="aria-pressed:border-brand/40 aria-pressed:bg-brand-muted aria-pressed:text-foreground sm:ml-auto">
         {all ? <Eye aria-hidden /> : <EyeOff aria-hidden />}
         Show major brands
         {!all && <span className="font-normal text-muted-foreground tabular-nums">({count(page.hidden)} hidden)</span>}
@@ -244,11 +244,11 @@ function Table({ rows, page }: { rows: Row[]; page: Page }) {
               </td>
               <th scope="row" className={cn(cell, "max-w-104 text-left font-normal")}>
                 {row.product_id ? (
-                  <Link href={`/products/${row.product_id}`} title={row.title} className="block truncate rounded-sm font-medium text-foreground hover:underline">
+                  <Link href={`/products/${row.product_id}`} title={`${row.title} · open in Pulso`} className="block truncate rounded-sm font-medium text-foreground hover:underline">
                     {row.title}
                   </Link>
                 ) : (
-                  <span title={row.title} className="block truncate text-foreground">
+                  <span title={`${row.title} · no Pulso product shares its GTIN yet`} className="block truncate text-foreground">
                     {row.title}
                   </span>
                 )}
