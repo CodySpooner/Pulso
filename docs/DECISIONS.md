@@ -2021,3 +2021,71 @@ Superseded review defaults, not given entries: default #0 (move the repo) is don
   - Userinfo and backslash URLs have no host.
   - The FX skip is logged for captures at 00:00Z, 23:59:59Z and an aware UTC−5 time, keyed by the UTC date.
 - **Not here:** enabling `listing_images` (owner decision); whether per-object 403s should count toward the block rule (imp-200's first half); how a quiet day with images in backoff reads (imp-198).
+
+### DEC-243 · Product Overview tab and context rail: one flat overview resource with per-stat provenance, workspace notes in keyset pages and tags by PUT, optimistic saves with rollback
+**2026-10-24 · proposed (p2-07)** · Phase 2 task UX-4; DEC-031, DEC-040, DEC-236, DEC-238, DEC-239; SPEC §6.4, §1, §10; vault Features/Product Page - Overview, Features/Product Page; no migration (0005's `product_notes` and `product_tags` are used as they are), no dependency
+- **Decision:**
+  - **(a) Resource.** `GET /v1/products/{id}/overview` (operationId `get_product_overview`) returns a flat `ProductOverview`:
+    - `price_min_minor`, `price_median_minor` and `price_max_minor`;
+    - `best_supplier_cost_minor` (`SupplierCost` = `Sourced` + `platform`);
+    - `landed_margin_minor`, always `NoSource` ("The landed-cost engine arrives with UX-8.");
+    - `first_seen_at` with `age_days`;
+    - `velocity` (DEC-239's `Velocity | NoSource`);
+    - `appearances` (`{vendor, count}` per source);
+    - `ad_count`, `NoSource` ("No ad source is connected yet.").
+
+    Every number is DEC-238's `Sourced | NoSource`, so `<Metric>` and the contract test apply unchanged. This replaces the vault's `{stats, explanation, mini_series, appearances, images, as_of}`: `explanation` (Phase 4), `mini_series` (UX-5) and `images` (M-2 b) join when they exist, as their own fields or resources. An unknown id is 404, and a merged id is the 409 problem `merged` ("Reload the page"). The page reaches the overview only through the header, which already 308s a merged id.
+  - **(b) Stats.** Each stat uses the latest snapshot per live listing.
+    - **Retail:** USD store listings only (owner decision 3; other currencies wait for an FX basis). The median is the lower middle (`percentile_disc(0.5)`), so it is always a price that was actually observed.
+    - **Best supplier cost:** the lowest USD supplier price where `available` is not false and `stock` is null or above 0.
+    - **Age:** the UTC date difference from `products.first_seen_at`. It is sourced by the earliest snapshot of any of the product's listings, and is `NoSource` when there is none.
+    - **Velocity:** DEC-239(c) unchanged, with the same family ranking and the same reason. The UI says "Insufficient signal", like Discover, rather than "no source yet": a source exists, but no series qualifies.
+    - **Appearances:** stores count distinct stores; suppliers count listings, because CJ writes one supplier row for all its listings, so a supplier count would always read 1.
+  - **(c) Score cards.** Trend Score, Saturation and Lifecycle are not rendered at all before `ff_scores` (Phase 4) and are not in the payload. The grid holds five cards: 2-up on phones, 3 + 2 from 768 px, and 5 in a row from 1920 px.
+  - **(d) Notes.** The workspace keeps many plain-text notes per product (the task brief), not the vault's single autosaved markdown note.
+    - `GET /v1/products/{id}/notes` (`list_product_notes`) returns them newest first as `NotePage {items, next_cursor}`: 20 a page by default, at most 100. The cursor is the keyset `[created_at, id]` as JSON; a bad one gets the 422 problem `invalid_cursor`.
+    - `POST` (`create_product_note`) takes `{body}`, 1–10,000 characters after trimming; extra fields get 422. It returns 201 with the note.
+    - Notes are not edited or deleted here. The author is stored but not shown, because v1 has one user.
+  - **(e) Tags.** `GET` / `PUT /v1/products/{id}/tags` (`list_product_tags`, `put_product_tags`). The PUT replaces the workspace's whole set:
+    - at most 20 tags of 1–80 characters;
+    - whitespace collapsed, and case-insensitive duplicates dropped, keeping the first spelling;
+    - the set sorted case-insensitively.
+
+    A whole-set PUT makes a retry idempotent, and the optimistic rollback is a plain restore. The vault's type-ahead from a `tags` table waits, because 0005 stores the tag text on `product_tags` directly.
+  - **(f) Workspace scope.** Every notes and tags query filters on the caller's `Principal.workspace_id` from `current_principal`. A PUT deletes and inserts only inside that scope. A product is global market data; its notes and tags are not.
+  - **(g) Optimistic saves.**
+    - **Note:** it shows at once at the top as "Saving…" (60 % opacity) under a temporary id, and on success the server's note replaces it. On error it is removed, and its text goes back into the box unless something new has been typed. A `role="alert"` line gives the problem detail and the error ID.
+    - **Tag change:** it writes the cache at once. On error the previous set is restored, the alert says "Your change was undone", and the tags are refetched.
+  - **(h) Rail layout.** The rail is a 20 rem column beside every tab from 1280 px (`xl`), and stacks under the tab panel below that. Three vault items are deferred (backlog rows in `docs/reports/p2-07.md`): the overlay sheet between 1280 and 1440 px, the `\` toggle with its remembered state, and the bottom sheet from More on phones. Until then, stacking keeps the rail reachable at every width without adding new state.
+  - **(i) Keyboard.**
+    - **N** focuses the note box unless focus is already in a field (the shell's `isTyping`, now exported). **Ctrl/⌘ + Enter** adds the note.
+    - **Enter** in the tag box adds a tag. A case-only repeat is refused inline ("Already tagged …"), and an empty box does nothing.
+    - Removing a tag moves focus to the next chip's remove button, else the previous one, else the input.
+    - The "Where it appears" buttons switch tabs and move focus to the opened tab's trigger.
+    - The vault's "Enter on a focused card jumps to its tab" is deferred: each card's numbers are `<Metric>` buttons, so the card can't also be a button.
+  - **(j) States.**
+    - **Overview:** one request, so one loading skeleton (the exact grid) and one panel error with Retry. On a failed refetch it keeps its data under a stale line, and each card marks its own source as stale. The vault's per-card error waits until the cards have separate requests.
+    - **Tags and notes panels:** each has a skeleton, an empty state, a panel error and a stale line. A failed "older notes" page fails at the foot of the list (the DEC-236 pattern).
+  - **(k) Motion.** The Overview fades in like the other tabs' panels (opacity, the `fast` token). The vault's 40 ms card stagger is left out, so that one tab doesn't move differently from the rest.
+- **Alternatives:**
+  - (a) Nesting the stats under `stats`: one more level for no gain. Reusing the header resource: the overview adds the median, the cost and velocity, which the header doesn't carry.
+  - (d) The vault's single autosaved note: the brief asks for a list with POST, and an autosave can't roll back cleanly. Offset paging: unstable while notes are being added.
+  - (e) `POST` / `DELETE` per tag: two endpoints, and a rollback per tag.
+  - (h) Building the overlay sheet now: its `\` toggle and remembered state belong with the page's other shortcuts, and stacking already works.
+- **Why:**
+  - **API tests** (Postgres, `pgvector/pgvector:0.8.7-pg18-trixie`):
+    - The overview stats of five fixture products equal a raw-SQL spot check. The fixtures cover CAD and delisted rows, an even count for the median, out-of-stock and unavailable offers, same-day family ranking, and a product with no features. Each stat traces to its payload.
+    - An unknown product is 404, a merged one 409, and every endpoint is 401 without a principal.
+    - Notes page newest first with no repeats. Bad bodies, cursors and limits get 422. Tags normalize and replace.
+    - A note or tag written by workspace A is invisible to B, and B's PUT doesn't touch A's. Removing the workspace filter fails this test.
+  - **Vitest:** the tag rules.
+  - **Playwright** (12 tests), all against fixtures:
+    - the five cards, and the score cards hidden;
+    - each of the 8 numbers opening its provenance card by keyboard;
+    - the links to Suppliers and Sellers;
+    - the no source yet state (never 0), loading, error and stale;
+    - N + Ctrl+Enter adding a note;
+    - tags added, refused and removed, with focus kept;
+    - optimistic notes, and the rollback of notes and tags on a 503;
+    - older notes paging, and the rail's load errors;
+    - no sideways scroll at 375 px.
