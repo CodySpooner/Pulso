@@ -20,7 +20,6 @@ type Velocity = components["schemas"]["Velocity"];
 const usd = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" });
 const money = (minor: number) => usd.format(minor / 100);
 const count = (n: number) => n.toLocaleString("en-US");
-const perWeek = (n: number) => `${count(n)}/7d`;
 const ago = (days: number) => (days === 0 ? "Today" : days === 1 ? "1 day ago" : `${count(days)} days ago`);
 const day = new Intl.DateTimeFormat("en-US", { dateStyle: "medium", timeZone: "UTC" });
 const platform = (key: string) => (key.length <= 3 ? key.toUpperCase() : key[0].toUpperCase() + key.slice(1));
@@ -104,10 +103,14 @@ export function Overview({ id, goTo }: { id: string; goTo: (tab: Tab) => void })
             detail={!("reason" in velocity) && <Momentum v={velocity} now={now} />}
           >
             {"reason" in velocity ? (
-              <Metric stat={velocity} label="Velocity 7d" missing="Insufficient signal" format={perWeek} now={now} />
+              <Metric stat={velocity} label="Velocity 7d" missing="Insufficient signal" format={count} now={now} />
             ) : (
               <span className="inline-flex flex-wrap items-center gap-x-2 gap-y-1">
-                <Metric stat={velocity} label={`Velocity 7d, ${velocity.method}`} format={perWeek} now={now} />
+                <span>
+                  <Metric stat={velocity} label={`Velocity 7d, ${velocity.method}`} format={count} now={now} />
+                  {/* The unit at half the number's size, so the number reads first. */}
+                  <span className="font-sans text-data font-normal text-muted-foreground">/7d</span>
+                </span>
                 <span className={cn(chip, "border-border text-muted-foreground")}>Grade {velocity.grade === "unproven" ? "?" : velocity.grade}</span>
                 {velocity.grade === "B" && <span className={cn(chip, "border-border text-muted-foreground")}>lower bound</span>}
                 {velocity.gap && (
@@ -147,6 +150,8 @@ const KINDS = {
   supplier: { label: "Suppliers", icon: Box, tab: "suppliers", none: "No supplier listing matched yet." },
   store: { label: "Stores", icon: Store, tab: "sellers", none: "No store listing matched yet." },
 } as const;
+// On phones the source or reason takes a full-width second line rather than being cut off or squeezed.
+const sub = "text-label text-subtle-foreground max-sm:col-[2/-1] max-sm:row-start-2 max-sm:-mt-0.5 sm:ml-2";
 const row = "grid min-h-11 grid-cols-[auto_minmax(0,1fr)_auto_auto] items-center gap-x-3 border-b border-border-subtle px-4 py-1.5 last:border-b-0";
 
 /** Counts per source, each opening its tab; a kind with no listing, and ads, read "No source yet", never 0. */
@@ -165,9 +170,9 @@ function Appears({ data, now, goTo }: { data: { appearances: { vendor: "store" |
           return (
             <li key={i} className={row}>
               <kind.icon className="size-4 text-muted-foreground" aria-hidden />
-              <span className="min-w-0 truncate text-body text-foreground">
+              <span className="min-w-0 text-body text-foreground max-sm:contents sm:truncate">
                 {kind.label}
-                <span className="ml-2 text-label text-subtle-foreground">{"reason" in stat ? stat.reason : stat.source_name}</span>
+                <span className={sub}>{"reason" in stat ? stat.reason : stat.source_name}</span>
               </span>
               <Metric stat={stat} label={where} format={count} now={now} className={cn("justify-self-end text-body", !("reason" in stat) && "font-mono text-foreground")} />
               <Button variant="ghost" size="sm" onClick={() => goTo(kind.tab)} aria-label={`Open the ${tab} tab`} className="-mr-2">
@@ -179,9 +184,9 @@ function Appears({ data, now, goTo }: { data: { appearances: { vendor: "store" |
         })}
         <li className={row}>
           <Megaphone className="size-4 text-muted-foreground" aria-hidden />
-          <span className="min-w-0 truncate text-body text-foreground">
+          <span className="min-w-0 text-body text-foreground max-sm:contents sm:truncate">
             Ads
-            {"reason" in data.ad_count && <span className="ml-2 text-label text-subtle-foreground">{data.ad_count.reason}</span>}
+            {"reason" in data.ad_count && <span className={sub}>{data.ad_count.reason}</span>}
           </span>
           <Metric stat={data.ad_count} label="Ads" format={count} now={now} className="justify-self-end text-body" />
           <span />
