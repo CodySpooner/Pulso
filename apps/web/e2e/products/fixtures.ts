@@ -175,6 +175,7 @@ export async function mockProductApi(page: Page, options: ProductMock = {}) {
     if (part === "keywords") return route.fulfill({ json: decided }); // its keywords (p3-02); that spec keeps POSTs
     if (part === "suppliers") return route.fulfill({ json: noSuppliers }); // the Suppliers tab (p2-26); its spec mocks rows
     if (part === "amazon-ranks") return route.fulfill({ json: { source: "amazon", source_name: "Amazon", imported: true, rows: [], as_of: null, captured_at: null, stale: false } }); // Trends, not ranked (p3-07)
+    if (part === "aliexpress") return route.fulfill({ json: { status: "disabled" } }); // AE-3's honest default; its spec mocks the rest
     return route.fulfill({ json: options.body ?? product });
   });
   return calls;

@@ -59,6 +59,13 @@ export const sources: S["SourceHealth"][] = [
   },
 ];
 
+/** AE-3 (p3-05): the AliExpress row its migration seeds, off until the owner turns it on (DEC-289). */
+export const aliexpress: S["SourceHealth"] = {
+  key: "aliexpress", name: "AliExpress", type: "official_api", phase: 3, enabled: false, status: "disabled", disabled_reason: null,
+  disabled_at: null, retry_not_before: null, last_status_code: null, last_run: null, freshness: null, seed_approved: null,
+  approved_targets: null, quota_used: null, quota_limit: null, csv_import: null,
+};
+
 /** imp-161: CJ's activity countdown (DEC-216) as the API serves it at NOW, from an order `days` before 30 run out. */
 export const activity = (state: S["CJActivity"]["state"], days: number): S["CJActivity"] => ({
   state, days_remaining: days, as_of: at(24 * (30 - days)), observed_at: at(1),
