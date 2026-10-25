@@ -51,11 +51,11 @@ def test_phase2_round_trip(db_engine: Engine) -> None:
     version = text("SELECT version_num FROM alembic_version")
     with db_engine.begin() as connection:
         config.attributes["connection"] = connection
-        command.downgrade(config, "-1")
+        command.downgrade(config, "0004")
         assert connection.scalar(version) == "0004"
         assert connection.scalar(text("SELECT to_regclass('match_decisions')")) is None
         command.upgrade(config, "head")
-        assert connection.scalar(version) == "0005"
+        assert connection.scalar(version) == "0006"
 
 
 @pytest.mark.parametrize(
@@ -90,8 +90,8 @@ def test_phase2_downgrade_refuses_owner_input(db_engine: Engine, owner_input: st
             pytest.raises(DBAPIError, match="Phase 2 owner input"),
             connection.begin_nested(),
         ):
-            command.downgrade(config, "-1")
-        assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "0005"
+            command.downgrade(config, "0004")
+        assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "0006"
 
 
 def test_embedding_knn_uses_hnsw(db_engine: Engine) -> None:
