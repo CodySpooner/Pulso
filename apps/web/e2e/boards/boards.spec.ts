@@ -1,5 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 
+import { contrastMisses } from "../p2-39/screens";
 import { BOARD, mockBoardsApi, OPEN_TEST, PRODUCT } from "./fixtures";
 
 // WF-3b Boards against fixture responses (the E2E auth bypass, never a database restore).
@@ -194,3 +195,22 @@ test("phone width: no horizontal page scroll on the index, the grid or the table
   await expect(page.getByRole("rowheader", { name: "Sunset projection lamp" })).toBeVisible();
   expect(await noHorizontalScroll(page)).toBe(true);
 });
+
+for (const theme of ["dark", "light"] as const)
+  test(`AA contrast on the index, the grid with a failed note, and the table (${theme})`, async ({ page }) => {
+    await page.emulateMedia({ colorScheme: theme, reducedMotion: "reduce" });
+    await page.addInitScript((t) => localStorage.setItem("theme", t), theme);
+    await mockBoardsApi(page, { failNotes: true });
+    await page.goto("/boards");
+    await expect(page.getByRole("link", { name: /Q4 gift ideas/ }).locator("img")).toHaveCount(4);
+    expect(await page.evaluate(contrastMisses, "#main")).toEqual([]);
+    await page.goto(Q4);
+    await page.getByRole("textbox", { name: "Note on Galaxy star projector" }).fill("Test at $24.99");
+    await expect(page.getByText("Couldn't save the note.")).toBeVisible();
+    await page.getByRole("checkbox", { name: "Select Mini waffle maker" }).check();
+    await page.waitForTimeout(300);
+    expect(await page.evaluate(contrastMisses, "#main")).toEqual([]);
+    await page.getByRole("button", { name: "Table", exact: true }).click();
+    await expect(page.getByRole("rowheader", { name: "Sunset projection lamp" })).toBeVisible();
+    expect(await page.evaluate(contrastMisses, "#main")).toEqual([]);
+  });

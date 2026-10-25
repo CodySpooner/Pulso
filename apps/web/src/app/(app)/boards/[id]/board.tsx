@@ -124,7 +124,7 @@ function Header({ board, now, saved, archive }: { board: Board; now: number; sav
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border border-border bg-secondary px-4 py-2.5 text-data text-muted-foreground">
           <Archive className="size-4 shrink-0" aria-hidden />
           <span className="flex-1">
-            Archived <Ago iso={board.archived_at} now={now} source="Your board" />. It&apos;s hidden from your boards; its cards and notes stay.
+            Archived <Ago iso={board.archived_at} now={now} source="Your board" />. It&apos;s hidden from your boards; its products and notes stay.
           </span>
           <Button size="sm" onClick={() => void archive(false)}>
             <ArchiveRestore aria-hidden />
@@ -169,7 +169,9 @@ function Header({ board, now, saved, archive }: { board: Board; now: number; sav
             inputClass="text-body"
           />
           <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-label text-subtle-foreground">
-            <span className="font-mono tabular-nums">{plural(board.item_count, "product")}</span>
+            <span>
+              <span className="font-mono tabular-nums">{board.item_count.toLocaleString("en-US")}</span> {board.item_count === 1 ? "product" : "products"}
+            </span>
             <span aria-hidden>·</span>
             <span>
               Updated <Ago iso={board.updated_at} now={now} source="Your board's last change" />
@@ -299,7 +301,7 @@ function Cards({ board, setNote, saved }: { board: Board; setNote: ReturnType<ty
   const cards = items.data.items;
   const ids = cards.map((c) => c.product_id);
   const chosen = cards.filter((c) => selected.has(c.product_id));
-  const name = (pid: UniqueIdentifier) => cards.find((c) => c.product_id === pid)?.name ?? "The card";
+  const name = (pid: UniqueIdentifier) => cards.find((c) => c.product_id === pid)?.name ?? "The product";
   const place = (pid: UniqueIdentifier) => ids.indexOf(String(pid)) + 1;
   const announcements: Announcements = {
     onDragStart: ({ active }) => ((lifted.current = true), `Picked up ${name(active.id)}, position ${place(active.id)} of ${ids.length}.`),
@@ -451,12 +453,12 @@ function Cards({ board, setNote, saved }: { board: Board; setNote: ReturnType<ty
               ]}
               onChange={setView}
             />
-            <p className="text-label text-subtle-foreground max-md:hidden">Drag a card by its handle, or focus the handle and press Space, the arrow keys, then Space.</p>
+            <p className="text-label text-subtle-foreground max-md:hidden">Drag a product by its handle, or focus the handle and use Space and the arrow keys.</p>
           </div>
           <DndContext
             sensors={sensors}
             collisionDetection={closestCenter}
-            accessibility={{ announcements, screenReaderInstructions: { draggable: "To move this card, press Space or Enter. Move it with the arrow keys, then press Space or Enter to drop it, or Escape to cancel." } }}
+            accessibility={{ announcements, screenReaderInstructions: { draggable: "To move this product, press Space or Enter. Move it with the arrow keys, then press Space or Enter to drop it, or Escape to cancel." } }}
             onDragEnd={({ active, over }) => over && reorder(String(active.id), ids.indexOf(String(over.id)))}
           >
             <SortableContext items={ids} strategy={view === "grid" ? rectSortingStrategy : verticalListSortingStrategy}>

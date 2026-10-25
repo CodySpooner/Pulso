@@ -8,6 +8,7 @@ import { DropdownMenu } from "radix-ui";
 
 import { Ago } from "@/components/data-health/atoms";
 import { Button } from "@/components/ui/button";
+import { duration, ease } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 
 import { Thumb } from "../../admin/matching/compare";
@@ -27,7 +28,7 @@ export interface CardProps {
 
 const translate = (t: { x: number; y: number } | null) => (t ? `translate3d(${t.x}px, ${t.y}px, 0)` : undefined);
 // Neighbours shift with the standard ease at the base duration; the global reduced-motion rule clamps it.
-const SHIFT = { duration: 200, easing: "cubic-bezier(0.2, 0, 0, 1)" };
+const SHIFT = { duration: duration.base * 1000, easing: `cubic-bezier(${ease.standard.join(", ")})` };
 
 function useCard(item: Item) {
   const { setNodeRef, transform, transition, isDragging, attributes, listeners, setActivatorNodeRef } = useSortable({ id: item.product_id, transition: SHIFT });
@@ -46,17 +47,18 @@ export function Card(props: CardProps) {
       <article
         aria-label={item.name}
         className={cn(
-          "group flex h-full flex-col overflow-hidden rounded-xl border bg-card shadow-card transition-[border-color,scale,box-shadow] duration-(--duration-fast)",
+          // Under 480px a card lies on its side (image left), so a phone shows about twice as many.
+          "group flex h-full flex-col overflow-hidden rounded-xl border max-[479px]:flex-row bg-card shadow-card transition-[border-color,scale,box-shadow] duration-(--duration-fast)",
           selected ? "border-brand ring-1 ring-brand" : "border-border hover:border-border-strong",
           isDragging && "shadow-popover motion-safe:scale-[1.02]",
         )}
       >
-        <div className="relative">
-          <Picture item={item} className="aspect-[4/3] w-full" />
+        <div className="relative max-[479px]:w-32 max-[479px]:shrink-0">
+          <Picture item={item} className="aspect-[4/3] w-full max-[479px]:aspect-auto max-[479px]:h-full max-[479px]:min-h-32" />
           <Select item={item} selected={selected} onSelect={onSelect} className={cn("absolute top-2 left-2 rounded-md bg-card/90 p-1.5 shadow-card", shown)} />
           <Handle item={item} {...handle} className={cn("absolute top-2 right-2 bg-card/90 shadow-card", shown)} />
         </div>
-        <div className="flex flex-1 flex-col gap-2 p-3">
+        <div className="flex min-w-0 flex-1 flex-col gap-2 p-3">
           <ProductLink item={item} className="line-clamp-2 text-body" />
           <NoteBox item={item} note={note} />
           <footer className="mt-auto flex min-h-7 items-center justify-between gap-2 text-micro text-subtle-foreground">
@@ -75,7 +77,7 @@ export function Row(props: CardProps) {
   const { setNodeRef, style, isDragging, handle } = useCard(item);
   const note = useNote(item, props.saveNote);
   return (
-    <tr ref={setNodeRef} style={style} className={cn("group relative border-b border-border-subtle hover:bg-(--table-row-hover)", selected ? "bg-brand-muted" : "bg-card", isDragging && "z-10 shadow-popover")}>
+    <tr ref={setNodeRef} style={style} className={cn("group relative border-b border-border-subtle hover:bg-(--table-row-hover)", selected ? "bg-selected shadow-[inset_2px_0_0_var(--brand)]" : "bg-card", isDragging && "z-10 shadow-popover")}>
       <td className="w-px py-2 pl-3">
         <Select item={item} selected={selected} onSelect={onSelect} />
       </td>
@@ -89,8 +91,8 @@ export function Row(props: CardProps) {
           <ProductLink item={item} className="line-clamp-2 text-data" />
         </div>
       </th>
-      <td className="min-w-64 py-1.5 pr-4 align-top">
-        <NoteBox item={item} note={note} />
+      <td className="min-w-64 py-1.5 pr-4">
+        <NoteBox item={item} note={note} rows={1} />
         <NoteStatus note={note} className="px-2 text-micro" />
       </td>
       <td className="py-2 pr-2 text-right text-label whitespace-nowrap text-subtle-foreground">
@@ -128,7 +130,7 @@ function ProductLink({ item, className }: { item: Item; className?: string }) {
 function Select({ item, selected, onSelect, className }: { item: Item; selected: boolean; onSelect: (shift: boolean) => void; className?: string }) {
   return (
     <label className={cn("relative hit-area flex cursor-pointer", className)}>
-      <input type="checkbox" checked={selected} onChange={() => {}} onClick={(e) => onSelect(e.shiftKey)} aria-label={`Select ${item.name}`} className="size-4 cursor-pointer accent-(--brand)" />
+      <input type="checkbox" checked={selected} onChange={() => {}} onClick={(e) => onSelect(e.shiftKey)} aria-label={`Select ${item.name}`} className="relative z-10 size-4 cursor-pointer accent-(--brand)" />
     </label>
   );
 }
@@ -199,18 +201,21 @@ function useNote(item: Item, save: (note: string | null) => Promise<unknown>) {
   return { text, state, retry: () => void saver.flush(), change: (t: string) => (setText(t), saver.change(t)), blur: () => void saver.flush() };
 }
 
-function NoteBox({ item, note }: { item: Item; note: Note }) {
+function NoteBox({ item, note, rows = 2 }: { item: Item; note: Note; rows?: 1 | 2 }) {
   return (
     <textarea
       value={note.text}
       onChange={(e) => note.change(e.target.value)}
       onBlur={note.blur}
-      rows={2}
+      rows={rows}
       maxLength={10_000}
       placeholder="Add a note…"
       aria-label={`Note on ${item.name}`}
       aria-invalid={note.state === "error"}
-      className="-mx-2 field-sizing-content max-h-[calc(8lh+0.5rem)] min-h-[calc(2lh+0.5rem)] w-[calc(100%+1rem)] resize-none rounded-md border border-transparent bg-transparent px-2 py-1 text-data text-foreground outline-none placeholder:text-subtle-foreground hover:border-border focus:border-input focus:bg-background focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring aria-invalid:border-negative/60"
+      className={cn(
+        "-mx-2 block field-sizing-content max-h-[calc(8lh+0.5rem)] w-[calc(100%+1rem)] resize-none rounded-md border border-transparent bg-transparent px-2 py-1 text-data text-muted-foreground outline-none focus:text-foreground placeholder:text-subtle-foreground hover:border-border focus:border-input focus:bg-background focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring aria-invalid:border-negative/60",
+        rows === 2 ? "min-h-[calc(2lh+0.5rem)]" : "min-h-[calc(1lh+0.5rem)]",
+      )}
     />
   );
 }

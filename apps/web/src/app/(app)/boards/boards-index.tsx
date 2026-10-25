@@ -19,8 +19,7 @@ import { reasonOf } from "../testing/model";
 import { boardsInit, boardsKey, itemsInit, type Board } from "./model";
 import { Segmented } from "./parts";
 
-const GRID = "grid gap-3 min-[480px]:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4";
-const plural = (n: number, one: string) => `${n.toLocaleString("en-US")} ${one}${n === 1 ? "" : "s"}`;
+const GRID = "grid gap-3 min-[480px]:grid-cols-2 md:grid-cols-3 xl:grid-cols-4";
 
 // WF-3b (DEC-329): every board as a tile, newest activity first (the API's order), active or archived (?archived=1).
 // "New board" opens a name field in a new first tile; the board lands there, focused, so Enter opens it.
@@ -89,7 +88,7 @@ export function BoardsIndex() {
         <section aria-label="Boards" className="rounded-xl border border-border bg-card shadow-card">
           {archived ? (
             <EmptyState icon={Archive} headingLevel="h2" title="No archived boards" action={<Button onClick={() => filter("active")}>Show active boards</Button>}>
-              Archive a board from its page to put it here. Its cards and notes stay with it.
+              Archive a board from its page to put it here. Its products and notes stay with it.
             </EmptyState>
           ) : (
             <EmptyState icon={Bookmark} headingLevel="h2" title="Create a board to collect ideas" action={<NewBoard onDone={done} className="w-full max-w-sm" />}>
@@ -156,7 +155,7 @@ function NewBoard({ onDone, onCancel, className }: { onDone: (board: Board) => v
           className="h-(--input-h) min-w-0 flex-1 rounded-md border border-input bg-background px-2.5 text-body text-foreground placeholder:text-subtle-foreground aria-invalid:border-negative"
         />
         <Button type="submit" variant="primary" disabled={create.isPending}>
-          {create.isPending ? "Creating…" : "Create"}
+          {create.isPending ? "Creating…" : "Create board"}
         </Button>
       </div>
       {error ? (
@@ -183,7 +182,7 @@ function Tile({ board, now }: { board: Board; now: number }) {
           <h2 className="truncate text-body font-medium text-foreground">{board.name}</h2>
           {board.description && <p className="truncate text-label text-muted-foreground">{board.description}</p>}
           <p className="text-label text-subtle-foreground">
-            <span className="font-mono tabular-nums">{plural(board.item_count, "product")}</span> ·{" "}
+            <span className="font-mono tabular-nums">{board.item_count.toLocaleString("en-US")}</span> {board.item_count === 1 ? "product" : "products"} ·{" "}
             {board.archived_at ? (
               <>
                 Archived <Ago iso={board.archived_at} now={now} source="Your board" />
@@ -209,7 +208,7 @@ function Mosaic({ board }: { board: Board }) {
   // replaces it if the index ever feels slow.
   const items = $api.useQuery("get", "/v1/boards/{board_id}/items", itemsInit(board.id, 4), { enabled: useApiReady() && board.item_count > 0 });
   const cards = items.data?.items ?? [];
-  const box = "aspect-[4/3] w-full bg-secondary";
+  const box = "aspect-[4/3] w-full bg-secondary max-[479px]:aspect-[2/1]";
   if (board.item_count === 0)
     return (
       <div className={cn(box, "grid place-items-center text-subtle-foreground")}>
