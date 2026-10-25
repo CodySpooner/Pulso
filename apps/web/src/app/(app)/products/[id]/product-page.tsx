@@ -19,6 +19,7 @@ import { formatAgo, formatUtc } from "@/lib/format";
 import { duration, spring } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 
+import { ContextRail } from "./context-rail";
 import { Overview } from "./overview";
 import { card, newest, StatCard } from "./stat-card";
 import { resolveTab, TAB_FLAGS, TABS, type Tab } from "./tabs";
@@ -212,7 +213,8 @@ function ProductTabs({ id }: { id: string }) {
           </Tabs.Trigger>
         ))}
       </Tabs.List>
-      <div className="grid items-start gap-4">
+      {/* The context rail sits beside every tab from 1280px and under it below (DEC-243). */}
+      <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_20rem]">
         {tabs.map((t) => (
           <Tabs.Content key={t.value} value={t.value} className={cn("min-w-0", t.value !== "overview" && card)}>
             <m.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: duration.fast }}>
@@ -226,6 +228,7 @@ function ProductTabs({ id }: { id: string }) {
             </m.div>
           </Tabs.Content>
         ))}
+        <ContextRail id={id} />
       </div>
     </Tabs.Root>
   );
