@@ -104,6 +104,18 @@ test("a failed save is undone and says so", async ({ page }) => {
   await expect(suggested(page).getByRole("button", { name: "Confirm lamp" })).toBeVisible();
 });
 
+test("two quick decisions: the second lands, and the first one's failure still says so", async ({ page }) => {
+  await open(page, { body: decided, failKeywords: ["lamp"] });
+  const lamp = suggested(page).getByRole("button", { name: "Confirm lamp" });
+  const sunset = suggested(page).getByRole("button", { name: "Confirm sunset" });
+  await expect(sunset).toBeVisible();
+  // Both in one task, before a re-render, as a quick double tap can (imp-278).
+  await page.evaluate((buttons) => { for (const b of buttons) (b as HTMLButtonElement).click(); }, [await lamp.elementHandle(), await sunset.elementHandle()]);
+  await expect(section(page).getByRole("alert")).toContainText("Couldn't save the keyword. Your change was undone.");
+  await expect(chips(page)).toHaveText(["sunset projection lamp", "sunset", "Added by you: sunset lamp for bedroom"]);
+  await expect(lamp).toBeVisible();
+});
+
 test("a failed refresh keeps the list with a stale line and Retry", async ({ page }) => {
   await open(page, { body: decided, failSaves: true, refetchStatus: 503 });
   await suggested(page).getByRole("button", { name: "Confirm lamp" }).click(); // fails, so the list is refetched

@@ -2832,3 +2832,46 @@ Superseded review defaults, not given entries: default #0 (move the repo) is don
 - **Why:** nine tests in `packages/sources/tests/aliexpress`, 13 runs: the four lookup tests run on SQLite and on Postgres `pgvector/pgvector:0.8.7-pg18-trixie`, where AE-2 counts rows in every migrated table. Eleven mutations each fail a test (`docs/reports/p3-03.md`).
 - **Unverified until the first owner-run call:** whether the gateway also needs the SDK's `v=2.0`, `partner_id`, `simplify` or a `session` token name; the units of `shipping_fee_cent`; where product.get's 602/605 appear; the throttle and auth error codes. No AliExpress request was made here.
 - **Not here:** the endpoint and the Suppliers-tab rows (AE-3), the `aliexpress` source row, the DS token create/refresh flow, and the R-17 CSV fallback.
+
+### DEC-281 · Product keywords (KW-1): a workspace's confirmed or rejected keyword per product, candidates scored from the product's titles on read, one-click confirm on the Trends tab
+**2026-10-25 · proposed (p3-02)** · Phase 3 task KW-1; DEC-029, DEC-040, DEC-238, DEC-245 (d), DEC-263; SPEC §5 Signals, §6.4 Trends; vault Phases/Phase 3 - Signals Expansion, Features/Product Page - Trends, Data/Data Model; migration 0012; no dependency, flag, source request or schedule
+- **Decision:**
+  - **(a) Workspace scope.** Confirming a keyword is a workspace's choice, like `product_tags` and `workspace_tracked_stores` (DEC-029 "Workspace choices"). So `product_keywords` is `WorkspaceOwned`: `workspace_id` NOT NULL and indexed. This narrows the vault Data Model, which lists it under global Signals. KW-2's weekly Trends set will read the union of confirmed keywords across workspaces, the way the crawl reads tracked stores.
+  - **(b) Table (0012).**
+    - Columns: primary key `(workspace_id, product_id, keyword)`; `keyword` varchar(100) in normal form (casefolded, curly apostrophe made straight, spacing collapsed); `relevance` numeric(4,3), the title score at the first decision, null for a typed-in keyword; `source` `title` · `manual`; `status` `confirmed` · `rejected`; `decided_by` (FK users); `decided_at`; `created_at`; CHECKs on all three.
+    - A new decision updates `status`, `decided_by` and `decided_at` in place, so `created_at` keeps the first decision and `decided_at` the current one. Earlier flips aren't kept.
+    - Nothing deletes a row: no endpoint does, triggers refuse DELETE and TRUNCATE, and the downgrade refuses while any row exists. Taking a keyword back means rejecting it.
+  - **(c) Candidates on read** (`pulso_api.keywords`, pure functions).
+    - **Titles:** the product's name and every listing title, deduplicated case-insensitively.
+    - **Phrases:** runs of 1–4 words between stop words, punctuation, a spaced dash and dropped tokens. Dropped tokens are single characters, pure numbers and quantities (`2pcs`, `50ft`, `5000mah`); listing noise such as "new", "hot", "sale" and "free shipping" counts as stop words.
+    - **Keys:** a trailing plural folds away (`taxonomy.fold`), and a phrase shows the spelling most titles use.
+    - **Relevance:** half the share of titles holding the phrase plus half the mean share holding each of its words (titles often reorder the same words), times a length weight: 1 word 0.5, 2 words 0.85, 3–4 words 1.0. The weights are guesses.
+    - **Shown:** a phrase that only ever appears inside one longer phrase with the same evidence is left out. The best 12 not yet decided are shown, best first, then the longer phrase, then A to Z.
+    - Nothing is stored, and no Beat task or command runs it.
+  - **(d) API** (both operations are covered by the provenance contract).
+    - `GET /v1/products/{id}/keywords` (`list_product_keywords`) returns `KeywordList {keywords}`: one list where `status` is `candidate`, `confirmed` or `rejected`.
+      - `relevance` is computed from the current titles; it is null when no title holds the keyword, shown as "Typed in", never 0 (DEC-040).
+      - `as_of` is the newest listing `last_seen_at`, or the product's `first_seen_at` when it has no listing.
+      - The order is relevance, typed-in keywords last, then A to Z.
+    - `POST /v1/products/{id}/keywords` (`set_product_keyword`) takes `{keyword, status: confirmed|rejected}`. It confirms or rejects a candidate, or adds a keyword by hand (confirmed).
+      - Validation: 1–100 characters after trimming, with at least one letter or digit; extra fields fail.
+      - The server sets `source`: `title` when a title holds the keyword. A plural or case variant of a decided keyword decides that keyword. Repeating the newest decision writes nothing.
+      - Writes go to the live product, so a merged id answers 409 `merged`. Reads follow `merged_into_id` at any depth (DEC-263), and the newest decision per keyword wins.
+  - **(e) UI.** The Trends tab gets a Search keywords section under the chart.
+    - Confirmed keywords are chips; only a typed-in one carries a mark. The chip's × rejects.
+    - An add field: Enter adds and confirms.
+    - Suggested rows show a relevance bar and number, with Confirm and Reject.
+    - A Rejected disclosure offers "Confirm instead".
+    - A muted no-source line covers per-keyword search interest.
+    - Confirming takes one click once the tab is open (two from the product page). Focus moves to the row that takes its place.
+    - Saves are optimistic and built on the cache, not the render (imp-278). Only the newest answer replaces the list. A failure rolls back and says so.
+    - States: loading, error with Retry, stale line, nothing to suggest, failed save.
+    - No feature flag: the section is finished.
+  - **(f) Not KW-2.** Nothing calls SerpApi or Google Trends, and no confirmed keyword joins a scheduled set. The series' `search` reason now says interest isn't collected for the product's keywords yet, instead of "Keywords arrive in Phase 3".
+- **Alternatives:**
+  - (a) Global `product_keywords`, as the Data Model note has it: one workspace's guess would become every workspace's product link.
+  - (b) An append-only decision log beside the table: a second table for a history v1 never reads. A status row with who/when, protected by triggers, keeps every decision's current state honest.
+  - (c) Storing candidates through a one-shot command: they go stale as titles change, and scoring on read costs a few titles per product. Corpus-wide TF-IDF needs the whole catalog per read. AI extraction is labelled output, not data (DEC-047), and costs money.
+  - (d) Separate confirm, reject and add endpoints: three operations for one upsert. A `DELETE` to undo: it would remove a decision.
+- **Why:** pure tests (`apps/api/tests/test_keywords.py`, 8) cover the fixture lamp and car-mount titles, noise and quantities, plural folding, punctuation and hyphens, repeated titles, skip and limit, and the normal form. API tests on `pgvector/pgvector:0.8.7-pg18-trixie` (`test_product_keywords.py`, 6) cover the round trip with who/when, plural variants, validation, 404/409, two-workspace isolation and merged read-through. Five mutations each fail a test: no workspace filter, no repeat check, candidates not skipping decided ones, no merged read, a variant writing a new row. Schema tests (`test_phase3_schema.py`) cover the delete and truncate triggers, the refusing downgrade and the CHECKs. Playwright (`apps/web/e2e/products/keywords.spec.ts`, 9) covers one-click confirm, reject and confirm instead, add and remove, keyboard-only use, loading, error, empty, stale, a failed save and 375px.
+- **Not here:** KW-2 (weekly Trends set and the SerpApi cost line in the add field), interest, slope and sparkline columns, and the "top 50 products have a confirmed keyword" check, which needs the owner's real confirmations.

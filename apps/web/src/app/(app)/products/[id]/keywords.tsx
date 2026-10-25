@@ -55,18 +55,16 @@ export function KeywordsSection({ id }: { id: string }) {
     void queryClient.cancelQueries({ queryKey });
     queryClient.setQueryData<KeywordList>(queryKey, { keywords: decide(previous?.keywords ?? [], keyword, status, new Date().toISOString()) });
     setFailure(null);
-    post.mutate(
-      { ...init, body: { keyword, status } },
-      {
-        // Only the newest answer replaces the list, so an older one never drops a newer optimistic decision.
-        onSuccess: (data) => {
-          if (n === latest.current) queryClient.setQueryData(queryKey, data);
-        },
-        onError: (error) => {
-          if (n === latest.current) queryClient.setQueryData(queryKey, previous);
-          setFailure(error);
-          void queryClient.invalidateQueries({ queryKey });
-        },
+    // mutateAsync settles every call (mutate's own callbacks fire for the latest call only). Only the newest answer
+    // replaces the list, so an older one never drops a newer optimistic decision.
+    post.mutateAsync({ ...init, body: { keyword, status } }).then(
+      (data) => {
+        if (n === latest.current) queryClient.setQueryData(queryKey, data);
+      },
+      (error: unknown) => {
+        if (n === latest.current) queryClient.setQueryData(queryKey, previous);
+        setFailure(error);
+        void queryClient.invalidateQueries({ queryKey });
       },
     );
   };

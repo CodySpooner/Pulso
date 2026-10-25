@@ -55,6 +55,8 @@ export interface KeywordsMock {
   /** Answer every POST with a 503, or never. */
   failSaves?: boolean;
   holdSaves?: boolean;
+  /** Answer a 503 to the POSTs for these keywords only. */
+  failKeywords?: string[];
 }
 
 /** The keywords endpoint, keeping what the page decides like the API. Register after mockProductApi: Playwright tries
@@ -74,7 +76,7 @@ export async function mockKeywordsApi(page: Page, options: KeywordsMock = {}) {
     const body = request.postDataJSON() as S["KeywordIn"];
     posts.push(body);
     if (options.holdSaves) return;
-    if (options.failSaves) return route.fulfill({ status: 503, contentType: "application/problem+json", json: problem(503, "e2e-keywords-save") });
+    if (options.failSaves || options.failKeywords?.includes(body.keyword)) return route.fulfill({ status: 503, contentType: "application/problem+json", json: problem(503, "e2e-keywords-save") });
     saved = order(decide(saved, body.keyword, body.status, NOW.toISOString()));
     return route.fulfill({ json: { keywords: saved } });
   });
