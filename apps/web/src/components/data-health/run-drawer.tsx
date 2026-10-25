@@ -5,7 +5,6 @@ import { ArrowDown, ChevronRight, History } from "lucide-react";
 
 import { EmptyState } from "@/components/pulso/empty-state";
 import { useOnline } from "@/components/shell/offline-banner";
-import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatUtc } from "@/lib/format";
@@ -16,7 +15,7 @@ import { Ago, Missing, PanelError, runStatus, sourceStates, StaleLine, StatePill
 import { GapsLink, OPEN_GAPS_ID } from "./coverage";
 import { LoadMore } from "./load-more";
 import { RetryScope, useRetryScope } from "./retry";
-import { missedNote, runBlocker, skipNote, sourceState, targetsNote, typeLabel, type Run, type SourceHealth } from "./model";
+import { missedNote, plural, runBlocker, skipNote, sourceState, targetsNote, typeLabel, type Run, type SourceHealth } from "./model";
 
 const RUNS_API = "GET /v1/admin/runs";
 
@@ -170,18 +169,12 @@ function DrawerBody({ source, now, onGaps, onImport }: { source: SourceHealth; n
         </dl>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
-        {/* The drawer covers the page's line, so it says its own (imp-132). An older page's failure keeps the runs
-            already loaded too; its Retry asks for that page again. */}
-        {runs.isError && runs.data && (
-          <StaleLine
-            boxed
-            className="mb-3"
-            what={runs.isFetchNextPageError ? "Couldn't load older runs" : "Couldn't refresh runs"}
-            error={runs.error}
-            asOf={runs.dataUpdatedAt}
-            retry={() => void (runs.isFetchNextPageError ? runs.fetchNextPage() : runs.refetch())}
-          />
+      {/* pb-12: the runs footer ends the box, and its Retry's offline reason needs the room below (DEC-236 d). */}
+      <div className="min-h-0 flex-1 overflow-y-auto px-5 pt-4 pb-12">
+        {/* The drawer covers the page's line, so it says its own (imp-132). Only a failed refresh: an older page's
+            failure is the footer's, under the runs it keeps (imp-136). */}
+        {runs.isRefetchError && (
+          <StaleLine boxed className="mb-3" what="Couldn't refresh runs" error={runs.error} asOf={runs.dataUpdatedAt} retry={() => void runs.refetch()} />
         )}
         {runs.isPending ? (
           <div className="flex flex-col gap-2">
@@ -205,16 +198,25 @@ function DrawerBody({ source, now, onGaps, onImport }: { source: SourceHealth; n
             ) : null}
           </EmptyState>
         ) : (
-          <ol aria-label={`${source.name} runs`} className="flex flex-col gap-2">
-            {items.map((run, i) => (
-              <RunItem key={run.id} run={run} now={now} defaultOpen={i === 0} />
-            ))}
-          </ol>
-        )}
-        {runs.hasNextPage && (
-          <Button variant="ghost" size="sm" className="mt-3" onClick={() => runs.fetchNextPage()} aria-disabled={runs.isFetchingNextPage}>
-            {runs.isFetchingNextPage ? "Loading…" : "Load older runs"}
-          </Button>
+          <div className="flex flex-col gap-3">
+            <ol aria-label={`${source.name} runs`} className="flex flex-col gap-2">
+              {items.map((run, i) => (
+                <RunItem key={run.id} run={run} now={now} title={title} defaultOpen={i === 0} />
+              ))}
+            </ol>
+            {/* The targets' footer (DEC-166): a failed older page keeps every run, and Retry asks for that page only. */}
+            {runs.data?.pages[0].next_cursor != null && (
+              <LoadMore
+                note={runs.hasNextPage ? `Showing ${plural(items.length, "run")} · older runs not loaded yet` : `Showing all ${plural(items.length, "run")}`}
+                label="Load older runs"
+                more={runs.hasNextPage}
+                pending={runs.isFetchingNextPage}
+                error={runs.isFetchNextPageError ? runs.error : null}
+                errorTitle="Couldn't load older runs"
+                onLoad={() => void runs.fetchNextPage()}
+              />
+            )}
+          </div>
         )}
       </div>
     </RetryScope>
@@ -231,7 +233,7 @@ function Fact({ label, children }: { label: string; children: React.ReactNode })
   );
 }
 
-function RunItem({ run, now, defaultOpen }: { run: Run; now: number; defaultOpen: boolean }) {
+function RunItem({ run, now, title, defaultOpen }: { run: Run; now: number; title: React.RefObject<HTMLElement | null>; defaultOpen: boolean }) {
   const [open, setOpen] = useState(defaultOpen);
   return (
     <li className="rounded-lg border border-border-subtle">
@@ -249,101 +251,110 @@ function RunItem({ run, now, defaultOpen }: { run: Run; now: number; defaultOpen
           <Ago iso={run.finished_at ?? run.started_at ?? run.queued_at} now={now} source={RUNS_API} />
         </span>
       </button>
-      {open && <RunDetailView run={run} />}
+      {open && <RunDetailView run={run} title={title} />}
     </li>
   );
 }
 
-function RunDetailView({ run }: { run: Run }) {
+function RunDetailView({ run, title }: { run: Run; title: React.RefObject<HTMLElement | null> }) {
   const detail = useRunDetail(run.id);
   const more = useMoreTargets(run.id, detail.data?.next_cursor ?? null);
   const targets = detail.data ? [detail.data.targets, ...more.pages.map((p) => p.targets)].flat() : [];
   const skipped = run.error_code === "slot_suppressed"; // a skip, not a failure (imp-042)
+  // Each run is its own retry scope (imp-179): a targets Retry that restores focuses the targets it brought back,
+  // or the drawer title when the run has none.
+  const region = useRef<HTMLDivElement>(null);
+  const retry = useRetryScope(region, title);
   return (
-    <div className="flex flex-col gap-3 border-t border-border-subtle px-3 py-3">
-      {run.error_message || run.error_code ? (
-        <div className={cn("rounded-md px-3 py-2 text-data text-foreground", skipped ? "bg-warning-muted" : "bg-negative-muted")}>
-          {run.error_code && <span className={cn("font-mono", skipped ? "text-warning" : "text-negative")}>{run.error_code} </span>}
-          {skipped ? `${skipNote(run)}.` : run.error_message}
-        </div>
-      ) : null}
-      <dl className="zone-data grid grid-cols-[auto_1fr] gap-x-4 gap-y-1">
-        <Fact label="Rows">
-          <span className="tabular-nums">
-            {/* Non-breaking spaces keep each count with its unit; lines break only after a "·". */}
-            {run.rows_fetched.toLocaleString("en-US")}&nbsp;fetched&nbsp;· {run.rows_inserted.toLocaleString("en-US")}&nbsp;inserted&nbsp;·{" "}
-            {run.rows_updated.toLocaleString("en-US")}&nbsp;updated&nbsp;· {run.rows_unchanged.toLocaleString("en-US")}&nbsp;unchanged
-          </span>
-        </Fact>
-        <Fact label="Targets">
-          <span className="tabular-nums">
-            {run.successful_target_count.toLocaleString("en-US")} of {run.target_count.toLocaleString("en-US")} succeeded{run.complete ? "" : " · incomplete"}
-          </span>
-        </Fact>
-        <Fact label="Requests">
-          <span className="tabular-nums">{run.http_requests.toLocaleString("en-US")}</span>
-          {run.last_status_code != null && <span className="text-muted-foreground"> · last code {run.last_status_code}</span>}
-        </Fact>
-        <Fact label="Queued">{formatUtc(run.queued_at)}</Fact>
-        <Fact label="Started">{run.started_at ? formatUtc(run.started_at) : <Missing reason="Not started" />}</Fact>
-        <Fact label="Finished">{run.finished_at ? formatUtc(run.finished_at) : <Missing reason="Not finished" />}</Fact>
-        <Fact label="Host · slot">
-          {run.host ?? <Missing reason="No host recorded" />} · {run.slot_key ?? <Missing reason="Not a scheduled slot" />}
-        </Fact>
-      </dl>
+    <RetryScope value={retry}>
+      <div className="flex flex-col gap-3 border-t border-border-subtle px-3 py-3">
+        {run.error_message || run.error_code ? (
+          <div className={cn("rounded-md px-3 py-2 text-data text-foreground", skipped ? "bg-warning-muted" : "bg-negative-muted")}>
+            {run.error_code && <span className={cn("font-mono", skipped ? "text-warning" : "text-negative")}>{run.error_code} </span>}
+            {skipped ? `${skipNote(run)}.` : run.error_message}
+          </div>
+        ) : null}
+        <dl className="zone-data grid grid-cols-[auto_1fr] gap-x-4 gap-y-1">
+          <Fact label="Rows">
+            <span className="tabular-nums">
+              {/* Non-breaking spaces keep each count with its unit; lines break only after a "·". */}
+              {run.rows_fetched.toLocaleString("en-US")}&nbsp;fetched&nbsp;· {run.rows_inserted.toLocaleString("en-US")}&nbsp;inserted&nbsp;·{" "}
+              {run.rows_updated.toLocaleString("en-US")}&nbsp;updated&nbsp;· {run.rows_unchanged.toLocaleString("en-US")}&nbsp;unchanged
+            </span>
+          </Fact>
+          <Fact label="Targets">
+            <span className="tabular-nums">
+              {run.successful_target_count.toLocaleString("en-US")} of {run.target_count.toLocaleString("en-US")} succeeded{run.complete ? "" : " · incomplete"}
+            </span>
+          </Fact>
+          <Fact label="Requests">
+            <span className="tabular-nums">{run.http_requests.toLocaleString("en-US")}</span>
+            {run.last_status_code != null && <span className="text-muted-foreground"> · last code {run.last_status_code}</span>}
+          </Fact>
+          <Fact label="Queued">{formatUtc(run.queued_at)}</Fact>
+          <Fact label="Started">{run.started_at ? formatUtc(run.started_at) : <Missing reason="Not started" />}</Fact>
+          <Fact label="Finished">{run.finished_at ? formatUtc(run.finished_at) : <Missing reason="Not finished" />}</Fact>
+          <Fact label="Host · slot">
+            {run.host ?? <Missing reason="No host recorded" />} · {run.slot_key ?? <Missing reason="Not a scheduled slot" />}
+          </Fact>
+        </dl>
 
-      {detail.isRefetchError && (
-        <StaleLine boxed what="Couldn't refresh targets" error={detail.error} asOf={detail.dataUpdatedAt} retry={() => detail.refetch()} />
-      )}
-      {detail.isPending ? (
-        <Skeleton className="h-16 w-full" />
-      ) : detail.isLoadingError ? (
-        <PanelError title="Couldn't load targets" error={detail.error} retry={() => detail.refetch()} />
-      ) : targets.length === 0 ? (
-        <p className="text-label text-muted-foreground">No targets recorded for this run.</p>
-      ) : (
-        <div role="region" aria-label={`Run ${run.id} targets`} tabIndex={0} className="relative overflow-x-auto">
-          <table className="zone-data w-full">
-            <thead>
-              <tr className="text-left text-label whitespace-nowrap text-muted-foreground">
-                <th scope="col" className="h-7 pr-3 font-medium">Target</th>
-                <th scope="col" className="pr-3 font-medium">Status</th>
-                <th scope="col" className="num font-medium">Payload</th>
-              </tr>
-            </thead>
-            <tbody>
-              {targets.map((t) => (
-                <tr key={`${t.scope} ${t.target_id}`} className="row-h-compact border-t border-border-subtle">
-                  {/* The target takes the width left and truncates, so Status and Payload always show (imp-131). */}
-                  <td className="w-full max-w-0 truncate pr-3" title={`${t.scope} · ${t.target_id} · captured ${formatUtc(t.captured_at)}`}>
-                    <span className="text-subtle-foreground">{t.scope} · </span>
-                    {t.target_id}
-                  </td>
-                  <td className={cn("pr-3", runTone(t.status))}>{runStatus(t.status)}</td>
-                  <td className="num font-mono">
-                    {t.raw_payload_id != null ? (
-                      <span title="Raw payload id. Signed download links aren't served by the API yet.">#{t.raw_payload_id}</span>
-                    ) : (
-                      <Missing reason="No payload stored" />
-                    )}
-                  </td>
+        {detail.isRefetchError && (
+          <StaleLine boxed what="Couldn't refresh targets" error={detail.error} asOf={detail.dataUpdatedAt} retry={() => detail.refetch()} />
+        )}
+        {detail.isPending ? (
+          <Skeleton className="h-16 w-full" />
+        ) : detail.isLoadingError ? (
+          <PanelError title="Couldn't load targets" error={detail.error} retry={() => detail.refetch()} />
+        ) : targets.length === 0 ? (
+          <p className="text-label text-muted-foreground">No targets recorded for this run.</p>
+        ) : (
+          <div ref={region} role="region" aria-label={`Run ${run.id} targets`} tabIndex={0} className="relative overflow-x-auto rounded-sm">
+            <table className="zone-data w-full">
+              <thead>
+                <tr className="text-left text-label whitespace-nowrap text-muted-foreground">
+                  <th scope="col" className="h-7 pr-3 font-medium">Target</th>
+                  <th scope="col" className="pr-3 font-medium">Status</th>
+                  <th scope="col" className="num font-medium">Payload</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-      {detail.isSuccess && detail.data.next_cursor && targets.length > 0 && (
-        <LoadMore
-          note={targetsNote(targets.length, (more.pages.at(-1) ?? detail.data).target_count, more.hasMore)}
-          label="Load more targets"
-          more={more.hasMore}
-          pending={more.pending}
-          error={more.error}
-          errorTitle="Couldn't load more targets"
-          onLoad={more.load}
-        />
-      )}
-    </div>
+              </thead>
+              <tbody>
+                {targets.map((t) => (
+                  <tr key={`${t.scope} ${t.target_id}`} className="row-h-compact border-t border-border-subtle">
+                    {/* The target takes the width left and truncates, so Status and Payload always show (imp-131). */}
+                    <td className="w-full max-w-0 truncate pr-3" title={`${t.scope} · ${t.target_id} · captured ${formatUtc(t.captured_at)}`}>
+                      <span className="text-subtle-foreground">{t.scope} · </span>
+                      {t.target_id}
+                    </td>
+                    <td className={cn("pr-3", runTone(t.status))}>{runStatus(t.status)}</td>
+                    <td className="num font-mono">
+                      {t.raw_payload_id != null ? (
+                        <span title="Raw payload id. Signed download links aren't served by the API yet.">#{t.raw_payload_id}</span>
+                      ) : (
+                        <Missing reason="No payload stored" />
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+        {detail.isSuccess && detail.data.next_cursor && targets.length > 0 && (
+          // Room for an offline Retry reason below the footer, clear of the next run's row (imp-136).
+          <div className="pb-2">
+            <LoadMore
+              note={targetsNote(targets.length, (more.pages.at(-1) ?? detail.data).target_count, more.hasMore)}
+              label="Load more targets"
+              more={more.hasMore}
+              pending={more.pending}
+              error={more.error}
+              errorTitle="Couldn't load more targets"
+              onLoad={more.load}
+            />
+          </div>
+        )}
+      </div>
+    </RetryScope>
   );
 }

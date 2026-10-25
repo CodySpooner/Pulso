@@ -41,11 +41,11 @@ export const RetryScope = createContext<Scope | null>(null);
 
 /**
  * Follows a Retry the owner pressed in this scope until every query settles (imp-135, DEC-217). An error shown
- * then failed: its Retry takes the lost focus and it is announced once. With none, `restored` (the panel's
- * heading) takes the lost focus. Refetches nobody pressed Retry for never reach here, so they stay silent
- * (vault Design/Accessibility: data refetches are not announced).
+ * then failed: its Retry takes the lost focus and it is announced once. With none, the first of `restored` on the
+ * page (the panel's heading; a run's targets, else the drawer title) takes the lost focus. Refetches nobody pressed
+ * Retry for never reach here, so they stay silent (vault Design/Accessibility: data refetches are not announced).
  */
-export function useRetryScope(restored: React.RefObject<HTMLElement | null>): Scope {
+export function useRetryScope(...restored: React.RefObject<HTMLElement | null>[]): Scope {
   const shown = useRef(new Set<Surface>());
   const pressed = useRef<{ surface: Surface; before: Set<Surface> } | null>(null);
   const [scope] = useState<Scope>(() => ({
@@ -66,7 +66,7 @@ export function useRetryScope(restored: React.RefObject<HTMLElement | null>): Sc
     const failed = retryOutcome(pressed.current.surface, shown.current, pressed.current.before);
     pressed.current = null;
     if (failed) failed.fail();
-    else takeLostFocus(restored.current);
+    else takeLostFocus(restored.map((r) => r.current).find((el) => el != null) ?? null);
   });
   return scope;
 }

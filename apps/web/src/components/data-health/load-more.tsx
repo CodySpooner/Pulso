@@ -4,8 +4,12 @@ import { useEffect, useRef } from "react";
 import { LoaderCircle, TriangleAlert } from "lucide-react";
 
 import { CopyButton } from "@/components/pulso/copy-button";
+import { offlineHint, useOnline } from "@/components/shell/offline-banner";
 import { Button } from "@/components/ui/button";
 import { isProblem } from "@/lib/api/client";
+import { cn } from "@/lib/utils";
+
+import { TapTooltip } from "./atoms";
 
 /**
  * The footer under a bounded list (DEC-166): what is shown, and one button that loads the next page or retries
@@ -30,6 +34,7 @@ export function LoadMore({
   onLoad: () => void;
 }) {
   const noteRef = useRef<HTMLParagraphElement>(null);
+  const button = useRef<HTMLButtonElement>(null);
   const focused = useRef(false);
   useEffect(() => {
     if (!more && focused.current) {
@@ -37,7 +42,14 @@ export function LoadMore({
       noteRef.current?.focus();
     }
   }, [more]);
+  // The error line lands above the focused button and pushes it down, out of a scroll box's view: bring it back (imp-136).
+  useEffect(() => {
+    if (error != null && focused.current) button.current?.scrollIntoView({ block: "nearest" });
+  }, [error]);
   const problem = isProblem(error) ? error : null;
+  // Offline, Retry is locked like a stale line's: a press shows why and asks for nothing (DEC-220 b, imp-136).
+  const online = useOnline();
+  const locked = error != null && !online;
 
   return (
     <div className="flex flex-col gap-2">
@@ -60,16 +72,24 @@ export function LoadMore({
         </p>
         {problem && <CopyButton value={problem.request_id} label="Copy error ID" />}
         {more && (
-          <Button
-            size="sm"
-            aria-disabled={pending}
-            onFocus={() => (focused.current = true)}
-            onBlur={() => (focused.current = false)}
-            onClick={() => !pending && onLoad()}
-          >
-            {pending && <LoaderCircle className="motion-safe:animate-spin" aria-hidden />}
-            {pending ? "Loading…" : error != null ? "Retry" : label}
-          </Button>
+          // Below: above sit the error line and the note, left sits Copy error ID (DEC-236 d).
+          <TapTooltip hint={locked ? offlineHint("retry") : null} side="bottom" asChild>
+            <Button
+              ref={button}
+              size="sm"
+              // When focus or the effect above scrolls to it, 48 px stay in view below: the reason's 6 px offset and
+              // 26 px, and the 16 px gutter it keeps from the viewport's edge, so Radix doesn't flip it on top.
+              // Locked, dimmed with a token, not opacity, so its focus ring keeps 3:1 (DEC-185, DEC-206).
+              className={cn("scroll-mb-12", locked && "aria-disabled:pointer-events-auto aria-disabled:cursor-not-allowed aria-disabled:text-subtle-foreground aria-disabled:opacity-100")}
+              aria-disabled={pending || locked}
+              onFocus={() => (focused.current = true)}
+              onBlur={() => (focused.current = false)}
+              onClick={() => !pending && !locked && onLoad()}
+            >
+              {pending && <LoaderCircle className="motion-safe:animate-spin" aria-hidden />}
+              {pending ? "Loading…" : error != null ? "Retry" : label}
+            </Button>
+          </TapTooltip>
         )}
       </div>
     </div>

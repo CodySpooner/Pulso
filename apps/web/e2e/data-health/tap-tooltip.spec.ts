@@ -1,10 +1,11 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
 
-import { mockAdminApi, offlineNetwork, problem, sources } from "./fixtures";
+import { manyGaps, manyTargets, mockAdminApi, NOW, offlineNetwork, problem, sources } from "./fixtures";
 
 // imp-173, imp-155, imp-175 (DEC-232): a press opens or keeps a TapTooltip's reason and never closes it; one reason
 // is open at a time, whatever opened it; a Retry's reason sits below it, clear of the Error ID line. imp-154,
-// imp-186, imp-187 (DEC-235): each offline reason names its action, and an open reason covers no content.
+// imp-186, imp-187 (DEC-235): each offline reason names its action, and an open reason covers no content. imp-136
+// (DEC-236 d): offline, a Load more footer's Retry is locked the same way.
 
 /** Reasons open now. A closing one keeps its role while it fades, so count by state. */
 const openReasons = (page: Page) => page.locator('[role="tooltip"][data-state$="-open"]');
@@ -43,6 +44,24 @@ const bottomOf = async (el: Locator) => {
   const b = (await el.boundingBox())!;
   return b.y + b.height;
 };
+
+/** A full page of 20 CJ runs, 260 Shopify targets or 260 open gaps, whose next page answers 503. Call before
+ * offlineNetwork, so its route still sees every call made offline. */
+async function nextPageFails(page: Page, footer: "runs" | "targets" | "gaps") {
+  const cjRun = sources.find((s) => s.key === "cj")!.last_run!;
+  const runs = Array.from({ length: 20 }, (_, i) => ({ ...cjRun, id: cjRun.id - i }));
+  await mockAdminApi(page, { targets: manyTargets(260), gaps: manyGaps(260) });
+  const down = () => ({ status: 503, json: problem(503, "req-load-more") });
+  if (footer === "runs")
+    await page.route(
+      (url) => url.pathname === "/api/v1/admin/runs" && url.searchParams.get("source") === "cj",
+      (route) => route.fulfill(new URL(route.request().url()).searchParams.get("cursor") ? down() : { json: { items: runs, next_cursor: String(runs.at(-1)!.id) } }),
+    );
+  else {
+    const [path, cursor] = footer === "targets" ? ["/api/v1/admin/runs/412", "store-050.example"] : ["/api/v1/admin/host", "gap-49"];
+    await page.route(`**${path}?*`, (route) => (new URL(route.request().url()).searchParams.get("cursor") === cursor ? route.fulfill(down()) : route.fallback()));
+  }
+}
 
 async function coverageDown(page: Page) {
   await page.route("**/api/v1/admin/coverage**", (route) => route.fulfill({ status: 503, json: problem(503, "e2e-cov-503") }));
@@ -218,20 +237,25 @@ for (const [width, height] of [
   test(`${width}px: the run drawer's stale-line Retry reason covers nothing in the drawer (imp-186)`, async ({ page, context }) => {
     await page.setViewportSize({ width, height });
     const cjRun = sources.find((s) => s.key === "cj")!.last_run!;
+    const runs = { down: false };
     await mockAdminApi(page);
     await page.route(
       (url) => url.pathname === "/api/v1/admin/runs" && url.searchParams.get("source") === "cj",
       (route) =>
-        new URL(route.request().url()).searchParams.get("cursor")
-          ? route.fulfill({ status: 503, json: problem(503, "req-runs-2") })
+        runs.down
+          ? route.fulfill({ status: 503, json: problem(503, "req-runs-1") })
           : route.fulfill({ json: { items: [cjRun], next_cursor: String(cjRun.id) } }),
     );
     const { setOffline } = await offlineNetwork(page, context);
     await page.goto("/admin/data-health");
     await page.getByRole("button", { name: "CJ Dropshipping: open runs" }).locator("visible=true").click();
     const drawer = page.getByRole("dialog", { name: "CJ Dropshipping" });
-    await drawer.getByRole("button", { name: "Load older runs" }).click();
-    const stale = drawer.getByRole("group", { name: "Couldn't load older runs" });
+    await expect(drawer.getByRole("button", { name: "Load older runs" })).toBeVisible();
+    // The drawer's stale line is a failed refresh of the loaded runs; an older page fails at the list's foot (DEC-236 a).
+    runs.down = true;
+    await page.clock.setFixedTime(new Date(NOW.getTime() + 6 * 60_000)); // past the 5-minute staleTime
+    await page.evaluate(() => window.dispatchEvent(new Event("visibilitychange"))); // the tab refocuses: a refetch
+    const stale = drawer.getByRole("group", { name: "Couldn't refresh runs" });
     await expect(stale).toBeVisible();
     await setOffline(true);
     // The drawer is narrow at every width, so its actions wrap onto their own row: the reason sits on its empty
@@ -242,6 +266,35 @@ for (const [width, height] of [
     expect(covered).toEqual([]);
     expect(reason.x + reason.width).toBeLessThanOrEqual((await retry.boundingBox())!.x);
   });
+
+  for (const [footer, label, drawerOf] of [
+    ["runs", "Load older runs", "CJ Dropshipping"],
+    ["targets", "Load more targets", "Shopify stores"],
+    ["gaps", "Load older gaps", null],
+  ] as const) {
+    test(`${width}px: offline, the ${footer} footer's Retry is locked, and its reason covers nothing (imp-136)`, async ({ page, context }) => {
+      await page.setViewportSize({ width, height });
+      await nextPageFails(page, footer);
+      const { offlineCalls, setOffline } = await offlineNetwork(page, context);
+      await page.goto("/admin/data-health");
+      if (drawerOf) await page.getByRole("button", { name: `${drawerOf}: open runs` }).locator("visible=true").click();
+      const scope = drawerOf ? page.getByRole("dialog", { name: drawerOf }) : page.locator("main");
+      const more = scope.getByRole("button", { name: new RegExp(`^(${label}|Loading…|Retry)$`) });
+      await more.focus();
+      await page.keyboard.press("Enter");
+      await expect(more).toHaveText("Retry");
+      await setOffline(true);
+      await expect(more).toHaveAttribute("aria-disabled", "true");
+      await page.keyboard.press("Enter"); // a press only shows why, as a stale line's Retry does (DEC-220 b)
+      await expect(more).toHaveAccessibleDescription("You're offline. Reconnect to retry.");
+      await expect(more).toBeFocused();
+      const { covered, reason } = await underReason(page, scope);
+      expect(covered).toEqual([]);
+      // Below, where the footer keeps room. At the page's end there's none, so the gaps reason may open above.
+      if (drawerOf) expect(reason.y).toBeGreaterThanOrEqual(await bottomOf(more));
+      expect(offlineCalls).toEqual([]);
+    });
+  }
 }
 
 test.describe("phone cards", () => {
