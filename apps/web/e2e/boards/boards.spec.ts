@@ -54,7 +54,12 @@ test("two cards swap places with the keyboard only, and the order persists", asy
   const api = await mockBoardsApi(page);
   await page.goto(Q4);
   await expect.poll(() => order(page)).toEqual(["Sunset projection lamp", "Galaxy star projector", "Mini waffle maker", "Cloud pillow slides", "Posture corrector brace"]);
-  await page.getByRole("button", { name: "Reorder Sunset projection lamp" }).focus(); // from here on, keys only
+  await page.getByRole("checkbox", { name: "Select Sunset projection lamp" }).focus(); // from here on, keys only
+  await page.keyboard.press("Tab");
+  const handle = page.getByRole("button", { name: "Reorder Sunset projection lamp" });
+  await expect(handle).toBeFocused();
+  // Hidden until hover or focus: a keyboard user sees it, with its ring.
+  await expect.poll(() => handle.evaluate((el) => [getComputedStyle(el).opacity, getComputedStyle(el).outlineStyle])).toEqual(["1", "solid"]);
   await page.keyboard.press("Space");
   await expect(page.locator("#DndLiveRegion-0")).toContainText("Picked up Sunset projection lamp, position 1 of 5.");
   await page.keyboard.press("ArrowRight");
