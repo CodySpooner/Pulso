@@ -46,6 +46,9 @@ const rule = (n: number, name: string, type: string, over: Partial<S["RuleOut"]>
   skipped: null,
   last_evaluated_at: at(8),
   created_at: at(400),
+  product_id: null,
+  product_name: null,
+  last_fired_at: null,
   ...over,
 });
 

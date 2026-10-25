@@ -2,7 +2,9 @@ import { Bell, PackageCheck, PackageX, Tag, Truck, type LucideIcon } from "lucid
 
 import { sourceLabel } from "@/app/(app)/admin/matching/model";
 import { money } from "@/app/(app)/products/[id]/profit/model";
+import { isProblem } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
+import { formatAgo, formatUtc } from "@/lib/format";
 
 // Pure helpers for the bell, its popover and /alerts (WF-4b, DEC-333): the badge, the Today / Earlier split on the
 // UTC day, an alert in words, and the page it opens.
@@ -96,4 +98,102 @@ export function rulesLine(rules: { enabled: boolean; status: string | null }[]) 
   const none = on.filter((r) => r.status === "no_source").length;
   if (on.length === 0) return "No rule is on yet.";
   return `${on.length} ${on.length === 1 ? "rule is" : "rules are"} on${none ? `, ${none} with no source yet` : ""}.`;
+}
+
+// WF-4c (p4-27, DEC-339): the Rules tab and the sentence-style builder.
+
+export type Rule = components["schemas"]["RuleOut"];
+type RuleIn = components["schemas"]["RuleIn"];
+export type RuleType = RuleIn["type"];
+
+/** The builder's sentence: When [target] [verb] [pct] %. `target` is "product" (any of its suppliers) or a listing id. */
+export interface Draft {
+  target: string;
+  type: RuleType;
+  pct: string;
+  name: string;
+}
+
+export const VERBS: Record<RuleType, string> = {
+  supplier_price_change: "changes price by",
+  freight_change: "changes freight by",
+  supplier_stock_out: "goes out of stock",
+  back_in_stock: "comes back in stock",
+};
+
+export const hasPct = (type: string) => type === "supplier_price_change" || type === "freight_change";
+
+// The % goes to the API as typed (blank reads 0), so its 422 is the one place a bad value is explained. A stock rule
+// sends the API's default, 5, which its evaluation ignores.
+const pctOf = (draft: Draft) => ({ pct: hasPct(draft.type) ? Number(draft.pct) : 5 });
+
+/** The name a rule gets when none is typed, in the Testing defaults' "Scope: what" style. */
+export const autoName = (draft: Draft, product: string) => `${product}: ${TYPES[draft.type].label.toLowerCase()}${hasPct(draft.type) ? ` ±${draft.pct.trim()}%` : ""}`;
+
+export function createBody(draft: Draft, product: { id: string; name: string }): RuleIn {
+  const offer = draft.target !== "product";
+  return {
+    name: draft.name.trim() || autoName(draft, product.name),
+    type: draft.type,
+    target_type: offer ? "supplier_offer" : "product",
+    target_id: offer ? draft.target : product.id,
+    params: pctOf(draft),
+    enabled: true,
+  };
+}
+
+/** A rule's type and target are fixed once made (the API's PATCH takes neither). */
+export const patchBody = (draft: Draft, rule: Rule) => ({ name: draft.name.trim(), ...(hasPct(rule.type) && { params: pctOf(draft) }) });
+
+export const draftOf = (rule: Rule): Draft => ({
+  target: rule.target_type === "supplier_offer" ? String(rule.target_id) : "product",
+  type: rule.type as RuleType,
+  pct: String(rule.params.pct ?? 5),
+  name: rule.name,
+});
+
+const OFFLINE = "The Pulso API didn’t answer. When it runs on your PC, this also means the PC is off.";
+
+/** A failed save's messages, each beside its field: the pct and name 422s, anything else under the form. */
+export function fieldErrors(error: unknown): { pct?: string; name?: string; form?: string } {
+  if (!isProblem(error)) return { form: OFFLINE };
+  const out: { pct?: string; name?: string; form?: string } = {};
+  for (const { loc, msg } of error.errors as { loc?: unknown[]; msg?: string }[]) {
+    const field = loc?.includes("pct") ? "pct" : loc?.includes("name") ? "name" : "form";
+    out[field] ??= msg;
+  }
+  return Object.keys(out).length ? out : { form: error.detail };
+}
+
+export function targetOf(rule: Rule) {
+  if (rule.target_type === "test") return { label: "Products in Testing", detail: "every open test", href: "/testing" };
+  return {
+    label: rule.product_name ?? `Product ${rule.product_id ?? rule.target_id}`,
+    detail: rule.target_type === "supplier_offer" ? `offer ${rule.target_id}` : "any supplier",
+    href: rule.product_id ? `/products/${rule.product_id}?tab=suppliers` : null,
+  };
+}
+
+export const threshold = (rule: Rule) => (hasPct(rule.type) ? `±${rule.params.pct ?? 5}%` : null);
+
+/** The last evaluation in words (DEC-040: no source yet, never zero; DEC-335 d: a held gap and its span). */
+export function statusLine(rule: Pick<Rule, "status" | "skipped" | "last_evaluated_at">, now: number) {
+  if (rule.status === "no_source") return { text: "No source yet", tone: "muted" } as const;
+  if (rule.status === "skipped") return { text: `1 evaluation skipped: ${gapSpan(rule.skipped)}`, tone: "warning" } as const;
+  if (!rule.status || !rule.last_evaluated_at) return { text: "Not evaluated yet", tone: "muted" } as const;
+  return { text: `Evaluated ${formatAgo(rule.last_evaluated_at, now)}`, tone: "ok" } as const;
+}
+
+/** "Until unmuted" is a far-future muted_until: the API's null means unmuted. */
+export const FOREVER = "9999-01-01T00:00:00Z";
+export const MUTES = [
+  ["24 hours", 24],
+  ["7 days", 168],
+  ["Until unmuted", null],
+] as const;
+export const muteUntil = (hours: number | null, now: number) => (hours === null ? FOREVER : new Date(now + hours * 3_600_000).toISOString());
+
+export function mutedLabel(until: string | null, now: number) {
+  if (!until || Date.parse(until) <= now) return null;
+  return Date.parse(until) >= Date.parse(FOREVER) ? "Muted until you unmute" : `Muted until ${formatUtc(until)}`;
 }
