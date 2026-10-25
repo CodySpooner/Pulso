@@ -200,13 +200,16 @@ def picked(margin: int | None, fastest: SupplierRow | None) -> list[tuple[Pick, 
 
 
 def sort_key(row: SupplierRow) -> tuple[int, int, int]:
-    """Complete rows by margin, best first; then the rest by landed cost; unpriced last."""
+    """Complete rows by margin, best first; then the rest by landed cost; unpriced last. Known
+    out-of-stock rows follow every in-stock one in the same order (tiers 3-5), so the first row
+    is the Best margin pick."""
     cost = row.cost
+    out = 0 if row.in_stock else 3
     if cost.complete and cost.margin_minor is not None:
-        return 0, -cost.margin_minor, row.listing_id
+        return out, -cost.margin_minor, row.listing_id
     if cost.landed_cost_minor is not None:
-        return 1, cost.landed_cost_minor, row.listing_id
-    return 2, 0, row.listing_id
+        return out + 1, cost.landed_cost_minor, row.listing_id
+    return out + 2, 0, row.listing_id
 
 
 def supplier_row(row: Row[Any], cost: ProfitCalc, now: datetime) -> SupplierRow:

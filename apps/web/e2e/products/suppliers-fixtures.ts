@@ -53,7 +53,7 @@ function row(id: number, name: string, cost: Calc, over: Partial<Row> = {}): Row
   };
 }
 
-// Best margin first (complete rows), then the incomplete one; the out-of-stock row sorts by its margin but never picks.
+// Best margin first (complete rows), then the incomplete one; the out-of-stock row comes last and never picks.
 const soldOut = row(88160, "Glowhub Trading", costed(88160, 500, 300, "YunExpress", [3, 5]), { in_stock: false, stock: cj(0) });
 const best = row(88123, "CJ Dropshipping", complete, { picks: ["best_margin"] });
 const dear = row(88131, "Yiwu Brightway", costed(88131, 700, 485, "CJPacket", [8, 12]), {
@@ -67,7 +67,7 @@ const fastest = row(88140, "Shenzhen Lamp Co.", costed(88140, 900, 300, "YunExpr
 });
 const unquoted = row(88150, "Fuzhou Cheap Lights", costed(88150, 100, null, null, null));
 
-export const SUPPLIERS: Row[] = [soldOut, best, dear, fastest, unquoted];
+export const SUPPLIERS: Row[] = [best, dear, fastest, unquoted, soldOut];
 export const suppliers: S["SuppliersPage"] = { country: "US", rows: SUPPLIERS, next_cursor: null, picks: { best_margin: best, fastest }, as_of: at(3) };
 
 const withoutPrice = (r: Row): Row => {

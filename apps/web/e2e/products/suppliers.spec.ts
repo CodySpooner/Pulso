@@ -50,9 +50,10 @@ test("an unquoted cheaper supplier never wins Best margin; its margin says why i
   await expect(rowOf(page, "Glowhub Trading")).not.toContainText(/Best margin|Fastest/);
   await expect(rowOf(page, "CJ Dropshipping")).toContainText("Best margin");
   await expect(rowOf(page, "Shenzhen Lamp Co.")).toContainText("Fastest");
-  // Best margin first, the incomplete row last.
-  await expect(table(page).getByRole("row").nth(1)).toHaveAccessibleName(/^Glowhub Trading,/);
-  await expect(table(page).getByRole("row").last()).toHaveAccessibleName("Fuzhou Cheap Lights, landed cost withheld");
+  // Best margin first, then the incomplete row; the out-of-stock row last, whatever its margin.
+  await expect(table(page).getByRole("row").nth(1)).toHaveAccessibleName(/^CJ Dropshipping,/);
+  await expect(table(page).getByRole("row").nth(4)).toHaveAccessibleName("Fuzhou Cheap Lights, landed cost withheld");
+  await expect(table(page).getByRole("row").last()).toHaveAccessibleName(/^Glowhub Trading,/);
 });
 
 test("every number opens its source; a number nothing backs reads No source yet", async ({ page }) => {
@@ -86,12 +87,12 @@ test("keyboard: rows move with j/k and Enter opens the focused supplier in Profi
   await expect(first).toBeFocused();
   await page.keyboard.press("j");
   await page.keyboard.press("Enter");
-  await expect(page).toHaveURL(`/products/${PRODUCT_ID}?tab=profit&supplier=88123`);
-  await expect.poll(() => requests.at(-1)?.supplier_listing_id).toBe(88123);
+  await expect(page).toHaveURL(`/products/${PRODUCT_ID}?tab=profit&supplier=88131`);
+  await expect.poll(() => requests.at(-1)?.supplier_listing_id).toBe(88131);
   // Back on Suppliers, the supplier Profit uses is marked.
   await page.getByRole("tab", { name: "Suppliers" }).click();
-  await expect(rowOf(page, "CJ Dropshipping")).toHaveAttribute("aria-selected", "true");
-  await expect(rowOf(page, "CJ Dropshipping")).toContainText("In Profit");
+  await expect(rowOf(page, "Yiwu Brightway")).toHaveAttribute("aria-selected", "true");
+  await expect(rowOf(page, "Yiwu Brightway")).toContainText("In Profit");
 });
 
 test("no market price: margins are withheld once, in words; landed costs still compare and Fastest still picks", async ({ page }) => {
@@ -136,7 +137,7 @@ test("375 px: supplier cards, Open in Profit full width, no horizontal page scro
   const cards = page.getByRole("list", { name: "Suppliers" });
   await expect(cards.getByRole("listitem")).toHaveCount(5);
   expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBe(0);
-  await cards.getByRole("listitem").filter({ hasText: "Yiwu Brightway" }).getByRole("button", { name: "Open Yiwu Brightway in Profit" }).click();
-  await expect(page).toHaveURL(`/products/${PRODUCT_ID}?tab=profit&supplier=88131`);
-  await expect.poll(() => requests.at(-1)?.supplier_listing_id).toBe(88131);
+  await cards.getByRole("listitem").filter({ hasText: "Fuzhou Cheap Lights" }).getByRole("button", { name: "Open Fuzhou Cheap Lights in Profit" }).click();
+  await expect(page).toHaveURL(`/products/${PRODUCT_ID}?tab=profit&supplier=88150`);
+  await expect.poll(() => requests.at(-1)?.supplier_listing_id).toBe(88150);
 });

@@ -285,6 +285,8 @@ def test_a_known_out_of_stock_row_never_wins_a_pick(api: TestClient, db_engine: 
         kept,
     )
     assert [by_id[i]["in_stock"] for i in (gone, sold_out, kept)] == [False, False, True]
+    # Out-of-stock rows follow the in-stock ones whatever their margin: the first row is the pick.
+    assert [row["listing_id"] for row in body["rows"]] == [kept, gone, sold_out]
     assert by_id[gone]["stock"]["value"] == 0 and by_id[gone]["cost"]["complete"]
 
 
