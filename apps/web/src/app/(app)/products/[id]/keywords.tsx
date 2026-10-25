@@ -121,18 +121,23 @@ export function KeywordsSection({ id }: { id: string }) {
               Confirmed <span className="font-normal text-subtle-foreground">· {confirmed.length}</span>
             </h3>
             {confirmed.length === 0 ? (
-              <p className="text-data text-muted-foreground">None yet. Confirm a suggestion below, or add your own.</p>
+              <p className="text-data text-muted-foreground">{candidates.length > 0 ? "None yet. Confirm a suggestion below, or add your own." : "None yet."}</p>
             ) : (
               <ul data-list="confirmed" aria-label="Confirmed keywords" className="flex flex-wrap gap-1.5">
                 {confirmed.map((k, i) => (
                   <li key={k.keyword} title={provenance(k)} className="inline-flex h-6 max-w-full items-center gap-1 rounded-sm border border-border-strong bg-secondary pr-0.5 pl-2 text-label text-foreground">
-                    {k.source === "manual" ? <PenLine className="size-3 shrink-0 text-subtle-foreground" aria-hidden /> : <Check className="size-3 shrink-0 text-positive" aria-hidden />}
-                    {k.source === "manual" && <span className="sr-only">Added by you: </span>}
+                    {/* Only the minority carries a mark: a keyword typed in rather than taken from a title. */}
+                    {k.source === "manual" && (
+                      <>
+                        <PenLine className="size-3 shrink-0 text-subtle-foreground" aria-hidden />
+                        <span className="sr-only">Added by you: </span>
+                      </>
+                    )}
                     <span className="truncate">{k.keyword}</span>
                     {/* Rejecting keeps the decision on record; nothing is deleted (DEC-281). */}
                     <button
                       type="button"
-                      aria-label={`Remove ${k.keyword}`}
+                      aria-label={`Reject ${k.keyword}`}
                       onClick={() => decideAt("confirmed", i, k.keyword, "rejected")}
                       className="relative hit-area grid size-5 shrink-0 place-items-center rounded-sm text-muted-foreground transition-colors duration-(--duration-fast) hover:bg-accent hover:text-foreground"
                     >
@@ -176,9 +181,11 @@ export function KeywordsSection({ id }: { id: string }) {
           <div className="flex flex-col gap-2">
             <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
               <h3 className="text-label font-medium text-foreground">Suggested from listing titles</h3>
-              <span className="text-micro text-subtle-foreground">
-                Relevance: how many titles use the phrase and its words · titles as of <time dateTime={all[0]?.as_of}>{all[0] ? formatUtc(all[0].as_of) : "—"}</time>
-              </span>
+              {all[0] && (
+                <span className="text-micro text-subtle-foreground">
+                  Relevance: how many titles use the phrase and its words · titles as of <time dateTime={all[0].as_of}>{formatUtc(all[0].as_of)}</time>
+                </span>
+              )}
             </div>
             {candidates.length === 0 ? (
               <p className="rounded-lg border border-dashed border-border px-3 py-3 text-data text-muted-foreground">
@@ -227,10 +234,11 @@ export function KeywordsSection({ id }: { id: string }) {
             </details>
           )}
 
-          <p className="flex items-start gap-2 rounded-lg border border-dashed border-border px-3 py-2.5 text-label text-muted-foreground">
-            <Search className="mt-0.5 size-3.5 shrink-0 text-subtle-foreground" aria-hidden />
+          {/* The no-source state for per-keyword interest: one line, since the Search interest pane above says it too. */}
+          <p className="flex items-start gap-1.5 text-micro text-subtle-foreground">
+            <Search className="mt-px size-3 shrink-0" aria-hidden />
             <span>
-              <span className="font-medium text-foreground">Search interest · No source yet.</span> Google Trends isn&apos;t fetched for confirmed keywords yet; the weekly fetch comes in a later step, within the free search budget.
+              <span className="font-medium text-muted-foreground">Search interest per keyword · No source yet.</span> Confirmed keywords join the weekly Google Trends fetch in a later step, within the free search budget.
             </span>
           </p>
         </>

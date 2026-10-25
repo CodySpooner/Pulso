@@ -55,9 +55,9 @@ test("reject, confirm instead, add by hand and remove round-trip, each decision 
     await expect(section(page).getByText(message)).toBeVisible();
   }
 
-  await chips(page).getByRole("button", { name: "Remove galaxy lamp" }).click();
+  await chips(page).getByRole("button", { name: "Reject galaxy lamp" }).click();
   await expect(chips(page)).toHaveText(["usb"]);
-  await expect(chips(page).getByRole("button", { name: "Remove usb" })).toBeFocused(); // no chip after it: the one before
+  await expect(chips(page).getByRole("button", { name: "Reject usb" })).toBeFocused(); // no chip after it: the one before
   await expect(section(page).getByText("Rejected (1)")).toBeVisible();
   expect(posts).toEqual([
     { keyword: "usb", status: "rejected" },
@@ -93,7 +93,7 @@ test("error with Retry, before anything loaded", async ({ page }) => {
 test("titles with nothing to suggest; search interest has no source yet", async ({ page }) => {
   await open(page, { body: empty });
   await expect(section(page).getByText("No usable phrase in this product's titles yet.", { exact: false })).toBeVisible();
-  await expect(section(page).getByText("Search interest · No source yet.")).toBeVisible();
+  await expect(section(page).getByText("Search interest per keyword · No source yet.")).toBeVisible();
 });
 
 test("a failed save is undone and says so", async ({ page }) => {
@@ -102,6 +102,15 @@ test("a failed save is undone and says so", async ({ page }) => {
   await expect(section(page).getByRole("alert")).toContainText("Couldn't save the keyword. Your change was undone.");
   await expect(chips(page)).toHaveText(["sunset projection lamp", "Added by you: sunset lamp for bedroom"]);
   await expect(suggested(page).getByRole("button", { name: "Confirm lamp" })).toBeVisible();
+});
+
+test("a failed refresh keeps the list with a stale line and Retry", async ({ page }) => {
+  await open(page, { body: decided, failSaves: true, refetchStatus: 503 });
+  await suggested(page).getByRole("button", { name: "Confirm lamp" }).click(); // fails, so the list is refetched
+  const stale = section(page).getByRole("group", { name: "Couldn't refresh keywords" });
+  await expect(stale).toBeVisible();
+  await expect(stale.getByRole("button", { name: "Retry" })).toBeVisible();
+  await expect(chips(page)).toHaveText(["sunset projection lamp", "Added by you: sunset lamp for bedroom"]);
 });
 
 test("375px: the keyword rows wrap with no horizontal page scroll", async ({ page }) => {

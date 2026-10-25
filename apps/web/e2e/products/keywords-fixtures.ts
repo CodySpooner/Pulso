@@ -50,6 +50,8 @@ export interface KeywordsMock {
   /** Answer the GET with a problem, or never. */
   status?: number;
   hold?: boolean;
+  /** Answer every GET after the first with this problem: a refresh that fails while the list stays. */
+  refetchStatus?: number;
   /** Answer every POST with a 503, or never. */
   failSaves?: boolean;
   holdSaves?: boolean;
@@ -60,11 +62,13 @@ export interface KeywordsMock {
 export async function mockKeywordsApi(page: Page, options: KeywordsMock = {}) {
   const posts: S["KeywordIn"][] = [];
   let saved = (options.body ?? undecided).keywords;
+  let gets = 0;
   await page.route("**/api/v1/products/*/keywords", async (route) => {
     const request = route.request();
     if (request.method() === "GET") {
       if (options.hold) return;
-      if (options.status) return route.fulfill({ status: options.status, contentType: "application/problem+json", json: problem(options.status, `e2e-keywords-${options.status}`) });
+      const status = options.status ?? (gets++ > 0 ? options.refetchStatus : undefined);
+      if (status) return route.fulfill({ status, contentType: "application/problem+json", json: problem(status, `e2e-keywords-${status}`) });
       return route.fulfill({ json: { keywords: saved } });
     }
     const body = request.postDataJSON() as S["KeywordIn"];
