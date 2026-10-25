@@ -74,7 +74,9 @@ function BestMargin({ item, now }: { item: Item; now: number }) {
       />
     );
   }
-  return <Metric stat={m} label="Best landed margin" format={(v) => `${money(v)} · ${pct(m.margin_bps)}`} now={now} />;
+  // A loss reads "−$3.39 · −11.3%", with U+2212 as on the Profit tab.
+  const text = (v: number) => `${money(v)} · ${pct(m.margin_bps)}`.replaceAll("-", "−");
+  return <Metric stat={m} label="Best landed margin" format={text} now={now} />;
 }
 
 /** G7, the momentum sort key, signed with ▲/▼ (never colour alone). */
