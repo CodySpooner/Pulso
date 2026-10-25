@@ -3965,7 +3965,7 @@ Superseded review defaults, not given entries: default #0 (move the repo) is don
   - **Every lateral always:** the default sort would pay for the economics view on every product: 550 ms instead of 10.
   - **A materialised screener row:** imp-279's per-workspace economics table. The margin paths now pass 500 ms at 3,000 products, so its trigger ("when the sort is scheduled") is met. It's a backlog row, not this task's (no second migration).
   - **Columns, `alert_enabled`, `updated_at` on `saved_screens` now:** WF-1b's column chooser can live in the definition JSON without a migration, and Phase 7 adds its alert columns.
-- **Why:** `apps/api/tests/test_screener.py` (41 tests, 40 on Postgres):
+- **Why:** `apps/api/tests/test_screener.py` (41 tests):
   - Each filter narrows the fixture set (20 cases), and a product missing the metric is out.
   - Each sort orders with missing values last in both orders, and a cursor walk at limit 1 lists every row once (9 sorts × 2 orders). Ties break by id across pages, among values and among nulls.
   - Risk returns the marker and doesn't narrow.
