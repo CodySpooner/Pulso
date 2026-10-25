@@ -1085,3 +1085,29 @@ def test_a_product_an_undo_empties_is_empty_until_listings_join_it_again(world: 
     undone()
     assert (status(new), status(home)) == ("empty", "active")
     assert products(session, stays, leaves) == [home, home]
+
+
+@pytest.mark.xfail(
+    strict=True,
+    raises=AssertionError,
+    reason="XR-36: an undone accept leaves owner `unlink` rows, so manual() freezes both listings",
+)
+def test_xr36_an_undone_accept_leaves_the_listings_free_for_the_matcher(world: World) -> None:
+    session = world.session
+    cost = world.listing(world.supplier(), 0, price=1000, age_days=9)
+    retail = world.listing(world.store(), 0, QUEUE_ANGLE, price=2500)  # 0.83: queued
+    world.run()
+    pair = candidate(session, cost, retail)
+    assert pair is not None and pair.status == "pending"
+    accept(session, pair.id, "owner", "queue")
+    session.commit()
+    undo(session, latest(session, cost).id, "owner", "misclick")
+    session.commit()
+    assert products(session, cost, retail) == [None, None]
+
+    # Without the accept and its undo, this run links the two (DEC-263 b: an undo restores
+    # what the matcher saw before the decision). Instead `cost` is manual for good.
+    late = world.listing(world.store(), 0, price=2500)  # 1.0 with `cost`, sane markup
+    world.run()
+    linked, other = products(session, cost, late)
+    assert linked is not None and linked == other
