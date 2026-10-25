@@ -22,7 +22,7 @@ from pulso_core.models import CollectorRunTarget, Image, Listing, RawPayload
 from pulso_core.settings import Settings
 from pulso_ml.phash import phash
 from pulso_sources.framework import Request, Response, RunDeferred, Target, UpsertStats
-from pulso_sources.shopify_stores import NoRedirect, RobotsDisallowed
+from pulso_sources.shopify_stores import NoRedirect, RobotsDisallowed, read_robots
 from pulso_sources.storage import JsonValue
 
 SOURCE, SCOPE, AGENT = "listing_images", "listing_image", "PulsoBot"
@@ -46,6 +46,10 @@ class ImageTooLarge(ValueError):
 
 
 class ImageUndecodable(ValueError):
+    pass
+
+
+class NoListedHost(ValueError):
     pass
 
 
@@ -76,7 +80,9 @@ def check(response: Response) -> None:
 def https_host(url: str) -> str | None:
     try:
         parts = urlsplit(url)
-        return parts.hostname if parts.scheme == "https" and parts.port in {None, 443} else None
+        ok = parts.scheme == "https" and parts.port in {None, 443}
+        # urllib connects to the whole netloc, userinfo included, so those forms have no host.
+        return parts.hostname if ok and not {"@", "\\"} & set(parts.netloc) else None
     except ValueError:
         return None
 
@@ -90,6 +96,7 @@ class ImageAdapter:
         self.robots: dict[str, RobotFileParser] = {}
         self.robots_bodies: dict[str, bytes] = {}
         self.delays: dict[str, float] = {}
+        self.skipped: set[str] = set()
 
     def fetch(self, request: Request, *, user_agent: str) -> Response:
         url, host = str(request.params["url"]), str(request.params["host"])
@@ -157,22 +164,30 @@ class ImageAdapter:
         image.storage_key, image.phash = payload.storage_key, records[0]
         return UpsertStats(updated=1)
 
+    def past_budget(self, host: str) -> bool:
+        # A host whose next slot is past the deadline sits the run out unattempted (no penalty),
+        # so its Crawl-delay never stops the run for the other hosts (DEC-242).
+        late = _next_host.get(host, 0) >= self.deadline
+        if late and host not in self.skipped:
+            self.skipped.add(host)
+            logger.info("listing_images_host_skipped host=%s", host, extra={"source": SOURCE})
+        return late
+
     def robots_requests(self, host: str) -> Iterator[Request]:
-        yield Request(params={"url": f"https://{host}/robots.txt", "host": host})
+        if self.past_budget(host):
+            return
+        yield Request({"url": f"https://{host}/robots.txt", "host": host}, resets_blocks=False)
         # Resumed only after a 2xx capture; otherwise the target fails and the host's images
         # skip this run unattempted (fail closed, no backoff).
-        robots = RobotFileParser()
-        robots.parse(self.robots_bodies[host].decode("utf-8-sig", "replace").splitlines())
-        rate = robots.request_rate(AGENT)
-        self.delays[host] = max(
-            float(robots.crawl_delay(AGENT) or 0), rate.seconds / rate.requests if rate else 0
+        robots, self.delays[host] = read_robots(
+            self.robots_bodies[host].decode("utf-8-sig", "replace")
         )
         _next_host[host] = max(_next_host.get(host, 0), time.monotonic() + self.delays[host])
         self.robots[host] = robots
 
     def image_requests(self, image_id: int, url: str, host: str) -> Iterator[Request]:
         robots = self.robots.get(host)
-        if robots is None:
+        if robots is None or self.past_budget(host):
             return
         if not robots.can_fetch(AGENT, url):
             raise RobotsDisallowed()
@@ -259,6 +274,11 @@ def plan(session: Session, *, settings: Settings) -> tuple[ImageAdapter, list[Ta
             "unlisted_host": unlisted,
             "backoff": waiting,
         }
-        body = json.dumps(manifest).encode()
-        targets.append(Target(f"{SCOPE}_plan", "empty", [Request(manifest, "json", body)]))
+
+        def capture() -> Iterator[Request]:
+            yield Request(manifest, "json", json.dumps(manifest).encode())
+            if pending and unlisted == len(pending):
+                raise NoListedHost()  # Due images, none on a listed host: the run reads partial.
+
+        targets.append(Target(f"{SCOPE}_plan", "empty", capture()))
     return adapter, targets

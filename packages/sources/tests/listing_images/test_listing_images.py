@@ -224,11 +224,36 @@ def test_fresh_main_image_stored_once_then_rerun_sends_nothing(
     stored = len(net.objects)
     rerun = run(session, settings)
     assert len(net.calls) == 2 and rerun.http_requests == 0
-    # Nothing left to fetch still succeeds: one offline plan capture, so no catch-up run.
-    assert rerun.status == "success" and len(net.objects) == stored + 1
+    # Nothing fetchable left: one offline plan capture, and the due off-list images name it.
+    assert (rerun.status, rerun.error_code) == ("partial", "NoListedHost")
+    assert len(net.objects) == stored + 1
     manifest = session.scalars(select(RawPayload).order_by(RawPayload.id.desc())).first()
     assert manifest is not None
     assert manifest.request == {"pending": 2, "unlisted_host": 2, "backoff": 0}
+
+
+def test_due_images_on_no_listed_host_read_partial_and_nothing_due_reads_success(
+    session: Session, settings: Settings, net: Net
+) -> None:
+    assert run(session, settings).status == "success"  # XR-12: nothing due is a quiet day.
+    add_listing(session, "https://unlisted.test/x.png")
+    # XR-15: urllib would connect to the whole netloc, so these are not host A.
+    add_listing(session, f"https://x@{A}/a.png")
+    add_listing(session, f"https://x\\@{A}/b.png")
+    result = run(session, settings)
+    assert (result.status, result.error_code) == ("partial", "NoListedHost")
+    assert net.calls == []
+    manifest = session.scalars(select(RawPayload).order_by(RawPayload.id.desc())).first()
+    assert manifest is not None
+    assert manifest.request == {"pending": 3, "unlisted_host": 3, "backoff": 0}
+
+
+@pytest.mark.parametrize(
+    "url", [f"https://x@{A}/a.png", f"https://x:y@{A}/a.png", f"https://x\\@{A}/a.png"]
+)
+def test_userinfo_or_backslash_url_has_no_host(url: str) -> None:
+    assert listing_images.https_host(url) is None
+    assert listing_images.https_host(f"https://{A}/a.png") == A
 
 
 @pytest.mark.parametrize(
@@ -304,6 +329,28 @@ def test_consecutive_blocks_disable_once_and_stop_the_run(
     assert not session.get_one(Source, 6).enabled
 
 
+@pytest.mark.parametrize("status", [403, 429, 430])
+def test_image_blocks_disable_once_while_robots_answers_200(
+    session: Session, settings: Settings, net: Net, status: int
+) -> None:
+    # XR-11: the robots.txt 200 that opens every run must not reset the image block count.
+    threshold = settings.collector_block_threshold
+    for n in range(threshold):
+        (img,) = add_listing(session, f"https://{A}/{n}.png")
+        net.replies[img.url] = Response(b"", status, "text/plain")
+    for _ in range(threshold):
+        assert run(session, settings).error_message == f"http_{status}"
+        net.now += timedelta(days=1)
+    events = session.scalars(select(SourceEvent)).all()
+    assert [(e.action, e.reason) for e in events] == [
+        ("disable", f"consecutive_blocks:http_{status}")
+    ]
+    source = session.get_one(Source, 6)
+    assert not source.enabled and source.consecutive_block_count == threshold
+    run(session, settings)
+    assert len(net.calls) == 2 * threshold  # robots.txt and one image per run, then nothing
+
+
 def test_retry_after_is_honoured(session: Session, settings: Settings, net: Net) -> None:
     (img,) = add_listing(session, f"https://{A}/busy.png")
     busy = Response(b"", 503, "text/plain", headers={"Retry-After": "120"})
@@ -331,6 +378,50 @@ def test_per_host_spacing_caps_requests_and_crawl_delay_slows_it(
         assert all(b - a >= timedelta(seconds=spacing) for a, b in itertools.pairwise(times))
     # Round-robin: B is not starved behind all of A's waits.
     assert [url.split("/")[2] for url, _, _ in net.calls[:4]] == [A, B, A, B]
+
+
+def test_crawl_delay_past_the_budget_skips_only_that_host(
+    session: Session, settings: Settings, net: Net
+) -> None:
+    # XR-13: A's 3000 s Crawl-delay is past the 2700 s budget; B's images still go out.
+    net.replies[f"https://{A}/robots.txt"] = Response(
+        b"User-agent: *\nCrawl-delay: 3000\n", 200, "text/plain"
+    )
+    (slow,) = add_listing(session, f"https://{A}/x.png")
+    fast = [add_listing(session, f"https://{B}/{n}.png")[0] for n in range(3)]
+    for n, img in enumerate(fast):
+        net.replies[img.url] = image(n)
+    result = run(session, settings)
+    assert [len(net.hits(img.url)) for img in fast] == [1, 1, 1] and not net.hits(slow.url)
+    skipped = target(session, result, slow)
+    assert (skipped.status, skipped.raw_payload_id) == ("partial", None)  # no backoff penalty
+    # The next run in this process: A's robots.txt slot is past the budget too.
+    (late,) = add_listing(session, f"https://{B}/late.png")
+    net.replies[late.url] = image(9)
+    run(session, settings)
+    assert len(net.hits(late.url)) == 1 and len(net.hits(f"https://{A}/robots.txt")) == 1
+
+
+def test_fractional_crawl_delay_slows_and_zero_request_rate_refuses(
+    session: Session, settings: Settings, net: Net
+) -> None:
+    # XR-14: urllib drops "10.5" and divides by the 0 in "0/1".
+    net.replies[f"https://{A}/robots.txt"] = Response(
+        b"User-agent: *\nCrawl-delay: 10.5\n", 200, "text/plain"
+    )
+    net.replies[f"https://{B}/robots.txt"] = Response(
+        b"User-agent: *\nRequest-rate: 0/1\n", 200, "text/plain"
+    )
+    slow = [add_listing(session, f"https://{A}/{n}.png")[0] for n in range(3)]
+    for n, img in enumerate(slow):
+        net.replies[img.url] = image(n)
+    (refused,) = add_listing(session, f"https://{B}/x.png")
+    result = run(session, settings)
+    assert result.error_code == "RobotsZeroRate" and not net.hits(refused.url)
+    assert target(session, result, refused).status == "partial"
+    times = [at for url, at, _ in net.calls if url.startswith(f"https://{A}/")]
+    assert len(times) == 4
+    assert all(b - a >= timedelta(seconds=10.5) for a, b in itertools.pairwise(times))
 
 
 def test_robots_disallow_skips_the_host_and_unavailable_robots_never_backs_off(

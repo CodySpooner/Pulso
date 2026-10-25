@@ -100,6 +100,31 @@ def test_collector_defaults_and_honest_user_agent(monkeypatch: pytest.MonkeyPatc
 
 
 @pytest.mark.parametrize(
+    "host",
+    [
+        "https://cdn.shopify.com",
+        "cdn.shopify.com:443",
+        "x@cdn.shopify.com",
+        "cdn.shopify.com/files",
+        "CDN.shopify.com",
+        "cdn.shopify.com.",
+        "localhost",
+        "127.0.0.1",
+        "[::1]",
+    ],
+)
+def test_image_hosts_are_bare_lowercase_dns_names(
+    monkeypatch: pytest.MonkeyPatch, host: str
+) -> None:
+    set_required(monkeypatch)
+    monkeypatch.setenv("IMAGE_HOSTS", "cdn.shopify.com, img-1.example.co.uk")
+    assert Settings().image_hosts == ["cdn.shopify.com", "img-1.example.co.uk"]
+    monkeypatch.setenv("IMAGE_HOSTS", f"cdn.example.test, {host}")
+    with pytest.raises(ValidationError):
+        Settings()
+
+
+@pytest.mark.parametrize(
     "name,value",
     [
         ("SHOPIFY_REQUESTS_PER_MINUTE", "31"),

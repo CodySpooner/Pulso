@@ -1,5 +1,6 @@
+import logging
 from collections.abc import Iterator
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta, timezone
 from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
 from unittest.mock import Mock
@@ -17,6 +18,7 @@ from pulso_sources.fx_frankfurter import (
     SOURCE,
     FrankfurterAdapter,
     FxBackfillRange,
+    Rate,
     backfill,
     plan,
     rate_as_of,
@@ -185,6 +187,35 @@ def test_refill_replay_and_conflict_keep_first_rate(session: Session) -> None:
     assert session.get_one(FxRate, (date(2026, 10, 20), "USD", "JPY", SOURCE)).rate == Decimal(151)
     # DEC-230: rows dated after the capture's UTC date are skipped, not rejected.
     assert adapter.upsert(session, history, first, parser_version="1") == UpsertStats(unchanged=1)
+
+
+@pytest.mark.parametrize(
+    ("captured_at", "kept", "skipped"),
+    [
+        (datetime(2026, 10, 20, tzinfo=UTC), [19, 20], "2026-10-21"),
+        (datetime(2026, 10, 19, 23, 59, 59, tzinfo=UTC), [19], "2026-10-20,2026-10-21"),
+        # 20:00 at UTC-5 is 01:00Z on the 20th: the UTC date decides, not the local one.
+        (datetime(2026, 10, 19, 20, tzinfo=timezone(timedelta(hours=-5))), [19, 20], "2026-10-21"),
+    ],
+    ids=["00:00Z", "23:59:59Z", "aware-non-utc"],
+)
+def test_next_day_rows_skipped_with_named_evidence(
+    session: Session,
+    caplog: pytest.LogCaptureFixture,
+    monkeypatch: pytest.MonkeyPatch,
+    captured_at: datetime,
+    kept: list[int],
+    skipped: str,
+) -> None:
+    # XR-10: the DEC-230 skip is logged by name, not only implied by the row counts.
+    rows = [Rate(date=date(2026, 10, d), base="USD", quote="JPY", rate=d) for d in (19, 20, 21)]
+    payload = RawPayload(id=7, source_id=4, captured_at=captured_at)
+    monkeypatch.setattr(logging.getLogger("pulso"), "propagate", True)
+    with caplog.at_level(logging.INFO, "pulso"):
+        assert FrankfurterAdapter().upsert(session, rows, payload, parser_version="1").inserted
+    assert sorted(row.date.day for row in session.scalars(select(FxRate))) == kept
+    line = f"fx_next_day_rows_skipped count={3 - len(kept)} dates={skipped} raw_payload_id=7"
+    assert line in caplog.messages
 
 
 def test_csv_registration_validation_and_manual_provenance(session: Session) -> None:

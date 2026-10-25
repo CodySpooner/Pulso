@@ -25,6 +25,8 @@ class Request:
     body: bytes | None = None
     content_type: str | None = "application/json"
     raw_payload_id: int | None = None
+    # False for robots.txt: its 200 says nothing about the requests being blocked (DEC-242).
+    resets_blocks: bool = True
 
 
 @dataclass(frozen=True)

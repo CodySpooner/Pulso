@@ -14,6 +14,28 @@ from .test_catalog import CATALOG, run
 
 
 @pytest.mark.parametrize(
+    ("body", "delay"),
+    [
+        ("User-agent: *\nCrawl-delay: 10.5\n", 10.5),
+        ("User-agent: *\nCrawl-delay: 10 # slow\nCrawl-delay: 7.25\n", 10),
+        ("User-agent: Googlebot\nCrawl-delay: 30\n\nUser-agent: *\nCrawl-delay: 1\n", 30),
+        ("User-agent: *\nCrawl-delay: inf\nCrawl-delay: nan\nCrawl-delay: 1e999\n", 0),
+        ("User-agent: *\nCrawl-delay: -4\nCrawl-delay: soon\nCrawl-delay:\n", 0),
+        ("User-agent: *\nRequest-rate: 2/10\nCrawl-delay: 3\n", 5),
+        ("User-agent: *\nDisallow: /cart\n", 0),
+    ],
+)
+def test_robots_delay_is_the_largest_finite_value(body: str, delay: float) -> None:
+    # XR-14: every Crawl-delay in the file, fractions included, can only slow the crawl.
+    assert shopify_stores.read_robots(body)[1] == delay
+
+
+def test_zero_request_rate_is_a_named_refusal() -> None:
+    with pytest.raises(shopify_stores.RobotsZeroRate):
+        shopify_stores.read_robots("User-agent: *\nRequest-rate: 0/1\n")
+
+
+@pytest.mark.parametrize(
     ("domain", "age", "rpm", "existing_wait", "expected_wait"),
     [
         ("first.test", 0, 30, 0, 10),

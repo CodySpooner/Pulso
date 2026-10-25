@@ -2,7 +2,9 @@
 
 import time
 from collections.abc import Callable, Iterator, Sequence
+from contextlib import suppress
 from datetime import UTC, datetime, timedelta
+from math import isfinite
 from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.request import HTTPRedirectHandler, ProxyHandler, build_opener
@@ -42,6 +44,31 @@ class NoRedirect(HTTPRedirectHandler):
 
 class RobotsDisallowed(ValueError):
     pass
+
+
+class RobotsZeroRate(RobotsDisallowed):
+    pass
+
+
+def read_robots(text: str) -> tuple[RobotFileParser, float]:
+    """PulsoBot's rules and the seconds to leave between requests (DEC-242).
+
+    urllib keeps only whole-number Crawl-delays in the agent's group, so the delay is the
+    largest finite Crawl-delay anywhere in the file or the Request-rate: it can only slow us.
+    """
+    lines = text.splitlines()
+    robots = RobotFileParser()
+    robots.parse(lines)
+    rate = robots.request_rate("PulsoBot")
+    if rate and rate.requests == 0:
+        raise RobotsZeroRate()
+    delays = [rate.seconds / rate.requests if rate else 0.0]
+    for line in lines:
+        name, _, value = line.split("#", 1)[0].partition(":")
+        if name.strip().lower() == "crawl-delay":
+            with suppress(ValueError):
+                delays.append(float(value))
+    return robots, max(d for d in delays if isfinite(d) and d >= 0)
 
 
 class ShopifyAdapter:
@@ -158,16 +185,11 @@ class ShopifyAdapter:
         ):
             body = cached[1]
         else:
-            yield request("/robots.txt")
+            yield Request(params=request("/robots.txt").params, resets_blocks=False)
             if self.responses[robots_url].status_code != 200:
                 raise ValueError("robots_unavailable")
             body = self.responses[robots_url].body or b""
-        robots = RobotFileParser()
-        robots.parse(body.decode("utf-8-sig").splitlines())
-        rate = robots.request_rate("PulsoBot")
-        self.delays[store.domain] = max(
-            float(robots.crawl_delay("PulsoBot") or 0), rate.seconds / rate.requests if rate else 0
-        )
+        robots, self.delays[store.domain] = read_robots(body.decode("utf-8-sig"))
         _next_store[store.domain] = max(
             _next_store.get(store.domain, 0), time.monotonic() + self.delays[store.domain]
         )

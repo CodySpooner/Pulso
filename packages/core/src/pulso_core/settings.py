@@ -4,6 +4,7 @@ Sources, highest priority first: process env vars, `.env.local` (per-worktree, w
 infra/scripts/worktree_env.py), `.env`. Every variable is documented in `.env.example`.
 """
 
+import re
 from functools import lru_cache
 from typing import Annotated, Literal, Self
 
@@ -20,6 +21,10 @@ from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 # A list read from a comma-separated env value ("a, b") instead of JSON.
 CommaList = Annotated[list[str], NoDecode]
+# Two or more labels; the last starts with a letter, so an IPv4 literal never matches.
+DNS_NAME = re.compile(
+    r"(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z](?:[a-z0-9-]{0,61}[a-z0-9])?"
+)
 
 
 class Settings(BaseSettings):
@@ -113,6 +118,14 @@ class Settings(BaseSettings):
     def _split_commas(cls, value: object) -> object:
         if isinstance(value, str):
             return [item.strip() for item in value.split(",") if item.strip()]
+        return value
+
+    @field_validator("image_hosts")
+    @classmethod
+    def _bare_hosts(cls, value: list[str]) -> list[str]:
+        # No scheme, port, userinfo, path, IP literal or upper case: such an entry matches no URL.
+        if not all(DNS_NAME.fullmatch(host) for host in value):
+            raise ValueError("IMAGE_HOSTS entries must be bare lowercase DNS names")
         return value
 
 
