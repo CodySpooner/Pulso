@@ -19,6 +19,7 @@ from pulso_api.routers.products import DB, is_stale
 from pulso_api.routers.profit import ProfitCalc, ProfitCalcRequest, calc_profit
 from pulso_api.schemas.provenance import NoSource, Sourced, Stat
 from pulso_core.landed_cost import LandedCost, best
+from pulso_core.landed_cost_loader import in_stock
 from pulso_core.models import Listing, ListingSnapshot, Product, Source, Supplier, SupplierOffer
 
 router = APIRouter(prefix="/v1/products")
@@ -268,7 +269,7 @@ def supplier_row(row: Row[Any], cost: ProfitCalc, now: datetime) -> SupplierRow:
         currency=row.currency,
         cost=cost,
         picks=[],
-        in_stock=row.available is not False and (row.stock is None or row.stock > 0),
+        in_stock=in_stock(row.available, row.stock),
         stock=observed(row.stock, "The source reports no stock for this listing."),
         rating=rating,
         orders=orders,

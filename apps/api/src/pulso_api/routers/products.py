@@ -44,6 +44,7 @@ from pulso_api.auth import Principal, current_principal
 from pulso_api.dependencies import get_db
 from pulso_api.errors import APIError
 from pulso_api.schemas.provenance import NoSource, Sourced, Stat
+from pulso_core.landed_cost_loader import in_stock
 from pulso_core.models import (
     Category,
     Image,
@@ -638,7 +639,7 @@ def get_product_overview(product_id: UUID, session: DB) -> ProductOverview:
     offers = [
         row
         for row in usd_priced([row for row in rows if row.supplier_id is not None])
-        if row.available is not False and (row.stock is None or row.stock > 0)
+        if in_stock(row.available, row.stock)
     ]
     best = min(offers, key=low, default=None)
     cost: SupplierCost | NoSource = NoSource(value=None, reason="No in-stock supplier offer yet.")

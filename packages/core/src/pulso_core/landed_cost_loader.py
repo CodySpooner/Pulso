@@ -87,6 +87,22 @@ def traced(session: Session, row: Row[Any], name: str) -> tuple[Amount, dict[str
     return Amount(row.minor, row.currency, rate.rate if rate else None), found
 
 
+def in_stock(available: bool | None, stock: int | None) -> bool:
+    """Not known to be out of stock (DEC-243): CJ's catalog reports no stock, so it counts."""
+    return available is not False and (stock is None or stock > 0)
+
+
+def stocked(session: Session, listing_id: int) -> bool:
+    """in_stock() on the listing's latest snapshot, as the Suppliers tab reads it (DEC-264 b)."""
+    row = session.execute(
+        select(ListingSnapshot.available, ListingSnapshot.stock)
+        .where(ListingSnapshot.listing_id == listing_id)
+        .order_by(ListingSnapshot.captured_at.desc(), ListingSnapshot.id.desc())
+        .limit(1)
+    ).first()
+    return row is None or in_stock(row.available, row.stock)
+
+
 def unit_cost(session: Session, listing_id: int, variant_id: int | None) -> Row[Any] | None:
     """The latest supplier price: the variant's when one is chosen, else the listing's."""
     snap: type[VariantSnapshot] | type[ListingSnapshot] = ListingSnapshot
@@ -206,7 +222,8 @@ def calculate(
     method: str | None = None,
     ddp: bool = False,
 ) -> Calc:
-    """Cost a supplier listing of the product, or, without one, its best complete supplier.
+    """Cost a supplier listing of the product, or, without one, its best complete supplier in
+    stock (DEC-291).
 
     `overrides` are owner estimates by landed_cost() input name (including `price_minor`).
     Raises LookupError for a listing or variant that isn't on this product.
@@ -269,7 +286,9 @@ def calculate(
         calcs[listing] = Calc(listing, quoted, landed_cost(inputs), found, inputs, days)
     if not calcs:
         return Calc(None, None, landed_cost(base), sources, base)
-    pick = best({listing: calc.cost for listing, calc in calcs.items()})
+    # In stock first, as Suppliers' Best margin (DEC-264 b); with none, the out-of-stock ones.
+    pool = {key: calc for key, calc in calcs.items() if stocked(session, key)} or calcs
+    pick = best({listing: calc.cost for listing, calc in pool.items()})
     if pick is None:  # nothing complete: the fewest missing inputs, then the lowest id
-        pick = min(calcs, key=lambda listing: len(calcs[listing].cost.missing))
+        pick = min(pool, key=lambda listing: len(pool[listing].cost.missing))
     return calcs[pick]
