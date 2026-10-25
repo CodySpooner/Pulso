@@ -110,7 +110,7 @@ export interface TestingMock {
   /** PATCH answers 503. */
   failPatch?: boolean;
   /** GET /v1/tests/{id}'s `since_start` by test id; tests 5 and 9 default to SINCE, the rest to no changes. */
-  sinceStart?: Record<number, S["SinceStart"] | "error">;
+  sinceStart?: Record<number, S["SinceStart"] | "error" | "hold">;
 }
 
 export async function mockTestingApi(page: Page, options: TestingMock = {}) {
@@ -149,6 +149,7 @@ export async function mockTestingApi(page: Page, options: TestingMock = {}) {
     const row = one && rows.find((t) => t.id === Number(one[1]));
     if (request.method() === "GET" && row) {
       const since = options.sinceStart?.[row.id] ?? ([5, 9].includes(row.id) ? SINCE : { changes: [], reason: null, as_of: at(20) });
+      if (since === "hold") return;
       if (since === "error") return fail(503, "unavailable", "The API is restarting. Try again.");
       return json({ ...row, since_start: row.start_snapshot ? since : null } satisfies S["ProductTestDetail"]);
     }

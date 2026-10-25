@@ -211,7 +211,7 @@ test("Testing cards show the API's stop-loss chip, day N and the spend bar (DEC-
   const lights = card(page, "Testing", "LED strip lights");
   await expect(lights.getByText("Over stop-loss")).toBeVisible();
   await expect(lights.getByText("Day 4", { exact: true })).toBeVisible();
-  await expect(lights.getByText("Spend vs stop-loss")).toContainText("$48.66");
+  await expect(lights.getByText(/^Stop-loss\s*\$48\.66$/)).toBeVisible(); // the spend bar's caption
   const winner = card(page, "Testing", "Heatless curling ribbon"); // 6 orders at $20.00 ≤ $24.33
   await expect(winner.getByText("Winner candidate")).toBeVisible();
   await expect(winner.getByText("Over stop-loss")).toHaveCount(0);
@@ -219,7 +219,7 @@ test("Testing cards show the API's stop-loss chip, day N and the spend bar (DEC-
   await expect(card(page, "Testing", "Posture corrector brace").getByText(/Over stop-loss|Winner candidate/)).toHaveCount(0);
   const projector = card(page, "Testing", "Galaxy star projector");
   await expect(projector.getByText("Set price and supplier to compute break-even.")).toBeVisible();
-  await expect(projector.getByText("Spend vs stop-loss")).toHaveCount(0);
+  await expect(projector.getByText(/^Stop-loss/)).toHaveCount(0);
   await expect(card(page, "Winner", "Mini waffle maker").getByText(/Day \d|stop-loss/)).toHaveCount(0); // Testing only
 });
 
@@ -233,7 +233,7 @@ test("the drawer lists what changed since start, by keyboard only, and the snaps
   await expect(drawer).toContainText("Suggested test budget $48.66: 2 × break-even CPA.");
   const changed = drawer.getByRole("list", { name: "Changed inputs" });
   await expect(changed.getByRole("listitem")).toHaveText([
-    /Freight quote\s*#41\s*→\s*changed to\s*#57/,
+    /Freight quote\s*Re-quoted\s*#41\s*→\s*changed to\s*#57/,
     /Freight\s*▲\+\$1\.20\s*\$4\.00\s*→\s*changed to\s*\$5\.20/,
     /Duty rate\s*▲\+5 pts\s*20%\s*→\s*changed to\s*25%/,
     /Break-even CPA\s*▼−\$1\.62\s*\$24\.33\s*→\s*changed to\s*\$22\.71/,
@@ -254,7 +254,7 @@ test("changed since start: nothing changed, a calc that can't run, and a failed 
   await page.goto("/testing?test=3");
   await expect(page.getByRole("dialog", { name: "Mini waffle maker" })).toContainText("No changes since start.");
   await page.goto("/testing?test=2");
-  await expect(page.getByRole("dialog")).toContainText("Can't recalculate today: Supplier listing not found on this product.");
+  await expect(page.getByRole("dialog")).toContainText("Can't compare with today's numbers: Supplier listing not found on this product. Check the Profit tab");
   await page.goto("/testing?test=1");
   await expect(page.getByRole("dialog").getByRole("heading", { name: "Couldn't compare with today's numbers" })).toBeVisible();
   await page.goto("/testing?test=7"); // no snapshot yet: no comparison

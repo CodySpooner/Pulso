@@ -199,7 +199,12 @@ function SinceStart({ test }: { test: Test }) {
           </div>
         )
       ) : since?.reason ? (
-        <p className="rounded-lg border border-border bg-secondary px-3 py-2.5 text-data text-foreground">Can&apos;t recalculate today: {since.reason}</p>
+        <p className="rounded-lg border border-border bg-secondary px-3 py-2.5 text-data text-foreground">
+          Can&apos;t compare with today&apos;s numbers: {since.reason}{" "}
+          <Link href={`/products/${test.product_id}?tab=profit`} className={link}>
+            Check the Profit tab
+          </Link>
+        </p>
       ) : !since?.changes.length ? (
         <p className="text-data text-muted-foreground">No changes since start.</p>
       ) : (
@@ -217,7 +222,9 @@ function SinceStart({ test }: { test: Test }) {
                       </span>
                       {row.delta.text}
                     </span>
-                  ) : null}
+                  ) : (
+                    <span className="font-sans text-label text-subtle-foreground">{row.new == null ? "No source yet" : row.old == null ? "New since start" : "Re-quoted"}</span>
+                  )}
                 </span>
                 <span className="col-span-2 font-mono text-foreground tabular-nums">
                   {row.old ?? <Missing reason="None at start" />}

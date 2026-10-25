@@ -285,7 +285,7 @@ function StopLoss({ test, now }: { test: Test; now: number }) {
         bar && (
           <div className="flex flex-col gap-1">
             <p className="flex items-baseline justify-between gap-2 text-micro text-subtle-foreground">
-              Spend vs stop-loss
+              Stop-loss
               <span className="font-mono text-muted-foreground tabular-nums">{bar.line}</span>
             </p>
             <div aria-hidden className="relative h-1.5 rounded-full bg-border-subtle">
