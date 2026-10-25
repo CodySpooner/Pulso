@@ -64,7 +64,7 @@ test("while the API counts, Export CSV says it is preparing and takes no second 
   const calls = await mockExport(page, ["hold"]);
   await page.goto("/discover");
   await exportButton(page).click();
-  await expect(exportButton(page)).toHaveText("Preparing export…");
+  await expect(exportButton(page)).toHaveText("Preparing export…", { useInnerText: true });
   await expect(exportButton(page)).toHaveAttribute("aria-disabled", "true");
   await expect(page.getByRole("status").filter({ hasText: "Preparing export…" })).toBeAttached();
   await exportButton(page).click({ force: true }); // aria-disabled: Playwright would wait for it

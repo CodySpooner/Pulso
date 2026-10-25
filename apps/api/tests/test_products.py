@@ -429,7 +429,7 @@ def test_csv_export_is_every_filtered_row_once_in_the_tables_order(
 def test_csv_export_neutralises_cells_a_spreadsheet_would_run(
     api: TestClient, db_engine: Engine
 ) -> None:
-    titles = ["=HYPERLINK(\"http://x.test\",\"Win\")", "+1 lamp", "-2 lamp", "@SUM(A1)", "Lamp"]
+    titles = ['=HYPERLINK("http://x.test","Win")', "+1 lamp", "-2 lamp", "@SUM(A1)", "Lamp"]
     with Session(db_engine) as session:
         for title in titles:
             seed_product(session, title, 1)

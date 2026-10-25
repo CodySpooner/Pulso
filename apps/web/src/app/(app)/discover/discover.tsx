@@ -106,7 +106,7 @@ export function Discover() {
       </Toolbar>
       {/* The count, and what Export CSV takes: every matching row, not the loaded pages (DEC-316). */}
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-        <p className="mr-auto text-label text-subtle-foreground" aria-live="polite">
+        <p className="min-w-0 flex-1 text-label text-subtle-foreground" aria-live="polite">
           {first ? (
             <>
               {items.length.toLocaleString("en-US")} {items.length === 1 ? "product" : "products"}

@@ -42,7 +42,7 @@ for (const theme of ["dark", "light"] as const) {
         await mockExport(page, ["hold"]);
         await page.goto("/discover?view=table");
         await exportButton(page).click();
-        await expect(exportButton(page)).toHaveText("Preparing export…");
+        await expect(exportButton(page)).toHaveText(width === 375 ? "Preparing…" : "Preparing export…", { useInnerText: true });
         await shot(page, "preparing");
       });
 

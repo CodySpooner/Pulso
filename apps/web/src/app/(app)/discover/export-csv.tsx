@@ -90,7 +90,17 @@ export function ExportCsv({ csv: { step, run }, empty }: { csv: ReturnType<typeo
           onClick={() => !empty && void run()}
         >
           <Icon className={cn(busy && "motion-safe:animate-spin", step.step === "done" && "text-positive")} aria-hidden />
-          {busy ? preparing(step.rows) : step.step === "done" ? "Downloaded" : "Export CSV"}
+          {busy ? (
+            // A phone keeps the label as wide as "Export CSV", so the count line never reflows; the status says N.
+            <>
+              <span className="sm:hidden">Preparing…</span>
+              <span className="max-sm:hidden">{preparing(step.rows)}</span>
+            </>
+          ) : step.step === "done" ? (
+            "Downloaded"
+          ) : (
+            "Export CSV"
+          )}
         </Button>
       </TapTooltip>
       <span role="status" className="sr-only">
