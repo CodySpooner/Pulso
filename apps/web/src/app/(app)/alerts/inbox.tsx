@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { keepPreviousData } from "@tanstack/react-query";
@@ -8,7 +8,6 @@ import { Archive, ArchiveRestore, BellOff, Check, CheckCheck, SearchX, SkipForwa
 import * as m from "motion/react-m";
 
 import { useAlertRules, useAlertWrites, useUnreadCount } from "@/components/alerts/api";
-import { UnreadBadge } from "@/components/alerts/bell";
 import { describeAlert, entityHref, FIRES, gapSpan, lastEvaluation, rulesLine, TYPES, type Alert } from "@/components/alerts/model";
 import { useApiReady } from "@/components/data-health/api";
 import { Ago, PanelError, StaleLine } from "@/components/data-health/atoms";
@@ -30,11 +29,14 @@ const control =
 // md and up a dense table; on a phone each row is a card, its cells placed on a three-column grid.
 const cell = "border-b border-border-subtle px-3 whitespace-nowrap max-md:border-0 max-md:p-0";
 const COLUMNS = ["Alert", "Change", "Source", "Fired"];
+const noSubscribe = () => () => {};
 
 // WF-4b (DEC-333): the Inbox and Archived views of the workspace's alerts. The URL holds the view, type and read
 // filters; replacing it keeps Back, like Amazon ranks. A selection belongs to the URL it was made on.
 export function AlertsInbox() {
   const params = useSearchParams();
+  // The skeleton until hydration is done: the queries can settle before this boundary hydrates (a mismatch otherwise).
+  const hydrated = useSyncExternalStore(noSubscribe, () => true, () => false);
   const key = params.toString();
   const archived = params.get("view") === "archived";
   const [type, unread] = [params.get("type"), params.get("unread")];
@@ -76,6 +78,7 @@ export function AlertsInbox() {
     return `/alerts${search.size ? `?${search}` : ""}`;
   };
 
+  if (!hydrated) return <Loading />;
   return (
     <div className="flex flex-col gap-4">
       <nav aria-label="Alert views" className="flex gap-4 border-b border-border-subtle">
@@ -90,7 +93,6 @@ export function AlertsInbox() {
             className="relative flex h-9 items-center gap-1.5 rounded-sm text-data font-medium text-muted-foreground hover:text-foreground aria-[current=page]:text-foreground"
           >
             {label}
-            {view === null && <UnreadBadge spoken className="flex bg-secondary text-muted-foreground" />}
             {archived === (view !== null) && <m.span layoutId="alerts-view" transition={spring.snappy} className="absolute inset-x-0 -bottom-px h-0.5 rounded-full bg-brand" />}
           </Link>
         ))}
@@ -129,8 +131,9 @@ export function AlertsInbox() {
               </Button>
             </>
           ) : (
-            !archived && (
-              <Button size="sm" variant="ghost" disabled={!count} onClick={() => writes.read.mutate({ body: { all: true } })}>
+            !archived &&
+            !!count && (
+              <Button size="sm" variant="ghost" onClick={() => writes.read.mutate({ body: { all: true } })}>
                 <CheckCheck aria-hidden />
                 Mark all read
               </Button>
@@ -188,7 +191,7 @@ export function AlertsInbox() {
             </EmptyState>
           ) : (
             <EmptyState icon={BellOff} headingLevel="h2" title="No alerts yet">
-              {FIRES} {rules && rulesLine(rules)}
+              {FIRES}
             </EmptyState>
           )}
         </section>

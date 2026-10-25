@@ -87,7 +87,7 @@ export async function mockAlertsApi(page: Page, options: AlertsMock = {}) {
       const start = q.has("cursor") ? listed.findIndex((a) => String(a.id) === q.get("cursor")) + 1 : 0;
       const items = listed.slice(start, start + limit);
       const next_cursor = start + limit < listed.length ? String(items.at(-1)!.id) : null;
-      return route.fulfill({ json: { items: items.map(({ archived: _, ...a }) => a), next_cursor } satisfies S["AlertPage"] });
+      return route.fulfill({ json: { items: items.map((a) => ({ ...a, archived: undefined })), next_cursor } satisfies S["AlertPage"] });
     }
     const body = request.postDataJSON() as { ids?: number[]; all?: boolean };
     writes.push({ path, body });
