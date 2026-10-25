@@ -1959,6 +1959,10 @@ export interface components {
              * Format: uuid
              */
             product_id: string;
+            /** Product Image Url */
+            product_image_url: string | null;
+            /** Product Title */
+            product_title: string;
             /** Revenue Minor */
             revenue_minor: number;
             /**

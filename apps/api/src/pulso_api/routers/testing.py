@@ -8,7 +8,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, Path, Query
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, StringConstraints, model_validator
-from sqlalchemy import func, select
+from sqlalchemy import Select, func, select
 from sqlalchemy.orm import Session
 
 from pulso_api.auth import Principal, current_principal
@@ -18,7 +18,7 @@ from pulso_api.routers.account import MinorUnits
 from pulso_api.routers.products import live_product
 from pulso_api.routers.profit import ProfitCalcRequest, ProfitScenario, calc_profit
 from pulso_api.schemas.text import NoNulStr
-from pulso_core.models import ProductTest
+from pulso_core.models import Image, Product, ProductTest
 
 router = APIRouter(prefix="/v1/tests")
 CurrentPrincipal = Annotated[Principal, Depends(current_principal)]
@@ -77,6 +77,8 @@ class ProductTestCreate(ProductTestPatch):
 class ProductTestOut(BaseModel):
     id: int
     product_id: UUID
+    product_title: str  # the product's name and main image, for the board's card
+    product_image_url: str | None
     stage: Stage
     started_on: date | None
     ended_on: date | None
@@ -106,11 +108,26 @@ class ProductTestPage(BaseModel):
     )
 
 
-def view(row: ProductTest) -> ProductTestOut:
+# A test's product name and main image: the board lists them with one query, not one per card.
+CARD = (Product.name, Image.url)
+COMPUTED = {"cpa_minor", "roas", "product_title", "product_image_url"}
+
+
+def with_card[Q: Select[Any]](query: Q) -> Q:
+    return (
+        query.select_from(ProductTest)
+        .join(Product, Product.id == ProductTest.product_id)
+        .outerjoin(Image, Image.id == Product.main_image_id)
+    )
+
+
+def view(row: ProductTest, title: str, image_url: str | None) -> ProductTestOut:
     spend, orders = row.ad_spend_minor, row.orders
-    fields = ProductTestOut.model_fields.keys() - {"cpa_minor", "roas"}
+    fields = ProductTestOut.model_fields.keys() - COMPUTED
     return ProductTestOut(
         **{name: getattr(row, name) for name in fields},
+        product_title=title,
+        product_image_url=image_url,
         cpa_minor=round(Fraction(spend, orders)) if orders else None,  # round() is half-even
         roas=row.revenue_minor / spend if spend else None,
     )
@@ -121,6 +138,11 @@ def owned(session: Session, principal: Principal, test_id: int) -> ProductTest:
     if row is None or row.workspace_id != principal.workspace_id:
         raise APIError(404, "not_found", "Test not found.")
     return row
+
+
+def view_one(session: Session, row: ProductTest) -> ProductTestOut:
+    card = session.execute(with_card(select(*CARD)).where(ProductTest.id == row.id)).one()
+    return view(row, *card)
 
 
 def apply(
@@ -167,20 +189,20 @@ def list_tests(
     limit: Annotated[int, Query(ge=1, le=100)] = 50,
 ) -> ProductTestPage:
     mine = ProductTest.workspace_id == principal.workspace_id
-    query = select(ProductTest).where(mine)
+    query = with_card(select(ProductTest, *CARD)).where(mine)
     if stage is not None:
         query = query.where(ProductTest.stage == stage)
     if cursor is not None:
         query = query.where(ProductTest.id < cursor)
-    rows = session.scalars(query.order_by(ProductTest.id.desc()).limit(limit + 1)).all()
+    rows = session.execute(query.order_by(ProductTest.id.desc()).limit(limit + 1)).tuples().all()
     counts = session.execute(
         select(ProductTest.kill_reason, func.count())
         .where(mine, ProductTest.stage == "killed")
         .group_by(ProductTest.kill_reason)
     ).tuples()
     return ProductTestPage(
-        items=[view(row) for row in rows[:limit]],
-        next_cursor=rows[limit - 1].id if len(rows) > limit else None,
+        items=[view(*row) for row in rows[:limit]],
+        next_cursor=rows[limit - 1][0].id if len(rows) > limit else None,
         kill_reasons=dict(counts.all()),
     )
 
@@ -194,12 +216,12 @@ def create_test(
     apply(session, principal, row, body)
     session.add(row)
     session.commit()  # a second open test for the product is a 409 (uq_product_tests_open)
-    return view(row)
+    return view_one(session, row)
 
 
 @router.get("/{test_id}", response_model=ProductTestOut)
 def get_test(test_id: TestId, principal: CurrentPrincipal, session: DB) -> ProductTestOut:
-    return view(owned(session, principal, test_id))
+    return view_one(session, owned(session, principal, test_id))
 
 
 @router.patch("/{test_id}", response_model=ProductTestOut)
@@ -209,4 +231,4 @@ def patch_test(
     row = owned(session, principal, test_id)
     apply(session, principal, row, patch)
     session.commit()
-    return view(row)
+    return view_one(session, row)

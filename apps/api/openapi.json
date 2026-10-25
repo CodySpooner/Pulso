@@ -3562,6 +3562,21 @@
             "title": "Product Id",
             "type": "string"
           },
+          "product_image_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Product Image Url"
+          },
+          "product_title": {
+            "title": "Product Title",
+            "type": "string"
+          },
           "revenue_minor": {
             "title": "Revenue Minor",
             "type": "integer"
@@ -3623,6 +3638,8 @@
         "required": [
           "id",
           "product_id",
+          "product_title",
+          "product_image_url",
           "stage",
           "started_on",
           "ended_on",

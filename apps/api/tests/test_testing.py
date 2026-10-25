@@ -9,7 +9,7 @@ from uuid import uuid4
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from sqlalchemy import update
+from sqlalchemy import event, update
 from sqlalchemy.engine import Engine
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import Session
@@ -20,6 +20,7 @@ from pulso_api.routers.testing import KillReason, Stage
 from pulso_core.db import Base
 from pulso_core.models import (
     CollectorRun,
+    Image,
     Listing,
     ListingSnapshot,
     ListingVariant,
@@ -267,6 +268,37 @@ def test_list_pages_filters_and_counts_kill_reasons(board: tuple[As, dict[str, A
     assert api.get(f"/v1/tests/{2**62}").status_code == 404
     assert api.get(f"/v1/tests/{2**63}").status_code == 422
     assert api.post("/v1/tests", json={"product_id": str(uuid4())}).status_code == 404
+
+
+@pytest.mark.db
+def test_tests_carry_their_product_title_and_image_in_one_query(
+    board: tuple[As, dict[str, Any]], db_engine: Engine
+) -> None:
+    as_, ids = board
+    with Session(db_engine) as session:  # p0's CJ listing gets the main image; p1 has none
+        image = Image(listing_id=ids["listing"], url="https://cdn.test/lamp.jpg", position=0)
+        session.add(image)
+        session.flush()
+        session.execute(
+            update(Product).where(Product.id == ids["p0"]).values(main_image_id=image.id)
+        )
+        session.commit()
+    api = as_("a")
+    made = [create(api, ids[p]) for p in ("p0", "p1", "p2")]
+    cards = [("Product 0", "https://cdn.test/lamp.jpg"), ("Product 1", None), ("Product 2", None)]
+    assert [pick(test, "product_title", "product_image_url") for test in made] == cards
+    statements: list[str] = []
+    listen = lambda *args: statements.append(args[2])  # noqa: E731
+    event.listen(db_engine, "before_cursor_execute", listen)
+    try:
+        items = api.get("/v1/tests").json()["items"]
+    finally:
+        event.remove(db_engine, "before_cursor_execute", listen)
+    assert [pick(test, "product_title", "product_image_url") for test in items] == cards[::-1]
+    assert len(statements) == 2  # the page with its products, then the kill-reason counts
+    url = f"/v1/tests/{made[0]['id']}"
+    for body in (api.get(url).json(), api.patch(url, json={"orders": 1}).json()):
+        assert pick(body, "product_title", "product_image_url") == cards[0]
 
 
 @pytest.mark.db
