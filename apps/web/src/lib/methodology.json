@@ -59,11 +59,11 @@
           "name": "feature_version",
           "type": "str",
           "note": "the rows these rules read: new G7 maths, new version",
-          "value": "001-0754a5e6a014"
+          "value": "002-73de55ab0c1d"
         }
       ],
-      "model_version": "000-b80f4a7f4a93",
-      "config_digest": "b80f4a7f4a936312f8435480539ea7cc954d65d2fc988df9d80c3c170b70cb48"
+      "model_version": "000-7124a73460c5",
+      "config_digest": "7124a73460c5c003799577164233d7336e199c2b983d264d48b3e1aa0d1424d4"
     },
     {
       "id": "lifecycle-stage",
