@@ -1,0 +1,37 @@
+{
+  "aliexpress_ds_freight_query_response": {
+    "result": {
+      "msg": "Call succeeds",
+      "code": 200,
+      "success": true,
+      "delivery_options": {
+        "delivery_option_d_t_o": [
+          {
+            "code": "FIXTURE_STANDARD",
+            "company": "Fixture standard shipping",
+            "shipping_fee_cent": "4.99",
+            "shipping_fee_format": "US $4.99",
+            "shipping_fee_currency": "USD",
+            "free_shipping": false,
+            "min_delivery_days": 9,
+            "max_delivery_days": 15,
+            "ship_from_country": "CN",
+            "tracking": true
+          },
+          {
+            "code": "FIXTURE_ECONOMY",
+            "company": "Fixture economy shipping",
+            "shipping_fee_cent": "0",
+            "shipping_fee_format": "Free shipping",
+            "shipping_fee_currency": "USD",
+            "free_shipping": true,
+            "min_delivery_days": 20,
+            "max_delivery_days": 35,
+            "ship_from_country": "CN"
+          }
+        ]
+      }
+    },
+    "request_id": "fixture-request-freight"
+  }
+}
