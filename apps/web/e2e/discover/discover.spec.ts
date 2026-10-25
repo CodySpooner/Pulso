@@ -31,7 +31,7 @@ test("sort and filters round-trip through the URL and reach the API", async ({ p
   await expect.poll(() => calls.at(-1)?.search).toBe("?sort=newest&price_min=2000&source=cj&first_seen_days=30");
 
   await select(page, "Sort").selectOption("fewest_sellers");
-  await select(page, "Sellers").selectOption("false");
+  await select(page, "Stores").selectOption("false");
   await select(page, "Category").selectOption({ label: "Home & Garden › Lighting › Lamps" });
   await page.getByLabel("Max price, USD").fill("60");
   await page.getByLabel("Max price, USD").press("Enter");
@@ -43,7 +43,7 @@ test("sort and filters round-trip through the URL and reach the API", async ({ p
   await page.reload();
   await expect(select(page, "Sort")).toHaveValue("fewest_sellers");
   await expect(select(page, "Category")).toHaveValue("7");
-  await expect(select(page, "Sellers")).toHaveValue("false");
+  await expect(select(page, "Stores")).toHaveValue("false");
   await expect(page.getByLabel("Max price, USD")).toHaveValue("60");
   await select(page, "Sort").selectOption("momentum");
   await expect(page).toHaveURL(/\?category=7&/); // the default sort leaves the URL
@@ -88,14 +88,13 @@ test("a 10,000-row table loads by cursor as it scrolls and never animates a row"
   }
 });
 
-test("keyboard only: Tab from the toolbar reaches the first card, and Enter opens its product page", async ({ page }) => {
+test("keyboard only: Tab from the last filter reaches the first card, and Enter opens its product page", async ({ page }) => {
   const [first] = feedItems(1);
   await mockFeedApi(page);
   await mockProductApi(page, { body: { ...product, id: first.id, title: first.title } });
   await page.goto("/discover");
   await expect(cards(page).first()).toBeVisible();
-  await page.getByRole("button", { name: "Grid", exact: true }).focus();
-  await page.keyboard.press("Tab");
+  await select(page, "Stores").focus();
   await page.keyboard.press("Tab");
   const link = cards(page).first().getByRole("link", { name: first.title });
   await expect(link).toBeFocused();
@@ -130,7 +129,7 @@ test("empty: nothing collected yet links Data Health; filtered empty removes a f
   await expect(page.getByRole("heading", { name: "No products match this filter" })).toBeVisible();
 });
 
-test("degraded banner, gap chip and paused-source cue; a failed next page keeps every loaded card", async ({ page }) => {
+test("degraded banner, gap chip and blocked-source cue; a failed next page keeps every loaded card", async ({ page }) => {
   await mockFeedApi(page, {
     items: feedItems(30),
     pageSize: 24,
@@ -140,7 +139,7 @@ test("degraded banner, gap chip and paused-source cue; a failed next page keeps 
   await page.goto("/discover");
   await expect(page.getByRole("main")).toContainText("Shopify stores blocked since Oct 20, 06:00 UTC");
   await expect(cards(page).nth(3).getByText("gap", { exact: true })).toBeVisible();
-  await expect(cards(page).first().getByText("source paused")).toBeVisible();
+  await expect(cards(page).first().getByText("source blocked")).toBeVisible();
   await cards(page).last().scrollIntoViewIfNeeded();
   await expect(page.getByRole("heading", { name: "Couldn't load more products" })).toBeVisible({ timeout: 15_000 });
   await expect(cards(page)).toHaveCount(24);

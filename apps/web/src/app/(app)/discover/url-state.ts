@@ -2,7 +2,7 @@
 // are whole USD in the URL and minor units at the API. A missing or unknown value falls back to the default, and the
 // default is never written, so a clean URL means the default feed.
 
-export const SORTS = { momentum: "Momentum", newest: "Newest", fewest_sellers: "Fewest sellers" } as const;
+export const SORTS = { momentum: "Momentum", newest: "Newest", fewest_sellers: "Fewest stores" } as const;
 export const SOURCES = { shopify_stores: "Shopify stores", cj: "CJ Dropshipping" } as const;
 export const FIRST_SEEN = [7, 30, 90] as const;
 

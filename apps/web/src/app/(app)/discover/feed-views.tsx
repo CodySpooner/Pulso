@@ -15,8 +15,8 @@ import { cn } from "@/lib/utils";
 // openapi-fetch drops a key typed only `null` from responses, so each NoSource arrives as `{reason}` (DEC-238 g).
 type Loose<T> = T extends { reason: string } ? { reason: string; value?: null } : T;
 export type Item = { [K in keyof components["schemas"]["DiscoverItem"]]: Loose<components["schemas"]["DiscoverItem"][K]> };
-/** Sources feeding the feed that are blocked or disabled: a card they feed gets a red freshness dot. */
-export type Paused = Set<string>;
+/** Sources feeding the feed that are blocked or disabled, with the word the banner uses: a card they feed gets a red dot. */
+export type Paused = Map<string, string>;
 
 const usd = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", trailingZeroDisplay: "stripIfInteger" });
 const money = (minor: number) => usd.format(minor / 100);
@@ -65,13 +65,14 @@ function Momentum({ item, now }: { item: Item; now: number }) {
   return <Metric stat={{ ...v, value: v.growth }} label="Momentum, 7-day log growth" format={() => `${delta.glyph ?? ""} ${delta.text}`.trim()} now={now} className={tone} />;
 }
 
-/** The oldest family feeding the item: amber when stale, red when a feeding source is paused, said in words too. */
+/** The oldest family feeding the item. The dot is amber when stale, red when a feeding source is down; the words say which,
+ *  in neutral text, since a blocked source would otherwise paint every card red. */
 function Freshness({ item, now, paused }: { item: Item; now: number; paused: Paused }) {
   const stats = sourced([item.store_count, item.supplier_count, item.velocity]);
-  const off = stats.some((s) => paused.has(s.source));
-  const state = off ? "source paused" : item.stale ? "stale" : null;
+  const off = stats.map((s) => paused.get(s.source)).find(Boolean);
+  const state = off ? `source ${off}` : item.stale ? "stale" : null;
   return (
-    <span className={cn("inline-flex items-center gap-1.5 whitespace-nowrap", off ? "text-negative" : item.stale ? "text-warning" : "text-subtle-foreground")}>
+    <span className="inline-flex items-center gap-1.5 whitespace-nowrap text-subtle-foreground">
       <span aria-hidden className={cn("size-1.5 shrink-0 rounded-full", off ? "bg-negative" : item.stale ? "bg-warning" : "bg-border-strong")} />
       {item.as_of ? (
         <time dateTime={item.as_of} title={`Oldest data on this product: ${formatUtc(item.as_of)}`}>
@@ -134,8 +135,11 @@ export function ProductCard({ item, now, paused }: { item: Item; now: number; pa
           </dd>
           <dt className="max-md:hidden">Stores</dt>
           <dd className="max-md:hidden">
-            <Metric stat={item.store_count} label="Stores selling it" format={count} now={now} /> ·{" "}
-            <Metric stat={item.supplier_count} label="Matched suppliers" format={(n) => `${count(n)} sup.`} now={now} />
+            <Metric stat={item.store_count} label="Stores selling it" format={count} now={now} />
+          </dd>
+          <dt className="max-md:hidden">Suppliers</dt>
+          <dd className="max-md:hidden">
+            <Metric stat={item.supplier_count} label="Matched suppliers" format={count} now={now} />
           </dd>
           <dt>Margin</dt>
           <dd>

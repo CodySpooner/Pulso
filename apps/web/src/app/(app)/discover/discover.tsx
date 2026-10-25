@@ -17,7 +17,7 @@ import { formatUtc } from "@/lib/format";
 import { duration, spring } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 
-import { CardSkeletons, GRID, ProductCard, ProductTable, TableSkeleton, type Item } from "./feed-views";
+import { CardSkeletons, GRID, ProductCard, ProductTable, TableSkeleton, type Item, type Paused } from "./feed-views";
 import {
   activeFilters,
   apiQuery,
@@ -85,7 +85,7 @@ export function Discover() {
   const items: Item[] = data?.pages.flatMap((p) => p.items) ?? [];
   const first = data?.pages[0];
   const now = feed.dataUpdatedAt;
-  const paused = new Set(first?.degraded.filter((d) => d.state !== "stale").map((d) => d.source));
+  const paused = new Map(first?.degraded.filter((d) => d.state !== "stale").map((d) => [d.source, SAID[d.state]]));
   const more = useCallback(() => {
     if (hasNextPage && !isFetchingNextPage && !isFetchNextPageError) void fetchNextPage();
   }, [hasNextPage, isFetchingNextPage, isFetchNextPageError, fetchNextPage]);
@@ -143,7 +143,7 @@ export function Discover() {
   );
 }
 
-function Grid({ items, now, paused, loadingMore, onNearEnd }: { items: Item[]; now: number; paused: Set<string>; loadingMore: boolean; onNearEnd: () => void }) {
+function Grid({ items, now, paused, loadingMore, onNearEnd }: { items: Item[]; now: number; paused: Paused; loadingMore: boolean; onNearEnd: () => void }) {
   const sentinel = useRef<HTMLDivElement>(null);
   // Re-observed after each page, so a sentinel still in view after a short page asks for the next one.
   useEffect(() => {
@@ -207,15 +207,16 @@ function Toolbar({ state, set, view, setView }: { state: FeedState; set: (next: 
           ))}
         </select>
       </Field>
-      <div className="contents max-md:hidden">
-        <FilterFields state={state} set={set} />
-      </div>
       <Button className="md:hidden" onClick={() => setSheet(true)}>
         <SlidersHorizontal aria-hidden />
         Filters{n > 0 && ` (${n})`}
       </Button>
       <div className="ml-auto">
         <ViewToggle view={view} setView={setView} />
+      </div>
+      {/* Sort and view on the first row, the filters on their own row below. */}
+      <div className="flex basis-full flex-wrap items-center gap-2 max-md:hidden">
+        <FilterFields state={state} set={set} />
       </div>
       <Sheet open={sheet} onOpenChange={setSheet}>
         <SheetContent side="bottom" closeLabel="Close filters" className="gap-4 px-4 pt-4 pb-4 md:hidden">
@@ -317,11 +318,11 @@ function FilterFields({ state, set }: { state: FeedState; set: (next: Partial<Fe
           ))}
         </select>
       </Field>
-      <Field label="Sellers">
-        <select {...choose("has_sellers", "Sellers", (v) => v === "true")}>
+      <Field label="Stores">
+        <select {...choose("has_sellers", "Stores", (v) => v === "true")}>
           <option value="">Any</option>
-          <option value="true">Has sellers</option>
-          <option value="false">No sellers yet</option>
+          <option value="true">Sold by stores</option>
+          <option value="false">No stores yet</option>
         </select>
       </Field>
     </>
@@ -334,7 +335,7 @@ const FILTER_LABELS: Record<keyof Filters, (s: Filters) => string> = {
   price_max: (s) => `Price ≤ $${s.price_max}`,
   source: (s) => `Source: ${s.source ? SOURCES[s.source] : ""}`,
   first_seen_days: (s) => `First seen in the last ${s.first_seen_days} days`,
-  has_sellers: (s) => (s.has_sellers ? "Has sellers" : "No sellers yet"),
+  has_sellers: (s) => (s.has_sellers ? "Sold by stores" : "No stores yet"),
 };
 
 function Empty({ state, set, filters }: { state: FeedState; set: (next: Partial<FeedState>) => void; filters: (keyof Filters)[] }) {
