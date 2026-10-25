@@ -138,6 +138,70 @@
         "title": "AlertPage",
         "type": "object"
       },
+      "AlertSection": {
+        "properties": {
+          "as_of": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "As Of"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AlertOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "sources": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Sources",
+            "type": "array"
+          },
+          "status": {
+            "enum": [
+              "ok",
+              "empty",
+              "no_source"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "unread": {
+            "title": "Unread",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "status",
+          "as_of",
+          "sources",
+          "reason",
+          "unread",
+          "items"
+        ],
+        "title": "AlertSection",
+        "type": "object"
+      },
       "AliExpressLookup": {
         "description": "`empty`: no lookup for this product in the last 24 h. `ok` and `not_found` carry `as_of`.",
         "properties": {
@@ -1893,6 +1957,116 @@
         "title": "DiscoverPage",
         "type": "object"
       },
+      "Emerging": {
+        "properties": {
+          "as_of": {
+            "format": "date-time",
+            "title": "As Of",
+            "type": "string"
+          },
+          "model_version": {
+            "title": "Model Version",
+            "type": "string"
+          },
+          "product": {
+            "$ref": "#/components/schemas/Ref"
+          },
+          "since_yesterday": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ScoreMove"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "stage": {
+            "enum": [
+              "emerging",
+              "rising",
+              "peaking",
+              "declining",
+              "dead"
+            ],
+            "title": "Stage",
+            "type": "string"
+          },
+          "value": {
+            "title": "Value",
+            "type": "number"
+          }
+        },
+        "required": [
+          "product",
+          "value",
+          "stage",
+          "since_yesterday",
+          "model_version",
+          "as_of"
+        ],
+        "title": "Emerging",
+        "type": "object"
+      },
+      "EmergingSection": {
+        "properties": {
+          "as_of": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "As Of"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/Emerging"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "sources": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Sources",
+            "type": "array"
+          },
+          "status": {
+            "enum": [
+              "ok",
+              "empty",
+              "no_source"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "as_of",
+          "sources",
+          "reason",
+          "items"
+        ],
+        "title": "EmergingSection",
+        "type": "object"
+      },
       "Explanation": {
         "additionalProperties": false,
         "description": "`scores.explanation`: every input, the missing ones by name, and the weight present.",
@@ -2643,6 +2817,111 @@
         "title": "LatestScores",
         "type": "object"
       },
+      "Launch": {
+        "properties": {
+          "as_of": {
+            "format": "date-time",
+            "title": "As Of",
+            "type": "string"
+          },
+          "listing_id": {
+            "title": "Listing Id",
+            "type": "integer"
+          },
+          "product": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Ref"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "published_at": {
+            "format": "date-time",
+            "title": "Published At",
+            "type": "string"
+          },
+          "store": {
+            "title": "Store",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "listing_id",
+          "product",
+          "title",
+          "store",
+          "published_at",
+          "as_of"
+        ],
+        "title": "Launch",
+        "type": "object"
+      },
+      "LaunchSection": {
+        "properties": {
+          "as_of": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "As Of"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/Launch"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "sources": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Sources",
+            "type": "array"
+          },
+          "status": {
+            "enum": [
+              "ok",
+              "empty",
+              "no_source"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "as_of",
+          "sources",
+          "reason",
+          "items"
+        ],
+        "title": "LaunchSection",
+        "type": "object"
+      },
       "ListingDetail": {
         "properties": {
           "delisted_at": {
@@ -2842,6 +3121,116 @@
           "supplier_listing_id"
         ],
         "title": "Margin",
+        "type": "object"
+      },
+      "MarginMove": {
+        "description": "The best landed margin (the economics view, default scenario) at the day's cutoff against\nthe day before's, under today's workspace settings.",
+        "properties": {
+          "as_of": {
+            "format": "date-time",
+            "title": "As Of",
+            "type": "string"
+          },
+          "change_bps": {
+            "title": "Change Bps",
+            "type": "integer"
+          },
+          "duty_not_set": {
+            "title": "Duty Not Set",
+            "type": "boolean"
+          },
+          "new_bps": {
+            "title": "New Bps",
+            "type": "integer"
+          },
+          "old_bps": {
+            "title": "Old Bps",
+            "type": "integer"
+          },
+          "product": {
+            "$ref": "#/components/schemas/Ref"
+          },
+          "supplier_listing_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Supplier Listing Id"
+          }
+        },
+        "required": [
+          "product",
+          "old_bps",
+          "new_bps",
+          "change_bps",
+          "duty_not_set",
+          "supplier_listing_id",
+          "as_of"
+        ],
+        "title": "MarginMove",
+        "type": "object"
+      },
+      "MarginSection": {
+        "properties": {
+          "as_of": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "As Of"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/MarginMove"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "sources": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Sources",
+            "type": "array"
+          },
+          "status": {
+            "enum": [
+              "ok",
+              "empty",
+              "no_source"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "as_of",
+          "sources",
+          "reason",
+          "items"
+        ],
+        "title": "MarginSection",
         "type": "object"
       },
       "Match": {
@@ -3075,6 +3464,103 @@
           "listing_ids"
         ],
         "title": "Move",
+        "type": "object"
+      },
+      "Mover": {
+        "properties": {
+          "as_of": {
+            "format": "date-time",
+            "title": "As Of",
+            "type": "string"
+          },
+          "change": {
+            "title": "Change",
+            "type": "number"
+          },
+          "model_version": {
+            "title": "Model Version",
+            "type": "string"
+          },
+          "new": {
+            "title": "New",
+            "type": "number"
+          },
+          "old": {
+            "title": "Old",
+            "type": "number"
+          },
+          "product": {
+            "$ref": "#/components/schemas/Ref"
+          }
+        },
+        "required": [
+          "old",
+          "new",
+          "change",
+          "as_of",
+          "product",
+          "model_version"
+        ],
+        "title": "Mover",
+        "type": "object"
+      },
+      "MoversSection": {
+        "properties": {
+          "as_of": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "As Of"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/Mover"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "sources": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Sources",
+            "type": "array"
+          },
+          "status": {
+            "enum": [
+              "ok",
+              "empty",
+              "no_source"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "as_of",
+          "sources",
+          "reason",
+          "items"
+        ],
+        "title": "MoversSection",
         "type": "object"
       },
       "NoSource": {
@@ -5486,6 +5972,30 @@
         "title": "ProfitScenario",
         "type": "object"
       },
+      "Pulse": {
+        "properties": {
+          "cutoff": {
+            "format": "date-time",
+            "title": "Cutoff",
+            "type": "string"
+          },
+          "day": {
+            "format": "date",
+            "title": "Day",
+            "type": "string"
+          },
+          "sections": {
+            "$ref": "#/components/schemas/Sections"
+          }
+        },
+        "required": [
+          "day",
+          "cutoff",
+          "sections"
+        ],
+        "title": "Pulse",
+        "type": "object"
+      },
       "QueueItem": {
         "properties": {
           "a": {
@@ -5768,6 +6278,37 @@
           }
         },
         "title": "ReadIn",
+        "type": "object"
+      },
+      "Ref": {
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "image_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Image Url"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "image_url"
+        ],
+        "title": "Ref",
         "type": "object"
       },
       "RowError": {
@@ -6503,6 +7044,69 @@
         "title": "RunTarget",
         "type": "object"
       },
+      "ScoreMove": {
+        "description": "A Trend Score against the day before's newest row, both under one model_version.",
+        "properties": {
+          "as_of": {
+            "format": "date-time",
+            "title": "As Of",
+            "type": "string"
+          },
+          "change": {
+            "title": "Change",
+            "type": "number"
+          },
+          "new": {
+            "title": "New",
+            "type": "number"
+          },
+          "old": {
+            "title": "Old",
+            "type": "number"
+          }
+        },
+        "required": [
+          "old",
+          "new",
+          "change",
+          "as_of"
+        ],
+        "title": "ScoreMove",
+        "type": "object"
+      },
+      "SearchMover": {
+        "properties": {
+          "as_of": {
+            "format": "date-time",
+            "title": "As Of",
+            "type": "string"
+          },
+          "change_pct": {
+            "title": "Change Pct",
+            "type": "number"
+          },
+          "keywords": {
+            "title": "Keywords",
+            "type": "integer"
+          },
+          "product": {
+            "$ref": "#/components/schemas/Ref"
+          },
+          "slope": {
+            "title": "Slope",
+            "type": "number"
+          }
+        },
+        "required": [
+          "product",
+          "slope",
+          "change_pct",
+          "keywords",
+          "as_of"
+        ],
+        "title": "SearchMover",
+        "type": "object"
+      },
       "SearchResults": {
         "properties": {
           "catalog_empty": {
@@ -6538,6 +7142,109 @@
           "catalog_empty"
         ],
         "title": "SearchResults",
+        "type": "object"
+      },
+      "SearchSection": {
+        "properties": {
+          "as_of": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "As Of"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/SearchMover"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "sources": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Sources",
+            "type": "array"
+          },
+          "status": {
+            "enum": [
+              "ok",
+              "empty",
+              "no_source"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "as_of",
+          "sources",
+          "reason",
+          "items"
+        ],
+        "title": "SearchSection",
+        "type": "object"
+      },
+      "Sections": {
+        "properties": {
+          "alerts": {
+            "$ref": "#/components/schemas/AlertSection"
+          },
+          "emerging": {
+            "$ref": "#/components/schemas/EmergingSection"
+          },
+          "margins": {
+            "$ref": "#/components/schemas/MarginSection"
+          },
+          "movers_down": {
+            "$ref": "#/components/schemas/MoversSection"
+          },
+          "movers_up": {
+            "$ref": "#/components/schemas/MoversSection"
+          },
+          "new_in_stores": {
+            "$ref": "#/components/schemas/LaunchSection"
+          },
+          "search": {
+            "$ref": "#/components/schemas/SearchSection"
+          },
+          "suppliers": {
+            "$ref": "#/components/schemas/SupplierSection"
+          },
+          "watchlists": {
+            "$ref": "#/components/schemas/WatchlistSection"
+          }
+        },
+        "required": [
+          "emerging",
+          "movers_up",
+          "movers_down",
+          "new_in_stores",
+          "alerts",
+          "watchlists",
+          "margins",
+          "suppliers",
+          "search"
+        ],
+        "title": "Sections",
         "type": "object"
       },
       "SellerRow": {
@@ -7902,6 +8609,124 @@
         "title": "SupplierHit",
         "type": "object"
       },
+      "SupplierMove": {
+        "description": "A supplier offer whose price or stock changed on the day.",
+        "properties": {
+          "as_of": {
+            "format": "date-time",
+            "title": "As Of",
+            "type": "string"
+          },
+          "currency": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Currency"
+          },
+          "in_stock": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "In Stock"
+          },
+          "listing_id": {
+            "title": "Listing Id",
+            "type": "integer"
+          },
+          "new_price_minor": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "New Price Minor"
+          },
+          "old_price_minor": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Old Price Minor"
+          },
+          "price_change_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Price Change Pct"
+          },
+          "product": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Ref"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "raw_payload_id": {
+            "title": "Raw Payload Id",
+            "type": "integer"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "was_in_stock": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Was In Stock"
+          }
+        },
+        "required": [
+          "listing_id",
+          "product",
+          "title",
+          "source",
+          "currency",
+          "old_price_minor",
+          "new_price_minor",
+          "price_change_pct",
+          "was_in_stock",
+          "in_stock",
+          "raw_payload_id",
+          "as_of"
+        ],
+        "title": "SupplierMove",
+        "type": "object"
+      },
       "SupplierRow": {
         "properties": {
           "as_of": {
@@ -8115,6 +8940,65 @@
         "title": "SupplierRow",
         "type": "object"
       },
+      "SupplierSection": {
+        "properties": {
+          "as_of": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "As Of"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/SupplierMove"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "sources": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Sources",
+            "type": "array"
+          },
+          "status": {
+            "enum": [
+              "ok",
+              "empty",
+              "no_source"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "as_of",
+          "sources",
+          "reason",
+          "items"
+        ],
+        "title": "SupplierSection",
+        "type": "object"
+      },
       "SuppliersPage": {
         "properties": {
           "as_of": {
@@ -8252,6 +9136,31 @@
           "markup_high"
         ],
         "title": "Thresholds",
+        "type": "object"
+      },
+      "TrendPoint": {
+        "properties": {
+          "as_of": {
+            "format": "date-time",
+            "title": "As Of",
+            "type": "string"
+          },
+          "day": {
+            "format": "date",
+            "title": "Day",
+            "type": "string"
+          },
+          "value": {
+            "title": "Value",
+            "type": "number"
+          }
+        },
+        "required": [
+          "day",
+          "value",
+          "as_of"
+        ],
+        "title": "TrendPoint",
         "type": "object"
       },
       "TrendsBudget": {
@@ -8429,6 +9338,89 @@
         "title": "Watched",
         "type": "object"
       },
+      "WatchedProduct": {
+        "properties": {
+          "added_at": {
+            "format": "date-time",
+            "title": "Added At",
+            "type": "string"
+          },
+          "alerts": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Alerts",
+            "type": "array"
+          },
+          "product": {
+            "$ref": "#/components/schemas/Ref"
+          },
+          "series": {
+            "items": {
+              "$ref": "#/components/schemas/TrendPoint"
+            },
+            "title": "Series",
+            "type": "array"
+          },
+          "stage": {
+            "anyOf": [
+              {
+                "enum": [
+                  "emerging",
+                  "rising",
+                  "peaking",
+                  "declining",
+                  "dead"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stage"
+          },
+          "stage_before": {
+            "anyOf": [
+              {
+                "enum": [
+                  "emerging",
+                  "rising",
+                  "peaking",
+                  "declining",
+                  "dead"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stage Before"
+          },
+          "trend": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ScoreMove"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "product",
+          "added_at",
+          "trend",
+          "stage",
+          "stage_before",
+          "alerts",
+          "series"
+        ],
+        "title": "WatchedProduct",
+        "type": "object"
+      },
       "Watchlist": {
         "properties": {
           "created_at": {
@@ -8582,6 +9574,110 @@
           }
         },
         "title": "WatchlistPatch",
+        "type": "object"
+      },
+      "WatchlistSection": {
+        "properties": {
+          "as_of": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "As Of"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/WatchlistSummary"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "sources": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Sources",
+            "type": "array"
+          },
+          "status": {
+            "enum": [
+              "ok",
+              "empty",
+              "no_source"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "as_of",
+          "sources",
+          "reason",
+          "items"
+        ],
+        "title": "WatchlistSection",
+        "type": "object"
+      },
+      "WatchlistSummary": {
+        "properties": {
+          "as_of": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "As Of"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "item_count": {
+            "title": "Item Count",
+            "type": "integer"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/WatchedProduct"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "item_count",
+          "as_of",
+          "items"
+        ],
+        "title": "WatchlistSummary",
         "type": "object"
       }
     },
@@ -36185,6 +37281,438 @@
           }
         ],
         "summary": "Calc Profit"
+      }
+    },
+    "/v1/pulse": {
+      "get": {
+        "description": "The Daily Pulse for one UTC day (SPEC \u00a76.1, DEC-337): each section with its own as_of,\nsources and status, at most 10 items, every number from captures before the cutoff.",
+        "operationId": "get_pulse",
+        "parameters": [
+          {
+            "description": "A UTC day; the newest day with stored scores if absent.",
+            "in": "query",
+            "name": "date",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "A UTC day; the newest day with stored scores if absent.",
+              "title": "Date"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "__session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "  Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Pulse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "properties": {
+                    "code": {
+                      "title": "Code",
+                      "type": "string"
+                    },
+                    "detail": {
+                      "title": "Detail",
+                      "type": "string"
+                    },
+                    "errors": {
+                      "items": {
+                        "additionalProperties": true,
+                        "type": "object"
+                      },
+                      "title": "Errors",
+                      "type": "array"
+                    },
+                    "request_id": {
+                      "title": "Request Id",
+                      "type": "string"
+                    },
+                    "status": {
+                      "title": "Status",
+                      "type": "integer"
+                    },
+                    "title": {
+                      "title": "Title",
+                      "type": "string"
+                    },
+                    "type": {
+                      "default": "about:blank",
+                      "title": "Type",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "title",
+                    "status",
+                    "code",
+                    "detail",
+                    "request_id"
+                  ],
+                  "title": "Problem",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "properties": {
+                    "code": {
+                      "title": "Code",
+                      "type": "string"
+                    },
+                    "detail": {
+                      "title": "Detail",
+                      "type": "string"
+                    },
+                    "errors": {
+                      "items": {
+                        "additionalProperties": true,
+                        "type": "object"
+                      },
+                      "title": "Errors",
+                      "type": "array"
+                    },
+                    "request_id": {
+                      "title": "Request Id",
+                      "type": "string"
+                    },
+                    "status": {
+                      "title": "Status",
+                      "type": "integer"
+                    },
+                    "title": {
+                      "title": "Title",
+                      "type": "string"
+                    },
+                    "type": {
+                      "default": "about:blank",
+                      "title": "Type",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "title",
+                    "status",
+                    "code",
+                    "detail",
+                    "request_id"
+                  ],
+                  "title": "Problem",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "properties": {
+                    "code": {
+                      "title": "Code",
+                      "type": "string"
+                    },
+                    "detail": {
+                      "title": "Detail",
+                      "type": "string"
+                    },
+                    "errors": {
+                      "items": {
+                        "additionalProperties": true,
+                        "type": "object"
+                      },
+                      "title": "Errors",
+                      "type": "array"
+                    },
+                    "request_id": {
+                      "title": "Request Id",
+                      "type": "string"
+                    },
+                    "status": {
+                      "title": "Status",
+                      "type": "integer"
+                    },
+                    "title": {
+                      "title": "Title",
+                      "type": "string"
+                    },
+                    "type": {
+                      "default": "about:blank",
+                      "title": "Type",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "title",
+                    "status",
+                    "code",
+                    "detail",
+                    "request_id"
+                  ],
+                  "title": "Problem",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "properties": {
+                    "code": {
+                      "title": "Code",
+                      "type": "string"
+                    },
+                    "detail": {
+                      "title": "Detail",
+                      "type": "string"
+                    },
+                    "errors": {
+                      "items": {
+                        "additionalProperties": true,
+                        "type": "object"
+                      },
+                      "title": "Errors",
+                      "type": "array"
+                    },
+                    "request_id": {
+                      "title": "Request Id",
+                      "type": "string"
+                    },
+                    "status": {
+                      "title": "Status",
+                      "type": "integer"
+                    },
+                    "title": {
+                      "title": "Title",
+                      "type": "string"
+                    },
+                    "type": {
+                      "default": "about:blank",
+                      "title": "Type",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "title",
+                    "status",
+                    "code",
+                    "detail",
+                    "request_id"
+                  ],
+                  "title": "Problem",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "properties": {
+                    "code": {
+                      "title": "Code",
+                      "type": "string"
+                    },
+                    "detail": {
+                      "title": "Detail",
+                      "type": "string"
+                    },
+                    "errors": {
+                      "items": {
+                        "additionalProperties": true,
+                        "type": "object"
+                      },
+                      "title": "Errors",
+                      "type": "array"
+                    },
+                    "request_id": {
+                      "title": "Request Id",
+                      "type": "string"
+                    },
+                    "status": {
+                      "title": "Status",
+                      "type": "integer"
+                    },
+                    "title": {
+                      "title": "Title",
+                      "type": "string"
+                    },
+                    "type": {
+                      "default": "about:blank",
+                      "title": "Type",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "title",
+                    "status",
+                    "code",
+                    "detail",
+                    "request_id"
+                  ],
+                  "title": "Problem",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "properties": {
+                    "code": {
+                      "title": "Code",
+                      "type": "string"
+                    },
+                    "detail": {
+                      "title": "Detail",
+                      "type": "string"
+                    },
+                    "errors": {
+                      "items": {
+                        "additionalProperties": true,
+                        "type": "object"
+                      },
+                      "title": "Errors",
+                      "type": "array"
+                    },
+                    "request_id": {
+                      "title": "Request Id",
+                      "type": "string"
+                    },
+                    "status": {
+                      "title": "Status",
+                      "type": "integer"
+                    },
+                    "title": {
+                      "title": "Title",
+                      "type": "string"
+                    },
+                    "type": {
+                      "default": "about:blank",
+                      "title": "Type",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "title",
+                    "status",
+                    "code",
+                    "detail",
+                    "request_id"
+                  ],
+                  "title": "Problem",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "properties": {
+                    "code": {
+                      "title": "Code",
+                      "type": "string"
+                    },
+                    "detail": {
+                      "title": "Detail",
+                      "type": "string"
+                    },
+                    "errors": {
+                      "items": {
+                        "additionalProperties": true,
+                        "type": "object"
+                      },
+                      "title": "Errors",
+                      "type": "array"
+                    },
+                    "request_id": {
+                      "title": "Request Id",
+                      "type": "string"
+                    },
+                    "status": {
+                      "title": "Status",
+                      "type": "integer"
+                    },
+                    "title": {
+                      "title": "Title",
+                      "type": "string"
+                    },
+                    "type": {
+                      "default": "about:blank",
+                      "title": "Type",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "title",
+                    "status",
+                    "code",
+                    "detail",
+                    "request_id"
+                  ],
+                  "title": "Problem",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Pulse"
       }
     },
     "/v1/search": {

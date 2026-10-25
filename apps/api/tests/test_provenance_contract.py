@@ -15,6 +15,7 @@ COVERED = (
     "/v1/categories",
     "/v1/popular-products",
     "/v1/amazon",
+    "/v1/pulse",
 )
 # At least these operations; a test fails if a prefix stops reaching one of them.
 COVERED_OPERATIONS = {
@@ -37,6 +38,7 @@ COVERED_OPERATIONS = {
     "list_popular_products",
     "list_amazon_ranks",
     "list_product_amazon_ranks",
+    "get_pulse",
 }
 # Numbers that are not observations, so no capture time applies. Each needs a reason, and one
 # the check no longer flags must be removed.
@@ -45,6 +47,7 @@ EXEMPT = {
     "StoreHit.id": "the stores row the palette opens, not a measurement",
     "SupplierHit.id": "the suppliers row the palette opens, not a measurement",
     "Vendor.id": "the stores or suppliers row Discover's chip filters by, not a measurement",
+    "AlertOut.id": "the alerts row Daily Pulse lists (fired_at dates it), not a measurement",
 }
 # A score's explanation (pulso_core.scores, DEC-331): the score carries as_of, and each input its
 # own capture time in Component.as_of; weights, z, points and coverage are arithmetic on them.
