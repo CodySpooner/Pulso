@@ -534,6 +534,47 @@
         "title": "DiscoverPage",
         "type": "object"
       },
+      "Gap": {
+        "properties": {
+          "detected_at": {
+            "format": "date-time",
+            "title": "Detected At",
+            "type": "string"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "slot_end": {
+            "format": "date-time",
+            "title": "Slot End",
+            "type": "string"
+          },
+          "slot_key": {
+            "title": "Slot Key",
+            "type": "string"
+          },
+          "slot_start": {
+            "format": "date-time",
+            "title": "Slot Start",
+            "type": "string"
+          },
+          "source_key": {
+            "title": "Source Key",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source_key",
+          "slot_key",
+          "slot_start",
+          "slot_end",
+          "reason",
+          "detected_at"
+        ],
+        "title": "Gap",
+        "type": "object"
+      },
       "Health": {
         "properties": {
           "status": {
@@ -606,7 +647,7 @@
           "open_gaps": {
             "description": "Unfilled gaps starting in the last 90 days.",
             "items": {
-              "$ref": "#/components/schemas/pulso_api__schemas__admin__Gap"
+              "$ref": "#/components/schemas/Gap"
             },
             "title": "Open Gaps",
             "type": "array"
@@ -2353,7 +2394,7 @@
           },
           "gaps": {
             "items": {
-              "$ref": "#/components/schemas/pulso_api__routers__product_series__Gap"
+              "$ref": "#/components/schemas/SeriesGap"
             },
             "title": "Gaps",
             "type": "array"
@@ -2466,6 +2507,29 @@
           "as_of"
         ],
         "title": "SeriesDay",
+        "type": "object"
+      },
+      "SeriesGap": {
+        "properties": {
+          "day": {
+            "format": "date",
+            "title": "Day",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "gap",
+              "failed"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "day",
+          "status"
+        ],
+        "title": "SeriesGap",
         "type": "object"
       },
       "SettingsPatch": {
@@ -3203,70 +3267,6 @@
           "gap"
         ],
         "title": "Velocity",
-        "type": "object"
-      },
-      "pulso_api__routers__product_series__Gap": {
-        "properties": {
-          "day": {
-            "format": "date",
-            "title": "Day",
-            "type": "string"
-          },
-          "status": {
-            "enum": [
-              "gap",
-              "failed"
-            ],
-            "title": "Status",
-            "type": "string"
-          }
-        },
-        "required": [
-          "day",
-          "status"
-        ],
-        "title": "Gap",
-        "type": "object"
-      },
-      "pulso_api__schemas__admin__Gap": {
-        "properties": {
-          "detected_at": {
-            "format": "date-time",
-            "title": "Detected At",
-            "type": "string"
-          },
-          "reason": {
-            "title": "Reason",
-            "type": "string"
-          },
-          "slot_end": {
-            "format": "date-time",
-            "title": "Slot End",
-            "type": "string"
-          },
-          "slot_key": {
-            "title": "Slot Key",
-            "type": "string"
-          },
-          "slot_start": {
-            "format": "date-time",
-            "title": "Slot Start",
-            "type": "string"
-          },
-          "source_key": {
-            "title": "Source Key",
-            "type": "string"
-          }
-        },
-        "required": [
-          "source_key",
-          "slot_key",
-          "slot_start",
-          "slot_end",
-          "reason",
-          "detected_at"
-        ],
-        "title": "Gap",
         "type": "object"
       }
     },

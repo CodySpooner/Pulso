@@ -38,7 +38,7 @@ class Point(BaseModel):
     as_of: AwareDatetime  # the newest capture the value uses: at or before day + 1 00:00Z
 
 
-class Gap(BaseModel):
+class SeriesGap(BaseModel):
     day: date
     status: Literal["gap", "failed"]  # source_daily_coverage: a missed slot, or every run failed
 
@@ -52,7 +52,7 @@ class Series(BaseModel):
     as_of: AwareDatetime  # the newest capture the series uses
     stale: bool
     points: list[Point]  # oldest first, one per observed day: an unobserved day has none
-    gaps: list[Gap]  # days the source recorded a gap or failure and the series has no point
+    gaps: list[SeriesGap]  # days the source recorded a gap or failure and the series has no point
 
 
 class MissingSeries(NoSource):
@@ -108,7 +108,7 @@ def build(
         as_of=as_of,
         stale=is_stale(source.config, as_of, datetime.now(UTC)),
         points=points,
-        gaps=[Gap(day=d, status=s) for d, s in sorted(gaps.items()) if d not in seen],
+        gaps=[SeriesGap(day=d, status=s) for d, s in sorted(gaps.items()) if d not in seen],
     )
 
 

@@ -627,6 +627,30 @@ export interface components {
              */
             next_cursor: string | null;
         };
+        /** Gap */
+        Gap: {
+            /**
+             * Detected At
+             * Format: date-time
+             */
+            detected_at: string;
+            /** Reason */
+            reason: string;
+            /**
+             * Slot End
+             * Format: date-time
+             */
+            slot_end: string;
+            /** Slot Key */
+            slot_key: string;
+            /**
+             * Slot Start
+             * Format: date-time
+             */
+            slot_start: string;
+            /** Source Key */
+            source_key: string;
+        };
         /** Health */
         Health: {
             /**
@@ -670,7 +694,7 @@ export interface components {
              * Open Gaps
              * @description Unfilled gaps starting in the last 90 days.
              */
-            open_gaps: components["schemas"]["pulso_api__schemas__admin__Gap"][];
+            open_gaps: components["schemas"]["Gap"][];
         };
         /** ImportPreview */
         ImportPreview: {
@@ -1246,7 +1270,7 @@ export interface components {
              */
             as_of: string;
             /** Gaps */
-            gaps: components["schemas"]["pulso_api__routers__product_series__Gap"][];
+            gaps: components["schemas"]["SeriesGap"][];
             /** Method */
             method: string | null;
             /**
@@ -1281,6 +1305,19 @@ export interface components {
             date: string;
             /** Gap */
             gap: boolean;
+        };
+        /** SeriesGap */
+        SeriesGap: {
+            /**
+             * Day
+             * Format: date
+             */
+            day: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "gap" | "failed";
         };
         /** SettingsPatch */
         SettingsPatch: {
@@ -1510,43 +1547,6 @@ export interface components {
             stale: boolean;
             /** Value */
             value: number;
-        };
-        /** Gap */
-        pulso_api__routers__product_series__Gap: {
-            /**
-             * Day
-             * Format: date
-             */
-            day: string;
-            /**
-             * Status
-             * @enum {string}
-             */
-            status: "gap" | "failed";
-        };
-        /** Gap */
-        pulso_api__schemas__admin__Gap: {
-            /**
-             * Detected At
-             * Format: date-time
-             */
-            detected_at: string;
-            /** Reason */
-            reason: string;
-            /**
-             * Slot End
-             * Format: date-time
-             */
-            slot_end: string;
-            /** Slot Key */
-            slot_key: string;
-            /**
-             * Slot Start
-             * Format: date-time
-             */
-            slot_start: string;
-            /** Source Key */
-            source_key: string;
         };
     };
     responses: never;
