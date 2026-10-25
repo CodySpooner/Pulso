@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 
 from pulso_api.auth import Principal, current_principal
 from pulso_api.dependencies import get_db
+from pulso_api.routers import product_keywords
 from pulso_core.models import Listing, Product, ProductKeyword, Source, User, Workspace
 from pulso_core.settings import Settings
 from pulso_sources import google_trends as trends
@@ -172,6 +173,8 @@ def test_bad_input_unknown_and_merged_products(rail: tuple[As, dict[str, UUID]])
         {"keyword": "   ", "status": "confirmed"},
         {"keyword": "!!! ---", "status": "confirmed"},
         {"keyword": "x" * 101, "status": "confirmed"},
+        {"keyword": "ß" * 100, "status": "confirmed"},  # 200 once casefolded (XR-47)
+        {"keyword": "ﬃ" * 34, "status": "confirmed"},  # 102 once casefolded
         {"keyword": "lamp", "status": "candidate"},
         {"keyword": "lamp", "status": "confirmed", "source": "title"},
         {"keyword": "lamp"},
@@ -308,3 +311,31 @@ def test_tracked_is_exactly_the_weekly_plan(
     assert (budget["enabled"], budget["weekly_used"]) == (False, 1)
     with Session(db_engine) as session:
         assert [t.target_id for t in trends.plan(session)] == ["Sunset Lamp"]
+
+
+@pytest.mark.db
+def test_a_comma_seed_never_fails_the_keyword_api(
+    rail: tuple[As, dict[str, UUID]], db_engine: Engine, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """XR-48: an approved seed holding a comma fails validation like any bad entry, so the tab
+    still reads; and a weekly set that can't be planned reads as Trends off, never a 500."""
+    as_, ids = rail
+    entry = {"keyword": "lamp, shade", "geo": "US", "tz": 0, "enabled": True}
+    seed = {"version": "seed_v1", "status": "approved", "decision": "DEC-011"}
+    with Session(db_engine) as session:
+        session.get_one(Source, 3).config = {
+            "seed": seed | {"approved_on": "2026-01-01", "entries": [entry]}
+        }
+        session.commit()
+    assert as_("a").get(url(ids)).status_code == 200
+
+    def unplannable(*_: Any) -> trends.WeeklySet:
+        raise ValueError("Trends requires one keyword per search")
+
+    monkeypatch.setattr(product_keywords, "weekly_set", unplannable)
+    for response in (
+        as_("a").get(url(ids)),
+        as_("a").post(url(ids), json={"keyword": "galaxy lamp", "status": "confirmed"}),
+    ):
+        assert response.status_code == 200, response.text
+        assert response.json()["trends"]["enabled"] is False

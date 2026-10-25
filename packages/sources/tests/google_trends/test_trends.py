@@ -177,8 +177,7 @@ def test_plan_guard_and_missing_key(session: Session, settings: Settings, networ
     assert "trends_quota" not in source.config
     assert collect(session, settings).error_code == "serpapi_missing_key"
     source.config = json.loads(body("seed").replace(b"example keyword", b"one,two"))
-    with pytest.raises(ValueError, match="one keyword"):
-        trends.plan(session)
+    assert trends.plan(session) == []  # a comma seed fails validation: the list fails closed
     source.config = {}
     assert trends.plan(session) == []
     assert session.scalar(select(func.count()).select_from(RawPayload)) == 0

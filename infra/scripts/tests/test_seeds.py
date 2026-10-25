@@ -251,6 +251,7 @@ def test_keywords_are_unique_ignoring_case_and_whitespace(
         ("stores", "name", ""),
         ("stores", "enabled", "true"),
         ("cj_categories", "name", None),
+        ("keywords", "keyword", "lamp, shade"),  # Trends takes one keyword a search (XR-48)
         ("keywords", "geo", "GB"),
         ("keywords", "tz", False),
         ("keywords", "tz", 60),

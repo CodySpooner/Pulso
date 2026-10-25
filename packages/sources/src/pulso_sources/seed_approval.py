@@ -65,6 +65,8 @@ def validate_seed_entries(section: str, entries: Any) -> list[dict[str, Any]]:
             raise ValueError(f"{label}: duplicate {identity}: {key}")
         seen.add(key)
         if section == "keywords":
+            if "," in row["keyword"]:  # Trends takes one keyword a search (XR-48)
+                raise ValueError(f"{label}.keyword must be one keyword: no comma")
             if row["geo"] != "US":
                 raise ValueError(f"{label}.geo must be US")
             if type(row["tz"]) is not int or row["tz"] != 0:

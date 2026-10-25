@@ -30,6 +30,8 @@ def searchable(keyword: str) -> str:
     keyword = normalize(keyword)
     if not key(keyword):
         raise ValueError("A keyword needs at least one letter or digit.")
+    if len(keyword) > 100:  # casefolding can lengthen it: "ß" is "ss" (XR-47)
+        raise ValueError("A keyword is at most 100 characters once lowercased.")
     return keyword
 
 
@@ -149,12 +151,21 @@ class Read:
 AppSettings = Annotated[Settings, Depends(get_settings)]
 
 
+def week(session: Session, settings: Settings) -> WeeklySet:
+    """The weekly set; one that can't be planned reads as Trends off, never a 500 (XR-48)."""
+    try:
+        return weekly_set(session, settings)
+    except ValueError:
+        limit = settings.trends_monthly_search_limit
+        return WeeklySet([], limit // 5, limit, confirmed=False)
+
+
 @router.get("/{product_id}/keywords", response_model=KeywordList)
 def list_product_keywords(
     product_id: UUID, principal: CurrentPrincipal, session: DB, settings: AppSettings
 ) -> KeywordList:
     read = Read(session, principal.workspace_id, live_product(session, product_id))
-    return read.keywords(weekly_set(session, settings))
+    return read.keywords(week(session, settings))
 
 
 @router.post("/{product_id}/keywords", response_model=KeywordList)
@@ -172,7 +183,7 @@ def set_product_keyword(
     k = key(body.keyword)
     newest = read.decided.get(k)
     if newest is not None and newest.status == body.status:
-        return read.keywords(weekly_set(session, settings))
+        return read.keywords(week(session, settings))
     found = read.scored.get(k)
     stmt = insert(ProductKeyword).values(
         workspace_id=principal.workspace_id,
@@ -190,4 +201,4 @@ def set_product_keyword(
         )
     )
     session.commit()
-    return Read(session, principal.workspace_id, product).keywords(weekly_set(session, settings))
+    return Read(session, principal.workspace_id, product).keywords(week(session, settings))
