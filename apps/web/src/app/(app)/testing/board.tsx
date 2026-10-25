@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { DndContext, DragOverlay, PointerSensor, useDraggable, useDroppable, useSensor, useSensors } from "@dnd-kit/core";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { AnimatePresence, LayoutGroup } from "motion/react";
@@ -41,8 +42,7 @@ export function TestingBoard() {
   const client = useQueryClient();
   const list = $api.useQuery("get", "/v1/tests", LIST, { enabled: useApiReady() });
   const mutation = useMutation(moveOptions(client, listKey, send));
-  // A Product Page link opens its test: /testing?test=12. Only the loaded board renders it, so the server's null is safe.
-  const [open, setOpen] = useState(() => (typeof window === "undefined" ? null : Number(new URLSearchParams(window.location.search).get("test")) || null));
+  const [open, setOpen] = useState(Number(useSearchParams().get("test")) || null); // a Product Page link: /testing?test=12
   const [killing, setKilling] = useState<Test | null>(null);
   const [dragging, setDragging] = useState<Test | null>(null);
   const [dropped, setDropped] = useState<number | null>(null);
@@ -154,7 +154,13 @@ export function TestingBoard() {
           setKilling(null);
         }}
       />
-      <TestDrawer test={tests.find((t) => t.id === open)} onClose={() => setOpen(null)} />
+      <TestDrawer
+        test={tests.find((t) => t.id === open)}
+        onClose={() => {
+          setOpen(null);
+          if (window.location.search) window.history.replaceState(null, "", window.location.pathname); // a reload keeps it closed
+        }}
+      />
       <Toast note={note} />
     </div>
   );
@@ -341,7 +347,7 @@ function Toast({ note }: { note: Note | null }) {
   );
 }
 
-function BoardSkeleton() {
+export function BoardSkeleton() {
   return (
     <div role="status" aria-label="Loading your tests" className="grid items-start gap-3 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
       {STAGES.map(({ value }) => (
