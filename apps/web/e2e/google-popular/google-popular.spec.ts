@@ -70,6 +70,7 @@ test.describe("states", () => {
     await mockPopularApi(page, { hold: true });
     await page.goto("/google-popular");
     await expect(page.locator(".bg-skeleton:visible").first()).toBeVisible();
+    await expect(page.getByRole("status").filter({ hasText: "Loading Google popular products…" })).toBeAttached();
   });
 
   test("empty: nothing imported points to the CSV import", async ({ page }) => {

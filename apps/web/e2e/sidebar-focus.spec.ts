@@ -6,7 +6,7 @@ import { mockAdminApi } from "./data-health/fixtures";
 // (`mask-b-from-[calc(100%-3rem)]` in shell/sidebar.tsx). Tabbing through every nav link, the focused link's
 // whole ring (outline + offset) must sit inside the box and above the fade: never clipped, never faded.
 const FADE = 48;
-const NAV_LINKS = 20; // every link in lib/nav.ts navGroups
+const NAV_LINKS = 21; // every link in lib/nav.ts navGroups
 
 function ringFit(fade: number) {
   const el = document.activeElement as HTMLElement;

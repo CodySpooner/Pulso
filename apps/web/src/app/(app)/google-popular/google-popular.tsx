@@ -309,28 +309,34 @@ function NoImport() {
 
 function Loading() {
   return (
-    <div aria-hidden className="flex flex-col gap-4">
-      <div className="flex flex-wrap gap-2">
-        <Skeleton className="h-(--button-h-md) w-44" />
-        <Skeleton className="h-(--button-h-md) w-60" />
-        <Skeleton className="h-(--button-h-md) w-52 sm:ml-auto" />
+    <>
+      {/* The skeleton is aria-hidden, so the first load says so to a screen reader (p2-30). */}
+      <span className="sr-only" role="status">
+        Loading Google popular products…
+      </span>
+      <div aria-hidden className="flex flex-col gap-4">
+        <div className="flex flex-wrap gap-2">
+          <Skeleton className="h-(--button-h-md) w-44" />
+          <Skeleton className="h-(--button-h-md) w-60" />
+          <Skeleton className="h-(--button-h-md) w-52 sm:ml-auto" />
+        </div>
+        <Skeleton className="h-3.5 w-96 max-w-full" />
+        <div className={cn(box, "overflow-hidden")}>
+          <table className="w-full border-separate border-spacing-0">
+            <tbody>
+              {Array.from({ length: 12 }, (_, i) => (
+                <tr key={i} className="row-h">
+                  {COLUMNS.map(([name, align]) => (
+                    <td key={name} className={cell}>
+                      <Skeleton className={cn("h-3.5", name === "Product" ? "w-64 max-md:w-32" : "w-12", align.startsWith("num") && "ml-auto")} />
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
-      <Skeleton className="h-3.5 w-96 max-w-full" />
-      <div className={cn(box, "overflow-hidden")}>
-        <table className="w-full border-separate border-spacing-0">
-          <tbody>
-            {Array.from({ length: 12 }, (_, i) => (
-              <tr key={i} className="row-h">
-                {COLUMNS.map(([name, align]) => (
-                  <td key={name} className={cell}>
-                    <Skeleton className={cn("h-3.5", name === "Product" ? "w-64 max-md:w-32" : "w-12", align.startsWith("num") && "ml-auto")} />
-                  </td>
-                ))}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
+    </>
   );
 }
