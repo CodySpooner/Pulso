@@ -41,7 +41,7 @@ NOW = datetime.now(UTC)
 DAY = NOW.date() - timedelta(days=1)  # scored and featured yesterday
 AT = datetime.combine(DAY, datetime.min.time(), UTC) + timedelta(hours=6)
 FEES = {"payment_fee_bps": 290, "payment_fee_fixed_minor": 30, "returns_bps": 500}
-LIVE = ("Lamp", "Mug", "Fan", "Duck")
+LIVE = ("Lamp", "Mug", "Fan", "Duck", "Bare")  # Bare: no data at all
 
 
 def test_the_screener_requires_a_session(client: TestClient) -> None:
@@ -175,7 +175,7 @@ def build(
 
 
 def catalog(session: Session) -> dict[str, UUID]:
-    """Four live products, each missing some metrics, and two that never list."""
+    """Five live products, each missing some metrics, and two that never list."""
     session.add_all(
         [
             Category(id=1, name="Lamps", path="Home > Lamps"),
@@ -220,6 +220,7 @@ def catalog(session: Session) -> dict[str, UUID]:
         ),  # fmt: skip
         build(session, "Merged", **lamp),  # type: ignore[arg-type]
         build(session, "Empty", **lamp),  # type: ignore[arg-type]
+        build(session, "Bare"),
     ]
     ids = {product.name: product.id for product in products}
     products[4].merged_into_id = ids["Lamp"]
@@ -299,7 +300,7 @@ def test_rows_trace_every_metric_and_name_each_missing_one(
 ) -> None:
     api, ids = screened
     rows = {row["title"]: row for row in screen(api)["items"]}
-    lamp, mug, fan, duck = (rows[name] for name in LIVE)
+    lamp, mug, fan, duck, bare = (rows[name] for name in LIVE)
     at = AT.isoformat().replace("+00:00", "Z")
     assert (lamp["price_minor"]["value"], lamp["price_minor"]["source"]) == (2999, "shopify_stores")
     assert lamp["price_minor"]["as_of"] == at
@@ -334,6 +335,9 @@ def test_rows_trace_every_metric_and_name_each_missing_one(
     assert duck["price_minor"] == {"value": None, "reason": NO_PRICE}
     assert duck["acceleration"] == {"value": None, "reason": NO_ACCELERATION}
     assert duck["ship_days_us"] == {"value": None, "reason": NO_SHIPPING}
+    metrics = ("price_minor", "margin", "velocity", "acceleration", "supplier_rating")
+    metrics += ("ship_days_us", "trend", "saturation", "lifecycle", "opportunity")
+    assert all(bare[key]["value"] is None and bare[key]["reason"] for key in metrics)
 
 
 def metric(row: Any, key: str) -> float | None:
@@ -375,7 +379,7 @@ def test_each_sort_orders_nulls_last_and_a_cursor_walk_lists_each_row_once(
         assert values[expected[-1]] is None  # every sort here has a product missing it
         walked: list[UUID] = []
         cursor = None
-        while True:
+        for _ in range(len(LIVE) + 1):  # bounded: a cursor that repeats a row can't loop
             page = screen(
                 api, sort=sort, order=order, limit=1, **({"cursor": cursor} if cursor else {})
             )
@@ -395,9 +399,12 @@ def test_ties_break_by_id_and_the_cursor_keeps_them(
     tied = sorted((ids["Mug"], ids["Duck"]), key=lambda p: p.int, reverse=True)
     first = screen(api, sort="trend", limit=2)
     assert [row["id"] for row in first["items"]] == [str(ids["Lamp"]), str(tied[0])]
-    rest = screen(api, sort="trend", limit=2, cursor=first["next_cursor"])
-    assert [row["id"] for row in rest["items"]] == [str(tied[1]), str(ids["Fan"])]
-    assert rest["next_cursor"] is None
+    second = screen(api, sort="trend", limit=1, cursor=first["next_cursor"])
+    assert [row["id"] for row in second["items"]] == [str(tied[1])]
+    # Fan's NULL row and Bare's no row are both missing: last, by id.
+    missing = sorted((ids["Fan"], ids["Bare"]), key=lambda p: p.int, reverse=True)
+    rest = screen(api, sort="trend", cursor=second["next_cursor"])
+    assert [row["id"] for row in rest["items"]] == [str(p) for p in missing]
 
 
 @pytest.mark.db
