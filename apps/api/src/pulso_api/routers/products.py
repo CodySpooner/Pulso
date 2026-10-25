@@ -57,6 +57,7 @@ from pulso_core.models import (
     ProductTag,
     RawPayload,
     Source,
+    Store,
     Supplier,
     workspace_product_economics,
 )
@@ -136,6 +137,11 @@ class Degraded(BaseModel):
     since: AwareDatetime | None  # disabled_at, or the last capture of a stale source
 
 
+class Vendor(BaseModel):
+    id: int
+    name: str  # a store's domain, a supplier's name
+
+
 class DiscoverPage(BaseModel):
     items: list[DiscoverItem]
     next_cursor: str | None = Field(
@@ -143,6 +149,9 @@ class DiscoverPage(BaseModel):
     )
     as_of: AwareDatetime | None  # the newest capture of a source feeding the feed
     degraded: list[Degraded]  # sources feeding the feed that are blocked, disabled or stale
+    # The filters' store and supplier, named for their chips; null unfiltered or for an unknown id.
+    store: Vendor | None
+    supplier: Vendor | None
 
 
 class CategoryOption(BaseModel):
@@ -361,11 +370,17 @@ def list_products(
     # A query string arrives as text; the Literal needs the int.
     first_seen_days: Annotated[Literal[7, 30, 90] | None, BeforeValidator(int), Query()] = None,
     has_sellers: bool | None = None,
+    store: Annotated[
+        int | None, Query(ge=1, le=2**63 - 1, description="A stores.id: its live listings")
+    ] = None,
+    supplier: Annotated[
+        int | None, Query(ge=1, le=2**63 - 1, description="A suppliers.id: its live listings")
+    ] = None,
     cursor: str | None = None,
     limit: Annotated[int, Query(ge=1, le=100)] = 48,
 ) -> DiscoverPage:
     """Discover (UX-2): products neither merged nor emptied by an undo, filtered, sorted and
-    keyset-paginated (DEC-239, DEC-271)."""
+    keyset-paginated (DEC-239, DEC-271). An unknown store or supplier lists nothing (DEC-300)."""
     now = datetime.now(UTC)
     snap = (
         select(
@@ -399,15 +414,19 @@ def list_products(
         where.append(Product.category_id == category)
     if first_seen_days is not None:
         where.append(Product.first_seen_at >= now - timedelta(days=first_seen_days))
+    vendors: list[ColumnElement[bool]] = []
     if source is not None:
-        where.append(
-            exists().where(
-                Listing.product_id == Product.id,
-                Listing.delisted_at.is_(None),
-                Listing.source_id
-                == select(Source.id).where(Source.key == source).scalar_subquery(),
-            )
+        vendors.append(
+            Listing.source_id == select(Source.id).where(Source.key == source).scalar_subquery()
         )
+    if store is not None:
+        vendors.append(Listing.store_id == store)  # ix_listings_store_id
+    if supplier is not None:
+        vendors.append(Listing.supplier_id == supplier)  # ix_listings_supplier_id
+    where += [
+        exists().where(Listing.product_id == Product.id, Listing.delisted_at.is_(None), vendor)
+        for vendor in vendors
+    ]
     feed = (
         select(
             Product.id,
@@ -507,11 +526,15 @@ def list_products(
                     since=row.last_capture,
                 )
             )
+    store_row = session.get(Store, store) if store is not None else None
+    supplier_row = session.get(Supplier, supplier) if supplier is not None else None
     return DiscoverPage(
         items=[item(row, snapshots[row.id], margins.get(row.id), by_key, now) for row in page],
         next_cursor=next_cursor,
         as_of=max((row.last_capture for row in feeding if row.last_capture), default=None),
         degraded=degraded,
+        store=Vendor(id=store_row.id, name=store_row.domain) if store_row else None,
+        supplier=Vendor(id=supplier_row.id, name=supplier_row.name) if supplier_row else None,
     )
 
 
