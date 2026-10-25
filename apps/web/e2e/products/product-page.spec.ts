@@ -11,7 +11,8 @@ const metrics = (page: Page) => stats(page).getByRole("button");
 const panelHeading = (page: Page, label: string) =>
   page.getByRole("tabpanel").getByRole("heading", { name: label === "Overview" ? "Where it appears" : `The ${label} tab arrives in Phase 2` });
 
-for (const [value, label] of Object.entries(TAB_LABELS)) {
+// Sellers has its body (p2-11) and its own spec, sellers.spec.ts.
+for (const [value, label] of Object.entries(TAB_LABELS).filter(([value]) => value !== "sellers")) {
   test(`?tab=${value} deep-links to ${label}`, async ({ page }) => {
     await mockProductApi(page);
     await page.goto(`${URL}?tab=${value}`);
@@ -131,7 +132,7 @@ test("a failed load shows the cause, the error ID and Retry", async ({ page }) =
 test("a merged id shows the survivor's URL with the query string kept", async ({ page }) => {
   const survivor = "9b1d2c3e-4f50-4617-8a9b-0c1d2e3f4a5b";
   await mockProductApi(page, { body: { ...product, id: survivor } }); // fetch followed the API's 308
-  await page.goto(`${URL}?tab=sellers`);
-  await expect(page).toHaveURL(`/products/${survivor}?tab=sellers`);
-  await expect(page.getByRole("tab", { name: "Sellers" })).toHaveAttribute("aria-selected", "true");
+  await page.goto(`${URL}?tab=profit`);
+  await expect(page).toHaveURL(`/products/${survivor}?tab=profit`);
+  await expect(page.getByRole("tab", { name: "Profit" })).toHaveAttribute("aria-selected", "true");
 });

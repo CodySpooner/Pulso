@@ -13,7 +13,7 @@ from starlette.responses import Response
 
 from pulso_api.errors import PROBLEM_RESPONSES, APIError, problem_response
 from pulso_api.publisher import get_publisher
-from pulso_api.routers import account, admin, health, products, profit
+from pulso_api.routers import account, admin, health, product_sellers, products, profit
 from pulso_core.logging import configure_logging, request_id
 
 logger = logging.getLogger("pulso.api")
@@ -87,6 +87,7 @@ def create_app() -> FastAPI:
     app.include_router(products.router)
     app.include_router(products.categories_router)
     app.include_router(profit.router)
+    app.include_router(product_sellers.router)
     app.dependency_overrides[admin.get_publisher] = get_publisher
     return app
 
