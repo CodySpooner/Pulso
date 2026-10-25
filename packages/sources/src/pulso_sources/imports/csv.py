@@ -114,6 +114,14 @@ def _cell(value: str, column: Column, currency: str) -> Cell:
             # Canonical text, so "0012" can't miss the stored "12"; stays text past JS's 2**53.
             if not re.fullmatch(r"[1-9][0-9]{0,18}", value) or int(value) >= 2**63:
                 raise ValueError("Use a positive integer ID without leading zeros")
+        case "asin":
+            if not re.fullmatch(r"[0-9A-Z]{10}", value):
+                raise ValueError("Use the 10-character ASIN")
+        case "rating":
+            rating = Decimal(value)
+            if not 0 <= rating <= 5 or rating != rating.quantize(Decimal("0.01")):
+                raise ValueError("Use a rating from 0 to 5 with up to two decimals")
+            return rating
     return value
 
 
@@ -166,6 +174,8 @@ def _entity_errors(source_key: str, rows: dict[int, Row], as_of: date) -> list[R
         elif source_key == "merchant_bestsellers":
             report = (row["country"], row.get("category"), row["report_week"])
             checks = [(("popularity_rank", *report, row["popularity_rank"]), None)]
+        elif source_key == "amazon":
+            checks = [(("asin", row["asin"], row["category"], row["rank_kind"], day), None)]
         for identity, values in checks:
             prior, prior_values = seen.setdefault(identity, (line, values))
             if prior != line and (values is None or prior_values != values):
@@ -270,6 +280,10 @@ def parse_csv(
                 errors.append(RowError(line, "max_days", "Must be at least min_days"))
             if row.get("moq") == 0:  # the CJ adapter's PositiveInt (imp-151)
                 errors.append(RowError(line, "moq", "Must be at least 1"))
+            if row.get("rank") == 0:
+                errors.append(RowError(line, "rank", "Must be at least 1"))
+            if row.get("rank_kind") not in {None, "bsr", "movers"}:
+                errors.append(RowError(line, "rank_kind", "Use bsr or movers"))
             week = row.get("report_week")
             if isinstance(week, date) and week.weekday():
                 errors.append(RowError(line, "report_week", "Use the Monday that starts the week"))

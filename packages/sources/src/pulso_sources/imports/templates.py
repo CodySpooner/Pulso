@@ -9,7 +9,18 @@ from typing import Literal
 @dataclass(frozen=True)
 class Column:
     kind: Literal[
-        "text", "money", "currency", "date", "bool", "int", "interest", "country", "rate", "id"
+        "text",
+        "money",
+        "currency",
+        "date",
+        "bool",
+        "int",
+        "interest",
+        "country",
+        "rate",
+        "id",
+        "asin",
+        "rating",
     ]
     required: bool = False
     default: str = ""
@@ -93,6 +104,22 @@ TEMPLATES = {
             "price_range_min": Column("money"),
             "price_range_max": Column("money"),
             "price_range_currency": Column("currency"),
+        }
+    ),
+    # The owner's own export or list (DEC-279): obtained lawfully, never scraped by Pulso.
+    "amazon": Template(
+        {
+            "asin": Column("asin", True),
+            "title": Column("text", True),
+            "category": Column("text", True),
+            "rank": Column("int", True),
+            "rank_kind": Column("text", default="bsr"),
+            "price": Column("money"),
+            "currency": Column("currency", default="USD"),
+            "rating": Column("rating"),
+            "review_count": Column("int"),
+            "gtins": Column("text"),
+            "observed_for": Column("date"),
         }
     ),
 }
