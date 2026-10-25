@@ -24,7 +24,6 @@ for (const [path, label] of [
   ["/screener", "Screener"],
   ["/watchlists", "Watchlists"],
   ["/boards", "Boards"],
-  ["/testing", "Testing"],
 ])
   test(`${label}, a Phase 4 page, says Phase 4 is under way`, async ({ page }) => {
     await page.goto(path);

@@ -19,6 +19,8 @@ import { formatAgo, formatUtc } from "@/lib/format";
 import { duration, spring } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 
+import { StartTest } from "../../testing/start-test";
+
 import { ContextRail } from "./context-rail";
 import { Overview } from "./overview";
 import { ProfitTab } from "./profit/profit-tab";
@@ -62,7 +64,7 @@ export function ProductPage({ id }: { id: string }) {
   return (
     <div className="flex w-full flex-col gap-6">
       {data && product.isError && <StaleLine boxed what="Couldn't refresh this product" error={error} asOf={product.dataUpdatedAt} retry={retry} />}
-      <header className="flex items-start gap-4">
+      <header className="grid grid-cols-[auto_minmax(0,1fr)] items-start gap-4 sm:grid-cols-[auto_minmax(0,1fr)_auto]">
         {data ? <Thumb url={data.image_url} /> : !failed && <Skeleton className="size-12 shrink-0 rounded-lg sm:size-18" />}
         <div className="flex min-w-0 flex-1 flex-col gap-1">
           {/* One h1 in every state, so the focus the route template gives it on a navigation survives the load. */}
@@ -92,6 +94,7 @@ export function ProductPage({ id }: { id: string }) {
             )
           )}
         </div>
+        {data && <StartTest productId={data.id} className="col-span-2 sm:col-span-1" />}
       </header>
       {data ? (
         <Loaded product={data} now={product.dataUpdatedAt} />
