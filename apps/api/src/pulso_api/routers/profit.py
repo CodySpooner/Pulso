@@ -93,6 +93,10 @@ class ProfitCalc(BaseModel):
     missing: list[Missing]
     estimates: list[str]  # inputs that are labelled owner estimates
     sources: dict[str, InputSource]  # by input name
+    as_of: AwareDatetime | None = Field(
+        description="The oldest observation in `sources` (DEC-259); null when only settings "
+        "and owner estimates feed the result."
+    )
 
 
 def reference_price(session: Session, product_id: UUID) -> tuple[int, Provenance] | None:
@@ -148,4 +152,5 @@ def calc_profit(
         currency="USD",
         **asdict(calc.cost),
         sources={name: InputSource(**asdict(trace)) for name, trace in calc.sources.items()},
+        as_of=min((trace.as_of for trace in calc.sources.values() if trace.as_of), default=None),
     )
