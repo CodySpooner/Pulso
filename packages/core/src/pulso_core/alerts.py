@@ -5,12 +5,13 @@ A rule watches supplier offers (supplier listings): one offer, a product's live 
 the R-23 defaults, the offers of every product with an open test. The first value a rule sees
 for an offer is its reference. An armed offer fires when it moves past the threshold, and re-arms
 once it is back past the hysteresis band. Testing rules hold back a crossing whose window holds a
-collection gap known by `as_of`. The caller commits; the nightly chain (SC-6) calls this.
+collection gap known before `as_of` until a gap-free run sees the offer again (DEC-335). Every
+read is strictly before `as_of`. The caller commits; the nightly chain (SC-6) calls this.
 """
 
 from datetime import UTC, datetime
 from decimal import Decimal
-from typing import Any
+from typing import Any, cast
 from uuid import UUID
 
 from sqlalchemy import Row, func, or_, select
@@ -22,6 +23,7 @@ from pulso_core.models import (
     Alert,
     AlertRule,
     CollectionGap,
+    CollectorRun,
     Listing,
     ListingSnapshot,
     ProductTest,
@@ -43,6 +45,7 @@ TESTING: tuple[
     ("Testing: freight change", "freight_change", {"pct": DEFAULT_PCT}),
     ("Testing: supplier stock-out", "supplier_stock_out", {}),
 )
+DONE = (CollectorRun.status == "success", CollectorRun.complete)
 
 
 def offers(session: Session, rule: AlertRule) -> list[Row[Any]]:
@@ -63,7 +66,7 @@ def offers(session: Session, rule: AlertRule) -> list[Row[Any]]:
 
 
 def latest(session: Session, rule_type: str, listing_id: int, as_of: datetime) -> Row[Any] | None:
-    """The offer's newest observation the rule reads, captured by `as_of`."""
+    """The offer's newest observation the rule reads, captured before `as_of`."""
     snap: type[ListingSnapshot] | type[ShippingOption] = ListingSnapshot
     then: Any = ListingSnapshot.id.desc()
     reads: list[Any] = [ListingSnapshot.available, ListingSnapshot.stock]
@@ -81,7 +84,7 @@ def latest(session: Session, rule_type: str, listing_id: int, as_of: datetime) -
         .add_columns(RawPayload.source_id, Source.key.label("source"))
         .join(RawPayload, RawPayload.id == snap.raw_payload_id)
         .join(Source, Source.id == RawPayload.source_id)
-        .where(snap.listing_id == listing_id, snap.captured_at <= as_of, *where)
+        .where(snap.listing_id == listing_id, snap.captured_at < as_of, *where)
         .order_by(snap.captured_at.desc(), then)
         .limit(1)
     ).first()
@@ -99,11 +102,11 @@ def past(rule: AlertRule, ref: Any, value: Any) -> bool | None:
 def gap(
     session: Session, source_id: int, start: datetime, end: datetime, as_of: datetime
 ) -> dict[str, str] | None:
-    """The source's collection gaps known by `as_of` that overlap (start, end], as one span."""
+    """The source's gaps detected before `as_of` that overlap (start, end], as one span."""
     first, last = session.execute(
         select(func.min(CollectionGap.slot_start), func.max(CollectionGap.slot_end)).where(
             CollectionGap.source_id == source_id,
-            CollectionGap.detected_at <= as_of,
+            CollectionGap.detected_at < as_of,
             CollectionGap.slot_start < end,
             CollectionGap.slot_end > start,
         )
@@ -113,6 +116,42 @@ def gap(
         if first is None
         else {"reason": "gap", "from": first.isoformat(), "to": last.isoformat()}
     )
+
+
+def since(session: Session, rule: AlertRule, row: Row[Any], state: dict[str, Any]) -> datetime:
+    """Where a crossing's gap window starts: the source's newest complete run before the row, or
+    the previous row if later. Snapshots are change-only, so that row is the last change; freight
+    quotes are per capture, so for them it is the last capture."""
+    start = datetime.fromisoformat(state["at"])
+    if rule.type == "freight_change":
+        return start
+    run = session.scalar(
+        select(func.max(CollectorRun.finished_at)).where(
+            CollectorRun.source_id == row.source_id,
+            *DONE,
+            CollectorRun.finished_at < row.captured_at,
+        )
+    )
+    return max(start, run) if run else start
+
+
+def seen(session: Session, row: Row[Any], as_of: datetime) -> bool:
+    """Whether a complete run of the row's source, started after it and finished before `as_of`,
+    saw the offer again over a gap-free window (since the run before it). Change-only snapshots
+    write no row for an unchanged value, so the run is the evidence."""
+    # ponytail: a complete run of the source stands in for seeing this offer; per-offer evidence
+    # needs a run -> listing capture record (a migration).
+    start = row.captured_at
+    for end in session.scalars(
+        select(CollectorRun.finished_at)
+        .where(CollectorRun.source_id == row.source_id, *DONE)
+        .where(CollectorRun.started_at > start, CollectorRun.finished_at < as_of)
+        .order_by(CollectorRun.finished_at)
+    ):
+        if not gap(session, row.source_id, start, cast(datetime, end), as_of):
+            return True
+        start = end
+    return False
 
 
 def fire(
@@ -176,29 +215,29 @@ def step(session: Session, rule: AlertRule, as_of: datetime) -> str:
                              "currency": row.currency, "armed": armed}  # fmt: skip
             continue
         entities[key] = state = dict(state)
-        if row.captured_at <= datetime.fromisoformat(state["at"]):
-            continue  # nothing new since the last evaluation
-        level = past(rule, state["ref"], value)
-        if state["armed"] and level:
-            held = None
-            if rule.target_type == "test":
-                held = gap(
-                    session,
-                    row.source_id,
-                    datetime.fromisoformat(state["at"]),
-                    row.captured_at,
-                    as_of,
+        if row.captured_at > datetime.fromisoformat(state["at"]):  # a new observation
+            state.pop("held", None)
+            level = past(rule, state["ref"], value)
+            if state["armed"] and level:
+                held = rule.target_type == "test" and gap(
+                    session, row.source_id, since(session, rule, row, state), row.captured_at, as_of
                 )
-            if held:  # stays armed: a later gap-free window confirms the change
-                status, skipped = "skipped", held
-            else:
-                fire(session, rule, offer, state, row, value, as_of)
-                state["armed"] = False
-        elif level is False:
-            state["armed"] = True
-        if rule.type not in PCT:  # stock compares with the last state, not the first
-            state["ref"], state["ref_at"] = value, at
-        state["value"], state["at"] = value, at
+                if held:  # stays armed: a gap-free re-observation confirms it
+                    state["held"] = held
+                else:
+                    fire(session, rule, offer, state, row, value, as_of)
+                    state["armed"] = False
+            elif level is False:
+                state["armed"] = True
+            if rule.type not in PCT:  # stock compares with the last state, not the first
+                state["ref"], state["ref_at"] = value, at
+            state["value"], state["at"] = value, at
+        elif "held" in state and rule.type != "freight_change" and seen(session, row, as_of):
+            fire(session, rule, offer, state, row, value, as_of)
+            state["armed"] = False
+            del state["held"]
+        if "held" in state:
+            status, skipped = "skipped", state["held"]
     rule.last_value = {"status": status, "entities": entities} | (
         {"skipped": skipped} if skipped else {}
     )
