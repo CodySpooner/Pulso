@@ -3,7 +3,7 @@ must give the same lines, totals, `complete` and `missing` for every vector."""
 
 import json
 from dataclasses import asdict
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
@@ -190,6 +190,11 @@ def seed(session: Session, vector: dict[str, Any]) -> tuple[UUID, UUID, Provenan
     )  # fmt: skip
     session.add(listing)
     session.flush()
+    if unit is None:  # an older priced snapshot: the latest one has no price, and no fallback
+        observe(
+            session, ListingSnapshot, CJ, COSTED - timedelta(days=1), listing_id=listing.id,
+            values_hash="h", currency="USD", price_min_minor=1,
+        )  # fmt: skip
     observe(
         session, ListingSnapshot, CJ, COSTED, listing_id=listing.id, values_hash="h",
         currency=(unit or {}).get("currency", "USD"), price_min_minor=(unit or {}).get("minor"),
@@ -271,7 +276,7 @@ def test_the_view_matches_every_golden_vector_and_the_loader(db_engine: Engine) 
                 }
             savepoint.rollback()
     assert wrong == {}
-    assert sum(vector["view"] for vector in VECTORS) == 26
+    assert sum(vector["view"] for vector in VECTORS) == 27
 
 
 @pytest.mark.db
@@ -287,3 +292,10 @@ def test_a_workspace_reads_only_its_own_settings(db_engine: Engine) -> None:
         assert economics(session, a, product_id)["margin_minor"] == 1503
         assert economics(session, b.id, product_id)["margin_minor"] == 1503 + 117 + 150
         assert economics(session, b.id, product_id)["sources"]["duty_bps"]["source"] == "settings"
+        survivor = Product(name="Survivor")
+        session.add(survivor)
+        session.flush()
+        session.get_one(Product, product_id).merged_into_id = survivor.id  # merged: no answer
+        session.flush()
+        view = workspace_product_economics.c
+        assert session.scalar(select(view.product_id).where(view.product_id == product_id)) is None

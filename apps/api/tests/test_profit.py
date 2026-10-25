@@ -455,6 +455,59 @@ def test_freight_matches_the_variant_and_quantity(api: TestClient, db_engine: En
 
 
 @pytest.mark.db
+def test_the_view_picks_the_supplier_and_freight_the_endpoint_does(
+    api: TestClient, db_engine: Engine
+) -> None:
+    """Each bare calc() also checks the view's row (DEC-265): one SQL rule per product."""
+    with Session(db_engine) as session:
+        ws = workspace(session, duty_default_bps=0)
+        products = {name: lamp(session) for name in ("two", "bulk", "gone", "fx", "stuck")}
+        two = supplier_listing(session, products["two"], 620)
+        session.add_all(ListingVariant(listing_id=two, external_id=key) for key in "AB")
+        quote(session, two, 485)  # a null-variant quote can't cover a two-variant listing
+        bulk = supplier_listing(session, products["bulk"], 620)
+        quote(session, bulk, 485)
+        quote(session, bulk, 300, quantity=2)  # the newer, cheaper capture is for two units
+        gone = supplier_listing(session, products["gone"], 620)
+        live = ListingVariant(listing_id=gone, external_id="A")
+        old = ListingVariant(listing_id=gone, external_id="B", delisted_at=DAY)
+        session.add_all([live, old])
+        session.flush()
+        quote(session, gone, 485, variant_id=live.id)
+        # A delisted variant's later day isn't the live variant's newest day.
+        capture(session, gone, DAY + timedelta(days=1), variant_id=old.id, CJPacket=200)
+        fx = supplier_listing(session, products["fx"], 620)
+        usd = quote(session, fx, 600)
+        session.add(  # the same capture, in EUR with no rate: it sorts after any USD quote
+            ShippingOption(
+                listing_id=fx,
+                destination_country="US",
+                quantity=1,
+                method="DHL",
+                cost_minor=100,
+                currency="EUR",
+                captured_at=DAY,
+                observed_for=DAY.date(),
+                raw_payload_id=usd.raw_payload_id,
+            )
+        )
+        supplier_listing(session, products["stuck"], 620, "CNY")  # no FX and no freight
+        fewest = supplier_listing(session, products["stuck"], 700)  # no freight only
+        session.commit()
+        ids = {name: product.id for name, product in products.items()}
+
+    def ask(name: str) -> Any:
+        return calc(api, ws, product_id=ids[name])
+
+    assert ask("two")["missing"] == ["freight_variant_mismatch"]
+    assert ask("bulk")["freight_minor"] == 485
+    assert ask("gone")["freight_minor"] == 485
+    assert (ask("fx")["method"], ask("fx")["freight_minor"]) == ("CJPacket", 600)
+    stuck = ask("stuck")
+    assert (stuck["supplier_listing_id"], stuck["missing"]) == (fewest, ["freight_missing"])
+
+
+@pytest.mark.db
 def test_an_unquoted_cheap_supplier_cannot_be_best(api: TestClient, db_engine: Engine) -> None:
     with Session(db_engine) as session:
         ws = workspace(session, duty_default_bps=0)
@@ -776,7 +829,7 @@ def test_discover_best_margin_is_the_profit_tabs_default_answer(
         product = lamp(session)  # 2999, plus three more stores: the lower median stays 2999
         for price in (2499, 3499, 3999):
             shop(session, product, price)
-        shop(session, product, 100, "EUR")  # never a USD price
+        shop(session, product, 9999, "EUR")  # not a USD price: it would make the median 3499
         cj = supplier_listing(session, product, 620)
         quote(session, cj, 485)
         session.commit()

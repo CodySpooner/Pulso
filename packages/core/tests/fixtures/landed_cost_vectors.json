@@ -474,7 +474,7 @@
       }
     },
     {
-      "name": "JPY cost at q = 3 converts 3 x C once: 2000 cents, never 3 x 667",
+      "name": "JPY cost at q = 3 converts 3 x C once: 2000 cents, never 3 x 667; the $1.50 customs fee is per order",
       "view": false,
       "inputs": {
         "price_minor": 2999,
@@ -491,7 +491,7 @@
         "duty_bps": 2000,
         "quantity": 3,
         "ddp": false,
-        "customs_fee_minor": 0,
+        "customs_fee_minor": 150,
         "payment_fee_bps": 290,
         "payment_fee_fixed_minor": 30,
         "shopify_fee_bps": 0,
@@ -505,16 +505,16 @@
         "goods_minor": 2000,
         "freight_minor": 485,
         "duty_minor": 400,
-        "customs_fee_minor": 0,
+        "customs_fee_minor": 150,
         "payment_fee_minor": 117,
         "shopify_fee_minor": 0,
         "returns_minor": 150,
-        "landed_cost_minor": 2885,
-        "margin_minor": -153,
-        "margin_bps": -510,
+        "landed_cost_minor": 3035,
+        "margin_minor": -303,
+        "margin_bps": -1010,
         "ad_cost_minor": 0,
-        "net_minor": -153,
-        "net_bps": -510,
+        "net_minor": -303,
+        "net_bps": -1010,
         "complete": true,
         "missing": [],
         "estimates": []
@@ -1226,6 +1226,55 @@
         "shopify_fee_minor": 0,
         "returns_minor": 50,
         "landed_cost_minor": 1229,
+        "margin_minor": null,
+        "margin_bps": null,
+        "ad_cost_minor": 9223372036854775807,
+        "net_minor": null,
+        "net_bps": null,
+        "complete": false,
+        "missing": [
+          "amount_out_of_range"
+        ],
+        "estimates": []
+      }
+    },
+    {
+      "name": "net alone past BIGINT: at BIGINT's top price, net_bps still fits",
+      "view": true,
+      "inputs": {
+        "price_minor": 9223372036854775807,
+        "unit_cost": {
+          "minor": 9223372036854774807,
+          "currency": "USD",
+          "usd_rate": null
+        },
+        "freight": {
+          "minor": 485,
+          "currency": "USD",
+          "usd_rate": null
+        },
+        "duty_bps": 0,
+        "quantity": 1,
+        "ddp": false,
+        "customs_fee_minor": 0,
+        "payment_fee_bps": 290,
+        "payment_fee_fixed_minor": 30,
+        "shopify_fee_bps": 0,
+        "returns_bps": 500,
+        "ad_cost_minor": 9223372036854775807,
+        "freight_gap": "freight_missing",
+        "estimates": []
+      },
+      "expected": {
+        "price_minor": 9223372036854775807,
+        "goods_minor": 9223372036854774807,
+        "freight_minor": 485,
+        "duty_minor": 0,
+        "customs_fee_minor": 0,
+        "payment_fee_minor": 267477789068788528,
+        "shopify_fee_minor": 0,
+        "returns_minor": 461168601842738790,
+        "landed_cost_minor": 9223372036854775292,
         "margin_minor": null,
         "margin_bps": null,
         "ad_cost_minor": 9223372036854775807,
