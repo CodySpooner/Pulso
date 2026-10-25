@@ -29,6 +29,7 @@ from pulso_sources.imports.csv import (
 )
 from pulso_sources.imports.csv import decode_upload as _decode_upload
 from pulso_sources.imports.templates import TEMPLATES, template_csv
+from pulso_sources.merchant_bestsellers import ImportAdapter as MerchantImportAdapter
 from pulso_sources.shopify_stores.imports import Context, ShopifyImportAdapter
 
 
@@ -53,6 +54,7 @@ ADAPTERS: dict[str, Callable[[ImportData], Adapter[Any]]] = {
     "fx_frankfurter": FrankfurterAdapter,
     "google_trends": GoogleTrendsAdapter,
     "cj": CJImportAdapter,
+    "merchant_bestsellers": MerchantImportAdapter,
 }
 
 

@@ -57,6 +57,22 @@ SAMPLE_ROWS = {
         "source": "manual",
     },
     "fx_frankfurter": {"date": "2026-01-01", "base": "USD", "quote": "JPY", "rate": "150"},
+    "merchant_bestsellers": {
+        "report_week": "2026-01-05",
+        "country": "US",
+        "category": "Example category",
+        "popularity_rank": "1",
+        "previous_rank": "2",
+        "title": "Example only",
+        "brand": "Example brand",
+        "availability": "In stock",
+        "relative_demand": "High",
+        "relative_demand_change": "Riser",
+        "gtins": "5901234123457",
+        "price_range_min": "10",
+        "price_range_max": "20",
+        "price_range_currency": "USD",
+    },
 }
 
 
