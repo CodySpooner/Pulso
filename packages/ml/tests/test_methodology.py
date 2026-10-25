@@ -18,7 +18,7 @@ def score(doc: dict[str, Any], anchor: str) -> dict[str, Any]:
 def test_the_committed_export_is_the_code() -> None:
     fresh = methodology.dumps(methodology.build())
     assert COMMITTED.read_text(encoding="utf-8") == fresh, (
-        "apps/web/src/lib/methodology.json is stale: run `uv run python -m pulso_ml.scores.methodology`"
+        f"{methodology.OUT.as_posix()} is stale: run `uv run python -m pulso_ml.scores.methodology`"
     )
 
 
@@ -52,7 +52,12 @@ def test_lifecycle_reads_its_docstring_signature_and_config() -> None:
     assert entry["inputs"][0]["type"] == "int | None"
     assert [c["name"] for c in entry["config"]] == [f.name for f in fields(lifecycle.Config)]
     up = next(c for c in entry["config"] if c["name"] == "up")
-    assert up == {"name": "up", "type": "float", "note": "+20% week on week", "value": math.log(1.2)}
+    assert up == {
+        "name": "up",
+        "type": "float",
+        "note": "+20% week on week",
+        "value": math.log(1.2),
+    }
     assert (entry["model_version"], entry["config_digest"]) == version(lifecycle.CONFIG)
 
 
