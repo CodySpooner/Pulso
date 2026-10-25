@@ -24,6 +24,7 @@ from sqlalchemy.sql import ColumnElement
 from pulso_api.auth import Principal, current_principal
 from pulso_api.errors import APIError
 from pulso_api.routers.products import DB
+from pulso_api.schemas.text import NoNulStr
 from pulso_core.models import PopularBrandRule, PopularProduct, Source
 from pulso_sources.merchant_bestsellers import gtin_tokens, link_products
 
@@ -39,7 +40,7 @@ BRAND_CURSOR = TypeAdapter(str)
 P = PopularProduct
 R = PopularBrandRule
 CurrentPrincipal = Annotated[Principal, Depends(current_principal)]
-Brand = Annotated[str, StringConstraints(min_length=1, max_length=500)]
+Brand = Annotated[NoNulStr, StringConstraints(min_length=1, max_length=500)]
 
 
 class RankChange(BaseModel):

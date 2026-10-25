@@ -44,6 +44,7 @@ from pulso_api.auth import Principal, current_principal
 from pulso_api.dependencies import get_db
 from pulso_api.errors import APIError
 from pulso_api.schemas.provenance import NoSource, Sourced, Stat
+from pulso_api.schemas.text import NoNulStr
 from pulso_core.models import (
     Category,
     Image,
@@ -690,12 +691,14 @@ def get_product_overview(product_id: UUID, session: DB) -> ProductOverview:
 # Notes and tags: this workspace's own context on a product (the page's context rail, DEC-243).
 CurrentPrincipal = Annotated[Principal, Depends(current_principal)]
 NOTE_CURSOR = TypeAdapter(tuple[AwareDatetime, UUID])
-Tag = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=80)]
+Tag = Annotated[NoNulStr, StringConstraints(strip_whitespace=True, min_length=1, max_length=80)]
 
 
 class NoteIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    body: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=10_000)]
+    body: Annotated[
+        NoNulStr, StringConstraints(strip_whitespace=True, min_length=1, max_length=10_000)
+    ]
 
 
 class Note(BaseModel):

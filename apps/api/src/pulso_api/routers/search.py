@@ -27,6 +27,7 @@ from sqlalchemy.orm import Session
 from pulso_api.auth import current_principal
 from pulso_api.dependencies import get_db
 from pulso_api.routers.products import best_feature, is_stale
+from pulso_api.schemas.text import NoNulStr
 from pulso_core.models import Category, Listing, Product, Source, Store, Supplier
 
 router = APIRouter(prefix="/v1/search", dependencies=[Depends(current_principal)])
@@ -233,9 +234,8 @@ def search_suppliers(session: Session, q: str, limit: int) -> list[SupplierHit]:
 def search(
     session: DB,
     q: Annotated[
-        str,
-        # Postgres text can't hold NUL: a 422, not a 500 (XR-32).
-        StringConstraints(strip_whitespace=True, max_length=100, pattern=r"^[^\x00]*$"),
+        NoNulStr,  # Postgres text can't hold NUL: a 422, not a 500 (XR-32).
+        StringConstraints(strip_whitespace=True, max_length=100),
         Query(description="Trimmed; under 2 characters returns no results. No NUL character."),
     ],
     limit: Annotated[int, Query(ge=1, le=20, description="Per group")] = 5,
