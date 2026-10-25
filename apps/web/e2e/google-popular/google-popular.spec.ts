@@ -105,8 +105,6 @@ test.describe("states", () => {
 
 test.describe("brand list (DEC-277)", () => {
   const action = (page: Page, name: string) => table(page).getByRole("button", { name }).first();
-  const panel = (page: Page) => page.getByRole("dialog", { name: "Your brands" });
-  const manage = (page: Page) => page.getByRole("button", { name: "Manage brands" });
 
   test("one click hides a brand for the workspace, and Undo brings it back", async ({ page }) => {
     const rules = new Map();
@@ -125,7 +123,7 @@ test.describe("brand list (DEC-277)", () => {
     await expect(page.getByRole("status").filter({ hasText: "Kestrelle unhidden" })).toBeVisible();
   });
 
-  test("Manage brands unhides in two clicks, and a shown major brand stays with a chip", async ({ page }) => {
+  test("a hidden brand comes back in two clicks, and a shown major brand stays with a chip", async ({ page }) => {
     const rules = new Map([
       ["ordwell", brandRule("Ordwell", "hide")],
       ["vantoro", brandRule("Vantoro", "show")],
@@ -134,16 +132,15 @@ test.describe("brand list (DEC-277)", () => {
     await page.goto("/google-popular");
     await expect(rows(page)).toHaveCount(35); // Ordwell's 5 rows hidden; Vantoro's 10 shown despite the 10-row rule
     await expect(rows(page).filter({ hasText: "Vantoro" }).first()).toContainText("Shown");
-    await manage(page).click(); // click 1
-    await expect(panel(page).getByRole("region", { name: "Hidden brands" })).toContainText("Ordwell");
-    await expect(panel(page).getByRole("region", { name: "Always shown brands" })).toContainText("Vantoro");
-    await panel(page).getByRole("button", { name: "Unhide Ordwell" }).click(); // click 2
-    await expect(rows(page)).toHaveCount(40);
+    await expect(page.getByRole("main")).toContainText("35 products, 5 hidden by you");
+    await toggle(page).click(); // click 1
+    const ordwell = rows(page).filter({ hasText: "Ordwell" }).first();
+    await expect(ordwell).toContainText("Hidden");
+    await action(page, "Unhide brand Ordwell").click(); // click 2
+    await expect(ordwell).not.toContainText("Hidden");
     expect(rules.has("ordwell")).toBe(false);
-    await expect(panel(page).getByRole("button", { name: "Stop showing Vantoro" })).toBeFocused(); // focus stays in the list
-    await page.keyboard.press("Enter");
-    await expect(panel(page).getByText("No hidden brands yet")).toBeVisible();
-    await expect(rows(page)).toHaveCount(30);
+    await toggle(page).click();
+    await expect(rows(page)).toHaveCount(40);
   });
 
   test("keyboard only: Tab reaches a row's Hide brand with a visible ring, Enter hides, focus moves to the next row", async ({ page }) => {
@@ -182,30 +179,5 @@ test.describe("brand list (DEC-277)", () => {
     await action(page, "Hide brand Kestrelle").click();
     await expect(page.getByRole("status").filter({ hasText: "Couldn't change Kestrelle: The API is restarting. Try again." })).toBeVisible();
     await expect(rows(page)).toHaveCount(30);
-  });
-
-  test.describe("Manage brands states", () => {
-    test("loading", async ({ page }) => {
-      await mockPopularApi(page, { brandsHold: true });
-      await page.goto("/google-popular");
-      await manage(page).click();
-      await expect(panel(page).locator(".bg-skeleton").first()).toBeVisible();
-      await expect(panel(page).getByRole("status")).toHaveText("Loading your brands…");
-    });
-
-    test("empty", async ({ page }) => {
-      await mockPopularApi(page);
-      await page.goto("/google-popular");
-      await manage(page).click();
-      await expect(panel(page).getByText("No hidden brands yet")).toBeVisible();
-    });
-
-    test("error", async ({ page }) => {
-      await mockPopularApi(page, { brandsStatus: 503 });
-      await page.goto("/google-popular");
-      await manage(page).click();
-      await expect(panel(page).getByRole("heading", { name: "Couldn't load your brands" })).toBeVisible({ timeout: 15_000 });
-      await expect(panel(page).getByRole("button", { name: "Retry" })).toBeVisible();
-    });
   });
 });

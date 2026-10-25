@@ -71,10 +71,6 @@ export interface PopularOptions {
   pageSize?: number;
   /** The workspace's brand rules by lower-case brand; the mock reads and writes it, so a test can check it. */
   rules?: Map<string, S["BrandRule"]>;
-  /** Answer the brand list with this error status. */
-  brandsStatus?: number;
-  /** Never answer the brand list: its skeleton stays. */
-  brandsHold?: boolean;
   /** Answer every brand rule change with this error status. */
   writeStatus?: number;
 }
@@ -83,7 +79,7 @@ export interface PopularOptions {
 export const brandRule = (brand: string, action: "hide" | "show"): S["BrandRule"] => ({ brand, action, created_at: "2026-10-22T09:00:00Z" });
 
 /** The shell's admin calls, GET /v1/popular-products in pages of `pageSize` (cursor = offset) with the brand rules
- * applied as the API does, and the brand list's GET, PUT and DELETE. Returns the popular-products URLs. */
+ * applied as the API does, and brand rule PUT and DELETE. Returns the popular-products URLs. */
 export async function mockPopularApi(page: Page, options: PopularOptions = {}) {
   const { rows = 40, pageSize = 200, rules = new Map<string, S["BrandRule"]>() } = options;
   const calls: URL[] = [];
@@ -98,17 +94,10 @@ export async function mockPopularApi(page: Page, options: PopularOptions = {}) {
         rules.set(brand.toLowerCase(), brandRule(brand, action));
         return route.fulfill({ json: rules.get(brand.toLowerCase()) });
       }
-      if (request.method() === "DELETE") {
-        const brand = (new URL(request.url()).searchParams.get("brand") ?? "").toLowerCase();
-        const removed = rules.get(brand) ?? null;
-        rules.delete(brand);
-        return route.fulfill({ json: removed });
-      }
-      if (options.brandsHold) return;
-      if (options.brandsStatus)
-        return route.fulfill({ status: options.brandsStatus, contentType: "application/problem+json", json: problem(options.brandsStatus, "e2e-brands-503") });
-      const items = [...rules].sort(([a], [b]) => (a < b ? -1 : 1)).map(([, rule]) => rule);
-      return route.fulfill({ json: { items, next_cursor: null } satisfies S["BrandRulePage"] });
+      const brand = (new URL(request.url()).searchParams.get("brand") ?? "").toLowerCase();
+      const removed = rules.get(brand) ?? null;
+      rules.delete(brand);
+      return route.fulfill({ json: removed });
     },
   );
   await mockAdminApi(page, { sources: healthySources });

@@ -18,7 +18,7 @@ import type { components } from "@/lib/api/schema";
 import { formatUtc } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
-import { BrandToast, ManageBrands, useBrandRules } from "./brands";
+import { BrandToast, useBrandRules } from "./brands";
 import { ruleOf, type Action } from "./model";
 
 type Page = components["schemas"]["PopularPage"];
@@ -99,7 +99,7 @@ export function GooglePopular() {
         : `, ${count(page.hidden)} hidden: ${count(major)} from major brands, ${count(mine)} by you`;
   return (
     <div className="flex flex-col gap-4">
-      <Toolbar page={page} week={params.get("week")} all={all} set={set} apply={brands.apply} />
+      <Toolbar page={page} week={params.get("week")} all={all} set={set} />
       {page.as_of && (
         <p className="text-label text-subtle-foreground" aria-live="polite">
           {count(listed)} {listed === 1 ? "product" : "products"}
@@ -165,7 +165,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
-function Toolbar({ page, week, all, set, apply }: { page: Page; week: string | null; all: boolean; set: Set; apply: Apply }) {
+function Toolbar({ page, week, all, set }: { page: Page; week: string | null; all: boolean; set: Set }) {
   const shown = page.as_of ?? week ?? page.weeks[0];
   return (
     <div className="flex flex-wrap items-center gap-2">
@@ -191,19 +191,16 @@ function Toolbar({ page, week, all, set, apply }: { page: Page; week: string | n
           {!page.categories.includes(page.category) && <option value={page.category ?? ""}>{leaf(page.category)}</option>}
         </select>
       </Field>
-      <div className="flex flex-wrap gap-2 sm:ml-auto">
-        <Button
-          aria-pressed={all}
-          onClick={() => set({ brands: all ? null : "all" })}
-          title={`Brands with ${page.major_brand_rows} or more products in this report, and brands you hid`}
-          className="aria-pressed:border-brand/40 aria-pressed:bg-brand-muted aria-pressed:text-foreground"
-        >
-          {all ? <Eye aria-hidden /> : <EyeOff aria-hidden />}
-          Show hidden brands
-          {!all && <span className="font-normal text-muted-foreground tabular-nums">({count(page.hidden)})</span>}
-        </Button>
-        <ManageBrands apply={apply} />
-      </div>
+      <Button
+        aria-pressed={all}
+        onClick={() => set({ brands: all ? null : "all" })}
+        title={`Brands with ${page.major_brand_rows} or more products in this report, and brands you hid`}
+        className="aria-pressed:border-brand/40 aria-pressed:bg-brand-muted aria-pressed:text-foreground sm:ml-auto"
+      >
+        {all ? <Eye aria-hidden /> : <EyeOff aria-hidden />}
+        Show hidden brands
+        {!all && <span className="font-normal text-muted-foreground tabular-nums">({count(page.hidden)})</span>}
+      </Button>
     </div>
   );
 }
@@ -350,7 +347,7 @@ function NoRows({ page, set }: { page: Page; set: Set }) {
           action={<Button onClick={() => set({ brands: "all" })}>Show hidden brands</Button>}
         >
           {page.hidden_by_you
-            ? `Each brand here has ${page.major_brand_rows} or more products in this report, or you hid it. Manage brands to unhide one.`
+            ? `Each brand here has ${page.major_brand_rows} or more products in this report, or you hid it. Show them to unhide one.`
             : `Every brand in this report has ${page.major_brand_rows} or more products in it.`}
         </EmptyState>
       ) : (
