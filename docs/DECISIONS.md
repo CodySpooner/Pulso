@@ -3867,3 +3867,30 @@ Superseded review defaults, not given entries: default #0 (move the repo) is don
     - 375 px without horizontal scroll;
     - AA contrast in both themes.
 - **Not here:** card stats and the merged note (imp-454); the Add-to-board popover and `B` (imp-455); board CSV (imp-456); the Shopify CSV (imp-457); deleting a board; table column sorting; moving or copying cards to another board. Backlog rows are in the report.
+
+### DEC-335 · R-23 gap holds over change-only snapshots (amends DEC-324 b and e): the window starts at the source's newest complete run before the crossing; a later gap-free complete run confirms a held crossing without a new row; the hold and its span persist per offer; every read in `evaluate()` is strictly before `as_of`
+**2026-10-25 · proposed (imp-496)** · XR-63 and XR-64 (P4-21: `docs/reports/p4-21.md`, vault Agents/Reviews/2026-10-25 Claude - p4-15 p4-17 imp-474 cross-review); an amendment note to DEC-324 (b) and (e), whose text is unchanged; DEC-031, DEC-334; vault Features/Alerts & Notifications; `docs/reports/imp-496.md`; no migration, flag, dependency, Celery task, Beat or collector change
+- **Decision:**
+  - **(a) Strict bound (amends DEC-324 b, "Point in time").** Every read in `evaluate()` is strictly before `as_of`: snapshots and shipping options `captured_at < as_of`, gaps `detected_at < as_of`, collector runs `finished_at < as_of`. p4-23 passes the day's cutoff (d+1 00:00Z), so a capture at the cutoff belongs to the next day (DEC-031). `muted_until <= as_of` is a rule setting, not a read, and is unchanged.
+  - **(b) The window (amends DEC-324 e).** A Testing crossing's window runs to the crossing observation from the later of two points: the offer's previous observation, and the end of the newest successful, complete run of the observation's source that finished before it. Listing snapshots are change-only (`framework/observations.py`), so the previous row is the last value *change*, while that run is the capture that last saw the old value. Freight reads `shipping_options`, which are written per capture, so its window still starts at the previous quote, and a catalog run says nothing about freight.
+  - **(c) Confirmation (amends DEC-324 e).** A held crossing still fires on the next new observation over a gap-free window. For price and stock rules it also fires once a successful, complete run of the source re-observes the offer with no new row:
+    - the run started after the crossing observation and finished before `as_of`;
+    - no gap known before `as_of` overlaps its own window, from the end of the complete run before it (or from the crossing observation) to its end.
+
+    Each run is judged on its own window, so a gap after the crossing waits for the next gap-free run instead of holding the crossing until the value moves again. The alert is the crossing's: `new` is the crossing observation, the dedupe date is that observation's UTC date, and `fired_at` is `as_of`.
+  - **(d) Held state (XR-64).** A held offer keeps `held: {reason, from, to}` in its `last_value.entities` state, and stays armed. While any offer holds one, the rule reports `skipped` and `last_value.skipped` on every evaluation, including a re-run with no new data. When several offers are held, it shows the last one's span. The hold ends when the crossing fires, or when a new observation is no longer past the threshold.
+  - **(e) Ceiling: a run stands in for the offer.** `collector_runs` record that a run of the source completed, not that it contained this offer, and an unchanged offer writes no row. So a complete run of the source counts as re-observing every live offer of that source, just as `offers()` counts a CJ listing live until it's delisted (CJ never delists). Two cases also confirm a hold: an offer that dropped out of CJ's ranked catalog panels, and a tracked or import run of the same source. Per-offer evidence needs a record of each run's listings, which is a migration (a backlog row in the report).
+- **Alternatives:**
+  - **`Listing.last_seen_at` as the re-observation:** it holds only the newest capture, so a backfill would read captures after `as_of`.
+  - **Every later run judged from the crossing observation:** one gap after the crossing would hold it until the value changes again, which is XR-63 in another form.
+  - **Any later complete run confirms, gaps or not:** a catch-up run after an offline weekend would confirm the very crossing it may have caused.
+  - **A per-listing capture table:** exact, but a migration, which this task rules out while other tasks run in parallel.
+- **Why:** `packages/core/tests/test_alerts_gaps.py` (5 DB tests, prices through the real `CJAdapter.upsert`, so an unchanged night writes no row) and `test_alerts_engine.py` (6) on a throwaway `pgvector/pgvector:0.8.7-pg18-trixie`:
+  - a gap a week before a 1000 → 1100 change fires the Testing cost default on the change night;
+  - a gap the night before holds it: `skipped` with the gap's span at the cutoff and at a re-run with no new data. A run that ends exactly at `as_of` isn't read. The crossing fires after the next gap-free run at an unchanged price, with the crossing's date;
+  - a second gap after the hold waits for the next gap-free run;
+  - a capture at `as_of`, and a gap detected at `as_of`, aren't read;
+  - freight holds from its last quote, a catalog run doesn't confirm it, and a new quote does.
+
+  Ten of 11 one-line mutations each fail a test. The 11th, dropping `complete` from the run filter, is an equivalent mutant: only `execute_run` writes `success`, and only for a complete run (`docs/reports/imp-496.md`).
+- **Not here:** XR-65 (a merged product's rules stop watching); a gap filled by a catch-up run (`filled_by_run_id`) still holds, as before; per-offer capture evidence.
