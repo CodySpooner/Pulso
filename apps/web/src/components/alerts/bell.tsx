@@ -56,7 +56,8 @@ export function AlertsBell() {
   return (
     <DropdownMenu.Root>
       <DropdownMenu.Trigger asChild>
-        <Button variant="ghost" size="icon" aria-label={bellLabel(count)} data-testid="alerts-bell">
+        {/* 4px more beside the theme toggle under touch, so their 44px hit squares don't overlap (A11Y-02). */}
+        <Button variant="ghost" size="icon" aria-label={bellLabel(count)} data-testid="alerts-bell" className="pointer-coarse:mr-1">
           <Bell strokeWidth={1.5} aria-hidden />
           <UnreadBadge className="absolute -top-1 -right-1 flex bg-button-brand text-button-brand-foreground ring-2 ring-background" />
         </Button>

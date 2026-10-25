@@ -4,7 +4,7 @@ import { useCallback, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { keepPreviousData } from "@tanstack/react-query";
-import { Archive, ArchiveRestore, BellOff, Check, CheckCheck, SearchX, SkipForward, TriangleAlert } from "lucide-react";
+import { Archive, ArchiveRestore, BellOff, Check, CheckCheck, SearchX, SkipForward, TriangleAlert, type LucideIcon } from "lucide-react";
 import * as m from "motion/react-m";
 
 import { useAlertRules, useAlertWrites, useUnreadCount } from "@/components/alerts/api";
@@ -16,6 +16,7 @@ import { DeltaBadge } from "@/components/pulso/delta-badge";
 import { EmptyState } from "@/components/pulso/empty-state";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { $api, isProblem } from "@/lib/api/client";
 import { formatAgo, formatUtc } from "@/lib/format";
 import { spring } from "@/lib/motion";
@@ -117,23 +118,23 @@ export function AlertsInbox() {
             <>
               <span className="text-label text-muted-foreground tabular-nums">{ids.length} selected</span>
               {!archived && (
-                <Button size="sm" onClick={() => act("read", ids)}>
+                <Button onClick={() => act("read", ids)}>
                   <Check aria-hidden />
                   Mark read
                 </Button>
               )}
-              <Button size="sm" onClick={() => act(archived ? "unarchive" : "archive", ids)}>
+              <Button onClick={() => act(archived ? "unarchive" : "archive", ids)}>
                 {archived ? <ArchiveRestore aria-hidden /> : <Archive aria-hidden />}
                 {archived ? "Unarchive" : "Archive"}
               </Button>
-              <Button size="sm" variant="ghost" onClick={() => select([])}>
-                Clear
+              <Button variant="ghost" onClick={() => select([])}>
+                Clear<span className="max-sm:sr-only"> selection</span>
               </Button>
             </>
           ) : (
             !archived &&
             !!count && (
-              <Button size="sm" variant="ghost" onClick={() => writes.read.mutate({ body: { all: true } })}>
+              <Button variant="ghost" onClick={() => writes.read.mutate({ body: { all: true } })}>
                 <CheckCheck aria-hidden />
                 Mark all read
               </Button>
@@ -190,8 +191,17 @@ export function AlertsInbox() {
               Archive an alert from the Inbox to keep it out of the way. It waits here, and Unarchive brings it back.
             </EmptyState>
           ) : (
-            <EmptyState icon={BellOff} headingLevel="h2" title="No alerts yet">
-              {FIRES}
+            <EmptyState
+              icon={BellOff}
+              headingLevel="h2"
+              title="No alerts yet"
+              action={
+                <Button asChild>
+                  <Link href="/testing">Open Testing</Link>
+                </Button>
+              }
+            >
+              {FIRES} Every product you test gets supplier cost, freight and stock-out rules by default.
             </EmptyState>
           )}
         </section>
@@ -315,17 +325,28 @@ function Row({
       </td>
       <td className={cn(cell, "w-20 max-md:col-start-3 max-md:row-start-2 max-md:row-span-2 max-md:self-end")}>
         <span className="flex justify-end gap-1">
-          {!archived && !alert.read_at && (
-            <Button size="icon-sm" variant="ghost" aria-label={`Mark read: ${name}`} title="Mark read" onClick={() => act("read")}>
-              <Check aria-hidden />
-            </Button>
+          {!archived && !alert.read_at && <Action hint="Mark read" name={name} icon={Check} onClick={() => act("read")} />}
+          {archived ? (
+            <Action hint="Unarchive" name={name} icon={ArchiveRestore} onClick={() => act("unarchive")} />
+          ) : (
+            <Action hint="Archive" name={name} icon={Archive} onClick={() => act("archive")} />
           )}
-          <Button size="icon-sm" variant="ghost" aria-label={`${archived ? "Unarchive" : "Archive"}: ${name}`} title={archived ? "Unarchive" : "Archive"} onClick={() => act(archived ? "unarchive" : "archive")}>
-            {archived ? <ArchiveRestore aria-hidden /> : <Archive aria-hidden />}
-          </Button>
         </span>
       </td>
     </tr>
+  );
+}
+
+function Action({ hint, name, icon: Icon, onClick }: { hint: string; name: string; icon: LucideIcon; onClick: () => void }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button size="icon-sm" variant="ghost" aria-label={`${hint}: ${name}`} onClick={onClick}>
+          <Icon aria-hidden />
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent>{hint}</TooltipContent>
+    </Tooltip>
   );
 }
 
