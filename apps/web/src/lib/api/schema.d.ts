@@ -441,6 +441,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/products/{product_id}/aliexpress": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Product Aliexpress
+         * @description This product's last AliExpress lookup while its 24 h last, else whether one can run.
+         */
+        get: operations["get_product_aliexpress"];
+        put?: never;
+        /**
+         * Lookup Product Aliexpress
+         * @description Look up a pasted AliExpress link live; the answer is kept in Redis only, never stored.
+         */
+        post: operations["lookup_product_aliexpress"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/products/{product_id}/amazon-ranks": {
         parameters: {
             query?: never;
@@ -681,6 +705,104 @@ export interface components {
              * Format: date-time
              */
             transaction_at: string;
+        };
+        /**
+         * AliExpressLookup
+         * @description `empty`: no lookup for this product in the last 24 h. `ok` and `not_found` carry `as_of`.
+         */
+        AliExpressLookup: {
+            /** As Of */
+            as_of?: string | null;
+            /**
+             * Expires At
+             * @description as_of + 24 h: the rows go then.
+             */
+            expires_at?: string | null;
+            product?: components["schemas"]["AliExpressProduct"] | null;
+            /**
+             * Retry At
+             * @description throttled: the next lookup's time.
+             */
+            retry_at?: string | null;
+            /** Shipping */
+            shipping?: components["schemas"]["AliExpressShipping"][] | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "empty" | "ok" | "not_found" | "disabled" | "not_configured" | "throttled" | "error";
+        };
+        /** AliExpressProduct */
+        AliExpressProduct: {
+            /**
+             * As Of
+             * Format: date-time
+             */
+            as_of: string;
+            /** Product Id */
+            product_id: string;
+            /** Rating */
+            rating: string | null;
+            /** Review Count */
+            review_count: number | null;
+            /** Sales */
+            sales: string | null;
+            /** Skus */
+            skus: components["schemas"]["AliExpressSku"][];
+            /** Store Name */
+            store_name: string | null;
+            /** Title */
+            title: string;
+        };
+        /** AliExpressShipping */
+        AliExpressShipping: {
+            /**
+             * As Of
+             * Format: date-time
+             */
+            as_of: string;
+            /** Code */
+            code: string;
+            /** Company */
+            company: string;
+            /**
+             * Currency
+             * @default USD
+             * @constant
+             */
+            currency: "USD";
+            /** Fee Minor */
+            fee_minor: number;
+            /** Free */
+            free: boolean;
+            /** Max Days */
+            max_days: number | null;
+            /** Min Days */
+            min_days: number | null;
+            /** Ship From */
+            ship_from: string | null;
+        };
+        /** AliExpressSku */
+        AliExpressSku: {
+            /**
+             * As Of
+             * Format: date-time
+             */
+            as_of: string;
+            /**
+             * Currency
+             * @default USD
+             * @constant
+             */
+            currency: "USD";
+            /** Price Minor */
+            price_minor: number;
+            /** Sale Price Minor */
+            sale_price_minor: number;
+            /** Sku Id */
+            sku_id: string;
+            /** Stock */
+            stock: number | null;
         };
         /**
          * AmazonList
@@ -1287,6 +1409,14 @@ export interface components {
             vendor: string | null;
             /** Vendor Kind */
             vendor_kind: ("store" | "supplier") | null;
+        };
+        /** LookupRequest */
+        LookupRequest: {
+            /**
+             * Link
+             * @description An AliExpress product link or number.
+             */
+            link: string;
         };
         /**
          * Margin
@@ -8405,6 +8535,464 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": {
+                        /** Code */
+                        code: string;
+                        /** Detail */
+                        detail: string;
+                        /** Errors */
+                        errors?: {
+                            [key: string]: unknown;
+                        }[];
+                        /** Request Id */
+                        request_id: string;
+                        /** Status */
+                        status: number;
+                        /** Title */
+                        title: string;
+                        /**
+                         * Type
+                         * @default about:blank
+                         */
+                        type: string;
+                    };
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": {
+                        /** Code */
+                        code: string;
+                        /** Detail */
+                        detail: string;
+                        /** Errors */
+                        errors?: {
+                            [key: string]: unknown;
+                        }[];
+                        /** Request Id */
+                        request_id: string;
+                        /** Status */
+                        status: number;
+                        /** Title */
+                        title: string;
+                        /**
+                         * Type
+                         * @default about:blank
+                         */
+                        type: string;
+                    };
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": {
+                        /** Code */
+                        code: string;
+                        /** Detail */
+                        detail: string;
+                        /** Errors */
+                        errors?: {
+                            [key: string]: unknown;
+                        }[];
+                        /** Request Id */
+                        request_id: string;
+                        /** Status */
+                        status: number;
+                        /** Title */
+                        title: string;
+                        /**
+                         * Type
+                         * @default about:blank
+                         */
+                        type: string;
+                    };
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": {
+                        /** Code */
+                        code: string;
+                        /** Detail */
+                        detail: string;
+                        /** Errors */
+                        errors?: {
+                            [key: string]: unknown;
+                        }[];
+                        /** Request Id */
+                        request_id: string;
+                        /** Status */
+                        status: number;
+                        /** Title */
+                        title: string;
+                        /**
+                         * Type
+                         * @default about:blank
+                         */
+                        type: string;
+                    };
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": {
+                        /** Code */
+                        code: string;
+                        /** Detail */
+                        detail: string;
+                        /** Errors */
+                        errors?: {
+                            [key: string]: unknown;
+                        }[];
+                        /** Request Id */
+                        request_id: string;
+                        /** Status */
+                        status: number;
+                        /** Title */
+                        title: string;
+                        /**
+                         * Type
+                         * @default about:blank
+                         */
+                        type: string;
+                    };
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": {
+                        /** Code */
+                        code: string;
+                        /** Detail */
+                        detail: string;
+                        /** Errors */
+                        errors?: {
+                            [key: string]: unknown;
+                        }[];
+                        /** Request Id */
+                        request_id: string;
+                        /** Status */
+                        status: number;
+                        /** Title */
+                        title: string;
+                        /**
+                         * Type
+                         * @default about:blank
+                         */
+                        type: string;
+                    };
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": {
+                        /** Code */
+                        code: string;
+                        /** Detail */
+                        detail: string;
+                        /** Errors */
+                        errors?: {
+                            [key: string]: unknown;
+                        }[];
+                        /** Request Id */
+                        request_id: string;
+                        /** Status */
+                        status: number;
+                        /** Title */
+                        title: string;
+                        /**
+                         * Type
+                         * @default about:blank
+                         */
+                        type: string;
+                    };
+                };
+            };
+        };
+    };
+    get_product_aliexpress: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                product_id: string;
+            };
+            cookie?: {
+                __session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AliExpressLookup"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": {
+                        /** Code */
+                        code: string;
+                        /** Detail */
+                        detail: string;
+                        /** Errors */
+                        errors?: {
+                            [key: string]: unknown;
+                        }[];
+                        /** Request Id */
+                        request_id: string;
+                        /** Status */
+                        status: number;
+                        /** Title */
+                        title: string;
+                        /**
+                         * Type
+                         * @default about:blank
+                         */
+                        type: string;
+                    };
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": {
+                        /** Code */
+                        code: string;
+                        /** Detail */
+                        detail: string;
+                        /** Errors */
+                        errors?: {
+                            [key: string]: unknown;
+                        }[];
+                        /** Request Id */
+                        request_id: string;
+                        /** Status */
+                        status: number;
+                        /** Title */
+                        title: string;
+                        /**
+                         * Type
+                         * @default about:blank
+                         */
+                        type: string;
+                    };
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": {
+                        /** Code */
+                        code: string;
+                        /** Detail */
+                        detail: string;
+                        /** Errors */
+                        errors?: {
+                            [key: string]: unknown;
+                        }[];
+                        /** Request Id */
+                        request_id: string;
+                        /** Status */
+                        status: number;
+                        /** Title */
+                        title: string;
+                        /**
+                         * Type
+                         * @default about:blank
+                         */
+                        type: string;
+                    };
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": {
+                        /** Code */
+                        code: string;
+                        /** Detail */
+                        detail: string;
+                        /** Errors */
+                        errors?: {
+                            [key: string]: unknown;
+                        }[];
+                        /** Request Id */
+                        request_id: string;
+                        /** Status */
+                        status: number;
+                        /** Title */
+                        title: string;
+                        /**
+                         * Type
+                         * @default about:blank
+                         */
+                        type: string;
+                    };
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": {
+                        /** Code */
+                        code: string;
+                        /** Detail */
+                        detail: string;
+                        /** Errors */
+                        errors?: {
+                            [key: string]: unknown;
+                        }[];
+                        /** Request Id */
+                        request_id: string;
+                        /** Status */
+                        status: number;
+                        /** Title */
+                        title: string;
+                        /**
+                         * Type
+                         * @default about:blank
+                         */
+                        type: string;
+                    };
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": {
+                        /** Code */
+                        code: string;
+                        /** Detail */
+                        detail: string;
+                        /** Errors */
+                        errors?: {
+                            [key: string]: unknown;
+                        }[];
+                        /** Request Id */
+                        request_id: string;
+                        /** Status */
+                        status: number;
+                        /** Title */
+                        title: string;
+                        /**
+                         * Type
+                         * @default about:blank
+                         */
+                        type: string;
+                    };
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": {
+                        /** Code */
+                        code: string;
+                        /** Detail */
+                        detail: string;
+                        /** Errors */
+                        errors?: {
+                            [key: string]: unknown;
+                        }[];
+                        /** Request Id */
+                        request_id: string;
+                        /** Status */
+                        status: number;
+                        /** Title */
+                        title: string;
+                        /**
+                         * Type
+                         * @default about:blank
+                         */
+                        type: string;
+                    };
+                };
+            };
+        };
+    };
+    lookup_product_aliexpress: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                product_id: string;
+            };
+            cookie?: {
+                __session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LookupRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AliExpressLookup"];
+                };
             };
             /** @description Unauthorized */
             401: {

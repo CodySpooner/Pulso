@@ -21,6 +21,7 @@ import { cn } from "@/lib/utils";
 import { type Calc, money, reasons } from "../profit/model";
 import { Amount, Computed, MARGIN } from "../profit/profit-tab";
 import type { Tab } from "../tabs";
+import { AliExpressLookup } from "./aliexpress-lookup";
 import { count, days, noBestMargin, noFastest, ordersBasis, parseSupplier, shared, short, stars, supplierSearch, type Page, type Row } from "./model";
 
 const tile = "flex min-w-0 flex-col rounded-lg border border-border-subtle bg-background/40";
@@ -151,6 +152,7 @@ export function SuppliersTab({ id, goTo }: { id: string; goTo: (tab: Tab) => voi
           )}
         </>
       )}
+      <AliExpressLookup id={id} />
     </div>
   );
 }

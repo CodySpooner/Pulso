@@ -42,6 +42,294 @@
         "title": "ActivityEntry",
         "type": "object"
       },
+      "AliExpressLookup": {
+        "description": "`empty`: no lookup for this product in the last 24 h. `ok` and `not_found` carry `as_of`.",
+        "properties": {
+          "as_of": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "As Of"
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "as_of + 24 h: the rows go then.",
+            "title": "Expires At"
+          },
+          "product": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AliExpressProduct"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "retry_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "throttled: the next lookup's time.",
+            "title": "Retry At"
+          },
+          "shipping": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/AliExpressShipping"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Shipping"
+          },
+          "status": {
+            "enum": [
+              "empty",
+              "ok",
+              "not_found",
+              "disabled",
+              "not_configured",
+              "throttled",
+              "error"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "AliExpressLookup",
+        "type": "object"
+      },
+      "AliExpressProduct": {
+        "properties": {
+          "as_of": {
+            "format": "date-time",
+            "title": "As Of",
+            "type": "string"
+          },
+          "product_id": {
+            "title": "Product Id",
+            "type": "string"
+          },
+          "rating": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rating"
+          },
+          "review_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Review Count"
+          },
+          "sales": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sales"
+          },
+          "skus": {
+            "items": {
+              "$ref": "#/components/schemas/AliExpressSku"
+            },
+            "title": "Skus",
+            "type": "array"
+          },
+          "store_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Store Name"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "product_id",
+          "title",
+          "rating",
+          "review_count",
+          "sales",
+          "store_name",
+          "skus",
+          "as_of"
+        ],
+        "title": "AliExpressProduct",
+        "type": "object"
+      },
+      "AliExpressShipping": {
+        "properties": {
+          "as_of": {
+            "format": "date-time",
+            "title": "As Of",
+            "type": "string"
+          },
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "company": {
+            "title": "Company",
+            "type": "string"
+          },
+          "currency": {
+            "const": "USD",
+            "default": "USD",
+            "title": "Currency",
+            "type": "string"
+          },
+          "fee_minor": {
+            "title": "Fee Minor",
+            "type": "integer"
+          },
+          "free": {
+            "title": "Free",
+            "type": "boolean"
+          },
+          "max_days": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Days"
+          },
+          "min_days": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min Days"
+          },
+          "ship_from": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ship From"
+          }
+        },
+        "required": [
+          "code",
+          "company",
+          "fee_minor",
+          "free",
+          "min_days",
+          "max_days",
+          "ship_from",
+          "as_of"
+        ],
+        "title": "AliExpressShipping",
+        "type": "object"
+      },
+      "AliExpressSku": {
+        "properties": {
+          "as_of": {
+            "format": "date-time",
+            "title": "As Of",
+            "type": "string"
+          },
+          "currency": {
+            "const": "USD",
+            "default": "USD",
+            "title": "Currency",
+            "type": "string"
+          },
+          "price_minor": {
+            "title": "Price Minor",
+            "type": "integer"
+          },
+          "sale_price_minor": {
+            "title": "Sale Price Minor",
+            "type": "integer"
+          },
+          "sku_id": {
+            "title": "Sku Id",
+            "type": "string"
+          },
+          "stock": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stock"
+          }
+        },
+        "required": [
+          "sku_id",
+          "price_minor",
+          "sale_price_minor",
+          "stock",
+          "as_of"
+        ],
+        "title": "AliExpressSku",
+        "type": "object"
+      },
       "AmazonList": {
         "description": "One category \u00d7 rank kind at its newest imported day.",
         "properties": {
@@ -1719,6 +2007,22 @@
           "product_id"
         ],
         "title": "ListingDetail",
+        "type": "object"
+      },
+      "LookupRequest": {
+        "properties": {
+          "link": {
+            "description": "An AliExpress product link or number.",
+            "maxLength": 2048,
+            "pattern": "^[^\\x00]*$",
+            "title": "Link",
+            "type": "string"
+          }
+        },
+        "required": [
+          "link"
+        ],
+        "title": "LookupRequest",
         "type": "object"
       },
       "Margin": {
@@ -17486,6 +17790,860 @@
           }
         ],
         "summary": "Get Product"
+      }
+    },
+    "/v1/products/{product_id}/aliexpress": {
+      "get": {
+        "description": "This product's last AliExpress lookup while its 24 h last, else whether one can run.",
+        "operationId": "get_product_aliexpress",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "product_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Product Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "__session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "  Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AliExpressLookup"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "properties": {
+                    "code": {
+                      "title": "Code",
+                      "type": "string"
+                    },
+                    "detail": {
+                      "title": "Detail",
+                      "type": "string"
+                    },
+                    "errors": {
+                      "items": {
+                        "additionalProperties": true,
+                        "type": "object"
+                      },
+                      "title": "Errors",
+                      "type": "array"
+                    },
+                    "request_id": {
+                      "title": "Request Id",
+                      "type": "string"
+                    },
+                    "status": {
+                      "title": "Status",
+                      "type": "integer"
+                    },
+                    "title": {
+                      "title": "Title",
+                      "type": "string"
+                    },
+                    "type": {
+                      "default": "about:blank",
+                      "title": "Type",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "title",
+                    "status",
+                    "code",
+                    "detail",
+                    "request_id"
+                  ],
+                  "title": "Problem",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "properties": {
+                    "code": {
+                      "title": "Code",
+                      "type": "string"
+                    },
+                    "detail": {
+                      "title": "Detail",
+                      "type": "string"
+                    },
+                    "errors": {
+                      "items": {
+                        "additionalProperties": true,
+                        "type": "object"
+                      },
+                      "title": "Errors",
+                      "type": "array"
+                    },
+                    "request_id": {
+                      "title": "Request Id",
+                      "type": "string"
+                    },
+                    "status": {
+                      "title": "Status",
+                      "type": "integer"
+                    },
+                    "title": {
+                      "title": "Title",
+                      "type": "string"
+                    },
+                    "type": {
+                      "default": "about:blank",
+                      "title": "Type",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "title",
+                    "status",
+                    "code",
+                    "detail",
+                    "request_id"
+                  ],
+                  "title": "Problem",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "properties": {
+                    "code": {
+                      "title": "Code",
+                      "type": "string"
+                    },
+                    "detail": {
+                      "title": "Detail",
+                      "type": "string"
+                    },
+                    "errors": {
+                      "items": {
+                        "additionalProperties": true,
+                        "type": "object"
+                      },
+                      "title": "Errors",
+                      "type": "array"
+                    },
+                    "request_id": {
+                      "title": "Request Id",
+                      "type": "string"
+                    },
+                    "status": {
+                      "title": "Status",
+                      "type": "integer"
+                    },
+                    "title": {
+                      "title": "Title",
+                      "type": "string"
+                    },
+                    "type": {
+                      "default": "about:blank",
+                      "title": "Type",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "title",
+                    "status",
+                    "code",
+                    "detail",
+                    "request_id"
+                  ],
+                  "title": "Problem",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "properties": {
+                    "code": {
+                      "title": "Code",
+                      "type": "string"
+                    },
+                    "detail": {
+                      "title": "Detail",
+                      "type": "string"
+                    },
+                    "errors": {
+                      "items": {
+                        "additionalProperties": true,
+                        "type": "object"
+                      },
+                      "title": "Errors",
+                      "type": "array"
+                    },
+                    "request_id": {
+                      "title": "Request Id",
+                      "type": "string"
+                    },
+                    "status": {
+                      "title": "Status",
+                      "type": "integer"
+                    },
+                    "title": {
+                      "title": "Title",
+                      "type": "string"
+                    },
+                    "type": {
+                      "default": "about:blank",
+                      "title": "Type",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "title",
+                    "status",
+                    "code",
+                    "detail",
+                    "request_id"
+                  ],
+                  "title": "Problem",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "properties": {
+                    "code": {
+                      "title": "Code",
+                      "type": "string"
+                    },
+                    "detail": {
+                      "title": "Detail",
+                      "type": "string"
+                    },
+                    "errors": {
+                      "items": {
+                        "additionalProperties": true,
+                        "type": "object"
+                      },
+                      "title": "Errors",
+                      "type": "array"
+                    },
+                    "request_id": {
+                      "title": "Request Id",
+                      "type": "string"
+                    },
+                    "status": {
+                      "title": "Status",
+                      "type": "integer"
+                    },
+                    "title": {
+                      "title": "Title",
+                      "type": "string"
+                    },
+                    "type": {
+                      "default": "about:blank",
+                      "title": "Type",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "title",
+                    "status",
+                    "code",
+                    "detail",
+                    "request_id"
+                  ],
+                  "title": "Problem",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "properties": {
+                    "code": {
+                      "title": "Code",
+                      "type": "string"
+                    },
+                    "detail": {
+                      "title": "Detail",
+                      "type": "string"
+                    },
+                    "errors": {
+                      "items": {
+                        "additionalProperties": true,
+                        "type": "object"
+                      },
+                      "title": "Errors",
+                      "type": "array"
+                    },
+                    "request_id": {
+                      "title": "Request Id",
+                      "type": "string"
+                    },
+                    "status": {
+                      "title": "Status",
+                      "type": "integer"
+                    },
+                    "title": {
+                      "title": "Title",
+                      "type": "string"
+                    },
+                    "type": {
+                      "default": "about:blank",
+                      "title": "Type",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "title",
+                    "status",
+                    "code",
+                    "detail",
+                    "request_id"
+                  ],
+                  "title": "Problem",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "properties": {
+                    "code": {
+                      "title": "Code",
+                      "type": "string"
+                    },
+                    "detail": {
+                      "title": "Detail",
+                      "type": "string"
+                    },
+                    "errors": {
+                      "items": {
+                        "additionalProperties": true,
+                        "type": "object"
+                      },
+                      "title": "Errors",
+                      "type": "array"
+                    },
+                    "request_id": {
+                      "title": "Request Id",
+                      "type": "string"
+                    },
+                    "status": {
+                      "title": "Status",
+                      "type": "integer"
+                    },
+                    "title": {
+                      "title": "Title",
+                      "type": "string"
+                    },
+                    "type": {
+                      "default": "about:blank",
+                      "title": "Type",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "title",
+                    "status",
+                    "code",
+                    "detail",
+                    "request_id"
+                  ],
+                  "title": "Problem",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Product Aliexpress"
+      },
+      "post": {
+        "description": "Look up a pasted AliExpress link live; the answer is kept in Redis only, never stored.",
+        "operationId": "lookup_product_aliexpress",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "product_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Product Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "__session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "  Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LookupRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AliExpressLookup"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "properties": {
+                    "code": {
+                      "title": "Code",
+                      "type": "string"
+                    },
+                    "detail": {
+                      "title": "Detail",
+                      "type": "string"
+                    },
+                    "errors": {
+                      "items": {
+                        "additionalProperties": true,
+                        "type": "object"
+                      },
+                      "title": "Errors",
+                      "type": "array"
+                    },
+                    "request_id": {
+                      "title": "Request Id",
+                      "type": "string"
+                    },
+                    "status": {
+                      "title": "Status",
+                      "type": "integer"
+                    },
+                    "title": {
+                      "title": "Title",
+                      "type": "string"
+                    },
+                    "type": {
+                      "default": "about:blank",
+                      "title": "Type",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "title",
+                    "status",
+                    "code",
+                    "detail",
+                    "request_id"
+                  ],
+                  "title": "Problem",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "properties": {
+                    "code": {
+                      "title": "Code",
+                      "type": "string"
+                    },
+                    "detail": {
+                      "title": "Detail",
+                      "type": "string"
+                    },
+                    "errors": {
+                      "items": {
+                        "additionalProperties": true,
+                        "type": "object"
+                      },
+                      "title": "Errors",
+                      "type": "array"
+                    },
+                    "request_id": {
+                      "title": "Request Id",
+                      "type": "string"
+                    },
+                    "status": {
+                      "title": "Status",
+                      "type": "integer"
+                    },
+                    "title": {
+                      "title": "Title",
+                      "type": "string"
+                    },
+                    "type": {
+                      "default": "about:blank",
+                      "title": "Type",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "title",
+                    "status",
+                    "code",
+                    "detail",
+                    "request_id"
+                  ],
+                  "title": "Problem",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "properties": {
+                    "code": {
+                      "title": "Code",
+                      "type": "string"
+                    },
+                    "detail": {
+                      "title": "Detail",
+                      "type": "string"
+                    },
+                    "errors": {
+                      "items": {
+                        "additionalProperties": true,
+                        "type": "object"
+                      },
+                      "title": "Errors",
+                      "type": "array"
+                    },
+                    "request_id": {
+                      "title": "Request Id",
+                      "type": "string"
+                    },
+                    "status": {
+                      "title": "Status",
+                      "type": "integer"
+                    },
+                    "title": {
+                      "title": "Title",
+                      "type": "string"
+                    },
+                    "type": {
+                      "default": "about:blank",
+                      "title": "Type",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "title",
+                    "status",
+                    "code",
+                    "detail",
+                    "request_id"
+                  ],
+                  "title": "Problem",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "properties": {
+                    "code": {
+                      "title": "Code",
+                      "type": "string"
+                    },
+                    "detail": {
+                      "title": "Detail",
+                      "type": "string"
+                    },
+                    "errors": {
+                      "items": {
+                        "additionalProperties": true,
+                        "type": "object"
+                      },
+                      "title": "Errors",
+                      "type": "array"
+                    },
+                    "request_id": {
+                      "title": "Request Id",
+                      "type": "string"
+                    },
+                    "status": {
+                      "title": "Status",
+                      "type": "integer"
+                    },
+                    "title": {
+                      "title": "Title",
+                      "type": "string"
+                    },
+                    "type": {
+                      "default": "about:blank",
+                      "title": "Type",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "title",
+                    "status",
+                    "code",
+                    "detail",
+                    "request_id"
+                  ],
+                  "title": "Problem",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "properties": {
+                    "code": {
+                      "title": "Code",
+                      "type": "string"
+                    },
+                    "detail": {
+                      "title": "Detail",
+                      "type": "string"
+                    },
+                    "errors": {
+                      "items": {
+                        "additionalProperties": true,
+                        "type": "object"
+                      },
+                      "title": "Errors",
+                      "type": "array"
+                    },
+                    "request_id": {
+                      "title": "Request Id",
+                      "type": "string"
+                    },
+                    "status": {
+                      "title": "Status",
+                      "type": "integer"
+                    },
+                    "title": {
+                      "title": "Title",
+                      "type": "string"
+                    },
+                    "type": {
+                      "default": "about:blank",
+                      "title": "Type",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "title",
+                    "status",
+                    "code",
+                    "detail",
+                    "request_id"
+                  ],
+                  "title": "Problem",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "properties": {
+                    "code": {
+                      "title": "Code",
+                      "type": "string"
+                    },
+                    "detail": {
+                      "title": "Detail",
+                      "type": "string"
+                    },
+                    "errors": {
+                      "items": {
+                        "additionalProperties": true,
+                        "type": "object"
+                      },
+                      "title": "Errors",
+                      "type": "array"
+                    },
+                    "request_id": {
+                      "title": "Request Id",
+                      "type": "string"
+                    },
+                    "status": {
+                      "title": "Status",
+                      "type": "integer"
+                    },
+                    "title": {
+                      "title": "Title",
+                      "type": "string"
+                    },
+                    "type": {
+                      "default": "about:blank",
+                      "title": "Type",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "title",
+                    "status",
+                    "code",
+                    "detail",
+                    "request_id"
+                  ],
+                  "title": "Problem",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "properties": {
+                    "code": {
+                      "title": "Code",
+                      "type": "string"
+                    },
+                    "detail": {
+                      "title": "Detail",
+                      "type": "string"
+                    },
+                    "errors": {
+                      "items": {
+                        "additionalProperties": true,
+                        "type": "object"
+                      },
+                      "title": "Errors",
+                      "type": "array"
+                    },
+                    "request_id": {
+                      "title": "Request Id",
+                      "type": "string"
+                    },
+                    "status": {
+                      "title": "Status",
+                      "type": "integer"
+                    },
+                    "title": {
+                      "title": "Title",
+                      "type": "string"
+                    },
+                    "type": {
+                      "default": "about:blank",
+                      "title": "Type",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "title",
+                    "status",
+                    "code",
+                    "detail",
+                    "request_id"
+                  ],
+                  "title": "Problem",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Lookup Product Aliexpress"
       }
     },
     "/v1/products/{product_id}/amazon-ranks": {

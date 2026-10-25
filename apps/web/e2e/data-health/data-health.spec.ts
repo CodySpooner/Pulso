@@ -1,6 +1,6 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
 
-import { healthySources, host, manyGaps, mockAdminApi, operationId, runDetail, sources, suppressedSources } from "./fixtures";
+import { aliexpress, healthySources, host, manyGaps, mockAdminApi, operationId, runDetail, sources, suppressedSources } from "./fixtures";
 
 // DH-2 / DH-3 (P1-12): the Data Health page and nav badge against fixture DH-1 responses (E2E auth bypass).
 
@@ -52,7 +52,7 @@ test("missed slots and gap ranges read in the singular, plural and zero (imp-076
 });
 
 test("renders every DH-1 field from fixtures", async ({ page }) => {
-  await mockAdminApi(page);
+  await mockAdminApi(page, { sources: [...sources, aliexpress] });
   await open(page);
   await expect(page.getByText("As of Oct 22, 14:00 UTC")).toBeVisible();
 
@@ -82,7 +82,10 @@ test("renders every DH-1 field from fixtures", async ({ page }) => {
   await expect(table.getByRole("row", { name: /Shopify stores/ })).toContainText("5 consecutive 429 responses");
   await expect(table.getByRole("row", { name: /Shopify stores/ })).toContainText("429");
   await expect(table.getByRole("row", { name: /Frankfurter FX/ })).toContainText("Not collected yet"); // missing, never 0
-  await expect(table.getByRole("row", { name: /AliExpress/ })).toContainText("No source yet · arrives in Phase 3");
+  // AE-3: AliExpress lists as its real, disabled row; only Phase 8's ad sources are still "No source yet".
+  await expect(table.getByRole("row", { name: /AliExpress/ })).toContainText("Disabled");
+  await expect(table.getByRole("row", { name: /AliExpress/ })).not.toContainText("arrives in Phase 3");
+  await expect(table.getByRole("row", { name: /Meta Ad Library/ })).toContainText("No source yet · arrives in Phase 8");
 
   await expect(page.getByRole("img", { name: /^Shopify stores, last 90 days/ })).toBeVisible();
   await expect(page.getByRole("img", { name: /^Google Trends, last 90 days: .*missed \(gap\)/ })).toBeVisible();

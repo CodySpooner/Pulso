@@ -175,9 +175,12 @@ def engine(request: pytest.FixtureRequest) -> Iterator[Engine]:
 @pytest.fixture
 def session(engine: Engine) -> Iterator[Session]:
     with Session(engine, expire_on_commit=False) as session:
-        session.add(Source(id=99, key="aliexpress", name="AliExpress", type="api", phase=3))
+        # Postgres has the row migration 0015 seeds (DEC-289); SQLite builds bare tables.
+        session.merge(
+            Source(id=9, key="aliexpress", name="AliExpress", type="official_api", phase=3)
+        )
         session.flush()
-        session.get_one(Source, 99).enabled = True
+        session.get_one(Source, 9).enabled = True
         session.commit()
         yield session
 
@@ -347,13 +350,13 @@ def test_consecutive_throttles_disable_once_and_honour_retry_after(
         statuses.append(run(session, cache, settings, gateway, clock, str(100 + i), None).status)
         clock.at += timedelta(seconds=2)  # past the documented 1-second ban
     assert statuses == ["throttled"] * 4 + ["ok"] + ["throttled"] * 4 + ["disabled"]
-    source = session.get_one(Source, 99)
+    source = session.get_one(Source, 9)
     assert (source.enabled, source.status, source.disabled_reason) == (
         False,
         "blocked",
         "consecutive_blocks:aliexpress",
     )
-    events = session.scalars(select(SourceEvent).where(SourceEvent.source_id == 99)).all()
+    events = session.scalars(select(SourceEvent).where(SourceEvent.source_id == 9)).all()
     assert [(e.action, e.reason) for e in events] == [("disable", "consecutive_blocks:aliexpress")]
     assert run(session, cache, settings, gateway, clock).status == "disabled"
     assert len(gateway.calls) == 10
@@ -375,7 +378,7 @@ def test_revoked_auth_disables_at_once_and_errors_do_not_count(
     cache = FakeRedis(clock)
     gateway = Gateway(Response(error("backend_error"), 200), Response(error("auth_rejected"), 200))
     assert run(session, cache, settings, gateway, clock).status == "error"
-    source = session.get_one(Source, 99)
+    source = session.get_one(Source, 9)
     assert (source.enabled, source.consecutive_block_count) == (True, 0)
     assert run(session, cache, settings, gateway, clock).status == "disabled"
     assert (source.enabled, source.disabled_reason) == (False, "aliexpress_auth_rejected")
