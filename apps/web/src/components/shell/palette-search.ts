@@ -8,6 +8,9 @@ export type SearchResults = components["schemas"]["SearchResults"];
 
 /** The API answers nothing under 2 characters, so the palette doesn't ask. */
 export const MIN_QUERY = 2;
+/** The API's cap once trimmed, in characters (code points, as Python counts), not UTF-16 units. */
+export const MAX_QUERY = 100;
+export const tooLong = (term: string) => [...term].length > MAX_QUERY;
 export const DEBOUNCE_MS = 150;
 /** Prefix of every search row's cmdk value: the palette's filter shows those rows for any query. */
 export const SEARCH_VALUE = "search:";
@@ -29,7 +32,8 @@ export type SearchView =
   | { kind: "results"; results: SearchResults; stale: boolean } // stale: for an earlier query, a newer one is on its way
   | { kind: "empty" }
   | { kind: "no-source" } // nothing has been collected yet
-  | { kind: "error" };
+  | { kind: "error" }
+  | { kind: "too-long" }; // past the API's cap, such as a pasted product URL: never asked (XR-33)
 
 interface QueryState {
   data?: SearchResults;
@@ -41,6 +45,7 @@ interface QueryState {
 /** What the search groups show for the typed `term`, given the query for its debounced value. */
 export function searchView(term: string, debounced: string, query: QueryState): SearchView {
   if (term.length < MIN_QUERY) return { kind: "off" };
+  if (tooLong(term)) return { kind: "too-long" };
   const pending = term !== debounced || query.isFetching;
   const { data } = query;
   if (!data) return query.isError && !pending ? { kind: "error" } : { kind: "loading" };
@@ -69,6 +74,8 @@ export function announce(view: SearchView, term: string): string {
       return "Nothing collected yet. Search fills in once the collectors have run.";
     case "error":
       return "Search unavailable. Commands still work.";
+    case "too-long":
+      return `Too long to search: up to ${MAX_QUERY} characters.`;
     default:
       return "";
   }

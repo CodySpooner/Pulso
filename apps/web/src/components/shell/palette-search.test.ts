@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 
-import { announce, searchView, type SearchResults } from "./palette-search";
+import { announce, MAX_QUERY, searchView, type SearchResults } from "./palette-search";
 
 const none: SearchResults = { products: [], stores: [], suppliers: [], catalog_empty: false };
 const hits: SearchResults = {
@@ -44,6 +44,15 @@ describe("searchView", () => {
     // A failed refresh of the same query keeps its results.
     expect(searchView("gl", "gl", { ...settled, isError: true, data: hits })).toMatchObject({ kind: "results" });
   });
+
+  test("XR-33: past 100 characters it says so at once, never searching or reading as an error", () => {
+    const url = "https://some-store.myshopify.com/products/ergonomic-posture-corrector-for-men-and-women?variant=44123456789012";
+    expect(searchView(url, url.slice(0, -1), { ...settled, isError: true })).toEqual({ kind: "too-long" });
+    expect(searchView(url, url, { ...settled, data: hits })).toEqual({ kind: "too-long" });
+    // The API counts characters, not UTF-16 units: 100 emoji still search.
+    const emoji = "\u{1F4A1}".repeat(MAX_QUERY);
+    expect(searchView(emoji, emoji, { ...settled, data: hits })).toMatchObject({ kind: "results" });
+  });
 });
 
 describe("announce", () => {
@@ -56,5 +65,6 @@ describe("announce", () => {
     expect(announce({ kind: "loading" }, "la")).toBe("");
     expect(announce({ kind: "empty" }, "zz")).toBe("No products, stores or suppliers match “zz”");
     expect(announce({ kind: "error" }, "zz")).toBe("Search unavailable. Commands still work.");
+    expect(announce({ kind: "too-long" }, "zz")).toBe("Too long to search: up to 100 characters.");
   });
 });

@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 
 import { product, PRODUCT_ID } from "../products/fixtures";
-import { mockSearchApi, openPalette, products } from "./fixtures";
+import { LONG_URL, mockSearchApi, openPalette, products } from "./fixtures";
 
 // p2-16 (UX-9): global search in the Ctrl+K palette, keyboard only, against fixtures (DEC-252).
 test.describe("palette search", () => {
@@ -105,6 +105,25 @@ test.describe("palette search", () => {
     await input.fill("zzqx");
     await expect(page.getByRole("option", { name: /No matches for “zzqx”/ })).toBeVisible();
     await expect(page.getByRole("dialog").getByRole("status")).toHaveText("No products, stores or suppliers match “zzqx”");
+  });
+
+  test("XR-33: a pasted URL past 100 characters says it's too long, never 'unavailable', and asks nothing", async ({ page }) => {
+    const queries = await mockSearchApi(page);
+    const input = await openPalette(page);
+    await input.fill("glow");
+    await expect(page.getByRole("option", { name: /Shenzhen Glowtech/ })).toBeVisible();
+    await input.fill(LONG_URL);
+    const row = page.getByRole("option", { name: /Too long to search/ });
+    await expect(row).toContainText(`Too long to search: ${LONG_URL.length} charactersUp to 100. Try a store domain or fewer words.`);
+    await expect(row).toHaveAttribute("aria-disabled", "true");
+    await expect(page.getByRole("dialog").getByRole("status")).toHaveText("Too long to search: up to 100 characters.");
+    await expect(page.getByRole("option", { name: /Shenzhen Glowtech|Search unavailable/ })).toHaveCount(0);
+    await page.waitForTimeout(400); // past the debounce
+    expect(queries).toEqual(["glow"]);
+
+    await input.press("Control+A");
+    await input.pressSequentially("glowbeam", { delay: 20 }); // shortened, it searches again
+    await expect(page.getByRole("option", { name: /glowbeam\.example\.test/ })).toBeVisible();
   });
 
   test("an empty catalog shows no source yet, and Enter opens Data Health", async ({ page }) => {

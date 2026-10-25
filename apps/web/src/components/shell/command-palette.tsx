@@ -39,7 +39,7 @@ import { allNavItems, isBuilt } from "@/lib/nav";
 import { cn } from "@/lib/utils";
 
 import { useShell } from "./app-shell";
-import { announce, DEBOUNCE_MS, MIN_QUERY, SEARCH_SCORE, SEARCH_VALUE, searchView, useDebounced, type SearchView } from "./palette-search";
+import { announce, DEBOUNCE_MS, MAX_QUERY, MIN_QUERY, SEARCH_SCORE, SEARCH_VALUE, searchView, tooLong, useDebounced, type SearchView } from "./palette-search";
 
 interface Run {
   close: () => void;
@@ -251,6 +251,9 @@ function SearchGroups({
         {view.kind === "empty" && (
           <Row value={row("status", "empty")} selected={selected} icon={SearchX} label={`No matches for “${term}”`} detail="Try a store domain, a supplier name or fewer words." disabled />
         )}
+        {view.kind === "too-long" && (
+          <Row value={row("status", "too-long")} selected={selected} icon={SearchX} label={`Too long to search: ${[...term].length} characters`} detail={`Up to ${MAX_QUERY}. Try a store domain or fewer words.`} disabled />
+        )}
         {view.kind === "no-source" && (
           <>
             <Row value={row("status", "no-source")} selected={selected} icon={SearchX} label="Nothing collected yet" detail="Search fills in once the collectors have run." disabled />
@@ -294,7 +297,7 @@ export function CommandPalette({
     "/v1/search",
     { params: { query: { q: debounced } } },
     {
-      enabled: useApiReady() && debounced.length >= MIN_QUERY,
+      enabled: useApiReady() && debounced.length >= MIN_QUERY && !tooLong(debounced),
       placeholderData: keepPreviousData, // the last results stay while the next query loads
       staleTime: 60_000,
       // A 4xx won't change on a retry.
