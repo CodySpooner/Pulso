@@ -299,3 +299,59 @@ def test_a_workspace_reads_only_its_own_settings(db_engine: Engine) -> None:
         session.flush()
         view = workspace_product_economics.c
         assert session.scalar(select(view.product_id).where(view.product_id == product_id)) is None
+
+
+@pytest.mark.db
+def test_the_view_and_the_loader_both_put_in_stock_listings_first(db_engine: Engine) -> None:
+    """DEC-291: a better margin known out of stock loses in both, until nothing is in stock."""
+    vector = VECTORS[0]  # the worked example: listing `kept`, margin 1503
+    with Session(db_engine) as session:
+        workspace_id, product_id, price = seed(session, vector)
+        assert price is not None
+        settings = session.get_one(WorkspaceSettings, workspace_id)
+        reference = (vector["inputs"]["price_minor"], price)
+        kept = session.scalars(
+            select(Listing.id).where(
+                Listing.product_id == product_id, Listing.supplier_id.is_not(None)
+            )
+        ).one()
+        supplier = Supplier(platform="cj", external_id=uuid4().hex, name="CJ supplier")
+        session.add(supplier)
+        session.flush()
+        gone = Listing(
+            source_id=CJ, external_id=uuid4().hex, url="https://cj.example.test/q",
+            title="Sunset lamp", product_id=product_id, supplier_id=supplier.id,
+        )  # fmt: skip
+        session.add(gone)
+        session.flush()
+        observe(
+            session, ListingSnapshot, CJ, COSTED, listing_id=gone.id, values_hash="h",
+            currency="USD", price_min_minor=500, stock=0,
+        )  # fmt: skip
+        observe(
+            session, ShippingOption, CJ, PRICED, listing_id=gone.id, origin_country="CN",
+            destination_country="US", quantity=1, method="CJPacket", cost_minor=300,
+            currency="USD",
+        )  # fmt: skip
+
+        def pick() -> int | None:
+            """The loader's and the view's default answer, held equal; the listing they cost."""
+            calc = calculate(session, settings, product_id, reference_price=reference)
+            row = economics(session, workspace_id, product_id)
+            assert result(row) == result(asdict(calc.cost))
+            assert (row["supplier_listing_id"], row["method"]) == (calc.listing_id, calc.method)
+            assert parsed(row["sources"]) == {
+                name: asdict(trace) for name, trace in calc.sources.items()
+            }
+            return calc.listing_id
+
+        assert pick() == kept
+        sold_out = calculate(
+            session, settings, product_id, reference_price=reference, listing_id=gone.id
+        )
+        assert sold_out.cost.margin_minor == 2999 - 900 - 117 - 150  # better than kept's 1503
+        observe(
+            session, ListingSnapshot, CJ, COSTED, listing_id=kept, values_hash="h",
+            currency="USD", price_min_minor=620, available=False,
+        )  # fmt: skip  # a later row of the same capture: now nothing is in stock
+        assert pick() == gone.id

@@ -291,6 +291,87 @@ def test_a_known_out_of_stock_row_never_wins_a_pick(api: TestClient, db_engine: 
 
 
 @pytest.mark.db
+def test_profits_default_supplier_is_the_best_margin_pick_not_a_cheaper_out_of_stock_one(
+    api: TestClient, db_engine: Engine
+) -> None:
+    """imp-289 (DEC-291): Profit without `supplier=` names the listing Suppliers picks."""
+    with Session(db_engine) as session:
+        ws = workspace(session, **FEES)
+        product = lamp(session)
+        gone = supplier(session, product, 500, 300, (3, 5), stock=0)  # the best margin, sold out
+        sold_out = supplier(session, product, 510, 300, (3, 5), available=False)
+        kept = supplier(session, product, 620, 485, (8, 12), stock=0)
+        observe(
+            session, ListingSnapshot, CJ, listing_id=kept, values_hash="h", currency="USD",
+            price_min_minor=620, stock=40,
+        )  # fmt: skip  # restocked: on a capture tie the later snapshot is the latest
+        unknown = supplier(session, product, 700, 485, (8, 12))  # no stock reported: counts
+        session.commit()
+        product_id = product.id
+
+    body = suppliers(api, ws, product_id)
+    default = calc(api, ws, product_id=product_id)
+    assert default["supplier_listing_id"] == kept == body["picks"]["best_margin"]["listing_id"]
+    assert default == body["picks"]["best_margin"]["cost"]
+    # An explicit supplier is costed whatever its stock.
+    explicit = calc(api, ws, product_id=product_id, supplier_listing_id=gone)
+    assert (explicit["supplier_listing_id"], explicit["complete"]) == (gone, True)
+    assert explicit["margin_minor"] > default["margin_minor"]
+    assert [row["listing_id"] for row in body["rows"]] == [kept, unknown, gone, sold_out]
+
+
+@pytest.mark.db
+def test_with_nothing_in_stock_profit_still_costs_the_best_out_of_stock_supplier(
+    api: TestClient, db_engine: Engine
+) -> None:
+    with Session(db_engine) as session:
+        ws = workspace(session, **FEES)
+        product = lamp(session)
+        supplier(session, product, 700, 485, (8, 12), stock=0)
+        gone = supplier(session, product, 500, 300, (3, 5), available=False)  # the best margin
+        supplier(session, product, 100, stock=0)  # cheapest, never quoted: incomplete
+        session.commit()
+        product_id = product.id
+
+    assert suppliers(api, ws, product_id)["picks"]["best_margin"] is None
+    default = calc(api, ws, product_id=product_id)
+    assert (default["supplier_listing_id"], default["complete"]) == (gone, True)
+    assert default == calc(api, ws, product_id=product_id, supplier_listing_id=gone)
+
+
+@pytest.mark.db
+def test_an_in_stock_supplier_without_a_quote_beats_a_complete_out_of_stock_one(
+    api: TestClient, db_engine: Engine
+) -> None:
+    """In stock first: the fallback to known out-of-stock listings is only for none in stock."""
+    with Session(db_engine) as session:
+        ws = workspace(session, **FEES)
+        product = lamp(session)
+        supplier(session, product, 500, 300, (3, 5), stock=0)
+        unquoted = supplier(session, product, 620, stock=40)
+        session.commit()
+        product_id = product.id
+
+    assert suppliers(api, ws, product_id)["picks"]["best_margin"] is None
+    default = calc(api, ws, product_id=product_id)
+    assert (default["supplier_listing_id"], default["missing"]) == (unquoted, ["freight_missing"])
+
+    with Session(db_engine) as session:  # a listing with no snapshot yet isn't known out either
+        listing = session.get_one(Listing, unquoted)
+        listing.delisted_at = NOW
+        bare = Listing(
+            source_id=CJ, external_id=uuid4().hex, url="https://cjdropshipping.com/product/b.html",
+            title="Sunset lamp", product_id=product_id, supplier_id=listing.supplier_id,
+        )  # fmt: skip
+        session.add(bare)
+        session.commit()
+        bare_id = bare.id
+    row = suppliers(api, ws, product_id)["rows"][0]
+    assert (row["listing_id"], row["in_stock"]) == (bare_id, True)
+    assert calc(api, ws, product_id=product_id)["supplier_listing_id"] == bare_id
+
+
+@pytest.mark.db
 def test_supplier_terms_carry_their_own_provenance_or_no_source(
     api: TestClient, db_engine: Engine
 ) -> None:

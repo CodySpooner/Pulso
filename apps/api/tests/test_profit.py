@@ -929,3 +929,35 @@ def test_discover_best_margin_reads_only_the_callers_workspace(
         "reason": "No workspace settings yet.",
         "missing": [],
     }
+
+
+@pytest.mark.db
+def test_profit_and_discover_both_skip_a_known_out_of_stock_supplier(
+    api: TestClient, db_engine: Engine
+) -> None:
+    """imp-289 (DEC-291): in stock first, then the best margin, in the loader and the view."""
+    with Session(db_engine) as session:
+        ws = workspace(session, duty_default_bps=2000, **FEES)
+        product = lamp(session)
+        gone = supplier_listing(session, product, 500)  # the better margin, but sold out
+        quote(session, gone, 300)
+        observe(
+            session, ListingSnapshot, CJ, listing_id=gone, values_hash="h", currency="USD",
+            price_min_minor=500, stock=0,
+        )  # fmt: skip
+        kept = supplier_listing(session, product, 620)
+        quote(session, kept, 485)
+        session.commit()
+        product_id = str(product.id)
+
+    assert calc(api, ws, product_id=product_id)["supplier_listing_id"] == kept  # = the view's
+    assert discover(api, ws)[product_id]["supplier_listing_id"] == kept
+
+    with Session(db_engine) as session:  # nothing in stock: the best out-of-stock one, in both
+        observe(
+            session, ListingSnapshot, CJ, listing_id=kept, values_hash="h", currency="USD",
+            price_min_minor=620, available=False,
+        )  # fmt: skip
+        session.commit()
+    assert calc(api, ws, product_id=product_id)["supplier_listing_id"] == gone
+    assert discover(api, ws)[product_id]["supplier_listing_id"] == gone
