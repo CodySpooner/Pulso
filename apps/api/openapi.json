@@ -71,6 +71,30 @@
         "title": "Appearance",
         "type": "object"
       },
+      "Band": {
+        "properties": {
+          "high": {
+            "title": "High",
+            "type": "null"
+          },
+          "low": {
+            "title": "Low",
+            "type": "null"
+          },
+          "reason": {
+            "const": "needs_landed_cost",
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "low",
+          "high",
+          "reason"
+        ],
+        "title": "Band",
+        "type": "object"
+      },
       "CJActivity": {
         "description": "DEC-216: missing or invalid stored evidence is unknown, with every other field null.",
         "properties": {
@@ -149,6 +173,42 @@
         "title": "CategoryOption",
         "type": "object"
       },
+      "Counts": {
+        "properties": {
+          "active": {
+            "title": "Active",
+            "type": "integer"
+          },
+          "as_of": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "As Of"
+          },
+          "delisted_30d": {
+            "title": "Delisted 30D",
+            "type": "integer"
+          },
+          "new_14d": {
+            "title": "New 14D",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "active",
+          "delisted_30d",
+          "new_14d",
+          "as_of"
+        ],
+        "title": "Counts",
+        "type": "object"
+      },
       "CoverageDay": {
         "properties": {
           "day": {
@@ -201,6 +261,49 @@
           "successful_targets"
         ],
         "title": "CoverageDay",
+        "type": "object"
+      },
+      "Crawler": {
+        "properties": {
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "since": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Since"
+          },
+          "status": {
+            "enum": [
+              "enabled",
+              "disabled",
+              "auto_disabled"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "since",
+          "reason"
+        ],
+        "title": "Crawler",
         "type": "object"
       },
       "Degraded": {
@@ -1898,6 +2001,313 @@
         "title": "RunTarget",
         "type": "object"
       },
+      "SellerRow": {
+        "properties": {
+          "as_of": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "As Of"
+          },
+          "currency": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Currency"
+          },
+          "delisted_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Delisted At"
+          },
+          "domain": {
+            "title": "Domain",
+            "type": "string"
+          },
+          "fx_missing": {
+            "title": "Fx Missing",
+            "type": "boolean"
+          },
+          "last_seen": {
+            "format": "date-time",
+            "title": "Last Seen",
+            "type": "string"
+          },
+          "listed": {
+            "enum": [
+              "listed",
+              "delisted",
+              "unknown"
+            ],
+            "title": "Listed",
+            "type": "string"
+          },
+          "listing_id": {
+            "title": "Listing Id",
+            "type": "integer"
+          },
+          "platform": {
+            "title": "Platform",
+            "type": "string"
+          },
+          "price_max_minor": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Price Max Minor"
+          },
+          "price_minor": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Price Minor"
+          },
+          "price_usd_minor": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Price Usd Minor"
+          },
+          "raw_payload_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Raw Payload Id"
+          },
+          "running_ads": {
+            "$ref": "#/components/schemas/NoSource"
+          },
+          "source_name": {
+            "title": "Source Name",
+            "type": "string"
+          },
+          "stale": {
+            "title": "Stale",
+            "type": "boolean"
+          },
+          "started_at": {
+            "format": "date-time",
+            "title": "Started At",
+            "type": "string"
+          },
+          "started_basis": {
+            "enum": [
+              "store",
+              "first_seen"
+            ],
+            "title": "Started Basis",
+            "type": "string"
+          },
+          "store_id": {
+            "title": "Store Id",
+            "type": "integer"
+          },
+          "tracked": {
+            "title": "Tracked",
+            "type": "boolean"
+          },
+          "unknown_reason": {
+            "anyOf": [
+              {
+                "enum": [
+                  "store_blocked",
+                  "store_untrackable",
+                  "last_crawl_incomplete",
+                  "never_crawled"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unknown Reason"
+          },
+          "untrackable": {
+            "title": "Untrackable",
+            "type": "boolean"
+          },
+          "url": {
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "listing_id",
+          "url",
+          "store_id",
+          "domain",
+          "platform",
+          "tracked",
+          "untrackable",
+          "price_usd_minor",
+          "price_minor",
+          "price_max_minor",
+          "currency",
+          "fx_missing",
+          "started_at",
+          "started_basis",
+          "listed",
+          "delisted_at",
+          "unknown_reason",
+          "last_seen",
+          "stale",
+          "running_ads",
+          "source_name",
+          "as_of",
+          "raw_payload_id"
+        ],
+        "title": "SellerRow",
+        "type": "object"
+      },
+      "SellersPage": {
+        "properties": {
+          "as_of": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "As Of"
+          },
+          "band": {
+            "$ref": "#/components/schemas/Band"
+          },
+          "counts": {
+            "$ref": "#/components/schemas/Counts"
+          },
+          "crawler": {
+            "$ref": "#/components/schemas/Crawler"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Pass as `cursor` with the same filters.",
+            "title": "Next Cursor"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/SellerRow"
+            },
+            "title": "Rows",
+            "type": "array"
+          },
+          "series_90d": {
+            "items": {
+              "$ref": "#/components/schemas/SeriesDay"
+            },
+            "title": "Series 90D",
+            "type": "array"
+          },
+          "spread": {
+            "$ref": "#/components/schemas/Spread"
+          }
+        },
+        "required": [
+          "rows",
+          "next_cursor",
+          "spread",
+          "band",
+          "counts",
+          "series_90d",
+          "crawler",
+          "as_of"
+        ],
+        "title": "SellersPage",
+        "type": "object"
+      },
+      "SeriesDay": {
+        "properties": {
+          "active": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Active"
+          },
+          "as_of": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "As Of"
+          },
+          "date": {
+            "format": "date",
+            "title": "Date",
+            "type": "string"
+          },
+          "gap": {
+            "title": "Gap",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "date",
+          "active",
+          "gap",
+          "as_of"
+        ],
+        "title": "SeriesDay",
+        "type": "object"
+      },
       "SettingsPatch": {
         "additionalProperties": false,
         "properties": {
@@ -2326,6 +2736,147 @@
           "stale"
         ],
         "title": "Sourced",
+        "type": "object"
+      },
+      "Spread": {
+        "description": "Current USD retail over active, trackable sellers: one price (the lowest) per store.",
+        "properties": {
+          "as_of": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "As Of"
+          },
+          "max": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max"
+          },
+          "mean": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mean"
+          },
+          "median": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Median"
+          },
+          "min": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min"
+          },
+          "missing": {
+            "title": "Missing",
+            "type": "integer"
+          },
+          "n": {
+            "title": "N",
+            "type": "integer"
+          },
+          "p25": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "P25"
+          },
+          "p75": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "P75"
+          },
+          "points": {
+            "items": {
+              "$ref": "#/components/schemas/SpreadPoint"
+            },
+            "title": "Points",
+            "type": "array"
+          },
+          "untrackable": {
+            "title": "Untrackable",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "min",
+          "p25",
+          "median",
+          "mean",
+          "p75",
+          "max",
+          "n",
+          "missing",
+          "untrackable",
+          "points",
+          "as_of"
+        ],
+        "title": "Spread",
+        "type": "object"
+      },
+      "SpreadPoint": {
+        "properties": {
+          "as_of": {
+            "format": "date-time",
+            "title": "As Of",
+            "type": "string"
+          },
+          "domain": {
+            "title": "Domain",
+            "type": "string"
+          },
+          "price_usd_minor": {
+            "title": "Price Usd Minor",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "domain",
+          "price_usd_minor",
+          "as_of"
+        ],
+        "title": "SpreadPoint",
         "type": "object"
       },
       "SupplierCost": {
@@ -11191,6 +11742,493 @@
           }
         ],
         "summary": "Get Product Overview"
+      }
+    },
+    "/v1/products/{product_id}/sellers": {
+      "get": {
+        "operationId": "get_product_sellers",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "product_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Product Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "include_delisted",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Include Delisted",
+              "type": "boolean"
+            }
+          },
+          {
+            "description": "Only the stable-panel sellers new in 14 days",
+            "in": "query",
+            "name": "new_14d",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "Only the stable-panel sellers new in 14 days",
+              "title": "New 14D",
+              "type": "boolean"
+            }
+          },
+          {
+            "description": "Only stores this workspace tracks",
+            "in": "query",
+            "name": "tracked",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "Only stores this workspace tracks",
+              "title": "Tracked",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "__session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "  Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SellersPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "308": {
+            "description": "Merged: the survivor's sellers, query string kept."
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "properties": {
+                    "code": {
+                      "title": "Code",
+                      "type": "string"
+                    },
+                    "detail": {
+                      "title": "Detail",
+                      "type": "string"
+                    },
+                    "errors": {
+                      "items": {
+                        "additionalProperties": true,
+                        "type": "object"
+                      },
+                      "title": "Errors",
+                      "type": "array"
+                    },
+                    "request_id": {
+                      "title": "Request Id",
+                      "type": "string"
+                    },
+                    "status": {
+                      "title": "Status",
+                      "type": "integer"
+                    },
+                    "title": {
+                      "title": "Title",
+                      "type": "string"
+                    },
+                    "type": {
+                      "default": "about:blank",
+                      "title": "Type",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "title",
+                    "status",
+                    "code",
+                    "detail",
+                    "request_id"
+                  ],
+                  "title": "Problem",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "properties": {
+                    "code": {
+                      "title": "Code",
+                      "type": "string"
+                    },
+                    "detail": {
+                      "title": "Detail",
+                      "type": "string"
+                    },
+                    "errors": {
+                      "items": {
+                        "additionalProperties": true,
+                        "type": "object"
+                      },
+                      "title": "Errors",
+                      "type": "array"
+                    },
+                    "request_id": {
+                      "title": "Request Id",
+                      "type": "string"
+                    },
+                    "status": {
+                      "title": "Status",
+                      "type": "integer"
+                    },
+                    "title": {
+                      "title": "Title",
+                      "type": "string"
+                    },
+                    "type": {
+                      "default": "about:blank",
+                      "title": "Type",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "title",
+                    "status",
+                    "code",
+                    "detail",
+                    "request_id"
+                  ],
+                  "title": "Problem",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "properties": {
+                    "code": {
+                      "title": "Code",
+                      "type": "string"
+                    },
+                    "detail": {
+                      "title": "Detail",
+                      "type": "string"
+                    },
+                    "errors": {
+                      "items": {
+                        "additionalProperties": true,
+                        "type": "object"
+                      },
+                      "title": "Errors",
+                      "type": "array"
+                    },
+                    "request_id": {
+                      "title": "Request Id",
+                      "type": "string"
+                    },
+                    "status": {
+                      "title": "Status",
+                      "type": "integer"
+                    },
+                    "title": {
+                      "title": "Title",
+                      "type": "string"
+                    },
+                    "type": {
+                      "default": "about:blank",
+                      "title": "Type",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "title",
+                    "status",
+                    "code",
+                    "detail",
+                    "request_id"
+                  ],
+                  "title": "Problem",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "properties": {
+                    "code": {
+                      "title": "Code",
+                      "type": "string"
+                    },
+                    "detail": {
+                      "title": "Detail",
+                      "type": "string"
+                    },
+                    "errors": {
+                      "items": {
+                        "additionalProperties": true,
+                        "type": "object"
+                      },
+                      "title": "Errors",
+                      "type": "array"
+                    },
+                    "request_id": {
+                      "title": "Request Id",
+                      "type": "string"
+                    },
+                    "status": {
+                      "title": "Status",
+                      "type": "integer"
+                    },
+                    "title": {
+                      "title": "Title",
+                      "type": "string"
+                    },
+                    "type": {
+                      "default": "about:blank",
+                      "title": "Type",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "title",
+                    "status",
+                    "code",
+                    "detail",
+                    "request_id"
+                  ],
+                  "title": "Problem",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "properties": {
+                    "code": {
+                      "title": "Code",
+                      "type": "string"
+                    },
+                    "detail": {
+                      "title": "Detail",
+                      "type": "string"
+                    },
+                    "errors": {
+                      "items": {
+                        "additionalProperties": true,
+                        "type": "object"
+                      },
+                      "title": "Errors",
+                      "type": "array"
+                    },
+                    "request_id": {
+                      "title": "Request Id",
+                      "type": "string"
+                    },
+                    "status": {
+                      "title": "Status",
+                      "type": "integer"
+                    },
+                    "title": {
+                      "title": "Title",
+                      "type": "string"
+                    },
+                    "type": {
+                      "default": "about:blank",
+                      "title": "Type",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "title",
+                    "status",
+                    "code",
+                    "detail",
+                    "request_id"
+                  ],
+                  "title": "Problem",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "properties": {
+                    "code": {
+                      "title": "Code",
+                      "type": "string"
+                    },
+                    "detail": {
+                      "title": "Detail",
+                      "type": "string"
+                    },
+                    "errors": {
+                      "items": {
+                        "additionalProperties": true,
+                        "type": "object"
+                      },
+                      "title": "Errors",
+                      "type": "array"
+                    },
+                    "request_id": {
+                      "title": "Request Id",
+                      "type": "string"
+                    },
+                    "status": {
+                      "title": "Status",
+                      "type": "integer"
+                    },
+                    "title": {
+                      "title": "Title",
+                      "type": "string"
+                    },
+                    "type": {
+                      "default": "about:blank",
+                      "title": "Type",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "title",
+                    "status",
+                    "code",
+                    "detail",
+                    "request_id"
+                  ],
+                  "title": "Problem",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "properties": {
+                    "code": {
+                      "title": "Code",
+                      "type": "string"
+                    },
+                    "detail": {
+                      "title": "Detail",
+                      "type": "string"
+                    },
+                    "errors": {
+                      "items": {
+                        "additionalProperties": true,
+                        "type": "object"
+                      },
+                      "title": "Errors",
+                      "type": "array"
+                    },
+                    "request_id": {
+                      "title": "Request Id",
+                      "type": "string"
+                    },
+                    "status": {
+                      "title": "Status",
+                      "type": "integer"
+                    },
+                    "title": {
+                      "title": "Title",
+                      "type": "string"
+                    },
+                    "type": {
+                      "default": "about:blank",
+                      "title": "Type",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "title",
+                    "status",
+                    "code",
+                    "detail",
+                    "request_id"
+                  ],
+                  "title": "Problem",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Product Sellers"
       }
     },
     "/v1/products/{product_id}/tags": {

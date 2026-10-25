@@ -334,6 +334,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/products/{product_id}/sellers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Product Sellers */
+        get: operations["get_product_sellers"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/products/{product_id}/tags": {
         parameters: {
             query?: never;
@@ -435,6 +452,18 @@ export interface components {
              */
             vendor: "store" | "supplier";
         };
+        /** Band */
+        Band: {
+            /** High */
+            high: null;
+            /** Low */
+            low: null;
+            /**
+             * Reason
+             * @constant
+             */
+            reason: "needs_landed_cost";
+        };
         /**
          * CJActivity
          * @description DEC-216: missing or invalid stored evidence is unknown, with every other field null.
@@ -465,6 +494,17 @@ export interface components {
             /** Path */
             path: string;
         };
+        /** Counts */
+        Counts: {
+            /** Active */
+            active: number;
+            /** As Of */
+            as_of: string | null;
+            /** Delisted 30D */
+            delisted_30d: number;
+            /** New 14D */
+            new_14d: number;
+        };
         /** CoverageDay */
         CoverageDay: {
             /**
@@ -487,6 +527,18 @@ export interface components {
             successful_targets: number;
             /** Targets */
             targets: number;
+        };
+        /** Crawler */
+        Crawler: {
+            /** Reason */
+            reason: string | null;
+            /** Since */
+            since: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "enabled" | "disabled" | "auto_disabled";
         };
         /** Degraded */
         Degraded: {
@@ -1058,6 +1110,98 @@ export interface components {
             /** Target Id */
             target_id: string;
         };
+        /** SellerRow */
+        SellerRow: {
+            /** As Of */
+            as_of: string | null;
+            /** Currency */
+            currency: string | null;
+            /** Delisted At */
+            delisted_at: string | null;
+            /** Domain */
+            domain: string;
+            /** Fx Missing */
+            fx_missing: boolean;
+            /**
+             * Last Seen
+             * Format: date-time
+             */
+            last_seen: string;
+            /**
+             * Listed
+             * @enum {string}
+             */
+            listed: "listed" | "delisted" | "unknown";
+            /** Listing Id */
+            listing_id: number;
+            /** Platform */
+            platform: string;
+            /** Price Max Minor */
+            price_max_minor: number | null;
+            /** Price Minor */
+            price_minor: number | null;
+            /** Price Usd Minor */
+            price_usd_minor: number | null;
+            /** Raw Payload Id */
+            raw_payload_id: number | null;
+            running_ads: components["schemas"]["NoSource"];
+            /** Source Name */
+            source_name: string;
+            /** Stale */
+            stale: boolean;
+            /**
+             * Started At
+             * Format: date-time
+             */
+            started_at: string;
+            /**
+             * Started Basis
+             * @enum {string}
+             */
+            started_basis: "store" | "first_seen";
+            /** Store Id */
+            store_id: number;
+            /** Tracked */
+            tracked: boolean;
+            /** Unknown Reason */
+            unknown_reason: ("store_blocked" | "store_untrackable" | "last_crawl_incomplete" | "never_crawled") | null;
+            /** Untrackable */
+            untrackable: boolean;
+            /** Url */
+            url: string;
+        };
+        /** SellersPage */
+        SellersPage: {
+            /** As Of */
+            as_of: string | null;
+            band: components["schemas"]["Band"];
+            counts: components["schemas"]["Counts"];
+            crawler: components["schemas"]["Crawler"];
+            /**
+             * Next Cursor
+             * @description Pass as `cursor` with the same filters.
+             */
+            next_cursor: string | null;
+            /** Rows */
+            rows: components["schemas"]["SellerRow"][];
+            /** Series 90D */
+            series_90d: components["schemas"]["SeriesDay"][];
+            spread: components["schemas"]["Spread"];
+        };
+        /** SeriesDay */
+        SeriesDay: {
+            /** Active */
+            active: number | null;
+            /** As Of */
+            as_of: string | null;
+            /**
+             * Date
+             * Format: date
+             */
+            date: string;
+            /** Gap */
+            gap: boolean;
+        };
         /** SettingsPatch */
         SettingsPatch: {
             /** Currency */
@@ -1182,6 +1326,46 @@ export interface components {
             stale: boolean;
             /** Value */
             value: number;
+        };
+        /**
+         * Spread
+         * @description Current USD retail over active, trackable sellers: one price (the lowest) per store.
+         */
+        Spread: {
+            /** As Of */
+            as_of: string | null;
+            /** Max */
+            max: number | null;
+            /** Mean */
+            mean: number | null;
+            /** Median */
+            median: number | null;
+            /** Min */
+            min: number | null;
+            /** Missing */
+            missing: number;
+            /** N */
+            n: number;
+            /** P25 */
+            p25: number | null;
+            /** P75 */
+            p75: number | null;
+            /** Points */
+            points: components["schemas"]["SpreadPoint"][];
+            /** Untrackable */
+            untrackable: number;
+        };
+        /** SpreadPoint */
+        SpreadPoint: {
+            /**
+             * As Of
+             * Format: date-time
+             */
+            as_of: string;
+            /** Domain */
+            domain: string;
+            /** Price Usd Minor */
+            price_usd_minor: number;
         };
         /**
          * SupplierCost
@@ -5624,6 +5808,248 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["ProductOverview"];
                 };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": {
+                        /** Code */
+                        code: string;
+                        /** Detail */
+                        detail: string;
+                        /** Errors */
+                        errors?: {
+                            [key: string]: unknown;
+                        }[];
+                        /** Request Id */
+                        request_id: string;
+                        /** Status */
+                        status: number;
+                        /** Title */
+                        title: string;
+                        /**
+                         * Type
+                         * @default about:blank
+                         */
+                        type: string;
+                    };
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": {
+                        /** Code */
+                        code: string;
+                        /** Detail */
+                        detail: string;
+                        /** Errors */
+                        errors?: {
+                            [key: string]: unknown;
+                        }[];
+                        /** Request Id */
+                        request_id: string;
+                        /** Status */
+                        status: number;
+                        /** Title */
+                        title: string;
+                        /**
+                         * Type
+                         * @default about:blank
+                         */
+                        type: string;
+                    };
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": {
+                        /** Code */
+                        code: string;
+                        /** Detail */
+                        detail: string;
+                        /** Errors */
+                        errors?: {
+                            [key: string]: unknown;
+                        }[];
+                        /** Request Id */
+                        request_id: string;
+                        /** Status */
+                        status: number;
+                        /** Title */
+                        title: string;
+                        /**
+                         * Type
+                         * @default about:blank
+                         */
+                        type: string;
+                    };
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": {
+                        /** Code */
+                        code: string;
+                        /** Detail */
+                        detail: string;
+                        /** Errors */
+                        errors?: {
+                            [key: string]: unknown;
+                        }[];
+                        /** Request Id */
+                        request_id: string;
+                        /** Status */
+                        status: number;
+                        /** Title */
+                        title: string;
+                        /**
+                         * Type
+                         * @default about:blank
+                         */
+                        type: string;
+                    };
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": {
+                        /** Code */
+                        code: string;
+                        /** Detail */
+                        detail: string;
+                        /** Errors */
+                        errors?: {
+                            [key: string]: unknown;
+                        }[];
+                        /** Request Id */
+                        request_id: string;
+                        /** Status */
+                        status: number;
+                        /** Title */
+                        title: string;
+                        /**
+                         * Type
+                         * @default about:blank
+                         */
+                        type: string;
+                    };
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": {
+                        /** Code */
+                        code: string;
+                        /** Detail */
+                        detail: string;
+                        /** Errors */
+                        errors?: {
+                            [key: string]: unknown;
+                        }[];
+                        /** Request Id */
+                        request_id: string;
+                        /** Status */
+                        status: number;
+                        /** Title */
+                        title: string;
+                        /**
+                         * Type
+                         * @default about:blank
+                         */
+                        type: string;
+                    };
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": {
+                        /** Code */
+                        code: string;
+                        /** Detail */
+                        detail: string;
+                        /** Errors */
+                        errors?: {
+                            [key: string]: unknown;
+                        }[];
+                        /** Request Id */
+                        request_id: string;
+                        /** Status */
+                        status: number;
+                        /** Title */
+                        title: string;
+                        /**
+                         * Type
+                         * @default about:blank
+                         */
+                        type: string;
+                    };
+                };
+            };
+        };
+    };
+    get_product_sellers: {
+        parameters: {
+            query?: {
+                include_delisted?: boolean;
+                /** @description Only the stable-panel sellers new in 14 days */
+                new_14d?: boolean;
+                /** @description Only stores this workspace tracks */
+                tracked?: boolean;
+                cursor?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                product_id: string;
+            };
+            cookie?: {
+                __session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SellersPage"];
+                };
+            };
+            /** @description Merged: the survivor's sellers, query string kept. */
+            308: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Unauthorized */
             401: {
