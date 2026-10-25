@@ -20471,13 +20471,14 @@
         "operationId": "search",
         "parameters": [
           {
-            "description": "Trimmed; under 2 characters returns no results.",
+            "description": "Trimmed; under 2 characters returns no results. No NUL character.",
             "in": "query",
             "name": "q",
             "required": true,
             "schema": {
-              "description": "Trimmed; under 2 characters returns no results.",
+              "description": "Trimmed; under 2 characters returns no results. No NUL character.",
               "maxLength": 100,
+              "pattern": "^[^\\x00]*$",
               "title": "Q",
               "type": "string"
             }

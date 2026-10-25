@@ -234,8 +234,9 @@ def search(
     session: DB,
     q: Annotated[
         str,
-        StringConstraints(strip_whitespace=True, max_length=100),
-        Query(description="Trimmed; under 2 characters returns no results."),
+        # Postgres text can't hold NUL: a 422, not a 500 (XR-32).
+        StringConstraints(strip_whitespace=True, max_length=100, pattern=r"^[^\x00]*$"),
+        Query(description="Trimmed; under 2 characters returns no results. No NUL character."),
     ],
     limit: Annotated[int, Query(ge=1, le=20, description="Per group")] = 5,
 ) -> SearchResults:

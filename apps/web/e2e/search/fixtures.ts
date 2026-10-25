@@ -46,6 +46,9 @@ export const suppliers: S["SupplierHit"][] = [
   { id: 89, name: "Glow Supply Trading", platform: "cj", top_product_id: null, match: { field: "name", text: "Glow Supply Trading", kind: "prefix" } },
 ];
 
+/** A pasted product URL past the API's 100-character cap (XR-33). */
+export const LONG_URL = "https://glowbeam.example.test/products/sunset-projection-lamp-with-16-colour-modes-and-remote?variant=44123456789012";
+
 export interface SearchMock {
   /** Answer the first `failures` requests with a 503 problem (the palette retries once). */
   failures?: number;
@@ -66,6 +69,10 @@ export async function mockSearchApi(page: Page, options: SearchMock = {}): Promi
       const q = new URL(route.request().url()).searchParams.get("q") ?? "";
       queries.push(q);
       if (options.hold?.includes(q)) return;
+      if ([...q.trim()].length > 100) {
+        // The API's cap (XR-33): a validation problem, as FastAPI answers it.
+        return route.fulfill({ status: 422, contentType: "application/problem+json", json: { ...problem(422, "e2e-search-422"), title: "Unprocessable Content" } });
+      }
       if (failures > 0) {
         failures -= 1;
         return route.fulfill({ status: 503, contentType: "application/problem+json", json: problem(503, "e2e-search-503") });
