@@ -17,6 +17,7 @@ from pulso_core.models.collection import (
     CollectionGap,
     CollectorRunTarget,
     HostHeartbeat,
+    PopularProduct,
     SearchTrend,
     SourceEvent,
 )
@@ -51,6 +52,7 @@ __all__ = [
     "ListingVariant",
     "MatchCandidate",
     "MatchDecision",
+    "PopularProduct",
     "Product",
     "ProductDailyFeature",
     "ProductNote",

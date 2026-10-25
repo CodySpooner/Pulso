@@ -5,6 +5,7 @@ from decimal import Decimal
 
 from sqlalchemy import (
     CHAR,
+    BigInteger,
     CheckConstraint,
     DateTime,
     ForeignKey,
@@ -48,6 +49,32 @@ Index(
     SearchTrend.geo,
     SearchTrend.captured_at,
 )
+
+
+class PopularProduct(Observation, BigId, Base):
+    """One ranked row of the owner's weekly Merchant Center Popular products download (DEC-267).
+
+    Google's terms allow internal use only: never show these rows on a public page.
+    observed_for is the Monday that starts the report week (Google's `W20261012`).
+    """
+
+    __tablename__ = "popular_products"
+    observation_keys = ("source_id", "country", "category", "observed_for", "rank")
+    source_id: Mapped[int] = mapped_column(ForeignKey("sources.id"))
+    country: Mapped[str] = mapped_column(CHAR(2))
+    category: Mapped[str | None] = mapped_column(Text)
+    rank: Mapped[int]
+    previous_rank: Mapped[int | None]
+    title: Mapped[str] = mapped_column(Text)
+    brand: Mapped[str | None] = mapped_column(Text)
+    availability: Mapped[str | None] = mapped_column(Text)
+    relative_demand: Mapped[str | None] = mapped_column(Text)
+    relative_demand_change: Mapped[str | None] = mapped_column(Text)
+    # As Google wrote them; products resolve on read through M-4's normaliser (DEC-267 c).
+    gtins: Mapped[str | None] = mapped_column(Text)
+    price_min_minor: Mapped[int | None] = mapped_column(BigInteger)
+    price_max_minor: Mapped[int | None] = mapped_column(BigInteger)
+    currency: Mapped[str | None] = mapped_column(CHAR(3), ForeignKey("currencies.code"))
 
 
 class CollectorRunTarget(Base):
