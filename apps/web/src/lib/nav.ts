@@ -101,7 +101,7 @@ export const navGroups: NavGroup[] = [
   {
     label: "Workflow",
     items: [
-      { label: "Watchlists", href: "/watchlists", icon: Star, phase: 4, summary: "Products you are watching, with 30-day sparklines and daily change." },
+      { label: "Watchlists", href: "/watchlists", icon: Star, phase: 4, built: true, summary: "Products you are watching, with 30-day sparklines and daily change." },
       { label: "Boards", href: "/boards", icon: Bookmark, phase: 4, summary: "Saved collections of products and notes for an idea or a niche." },
       { label: "Testing", href: "/testing", icon: FlaskConical, phase: 4, built: true, summary: "Your product tests from idea to winner or kill, with spend, revenue and ROAS." },
     ],

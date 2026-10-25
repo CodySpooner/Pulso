@@ -1,5 +1,6 @@
 """Product resources (UX-3, UX-2, UX-4). Products are global market data, so auth applies and
-no workspace filter; only notes, tags and the best margin (Settings) are the workspace's."""
+no workspace filter; only notes, tags, the best margin (Settings) and the watch state are the
+workspace's."""
 
 import json
 from collections import defaultdict
@@ -61,6 +62,8 @@ from pulso_core.models import (
     Source,
     Store,
     Supplier,
+    Watchlist,
+    WatchlistItem,
     workspace_product_economics,
 )
 
@@ -70,6 +73,7 @@ DB = Annotated[Session, Depends(get_db)]
 NO_PRICE = "No USD retail price observed yet."
 NO_SIGNAL = "No demand family has a 7-day growth yet."  # the UI reads "Insufficient signal"
 NO_SETTINGS = "No workspace settings yet."
+MAIN = "Main"  # the list a star adds to (DEC-314 b)
 MARGIN = "Landed cost, default scenario: price - landed cost - fees - returns, before ads"
 NEEDS = {  # landed_cost.MISSING: what a margin needs, as the Profit tab words it
     "price_missing": "a market price",
@@ -100,6 +104,8 @@ class ProductHeader(BaseModel):
     supplier_count: Stat
     price_min_minor: Stat  # lowest live retail price across store listings
     price_max_minor: Stat
+    watched: bool  # this workspace's "Main" holds it: the star (DEC-314 b)
+    watchlist_ids: list[UUID]  # every list of this workspace holding it, in sub-nav order
 
 
 class Velocity(Sourced):
@@ -253,6 +259,34 @@ def listing_stats(rows: list[Row[Any]], now: datetime) -> dict[str, Stat]:
         "price_min_minor": stat(min(priced, key=low, default=None), low, NO_PRICE, now),
         "price_max_minor": stat(max(priced, key=high, default=None), high, NO_PRICE, now),
     }
+
+
+def watch_states(
+    session: Session, workspace_id: UUID, product_ids: Sequence[UUID]
+) -> dict[UUID, dict[UUID, str]]:
+    """The workspace's lists holding each product, id to name, in one query for any number of
+    products (DEC-322). An item of a product merged into it counts, as unstar removes it too."""
+    tree = (
+        select(Product.id.label("root"), Product.id)
+        .where(Product.id.in_(product_ids))
+        .cte("watched_tree", recursive=True)
+    )
+    tree = tree.union(select(tree.c.root, Product.id).where(Product.merged_into_id == tree.c.id))
+    rows = session.execute(
+        select(tree.c.root, Watchlist.id, Watchlist.name)
+        .join(WatchlistItem, WatchlistItem.product_id == tree.c.id)
+        .join(Watchlist, Watchlist.id == WatchlistItem.watchlist_id)
+        .where(WatchlistItem.workspace_id == workspace_id)
+        .order_by(Watchlist.position, Watchlist.created_at, Watchlist.id)
+    )
+    states: dict[UUID, dict[UUID, str]] = defaultdict(dict)
+    for root, watchlist_id, name in rows:
+        states[root][watchlist_id] = name
+    return states
+
+
+def watch(lists: dict[UUID, str]) -> dict[str, Any]:
+    return {"watched": MAIN in lists.values(), "watchlist_ids": list(lists)}
 
 
 def best_feature(product_id: InstrumentedAttribute[UUID] | UUID) -> Select[Any]:
@@ -546,6 +580,7 @@ def list_products(
         next_cursor = json.dumps([value, str(last.id)])
     snapshots = latest_snapshots(session, [row.id for row in page])
     margins = best_margins(session, principal.workspace_id, [row.id for row in page])
+    watches = watch_states(session, principal.workspace_id, [row.id for row in page])
     feeding = [row for row in sources if row.feeding]
     degraded = []
     for row in feeding:
@@ -574,7 +609,10 @@ def list_products(
     store_row = session.get(Store, store) if store is not None else None
     supplier_row = session.get(Supplier, supplier) if supplier is not None else None
     return DiscoverPage(
-        items=[item(row, snapshots[row.id], margins.get(row.id), by_key, now) for row in page],
+        items=[
+            item(row, snapshots[row.id], margins.get(row.id), watches[row.id], by_key, now)
+            for row in page
+        ],
         next_cursor=next_cursor,
         as_of=max((row.last_capture for row in feeding if row.last_capture), default=None),
         degraded=degraded,
@@ -587,6 +625,7 @@ def item(
     row: Row[Any],
     snapshots: list[Row[Any]],
     economics: RowMapping | None,
+    lists: dict[UUID, str],
     sources: dict[str, Source],
     now: datetime,
 ) -> DiscoverItem:
@@ -612,6 +651,7 @@ def item(
         best_margin_minor=margin,
         as_of=min((s.as_of for s in fed), default=None),
         stale=any(s.stale for s in fed),
+        **watch(lists),
     )
 
 
@@ -627,7 +667,8 @@ def csv_rows(
     snapshots = latest_snapshots(session, ids)
     margins = best_margins(session, workspace_id, ids)
     for row in chunk:
-        each = item(row, snapshots[row.id], margins.get(row.id), sources, now)
+        # The export has no watch columns, so no list holds anything here.
+        each = item(row, snapshots[row.id], margins.get(row.id), {}, sources, now)
         velocity = each.velocity if isinstance(each.velocity, Velocity) else None
         margin = each.best_margin_minor if isinstance(each.best_margin_minor, Margin) else None
         yield [
@@ -651,6 +692,38 @@ def csv_rows(
         ]
 
 
+def discover_items(
+    session: Session, workspace_id: UUID, product_ids: Sequence[UUID]
+) -> dict[UUID, DiscoverItem]:
+    """Discover's item for each product, a query per part for any number of them: what a
+    watchlist row shows (DEC-322)."""
+    feature = best_feature(Product.id).lateral()
+    rows = session.execute(
+        select(
+            Product.id,
+            Product.name,
+            Product.first_seen_at,
+            Image.url.label("image_url"),
+            Category.path.label("category"),
+            *feature.c,
+        )
+        .select_from(Product)
+        .outerjoin(feature, true())
+        .outerjoin(Image, Image.id == Product.main_image_id)
+        .outerjoin(Category, Category.id == Product.category_id)
+        .where(Product.id.in_(product_ids))
+    ).all()
+    snapshots = latest_snapshots(session, product_ids)
+    margins = best_margins(session, workspace_id, product_ids)
+    watches = watch_states(session, workspace_id, product_ids)
+    sources = {source.key: source for source in session.scalars(select(Source))}
+    now = datetime.now(UTC)
+    return {
+        row.id: item(row, snapshots[row.id], margins.get(row.id), watches[row.id], sources, now)
+        for row in rows
+    }
+
+
 @categories_router.get("", response_model=list[CategoryOption])
 def list_categories(session: DB) -> list[CategoryOption]:
     """Categories that hold a product Discover lists: Discover's category filter."""
@@ -668,7 +741,12 @@ def list_categories(session: DB) -> list[CategoryOption]:
     response_model=ProductHeader,
     responses={308: {"description": "Merged: the survivor's URL, query string kept."}},
 )
-def get_product(product_id: UUID, request: Request, session: DB) -> Response | ProductHeader:
+def get_product(
+    product_id: UUID,
+    request: Request,
+    session: DB,
+    principal: Annotated[Principal, Depends(current_principal)],
+) -> Response | ProductHeader:
     product = session.get(Product, product_id)
     if product is None:
         raise APIError(404, "not_found", "Product not found.")
@@ -687,6 +765,7 @@ def get_product(product_id: UUID, request: Request, session: DB) -> Response | P
         first_seen_at=product.first_seen_at,
         currency="USD",
         **listing_stats(latest_snapshots(session, [product.id])[product.id], datetime.now(UTC)),
+        **watch(watch_states(session, principal.workspace_id, [product.id])[product.id]),
     )
 
 

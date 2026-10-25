@@ -5,7 +5,7 @@ from uuid import UUID, uuid4
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from sqlalchemy import func, select
+from sqlalchemy import event, func, select
 from sqlalchemy.engine import Engine
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -90,17 +90,17 @@ def test_first_star_creates_main_and_a_second_is_a_noop(
     assert again.json() == first.json()  # added_at kept
     assert client.get("/v1/watchlists").json() == [main]
     page = client.get(f"/v1/watchlists/{main['id']}/items").json()
-    assert page == {
-        "items": [
-            {
-                "product_id": str(ids["p1"]),
-                "name": "Product 1",
-                "image_url": "https://cdn.example.test/p1.jpg",
-                "added_at": first.json()["added_at"],
-            }
-        ],
-        "next_cursor": None,
+    [row] = page["items"]
+    assert page["next_cursor"] is None
+    assert {key: row[key] for key in ("product_id", "name", "image_url", "added_at")} == {
+        "product_id": str(ids["p1"]),
+        "name": "Product 1",
+        "image_url": "https://cdn.example.test/p1.jpg",
+        "added_at": first.json()["added_at"],
     }
+    # The product as Discover reads it, starred (DEC-322).
+    assert (row["product"]["id"], row["product"]["title"]) == (str(ids["p1"]), "Product 1")
+    assert (row["product"]["watched"], row["product"]["watchlist_ids"]) == (True, [main["id"]])
 
     # A merged product stars its survivor, through a chain of merges.
     merged = client.put(f"/v1/products/{ids['merged']}/watch").json()
@@ -260,3 +260,97 @@ def test_workspace_b_never_sees_or_edits_a(
             )
         )
         session.commit()
+
+
+def statements(db_engine: Engine, request: Callable[[], object]) -> int:
+    """How many SQL statements `request` runs."""
+    count = 0
+
+    def capture(*_: object) -> None:
+        nonlocal count
+        count += 1
+
+    event.listen(db_engine, "before_cursor_execute", capture)
+    try:
+        request()
+    finally:
+        event.remove(db_engine, "before_cursor_execute", capture)
+    return count
+
+
+@pytest.mark.db
+def test_star_state_reads_on_the_product_page_and_discover_rows(
+    lists: tuple[As, dict[str, UUID]], db_engine: Engine
+) -> None:
+    """DEC-322: `watched` is on Main, `watchlist_ids` every list holding the product, or a
+    product merged into it, from one query per page whatever its size; workspace scoped."""
+    as_, ids = lists
+    with Session(db_engine) as session:
+        session.add_all(Product(name=f"Filler {i}") for i in range(50))
+        session.commit()
+    a = as_("a")
+    main = a.put(f"/v1/products/{ids['p1']}/watch").json()["watchlist_id"]
+    pet = a.post("/v1/watchlists", json={"name": "Pet"}).json()["id"]
+    a.post(f"/v1/watchlists/{pet}/items", json={"product_ids": [str(ids["p1"]), str(ids["p2"])]})
+    a.put(f"/v1/products/{ids['p3']}/watch")
+    with Session(db_engine) as session:  # merged after its star: the survivor reads starred
+        session.get_one(Product, ids["p3"]).merged_into_id = ids["p4"]
+        session.commit()
+
+    def state(client: TestClient, key: str) -> tuple[bool, list[str]]:
+        body = client.get(f"/v1/products/{ids[key]}").json()
+        return body["watched"], body["watchlist_ids"]
+
+    assert state(a, "p1") == (True, [main, pet])
+    assert state(a, "p2") == (False, [pet])  # on a list, but not starred
+    assert state(a, "p4") == (True, [main])
+    assert state(a, "p5") == (False, [])
+    feed = {row["id"]: row for row in a.get("/v1/products", params={"limit": 100}).json()["items"]}
+    assert len(feed) == 55  # p0..p2, p4, p5 and the fillers
+    for key in ("p1", "p2", "p4", "p5"):
+        assert (feed[str(ids[key])]["watched"], feed[str(ids[key])]["watchlist_ids"]) == state(
+            a, key
+        )
+    # B's reads never see A's lists.
+    b = as_("b")
+    assert state(b, "p1") == (False, [])
+    b_feed = b.get("/v1/products", params={"limit": 100}).json()["items"]
+    assert {(row["watched"], tuple(row["watchlist_ids"])) for row in b_feed} == {(False, ())}
+
+    # No query per row: a 50-row page runs as many statements as a 1-row page.
+    one = statements(db_engine, lambda: a.get("/v1/products", params={"limit": 1}))
+    fifty = statements(db_engine, lambda: a.get("/v1/products", params={"limit": 50}))
+    assert fifty == one
+
+
+@pytest.mark.db
+def test_items_read_the_product_now_and_a_merged_one_as_its_survivor(
+    lists: tuple[As, dict[str, UUID]], db_engine: Engine
+) -> None:
+    as_, ids = lists
+    with Session(db_engine) as session:
+        fillers = [Product(name=f"Filler {i}") for i in range(50)]
+        session.add_all(fillers)
+        session.commit()
+        filler_ids = [str(product.id) for product in fillers]
+    a = as_("a")
+    pet = a.post("/v1/watchlists", json={"name": "Pet"}).json()["id"]
+    url = f"/v1/watchlists/{pet}/items"
+    a.post(url, json={"product_ids": [str(ids["p2"]), str(ids["p3"])]})
+    with Session(db_engine) as session:  # p3 merged after the add: the item isn't rewritten
+        session.get_one(Product, ids["p3"]).merged_into_id = ids["p4"]
+        session.commit()
+    rows = {row["product_id"]: row for row in a.get(url).json()["items"]}
+    merged = rows[str(ids["p3"])]
+    assert (merged["name"], merged["product"]["id"]) == ("Product 3", str(ids["p4"]))
+    assert merged["product"]["title"] == "Product 4"
+    assert merged["product"]["watchlist_ids"] == [pet]  # through p3
+    assert rows[str(ids["p2"])]["product"]["id"] == str(ids["p2"])
+    for stat in ("store_count", "price_min_minor"):  # nothing collected: no source yet, never 0
+        assert rows[str(ids["p2"])]["product"][stat]["value"] is None
+
+    # No query per item either.
+    a.post(url, json={"product_ids": filler_ids})
+    one = statements(db_engine, lambda: a.get(url, params={"limit": 1}))
+    fifty = statements(db_engine, lambda: a.get(url, params={"limit": 50}))
+    assert fifty == one

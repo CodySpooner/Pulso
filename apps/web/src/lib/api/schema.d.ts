@@ -1793,6 +1793,10 @@ export interface components {
             title: string;
             /** Velocity */
             velocity: components["schemas"]["Velocity"] | components["schemas"]["NoSource"];
+            /** Watched */
+            watched: boolean;
+            /** Watchlist Ids */
+            watchlist_ids: string[];
         };
         /** DiscoverPage */
         DiscoverPage: {
@@ -2529,6 +2533,10 @@ export interface components {
             supplier_count: components["schemas"]["Sourced"] | components["schemas"]["NoSource"];
             /** Title */
             title: string;
+            /** Watched */
+            watched: boolean;
+            /** Watchlist Ids */
+            watchlist_ids: string[];
         };
         /** ProductHit */
         ProductHit: {
@@ -3984,6 +3992,7 @@ export interface components {
             image_url: string | null;
             /** Name */
             name: string;
+            product: components["schemas"]["DiscoverItem"];
             /**
              * Product Id
              * Format: uuid
