@@ -45,12 +45,13 @@ const planned = [
   { name: "TikTok ads", phase: 8, why: "Ads linked to the products they promote" },
 ];
 
-// First load: the loaded table and cards with one skeleton row per Phase 1 source, each as tall as a loaded
+// First load: the loaded table and cards with one skeleton row per seeded source, each as tall as a loaded
 // row (the name and type lines set it), so nothing below moves when the data lands (CLS < 0.1, imp-082).
-// ponytail: four rows fits Phase 1's seeded sources; derive the count if later phases make it vary.
-const loadingRows = [0, 1, 2, 3];
+// ponytail: five rows fit the seeded sources, Phase 1's four and AliExpress (p3-05, imp-372); add one when a
+// phase seeds another. A status note still adds its line when the data lands.
+const loadingRows = [0, 1, 2, 3, 4];
 // One bar per column, about as wide as its loaded content, so the header stays put too.
-const loadingCells = ["h-8 w-24", "h-4 w-48","h-4 w-28", "ml-auto h-4 w-24", "h-4 w-20", "h-4 w-4", "ml-auto h-4 w-8", "h-5 w-8", "ml-auto h-7 w-52"];
+const loadingCells = ["h-8.5 w-24", "h-4 w-48","h-4 w-28", "ml-auto h-4 w-24", "h-4 w-20", "h-4 w-4", "ml-auto h-4 w-8", "h-5 w-8", "ml-auto h-7 w-52"];
 
 const skeletonRows = loadingRows.map((i) => (
   <tr key={i} aria-hidden className="row-h-comfortable border-b border-border-subtle">
@@ -67,7 +68,8 @@ const pillSkeleton = <Skeleton className="h-5.5 w-18" />;
 const skeletonCards = loadingRows.map((i) => (
   <li key={i} aria-hidden className="flex flex-col gap-2 px-4 py-4">
     <div className="flex items-center justify-between gap-2">
-      <Skeleton className="h-8 w-32" />
+      {/* The card's name line is body size, outside zone-data: 38 px with the type line (imp-372). */}
+      <Skeleton className="h-9.5 w-32" />
       <Skeleton className="h-5.5 w-18" />
     </div>
     <Skeleton className="h-10 w-48" />
