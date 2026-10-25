@@ -19556,6 +19556,8 @@ export interface operations {
                 order?: "desc" | "asc";
                 cursor?: string | null;
                 limit?: number;
+                /** @description csv: every matching product in this sort, no cursor or limit (DEC-345) */
+                format?: "json" | "csv";
             };
             header?: never;
             path?: never;
@@ -19565,13 +19567,14 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Successful Response */
+            /** @description JSON, or with format=csv every matching product as a CSV download; an X-Unapplied header names the unapplied filters, as `unapplied` does. */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
                     "application/json": components["schemas"]["ScreenerPage"];
+                    "text/csv": string;
                 };
             };
             /** @description Unauthorized */
@@ -21380,6 +21383,8 @@ export interface operations {
                 stage?: ("idea" | "researching" | "testing" | "winner" | "killed") | null;
                 cursor?: number | null;
                 limit?: number;
+                /** @description csv: every matching test, newest first, no cursor or limit (DEC-345) */
+                format?: "json" | "csv";
             };
             header?: never;
             path?: never;
@@ -21389,13 +21394,14 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Successful Response */
+            /** @description JSON, or with format=csv every matching test as a CSV download. */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
                     "application/json": components["schemas"]["ProductTestPage"];
+                    "text/csv": string;
                 };
             };
             /** @description Unauthorized */
