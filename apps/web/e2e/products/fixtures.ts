@@ -213,9 +213,24 @@ export function discoverItem(i: number): S["DiscoverItem"] {
     price_min_minor: noStores ? none("No USD retail price observed yet.") : shop(low, 905000 + i),
     price_max_minor: noStores ? none("No USD retail price observed yet.") : shop(low + 1500 + (i % 3) * 1000, 906000 + i),
     velocity,
-    best_margin_minor: none("The landed-cost engine arrives with UX-8."),
+    best_margin_minor: margin(i, noStores, low),
     as_of: noStores ? at(9) : at(staleShop ? 74 : 9),
     stale: staleShop && !noStores,
+  };
+}
+
+/** Best margin of product `i` (DEC-265): no market price without stores, then duty not set, freight not quoted, or a
+ *  complete margin. */
+function margin(i: number, noStores: boolean, low: number): S["DiscoverItem"]["best_margin_minor"] {
+  const gap = (reason: string, code: string) => ({ value: null, reason, missing: [code] });
+  if (noStores) return gap("Needs a market price.", "price_missing");
+  if (i % 4 === 1) return gap("Needs a duty rate.", "duty_not_set");
+  if (i % 4 === 2) return gap("Needs a freight quote.", "freight_missing");
+  const value = Math.round(low * 0.38);
+  return {
+    value, margin_bps: Math.round((value * 10000) / low), supplier_listing_id: 907000 + i, source: "cj", source_name: "CJ Dropshipping",
+    as_of: at(9), raw_payload_id: 908000 + i, method: "Landed cost, default scenario: price - landed cost - fees - returns, before ads",
+    stale: false,
   };
 }
 

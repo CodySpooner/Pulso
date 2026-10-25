@@ -13,7 +13,7 @@ import { formatAgo, formatDelta, formatUtc } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 // openapi-fetch drops a key typed only `null` from responses, so each NoSource arrives as `{reason}` (DEC-238 g).
-type Loose<T> = T extends { reason: string } ? { reason: string; value?: null } : T;
+type Loose<T> = T extends { reason: string } ? Omit<T, "value"> & { value?: null } : T;
 export type Item = { [K in keyof components["schemas"]["DiscoverItem"]]: Loose<components["schemas"]["DiscoverItem"][K]> };
 /** Sources feeding the feed that are blocked or disabled, with the word the banner uses: a card they feed gets a red dot. */
 export type Paused = Map<string, string>;
@@ -22,6 +22,7 @@ const usd = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD",
 const money = (minor: number) => usd.format(minor / 100);
 const count = (n: number) => n.toLocaleString("en-US");
 const perWeek = (n: number) => `${count(n)}/7d`;
+const pct = (bps: number) => `${(bps / 100).toFixed(1)}%`;
 const day = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
 const leaf = (path: string | null) => path?.split(" > ").at(-1) ?? "Uncategorised";
 const sourced = (stats: Stat[]) => stats.filter((s): s is Exclude<Stat, { reason: string }> => !("reason" in s));
@@ -54,6 +55,26 @@ function Velocity({ item, now }: { item: Item; now: number }) {
       )}
     </span>
   );
+}
+
+/** The best complete supplier's landed margin, $ and % (DEC-265). R-16 withholds it otherwise; "Duty not set" names
+ *  the one gap Settings can close, and its card lists every gap. */
+function BestMargin({ item, now }: { item: Item; now: number }) {
+  const m = item.best_margin_minor;
+  if ("reason" in m) {
+    const duty = m.missing.includes("duty_not_set");
+    return (
+      <Metric
+        stat={m}
+        label="Best landed margin"
+        missing={duty ? "Duty not set" : "No source yet"}
+        format={money}
+        now={now}
+        className={cn(duty && "text-warning")}
+      />
+    );
+  }
+  return <Metric stat={m} label="Best landed margin" format={(v) => `${money(v)} · ${pct(m.margin_bps)}`} now={now} />;
 }
 
 /** G7, the momentum sort key, signed with ▲/▼ (never colour alone). */
@@ -143,7 +164,7 @@ export function ProductCard({ item, now, paused }: { item: Item; now: number; pa
           </dd>
           <dt>Margin</dt>
           <dd>
-            <Metric stat={item.best_margin_minor} label="Best landed margin" format={money} now={now} />
+            <BestMargin item={item} now={now} />
           </dd>
         </dl>
         <p className="mt-auto pt-1 text-micro">
@@ -281,7 +302,7 @@ export function ProductTable({
                 <Metric stat={item.supplier_count} label="Matched suppliers" format={count} now={now} />
               </td>
               <td className={cn(cell, "num")}>
-                <Metric stat={item.best_margin_minor} label="Best landed margin" format={money} now={now} />
+                <BestMargin item={item} now={now} />
               </td>
               <td className={cn(cell, "num text-muted-foreground")}>
                 <time dateTime={item.first_seen_at} title={formatUtc(item.first_seen_at)}>

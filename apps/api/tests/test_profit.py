@@ -102,7 +102,7 @@ def calc(api: TestClient, workspace_id: UUID, status: int = 200, **body: Any) ->
 
 
 def when(at: str | None) -> datetime | None:
-    return at and datetime.fromisoformat(at)
+    return datetime.fromisoformat(at) if at else None
 
 
 def default(answer: dict[str, Any]) -> dict[str, Any]:
