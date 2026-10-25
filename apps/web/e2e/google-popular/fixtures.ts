@@ -4,7 +4,7 @@ import type { components } from "../../src/lib/api/schema";
 import { healthySources, mockAdminApi, problem } from "../data-health/fixtures";
 import { PRODUCT_ID } from "../products/fixtures";
 
-// Synthetic GET /v1/popular-products pages (P2-29 b). The repo is public and Google's rows are internal use only, so
+// Synthetic GET /v1/popular-products pages (P2-29 b) and the workspace brand list (DEC-277). The repo is public and Google's rows are internal use only, so
 // no real export row: invented titles and brands. Dates sit around Data Health's NOW (2026-10-22), which
 // mockAdminApi pins with page.clock.
 
@@ -44,6 +44,7 @@ export function popularRow(rank: number, previous = true): S["PopularRow"] {
     title: `${TITLES[rank % TITLES.length]}${rank > TITLES.length ? ` (${Math.ceil(rank / TITLES.length)})` : ""}`,
     brand: major ? "Vantoro" : BRANDS[rank % BRANDS.length],
     major_brand: major,
+    hidden_by: major ? "major" : null,
     availability: AVAILABILITY[rank % 3 === 0 ? 1 : rank % 11 === 0 ? 2 : rank % 13 === 0 ? 3 : 0],
     price_min_minor: low,
     price_max_minor: low === null ? null : rank % 2 ? low + 1500 : low,
@@ -68,12 +69,37 @@ export interface PopularOptions {
   /** Never answer: the first-load skeleton stays. */
   hold?: boolean;
   pageSize?: number;
+  /** The workspace's brand rules by lower-case brand; the mock reads and writes it, so a test can check it. */
+  rules?: Map<string, S["BrandRule"]>;
+  /** Answer every brand rule change with this error status. */
+  writeStatus?: number;
 }
 
-/** The shell's admin calls and GET /v1/popular-products in pages of `pageSize` (cursor = offset). Returns the URLs. */
+/** A brand rule as the API returns it. */
+export const brandRule = (brand: string, action: "hide" | "show"): S["BrandRule"] => ({ brand, action, created_at: "2026-10-22T09:00:00Z" });
+
+/** The shell's admin calls, GET /v1/popular-products in pages of `pageSize` (cursor = offset) with the brand rules
+ * applied as the API does, and brand rule PUT and DELETE. Returns the popular-products URLs. */
 export async function mockPopularApi(page: Page, options: PopularOptions = {}) {
-  const { rows = 40, pageSize = 200 } = options;
+  const { rows = 40, pageSize = 200, rules = new Map<string, S["BrandRule"]>() } = options;
   const calls: URL[] = [];
+  await page.route(
+    (url) => url.pathname === "/api/v1/popular-products/brands",
+    async (route) => {
+      const request = route.request();
+      if (options.writeStatus && request.method() !== "GET")
+        return route.fulfill({ status: options.writeStatus, contentType: "application/problem+json", json: problem(options.writeStatus, "e2e-brands-write") });
+      if (request.method() === "PUT") {
+        const { brand, action } = request.postDataJSON() as S["BrandRuleIn"];
+        rules.set(brand.toLowerCase(), brandRule(brand, action));
+        return route.fulfill({ json: rules.get(brand.toLowerCase()) });
+      }
+      const brand = (new URL(request.url()).searchParams.get("brand") ?? "").toLowerCase();
+      const removed = rules.get(brand) ?? null;
+      rules.delete(brand);
+      return route.fulfill({ json: removed });
+    },
+  );
   await mockAdminApi(page, { sources: healthySources });
   await page.route(
     (url) => url.pathname === "/api/v1/popular-products",
@@ -85,8 +111,11 @@ export async function mockPopularApi(page: Page, options: PopularOptions = {}) {
         return route.fulfill({ status: options.status, contentType: "application/problem+json", json: problem(options.status, "e2e-popular-503") });
       const weeks = options.empty ? [] : options.stale ? ["2026-10-05", "2026-09-28"] : [LATEST, PREVIOUS];
       const all = url.searchParams.get("include_major_brands") === "true";
-      const report = options.empty ? [] : Array.from({ length: rows }, (_, i) => popularRow(i + 1, !options.noPrevious));
-      const shown = all ? report : report.filter((r) => !r.major_brand);
+      const report = (options.empty ? [] : Array.from({ length: rows }, (_, i) => popularRow(i + 1, !options.noPrevious))).map((r) => {
+        const rule = rules.get(r.brand?.toLowerCase() ?? "")?.action;
+        return { ...r, hidden_by: rule === "hide" ? ("you" as const) : r.major_brand && rule !== "show" ? ("major" as const) : null };
+      });
+      const shown = all ? report : report.filter((r) => !r.hidden_by);
       const offset = Number(url.searchParams.get("cursor") ?? 0);
       const end = offset + pageSize;
       const body: S["PopularPage"] = {
@@ -98,6 +127,7 @@ export async function mockPopularApi(page: Page, options: PopularOptions = {}) {
         next_cursor: end < shown.length ? String(end) : null,
         total: report.length,
         hidden: report.length - shown.length,
+        hidden_by_you: all ? 0 : report.filter((r) => r.hidden_by === "you").length,
         major_brand_rows: 10,
         previous_week: options.noPrevious || options.empty ? null : PREVIOUS,
         source: "merchant_bestsellers",

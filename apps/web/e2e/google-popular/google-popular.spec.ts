@@ -1,11 +1,12 @@
 import { expect, test, type Page } from "@playwright/test";
 
-import { CATEGORIES, LATEST, mockPopularApi } from "./fixtures";
+import { brandRule, CATEGORIES, LATEST, mockPopularApi } from "./fixtures";
 
-// P2-29 b (DEC-272) against synthetic report pages (the E2E auth bypass, never a database restore).
+// P2-29 b (DEC-272) and the brand list (DEC-277) against synthetic report pages (the E2E auth bypass, never a database
+// restore).
 const table = (page: Page) => page.getByRole("region", { name: "Google popular products" });
 const rows = (page: Page) => table(page).locator("tbody tr");
-const toggle = (page: Page) => page.getByRole("button", { name: /^Show major brands/ });
+const toggle = (page: Page) => page.getByRole("button", { name: /^Show hidden brands/ });
 
 test("one click from the sidebar opens the newest week with big brands hidden", async ({ page }) => {
   await mockPopularApi(page);
@@ -16,7 +17,7 @@ test("one click from the sidebar opens the newest week with big brands hidden", 
   await expect(page.getByLabel("Week", { exact: true })).toHaveValue(LATEST);
   await expect(page.getByLabel("Category", { exact: true })).toHaveValue(CATEGORIES[0]);
   await expect(page.getByRole("main")).toContainText("30 products, 10 from major brands hidden · Google Merchant Center Popular products, as of the week of Oct 19, 2026");
-  await expect(toggle(page)).toHaveAccessibleName("Show major brands (10 hidden)");
+  await expect(toggle(page)).toHaveAccessibleName("Show hidden brands (10)");
   // Signed change with a glyph, "New" in words, and a linked and an unlinked title.
   const first = rows(page).first();
   await expect(first.locator("td").nth(1)).toHaveText("▲+3 places");
@@ -26,7 +27,7 @@ test("one click from the sidebar opens the newest week with big brands hidden", 
   await expect(page.getByText("internal use only")).toBeVisible();
 });
 
-test("keyboard only: Tab reaches the toggle with a visible ring, and one Enter shows major brands", async ({ page }) => {
+test("keyboard only: Tab reaches the toggle with a visible ring, and one Enter shows hidden brands", async ({ page }) => {
   const calls = await mockPopularApi(page);
   await page.goto("/google-popular");
   await expect(rows(page)).toHaveCount(30);
@@ -99,5 +100,84 @@ test.describe("states", () => {
     await page.goto("/google-popular");
     await expect(page.getByText("Weekly change: no source yet.")).toBeVisible();
     await expect(rows(page).first().locator("td").nth(1)).toHaveText("—No source yet: the week of Oct 12, 2026 isn't imported");
+  });
+});
+
+test.describe("brand list (DEC-277)", () => {
+  const action = (page: Page, name: string) => table(page).getByRole("button", { name }).first();
+
+  test("one click hides a brand for the workspace, and Undo brings it back", async ({ page }) => {
+    const rules = new Map();
+    await mockPopularApi(page, { rules });
+    await page.goto("/google-popular");
+    await expect(rows(page)).toHaveCount(30);
+    await action(page, "Hide brand Kestrelle").click(); // the only click
+    await expect(rows(page)).toHaveCount(25);
+    await expect(table(page)).not.toContainText("Kestrelle");
+    expect(rules.get("kestrelle")?.action).toBe("hide");
+    await expect(page.getByRole("main")).toContainText("25 products, 15 hidden: 10 from major brands, 5 by you");
+    await expect(toggle(page)).toHaveAccessibleName("Show hidden brands (15)");
+    await page.getByRole("status").filter({ hasText: "Kestrelle hidden" }).getByRole("button", { name: "Undo" }).click();
+    await expect(rows(page)).toHaveCount(30);
+    expect(rules.has("kestrelle")).toBe(false);
+    await expect(page.getByRole("status").filter({ hasText: "Kestrelle shown again" })).toBeVisible();
+  });
+
+  test("a hidden brand comes back in two clicks, and a shown major brand stays with a chip", async ({ page }) => {
+    const rules = new Map([
+      ["ordwell", brandRule("Ordwell", "hide")],
+      ["vantoro", brandRule("Vantoro", "show")],
+    ]);
+    await mockPopularApi(page, { rules });
+    await page.goto("/google-popular");
+    await expect(rows(page)).toHaveCount(35); // Ordwell's 5 rows hidden; Vantoro's 10 shown despite the 10-row rule
+    await expect(rows(page).filter({ hasText: "Vantoro" }).first()).toContainText("Shown");
+    await expect(page.getByRole("main")).toContainText("35 products, 5 hidden by you");
+    await toggle(page).click(); // click 1
+    const ordwell = rows(page).filter({ hasText: "Ordwell" }).first();
+    await expect(ordwell).toContainText("Hidden");
+    await action(page, "Unhide brand Ordwell").click(); // click 2
+    await expect(ordwell).not.toContainText("Hidden");
+    expect(rules.has("ordwell")).toBe(false);
+    await toggle(page).click();
+    await expect(rows(page)).toHaveCount(40);
+  });
+
+  test("keyboard only: Tab reaches a row's Hide brand with a visible ring, Enter hides, focus moves to the next row", async ({ page }) => {
+    await mockPopularApi(page);
+    await page.goto("/google-popular");
+    await expect(rows(page)).toHaveCount(30);
+    const first = action(page, "Hide brand Kestrelle");
+    for (let i = 0; i < 80; i++) {
+      await page.keyboard.press("Tab");
+      if (await first.evaluate((el) => el === document.activeElement)) break;
+    }
+    await expect(first).toBeFocused();
+    await expect(first).toHaveCSS("opacity", "1");
+    expect(await first.evaluate((el) => getComputedStyle(el).outlineStyle)).not.toBe("none");
+    await page.keyboard.press("Enter");
+    await expect(rows(page)).toHaveCount(25);
+    await expect(action(page, "Hide brand Ordwell")).toBeFocused();
+  });
+
+  test("with hidden brands shown, a major brand is one click from always shown", async ({ page }) => {
+    const rules = new Map();
+    await mockPopularApi(page, { rules });
+    await page.goto("/google-popular?brands=all");
+    await expect(rows(page)).toHaveCount(40);
+    await expect(rows(page).nth(3)).toContainText("Major");
+    await action(page, "Always show brand Vantoro").click();
+    await expect(rows(page).nth(3)).toContainText("Shown");
+    expect(rules.get("vantoro")?.action).toBe("show");
+    await toggle(page).click();
+    await expect(rows(page)).toHaveCount(40); // nothing left to hide
+  });
+
+  test("a failed change puts the rows back and says why", async ({ page }) => {
+    await mockPopularApi(page, { writeStatus: 503 });
+    await page.goto("/google-popular");
+    await action(page, "Hide brand Kestrelle").click();
+    await expect(page.getByRole("status").filter({ hasText: "Couldn't change Kestrelle: The API is restarting. Try again." })).toBeVisible();
+    await expect(rows(page)).toHaveCount(30);
   });
 });

@@ -1,5 +1,6 @@
-"""GET /v1/popular-products (P2-29 b, DEC-267, DEC-272) on synthetic imports only: the repo is
-public and Google's rows are internal use only, so no real export row appears here."""
+"""GET /v1/popular-products (P2-29 b, DEC-267, DEC-272) and the workspace brand list (DEC-277) on
+synthetic imports only: the repo is public and Google's rows are internal use only, so no real
+export row appears here."""
 
 from collections.abc import Iterator
 from datetime import UTC, date, datetime, timedelta
@@ -21,6 +22,8 @@ from pulso_core.models import (
     PopularProduct,
     Product,
     RawPayload,
+    User,
+    Workspace,
 )
 
 MERCHANT = 7  # seeded source id (migration 0009)
@@ -265,3 +268,126 @@ def test_a_downloaded_again_report_shows_its_newest_capture_once(
         session.commit()
     page = get(api)
     assert [row["title"] for row in page["rows"]] == ["Example b"] and page["total"] == 1
+
+
+# The workspace brand list (DEC-277): hide a brand, or show one the major-brand rule hides.
+BRANDS = "/v1/popular-products/brands"
+
+
+def member(api: TestClient, db_engine: Engine) -> Principal:
+    """A real workspace and user (brand rules reference both), signed in as the caller."""
+    with Session(db_engine) as session, session.begin():
+        workspace, user = Workspace(name="W"), User(clerk_user_id=uuid4().hex)
+        session.add_all([workspace, user])
+        session.flush()
+        principal = Principal(user.id, workspace.id)
+    sign_in(api, principal)
+    return principal
+
+
+def sign_in(api: TestClient, principal: Principal) -> None:
+    assert isinstance(api.app, FastAPI)
+    api.app.dependency_overrides[current_principal] = lambda: principal
+
+
+def put(api: TestClient, brand: str, action: str) -> Any:
+    response = api.put(BRANDS, json={"brand": brand, "action": action})
+    assert response.status_code == 200, response.text
+    return response.json()
+
+
+def remove(api: TestClient, brand: str) -> Any:
+    response = api.delete(BRANDS, params={"brand": brand})
+    assert response.status_code == 200, response.text
+    return response.json()
+
+
+def rules(api: TestClient, query: str = "") -> list[tuple[str, str]]:
+    response = api.get(BRANDS + query)
+    assert response.status_code == 200, response.text
+    return [(item["brand"], item["action"]) for item in response.json()["items"]]
+
+
+def test_brand_rules_require_a_session(client: TestClient) -> None:
+    assert client.get(BRANDS).status_code == 401
+    assert client.put(BRANDS, json={"brand": "Acme", "action": "hide"}).status_code == 401
+    assert client.delete(BRANDS, params={"brand": "Acme"}).status_code == 401
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        {"brand": "", "action": "hide"},
+        {"brand": "Acme", "action": "mute"},
+        {"brand": "Acme"},
+        {"brand": "x" * 501, "action": "hide"},
+        {"brand": "Acme", "action": "hide", "workspace_id": str(uuid4())},
+    ],
+)
+def test_brand_rules_validate_the_body(client: TestClient, body: dict[str, Any]) -> None:
+    sign_in(client, Principal(uuid4(), uuid4()))
+    assert client.put(BRANDS, json=body).status_code == 422
+
+
+@pytest.mark.db
+def test_a_hidden_brand_is_hidden_for_this_workspace_only(
+    api: TestClient, db_engine: Engine
+) -> None:
+    seed(db_engine)
+    b = member(api, db_engine)
+    a = member(api, db_engine)
+    rule = put(api, "INDIE", "hide")  # any case: brands match case-insensitively
+    assert (rule["brand"], rule["action"]) == ("INDIE", "hide") and rule["created_at"]
+    page = get(api)
+    assert 3 not in [row["rank"] for row in page["rows"]]
+    assert (page["total"], page["hidden"], page["hidden_by_you"]) == (23, 11, 1)
+    shown = get(api, "?include_major_brands=true")
+    assert (len(shown["rows"]), shown["hidden"], shown["hidden_by_you"]) == (23, 0, 0)
+    why = {row["rank"]: row["hidden_by"] for row in shown["rows"]}
+    assert why == {**dict.fromkeys(range(1, 24)), 3: "you", **dict.fromkeys(range(5, 15), "major")}
+    assert rules(api) == [("INDIE", "hide")]
+
+    sign_in(api, b)  # another workspace still sees the brand, and can't remove A's rule
+    page = get(api)
+    assert 3 in [row["rank"] for row in page["rows"]]
+    assert (page["hidden"], page["hidden_by_you"]) == (10, 0)
+    assert rules(api) == []
+    assert remove(api, "indie") is None
+
+    sign_in(api, a)
+    assert 3 not in [row["rank"] for row in get(api)["rows"]]
+    assert remove(api, "Indie")["brand"] == "INDIE"  # the rule removed
+    assert 3 in [row["rank"] for row in get(api)["rows"]]
+    assert rules(api) == []
+    assert remove(api, "Indie") is None  # removing again is a no-op
+
+
+@pytest.mark.db
+def test_a_shown_brand_with_ten_rows_stays_visible(api: TestClient, db_engine: Engine) -> None:
+    seed(db_engine)
+    member(api, db_engine)
+    put(api, "bigco", "show")
+    page = get(api)
+    big = [row for row in page["rows"] if row["rank"] in range(5, 15)]
+    assert len(big) == 10 and all(r["major_brand"] and r["hidden_by"] is None for r in big)
+    assert (page["hidden"], page["hidden_by_you"]) == (0, 0)
+
+    put(api, "BigCo", "hide")  # one rule per brand: the newest action replaces it
+    assert rules(api) == [("BigCo", "hide")]
+    page = get(api)
+    assert [row["rank"] for row in page["rows"]] == [1, 2, 3, 4, *range(15, 24)]
+    assert (page["hidden"], page["hidden_by_you"]) == (10, 10)
+    shown = get(api, "?include_major_brands=true")
+    assert {row["hidden_by"] for row in shown["rows"] if row["major_brand"]} == {"you"}
+
+
+@pytest.mark.db
+def test_brand_rules_list_by_brand_in_pages(api: TestClient, db_engine: Engine) -> None:
+    member(api, db_engine)
+    for brand, action in (("Zeta", "hide"), ("acme", "show"), ("Mid", "hide")):
+        put(api, brand, action)
+    first = api.get(BRANDS, params={"limit": 2}).json()
+    assert [item["brand"] for item in first["items"]] == ["acme", "Mid"]
+    rest = api.get(BRANDS, params={"limit": 2, "cursor": first["next_cursor"]}).json()
+    assert ([item["brand"] for item in rest["items"]], rest["next_cursor"]) == (["Zeta"], None)
+    assert api.get(BRANDS, params={"cursor": "x"}).status_code == 422

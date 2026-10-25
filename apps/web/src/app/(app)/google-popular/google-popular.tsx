@@ -18,9 +18,13 @@ import type { components } from "@/lib/api/schema";
 import { formatUtc } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
+import { BrandToast, useBrandRules } from "./brands";
+import { ruleOf, type Action } from "./model";
+
 type Page = components["schemas"]["PopularPage"];
 type Row = components["schemas"]["PopularRow"];
 type Set = (next: Record<string, string | null>) => void;
+type Apply = (brand: string, next: Action | null, previous: Action | null) => void;
 
 const IMPORT = "/admin/data-health#import";
 const DAY = 86_400_000;
@@ -72,6 +76,7 @@ export function GooglePopular() {
     },
   );
   const { data, error } = query;
+  const brands = useBrandRules();
   if (!data)
     return query.isError ? (
       <section className={box}>
@@ -84,13 +89,21 @@ export function GooglePopular() {
   if (page.weeks.length === 0) return <NoImport />;
   const rows = data.pages.flatMap((p) => p.rows);
   const listed = page.total - page.hidden;
+  const [major, mine] = [page.hidden - page.hidden_by_you, page.hidden_by_you];
+  const hidden = !page.hidden
+    ? ""
+    : !mine
+      ? `, ${count(major)} from major brands hidden`
+      : !major
+        ? `, ${count(mine)} hidden by you`
+        : `, ${count(page.hidden)} hidden: ${count(major)} from major brands, ${count(mine)} by you`;
   return (
     <div className="flex flex-col gap-4">
       <Toolbar page={page} week={params.get("week")} all={all} set={set} />
       {page.as_of && (
         <p className="text-label text-subtle-foreground" aria-live="polite">
           {count(listed)} {listed === 1 ? "product" : "products"}
-          {page.hidden > 0 && `, ${count(page.hidden)} from major brands hidden`} · {page.source_name}, as of the{" "}
+          {hidden} · {page.source_name}, as of the{" "}
           <time dateTime={page.as_of}>{weekOf(page.as_of)}</time>
           {page.captured_at && (
             <>
@@ -123,7 +136,7 @@ export function GooglePopular() {
         <NoRows page={page} set={set} />
       ) : (
         <>
-          <Table rows={rows} page={page} />
+          <Table rows={rows} page={page} apply={brands.apply} />
           <LoadMore
             note={`${count(rows.length)} of ${count(listed)} loaded`}
             label="Load more"
@@ -135,6 +148,7 @@ export function GooglePopular() {
           />
         </>
       )}
+      <BrandToast note={brands.note} dismiss={brands.dismiss} />
     </div>
   );
 }
@@ -177,10 +191,15 @@ function Toolbar({ page, week, all, set }: { page: Page; week: string | null; al
           {!page.categories.includes(page.category) && <option value={page.category ?? ""}>{leaf(page.category)}</option>}
         </select>
       </Field>
-      <Button aria-pressed={all} onClick={() => set({ brands: all ? null : "all" })} className="aria-pressed:border-brand/40 aria-pressed:bg-brand-muted aria-pressed:text-foreground sm:ml-auto">
+      <Button
+        aria-pressed={all}
+        onClick={() => set({ brands: all ? null : "all" })}
+        title={`Brands with ${page.major_brand_rows} or more products in this report, and brands you hid`}
+        className="aria-pressed:border-brand/40 aria-pressed:bg-brand-muted aria-pressed:text-foreground sm:ml-auto"
+      >
         {all ? <Eye aria-hidden /> : <EyeOff aria-hidden />}
-        Show major brands
-        {!all && <span className="font-normal text-muted-foreground tabular-nums">({count(page.hidden)} hidden)</span>}
+        Show hidden brands
+        {!all && <span className="font-normal text-muted-foreground tabular-nums">({count(page.hidden)})</span>}
       </Button>
     </div>
   );
@@ -219,7 +238,7 @@ function Price({ row }: { row: Row }) {
 
 // Dense table: sticky header, tabular numbers. Rows never animate (Motion System rule 2). A row whose GTIN reaches a
 // live product links to it; the rest still show (DEC-267 c).
-function Table({ rows, page }: { rows: Row[]; page: Page }) {
+function Table({ rows, page, apply }: { rows: Row[]; page: Page; apply: Apply }) {
   const source = `${page.source_name} · ${page.as_of ? weekOf(page.as_of) : ""}${page.captured_at ? ` · imported ${formatUtc(page.captured_at)}` : ""}`;
   return (
     <div role="region" aria-label="Google popular products" tabIndex={0} className={cn(box, "relative max-h-[max(24rem,calc(100dvh-20rem))] overflow-auto overscroll-contain")}>
@@ -235,7 +254,7 @@ function Table({ rows, page }: { rows: Row[]; page: Page }) {
         </thead>
         <tbody>
           {rows.map((row) => (
-            <tr key={row.rank} className="row-h hover:bg-(--table-row-hover)">
+            <tr key={row.rank} className="group/row row-h hover:bg-(--table-row-hover)">
               <td className={cn(cell, "num text-muted-foreground")} title={source}>
                 {count(row.rank)}
               </td>
@@ -256,7 +275,8 @@ function Table({ rows, page }: { rows: Row[]; page: Page }) {
               <td className={cn(cell, "max-w-48")}>
                 <span className="flex min-w-0 items-center gap-1.5">
                   {row.brand ? <span className="truncate" title={row.brand}>{row.brand}</span> : <Missing reason="No brand in Google's report" />}
-                  {row.major_brand && <span className="rounded-sm border border-border px-1 text-micro text-muted-foreground">Major</span>}
+                  <BrandChip row={row} n={page.major_brand_rows} />
+                  {row.brand && <BrandAction row={row} brand={row.brand} apply={apply} />}
                 </span>
               </td>
               <td className={cn(cell, "text-muted-foreground")}>{row.availability ?? <Missing reason="No availability in Google's report" />}</td>
@@ -271,12 +291,64 @@ function Table({ rows, page }: { rows: Row[]; page: Page }) {
   );
 }
 
+function BrandChip({ row, n }: { row: Row; n: number }) {
+  const [label, title] =
+    row.hidden_by === "major"
+      ? ["Major", `Hidden by default: ${n} or more products in this report`]
+      : row.hidden_by === "you"
+        ? ["Hidden", "You hid this brand"]
+        : ruleOf(row) === "show"
+          ? ["Shown", "A major brand you chose to show"]
+          : [];
+  if (!label) return null;
+  return (
+    <span title={title} className="shrink-0 rounded-sm border border-border px-1 text-micro text-muted-foreground">
+      {label}
+    </span>
+  );
+}
+
+// One click hides a brand for this workspace (DEC-277), or brings back one the page would hide. Shown on row hover or
+// focus with a mouse, always on touch. A hidden row's button leaves with it, so focus moves to the next row's.
+function BrandAction({ row, brand, apply }: { row: Row; brand: string; apply: Apply }) {
+  const [label, Icon, next] =
+    row.hidden_by === "you" ? (["Unhide", Eye, null] as const) : row.hidden_by === "major" ? (["Always show", Eye, "show"] as const) : (["Hide", EyeOff, "hide"] as const);
+  return (
+    <button
+      type="button"
+      data-brand-action
+      aria-label={`${label} brand ${brand}`}
+      title={`${label} ${brand}`}
+      onClick={(e) => {
+        const region = e.currentTarget.closest<HTMLElement>("[role=region]");
+        const index = [...(region?.querySelectorAll("[data-brand-action]") ?? [])].indexOf(e.currentTarget);
+        apply(brand, next, ruleOf(row));
+        requestAnimationFrame(() => {
+          if (document.activeElement && document.activeElement !== document.body) return;
+          const buttons = region?.querySelectorAll<HTMLElement>("[data-brand-action]") ?? [];
+          (buttons[Math.min(index, buttons.length - 1)] ?? region)?.focus();
+        });
+      }}
+      className="relative hit-area ml-auto grid size-6 shrink-0 place-items-center rounded-sm text-muted-foreground opacity-0 transition-[color,background-color,opacity] duration-(--duration-fast) group-focus-within/row:opacity-100 group-hover/row:opacity-100 hover:bg-accent hover:text-foreground focus-visible:opacity-100 pointer-coarse:opacity-100"
+    >
+      <Icon className="size-3.5" aria-hidden />
+    </button>
+  );
+}
+
 function NoRows({ page, set }: { page: Page; set: Set }) {
   return (
     <section className={box}>
       {page.total > 0 ? (
-        <EmptyState icon={SearchX} headingLevel="h2" title={`All ${count(page.total)} products are from major brands`} action={<Button onClick={() => set({ brands: "all" })}>Show major brands</Button>}>
-          Every brand in this report has {page.major_brand_rows} or more products in it.
+        <EmptyState
+          icon={SearchX}
+          headingLevel="h2"
+          title={page.hidden_by_you ? `All ${count(page.total)} products are hidden` : `All ${count(page.total)} products are from major brands`}
+          action={<Button onClick={() => set({ brands: "all" })}>Show hidden brands</Button>}
+        >
+          {page.hidden_by_you
+            ? `Each brand here has ${page.major_brand_rows} or more products in this report, or you hid it. Show hidden brands, then unhide one from its row.`
+            : `Every brand in this report has ${page.major_brand_rows} or more products in it.`}
         </EmptyState>
       ) : (
         <EmptyState icon={SearchX} headingLevel="h2" title="No report for this week and category" action={<Button onClick={() => set({ week: null, category: null })}>Show the newest week</Button>}>
