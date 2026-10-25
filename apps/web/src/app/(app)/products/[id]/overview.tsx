@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { Box, ChevronRight, Megaphone, Store } from "lucide-react";
 
 import { useApiReady } from "@/components/data-health/api";
@@ -12,6 +13,7 @@ import type { components } from "@/lib/api/schema";
 import { formatDelta, formatUtc } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
+import { marginFix } from "./overview-model";
 import { card, newest, StatCard } from "./stat-card";
 import { TABS, type Tab } from "./tabs";
 
@@ -27,6 +29,9 @@ const ago = (days: number) => (days === 0 ? "Today" : days === 1 ? "1 day ago" :
 const day = new Intl.DateTimeFormat("en-US", { dateStyle: "medium", timeZone: "UTC" });
 const platform = (key: string) => (key.length <= 3 ? key.toUpperCase() : key[0].toUpperCase() + key.slice(1));
 const chip = "rounded-sm border px-1 font-sans text-micro font-normal";
+// A withheld margin's next action (imp-368): underlined like the tabs' own fixes, with a hit area on touch.
+const fixLink =
+  "relative hit-area inline-flex w-fit items-center gap-0.5 rounded-sm text-label font-medium text-foreground underline decoration-border-strong underline-offset-2 hover:decoration-current";
 // Card spans keep both grids full: phone 2 + 2 + 2 (price on its own row), desktop 3 + 2 (velocity wide).
 const SKELETON_SPANS = ["col-span-2 md:col-span-1", "", "", "", "md:col-span-2 3xl:col-span-1"];
 
@@ -56,9 +61,16 @@ export function Overview({ id, goTo }: { id: string; goTo: (tab: Tab) => void })
   const prices = [data.price_min_minor, data.price_max_minor];
   const cost = data.best_supplier_cost_minor;
   const velocity = data.velocity;
-  // Discover's best margin (imp-280). R-16 withholds it and the card names the gaps; duty is the one Settings closes.
+  // Discover's best margin (imp-280). R-16 withholds it and the card names the gaps, with one next action (imp-368).
   const margin = data.landed_margin_minor;
   const noDuty = "reason" in margin && margin.missing.includes("duty_not_set");
+  const fix = "reason" in margin && marginFix(margin.missing);
+  const fixBody = fix && (
+    <>
+      {fix.label}
+      <ChevronRight className="size-3.5" aria-hidden />
+    </>
+  );
   return (
     <div className="flex flex-col gap-4">
       {overview.isError && <StaleLine boxed what="Couldn't refresh the overview" error={error} asOf={now} retry={retry} />}
@@ -93,7 +105,24 @@ export function Overview({ id, goTo }: { id: string; goTo: (tab: Tab) => void })
           <StatCard label="Best supplier cost" stat={cost} now={now} detail={!("reason" in cost) && `Lowest in-stock unit cost · ${platform(cost.platform)}`}>
             <Metric stat={cost} label="Best supplier cost" format={money} now={now} />
           </StatCard>
-          <StatCard label="Landed margin" stat={margin} now={now} detail={!("reason" in margin) && `${pct(margin.margin_bps)} margin · before ads`}>
+          <StatCard
+            label="Landed margin"
+            stat={margin}
+            now={now}
+            detail={!("reason" in margin) && `${pct(margin.margin_bps)} margin · before ads`}
+            action={
+              fix &&
+              ("href" in fix ? (
+                <Link href={fix.href} className={fixLink}>
+                  {fixBody}
+                </Link>
+              ) : (
+                <button type="button" onClick={() => goTo(fix.tab)} className={fixLink}>
+                  {fixBody}
+                </button>
+              ))
+            }
+          >
             <Metric
               stat={margin}
               label="Landed margin"

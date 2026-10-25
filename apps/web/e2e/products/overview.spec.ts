@@ -1,6 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 
-import { mockProductApi, overviewNoDuty, overviewStale, overviewUnmatched, PRODUCT_ID } from "./fixtures";
+import { firstRun, mockSettingsApi } from "../settings/fixtures";
+import { mockProductApi, overviewNoDuty, overviewNoPrice, overviewNoSettings, overviewStale, overviewUnmatched, PRODUCT_ID } from "./fixtures";
 
 // UX-4: the Overview tab and the context rail, against fixture responses (the E2E auth bypass, never a database restore).
 const URL = `/products/${PRODUCT_ID}`;
@@ -63,6 +64,47 @@ test("the landed margin shows Discover's answer, or what it still needs", async 
   await page.goto(URL);
   await expect(grid(page).getByRole("button", { name: "Landed margin: No source yet" })).toBeVisible();
   await expect(grid(page)).toContainText("Needs a market price, a supplier price and a freight quote.");
+});
+
+test("each withheld margin's one next action lands on its fix in one click", async ({ page }) => {
+  // imp-368: duty opens Settings with the rate box open and focused, ready to type.
+  await mockProductApi(page, { overview: overviewNoDuty });
+  await mockSettingsApi(page, { settings: firstRun });
+  await page.goto(URL);
+  await grid(page).getByRole("link", { name: "Set duty" }).click();
+  await expect(page).toHaveURL("/settings#duty");
+  await expect(page.getByRole("radio", { name: "Set a rate" })).toBeChecked();
+  await expect(page.getByRole("textbox", { name: /^Default duty rate/ })).toBeFocused();
+
+  // No supplier or quote: Suppliers, by keyboard from the margin's number, with focus on the tab it opened.
+  await page.unrouteAll({ behavior: "ignoreErrors" });
+  await mockProductApi(page, { overview: overviewUnmatched });
+  await page.goto(URL);
+  await grid(page).getByRole("button", { name: "Landed margin: No source yet" }).focus();
+  await page.keyboard.press("Tab");
+  const suppliers = grid(page).getByRole("button", { name: "Open Suppliers" });
+  await expect(suppliers).toBeFocused();
+  await expect(suppliers).toHaveCSS("outline-style", "solid");
+  await page.keyboard.press("Enter");
+  await expect(page).toHaveURL(`${URL}?tab=suppliers`);
+  await expect(page.getByRole("tab", { name: "Suppliers" })).toBeFocused();
+
+  // Only the price is missing: Profit, where the sell price is typed.
+  await page.unrouteAll({ behavior: "ignoreErrors" });
+  await mockProductApi(page, { overview: overviewNoPrice });
+  await page.goto(URL);
+  await grid(page).getByRole("button", { name: "Enter a price" }).click();
+  await expect(page).toHaveURL(`${URL}?tab=profit`);
+  await expect(page.getByRole("tab", { name: "Profit" })).toBeFocused();
+
+  // No settings row yet: Settings, whose first read creates it.
+  await page.unrouteAll({ behavior: "ignoreErrors" });
+  await mockProductApi(page, { overview: overviewNoSettings });
+  await mockSettingsApi(page, { settings: firstRun });
+  await page.goto(URL);
+  await grid(page).getByRole("link", { name: "Open Settings" }).click();
+  await expect(page).toHaveURL("/settings");
+  await expect(page.getByRole("heading", { name: "Duty default" })).toBeVisible();
 });
 
 test("where it appears counts per source and opens the Suppliers and Sellers tabs", async ({ page }) => {

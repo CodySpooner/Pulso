@@ -12,13 +12,14 @@ type Sourced = Exclude<Stat, { reason: string }>;
 export const newest = (stats: Stat[]) =>
   stats.filter((s): s is Sourced => !("reason" in s)).sort((a, b) => Date.parse(b.as_of) - Date.parse(a.as_of))[0];
 
-/** A stat card: label, value, an optional detail line, and the value's source and age, or the reason it has none.
- *  Children of a `<dl>`. */
+/** A stat card: label, value, an optional detail line, the value's source and age, or the reason it has none, and an
+ *  optional next action after that reason. Children of a `<dl>`. */
 export function StatCard({
   label,
   stat,
   now,
   detail,
+  action,
   className,
   children,
 }: {
@@ -26,6 +27,7 @@ export function StatCard({
   stat: Stat;
   now: number;
   detail?: React.ReactNode;
+  action?: React.ReactNode;
   className?: string;
   children: React.ReactNode;
 }) {
@@ -45,6 +47,7 @@ export function StatCard({
           </>
         )}
       </dd>
+      {action && <dd className="mt-0.5">{action}</dd>}
     </div>
   );
 }

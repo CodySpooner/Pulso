@@ -99,6 +99,10 @@ export const overviewUnmatched: S["ProductOverview"] = {
 
 /** Costed, but the workspace has no duty rate: R-16 withholds the margin (imp-280). */
 export const overviewNoDuty: S["ProductOverview"] = { ...overview, landed_margin_minor: gap("Needs a duty rate.", "duty_not_set") };
+/** Costed from a supplier, but no store price to sell at (imp-368). */
+export const overviewNoPrice: S["ProductOverview"] = { ...overview, landed_margin_minor: gap("Needs a market price.", "price_missing") };
+/** The workspace has no settings row yet: no gaps named (DEC-299 b). */
+export const overviewNoSettings: S["ProductOverview"] = { ...overview, landed_margin_minor: gap("No workspace settings yet.") };
 
 /** The store crawler last captured 3 days ago: the retail stats are stale. */
 export const overviewStale: S["ProductOverview"] = {

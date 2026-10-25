@@ -49,7 +49,9 @@ export function SettingsForm() {
   // New server data replaces the form only while it holds no unsaved change (React's adjust-state-during-render).
   if (query.data && query.data !== synced && (!draft || !synced || !isDirty(draft, synced))) {
     setSynced(query.data);
-    setDraft(toDraft(query.data));
+    // A withheld margin's "Set duty" (the product Overview, imp-368) arrives at #duty: the first draft opens the rate.
+    const forDuty = !draft && window.location.hash === "#duty";
+    setDraft(forDuty ? { ...toDraft(query.data), dutySet: true } : toDraft(query.data));
   }
 
   const dirty = !!draft && !!synced && isDirty(draft, synced);
@@ -123,6 +125,12 @@ export function SettingsForm() {
     window.addEventListener("beforeunload", warn);
     return () => window.removeEventListener("beforeunload", warn);
   }, [dirty]);
+
+  // Arriving at #duty, the first draft opened the rate (above); it takes focus once, as the Set duty check gives it.
+  const loaded = !!draft;
+  useEffect(() => {
+    if (loaded && window.location.hash === "#duty") document.getElementById(inputId("duty_default_bps"))?.focus();
+  }, [loaded]);
 
   if (!draft || !synced) {
     return query.isError ? (
