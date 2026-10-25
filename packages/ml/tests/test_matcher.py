@@ -7,7 +7,7 @@ from typing import Any
 from uuid import UUID, uuid4
 
 import pytest
-from sqlalchemy import Engine, func, select, text
+from sqlalchemy import Engine, func, select, text, update
 from sqlalchemy.orm import Session
 
 from pulso_core.models import (
@@ -27,7 +27,7 @@ from pulso_core.models import (
 from pulso_core.models.catalog import EMBEDDING_DIM
 from pulso_ml.matching.decisions import accept, membership, merge, reject, split
 from pulso_ml.matching.matcher import GTIN_VERSION, MATCHING_LOCK, Counts, match, neighbours
-from pulso_ml.matching.score import CONFIG
+from pulso_ml.matching.score import CONFIG, combined
 
 pytestmark = pytest.mark.db
 
@@ -714,3 +714,155 @@ def test_decisions_and_the_matcher_share_one_transaction_lock(
     session.commit()
     with db_engine.connect() as other:
         assert other.scalar(select(func.pg_try_advisory_xact_lock(MATCHING_LOCK))) is True
+
+
+def test_xr24_top_k_counts_listings_not_image_rows(world: World) -> None:
+    a, b = world.store(), world.store()
+    source, target = world.listing(a, 0), world.listing(b, 0, 4)  # $10 each, cos 0.9976
+    crowds = world.listing(b, 0, 0.5, price=100000), world.listing(a, 0, 5, price=100000)
+    for crowd, degrees in zip(crowds, (0.5, 5), strict=True):
+        for i in range(CONFIG.top_k):  # top_k more embedded images each
+            world.session.add(
+                Image(
+                    listing_id=crowd.id,
+                    url=f"https://example.test/{crowd.id}/{i}.jpg",
+                    position=2 + i,
+                    embedding=direction(0, degrees + i * 0.001),
+                )
+            )
+    world.run()
+    first, second = products(world.session, source, target)
+    assert first is not None and first == second
+
+
+def test_xr25_a_pending_pair_rescored_below_the_band_leaves_the_queue(world: World) -> None:
+    a, b = world.listing(world.store(), 0), world.listing(world.store(), 0, QUEUE_ANGLE)
+    world.run()
+    row = candidate(world.session, a, b)
+    assert row is not None and (row.status, row.score) == ("pending", Decimal("0.8300"))
+    world.session.execute(
+        update(Image).where(Image.listing_id == b.id).values(embedding=direction(0, 60))
+    )
+    b.title_embedding = direction(0, 60)
+    counts = world.run()
+    row = candidate(world.session, a, b)
+    assert row is not None and counts.discarded == 1
+    assert (row.status, row.score) == ("rejected", Decimal("0.5750"))
+    assert row.decided_at is not None
+    assert products(world.session, a, b) == [None, None]
+    assert world.session.scalar(select(func.count()).select_from(MatchDecision)) == 0
+
+
+def test_xr25_b_pending_pair_already_on_one_product_is_settled_accepted(world: World) -> None:
+    x, y = world.listing(world.store(), 0, 20), world.listing(world.store(), 0, -20)
+    world.run()
+    row = candidate(world.session, x, y)
+    assert row is not None and (row.status, row.score) == ("pending", Decimal("0.8011"))
+    product = world.product()
+    world.listing(world.store(), 0, product=product)  # 0.949 to both
+    world.run()
+    assert products(world.session, x, y) == [product, product]
+    row = candidate(world.session, x, y)
+    assert row is not None and row.status == "accepted" and row.decided_at is not None
+    decisions = world.session.scalars(select(MatchDecision.candidate_id)).all()
+    assert len(decisions) == 2 and row.id not in decisions  # nothing moved for this pair
+    candidates = table(world.session, MatchCandidate)
+    world.run()
+    assert table(world.session, MatchCandidate) == candidates
+
+
+def test_xr26_one_bad_row_never_stops_the_run(
+    world: World, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    huge = world.listing(world.store(), 0, price=2**63 - 1, currency="GBP")  # past BIGINT in USD
+    plain = world.listing(world.store(), 0)
+    zero = world.listing(world.store(), 2)
+    zero.title_embedding = [0.0] * EMBEDDING_DIM  # pgvector's cosine with it is NaN
+    titled = world.listing(world.store(), 2)
+    later = (world.listing(world.supplier(), 1), world.listing(world.store(), 1, price=2500))
+    monkeypatch.setattr(world, "rates", lambda session, quote, day: FxRate(rate=Decimal("0.79")))
+    world.run()
+    session = world.session
+    unpriced = candidate(session, huge, plain)
+    assert unpriced is not None and (unpriced.price_sane, unpriced.status) == (None, "pending")
+    untitled = candidate(session, zero, titled)
+    assert untitled is not None and untitled.title_cos is None  # missing, not NaN
+    assert untitled.score == Decimal("1.0000")
+    first, second = products(session, *later)
+    assert first is not None and first == second
+
+
+def test_xr28_matcher_compares_prices_in_usd_never_raw_minor_units(world: World) -> None:
+    cost = world.listing(world.supplier(), 0, price=1000)  # $10.00
+    retail = world.listing(world.store(), 0, price=1500, currency="JPY")  # $10.00 at 150, not 1.5x
+    world.run()
+    row = candidate(world.session, cost, retail)
+    assert row is not None and (row.status, row.price_sane) == ("pending", False)
+    assert products(world.session, cost, retail) == [None, None]
+
+
+def test_xr28_the_latest_decision_decides_whether_a_listing_is_manual(world: World) -> None:
+    session = world.session
+    product = world.product()
+    held = world.listing(world.store(), 0)
+    world.listing(world.store(), 0, product=product)
+    session.add_all(
+        [
+            MatchDecision(
+                actor="algo",
+                action="link",
+                listing_id=held.id,
+                to_product_id=product,
+                decided_at=SEEN,
+            ),
+            MatchDecision(
+                actor="owner",
+                action="unlink",
+                listing_id=held.id,
+                from_product_id=product,
+                decided_at=SEEN + timedelta(days=1),
+            ),
+        ]
+    )
+    world.run()
+    assert products(session, held) == [None]
+
+
+def test_xr28_a_rejected_partner_on_a_product_merged_into_the_target_vetoes(
+    world: World,
+) -> None:
+    session = world.session
+    target = world.product()
+    merged_in = world.product(merged_into=target)
+    mover = world.listing(world.store(), 0)
+    partner = world.listing(world.store(), 0, product=merged_in)
+    on_target = world.listing(world.store(), 0, product=target)
+    low, high = sorted((mover.id, partner.id))
+    session.add(
+        MatchCandidate(
+            listing_a_id=low,
+            listing_b_id=high,
+            score=Decimal(1),
+            scorer_version="x",
+            status="rejected",
+        )
+    )
+    world.run()
+    assert products(session, mover) == [None]
+    assert candidate(session, mover, on_target).status == "pending"  # type: ignore[union-attr]
+
+
+def test_xr28_a_stored_row_rescores_to_its_stored_score(world: World) -> None:
+    a = world.listing(world.store(), 0)
+    b = world.listing(world.store(), 0, math.degrees(math.acos(0.899949)))
+    b.title_embedding = direction(0, math.degrees(math.acos(0.9)))
+    world.run()
+    row = candidate(world.session, a, b)
+    assert row is not None
+    assert (row.image_cos, row.title_cos, row.phash_sim) == (
+        Decimal("0.8999"),
+        Decimal("0.9000"),
+        Decimal("1.0000"),
+    )
+    assert row.score == combined(CONFIG, row.image_cos, row.title_cos, row.phash_sim)
+    assert row.score == Decimal("0.9149")

@@ -41,7 +41,10 @@ CONFIG = ScorerConfig(
 
 
 def stored(value: float | Decimal | None) -> Decimal | None:
-    return None if value is None else Decimal(value).quantize(STORED, ROUND_HALF_EVEN)
+    """At stored precision; a non-finite value (a zero-norm vector's NaN cosine) is missing."""
+    if value is None or not (number := Decimal(value)).is_finite():
+        return None
+    return number.quantize(STORED, ROUND_HALF_EVEN)
 
 
 def combined(
