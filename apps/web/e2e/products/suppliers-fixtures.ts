@@ -22,9 +22,10 @@ const cj = (value: number, hoursAgo = 9, raw: number | null = 901877) => ({
  *  5% returns, $15 CPA). */
 function costed(id: number, unit: number, freight: number | null, method: string | null, days: [number, number] | null): Calc {
   const duty = Math.round(unit * 0.2);
-  const sources = { ...complete.sources, unit_cost: { ...complete.sources.unit_cost, raw_payload_id: id * 10 } };
+  const sources: Calc["sources"] = { ...complete.sources, unit_cost: { ...complete.sources.unit_cost, raw_payload_id: id * 10 } };
   if (freight === null) {
-    const { freight: _, ...rest } = sources;
+    const rest = { ...sources };
+    delete rest.freight;
     return {
       ...complete, supplier_listing_id: id, goods_minor: unit, duty_minor: duty, freight_minor: null, method: null, freight_min_days: null,
       freight_max_days: null, landed_cost_minor: null, margin_minor: null, margin_bps: null, net_minor: null, net_bps: null,
@@ -71,7 +72,8 @@ export const SUPPLIERS: Row[] = [best, dear, fastest, unquoted, soldOut];
 export const suppliers: S["SuppliersPage"] = { country: "US", rows: SUPPLIERS, next_cursor: null, picks: { best_margin: best, fastest }, as_of: at(3) };
 
 const withoutPrice = (r: Row): Row => {
-  const { price_minor: _, ...sources } = r.cost.sources;
+  const sources = { ...r.cost.sources };
+  delete sources.price_minor;
   return {
     ...r, picks: r.picks.filter((p) => p !== "best_margin"),
     cost: {

@@ -124,7 +124,7 @@ export function SuppliersTab({ id, goTo }: { id: string; goTo: (tab: Tab) => voi
               )}
             </p>
             <span className="text-micro text-subtle-foreground max-md:hidden" aria-hidden>
-              <Kbd>J</Kbd> <Kbd>K</Kbd> move · <Kbd>Enter</Kbd> opens in Profit · <Kbd>O</Kbd> opens the supplier
+              <Kbd>J</Kbd> <Kbd>K</Kbd> move · <Kbd>Enter</Kbd> opens in Profit · <Kbd>O</Kbd> opens the listing
             </span>
           </div>
           <SupplierTable rows={first ? rows : null} chosen={chosen} now={now} open={open} />
@@ -192,8 +192,8 @@ function PickCard({ kind, row, why, now, open }: { kind: "best_margin" | "fastes
               </>
             ) : (
               <>
-                <span className="text-foreground">{days(calc.freight_min_days, calc.freight_max_days)}</span>
-                <span className="font-sans text-label font-normal text-muted-foreground">{calc.method} to the US</span>
+                <span className="text-foreground">{days(calc.freight_min_days, calc.freight_max_days)?.replace(/ d$/, "")}</span>
+                <span className="font-sans text-label font-normal text-muted-foreground">days by {calc.method} to the US</span>
               </>
             )}
           </div>
@@ -278,11 +278,18 @@ function StaleInputs({ rows, now }: { rows: Row[]; now: number }) {
   );
 }
 
-function MarginValue({ calc, now }: { calc: Calc; now: number }) {
+/** `quiet` (the supplier list): only a loss is coloured, so the colour marks the rows that need a look. */
+function MarginValue({ calc, now, quiet = false }: { calc: Calc; now: number; quiet?: boolean }) {
   const delta = formatDelta(calc.margin_bps! / 100, "up");
+  const plain = quiet && delta.tone !== "negative";
   return (
-    <Amount label="Margin before ads" text={`${delta.text}%`} hint={<Computed formula={`(${MARGIN}) ÷ sell price.`} calc={calc} now={now} />} className={tones[delta.tone]}>
-      {delta.glyph && (
+    <Amount
+      label="Margin before ads"
+      text={`${delta.text}%`}
+      hint={<Computed formula={`(${MARGIN}) ÷ sell price.`} calc={calc} now={now} />}
+      className={plain ? "text-foreground" : tones[delta.tone]}
+    >
+      {delta.glyph && !plain && (
         <span aria-hidden className="mr-0.5 text-[0.7em]">
           {delta.glyph}
         </span>
@@ -294,7 +301,7 @@ function MarginValue({ calc, now }: { calc: Calc; now: number }) {
 
 /** A margin, or why it is withheld: every missing input in words, by hover, focus or tap (R-16). */
 function Margin({ calc, now }: { calc: Calc; now: number }) {
-  if (calc.complete && calc.margin_bps !== null) return <MarginValue calc={calc} now={now} />;
+  if (calc.complete && calc.margin_bps !== null) return <MarginValue calc={calc} now={now} quiet />;
   return (
     <TapTooltip
       hint={
@@ -457,8 +464,8 @@ function Badges({ row, chosen }: { row: Row; chosen: number | null }) {
         </span>
       )}
       {row.picks.includes("fastest") && (
-        <span className={cn(badge, "bg-info/12 text-foreground")}>
-          <Timer className="size-3 text-info" aria-hidden />
+        <span className={cn(badge, "bg-brand-muted text-foreground")}>
+          <Timer className="size-3 text-brand" aria-hidden />
           Fastest
         </span>
       )}
@@ -494,7 +501,7 @@ function Actions({ row, open }: { row: Row; open: (row: Row) => void }) {
   return (
     <span className="inline-flex items-center gap-1">
       <Button asChild variant="ghost" size="icon-sm" className="relative hit-area">
-        <a href={row.url} target="_blank" rel="noopener noreferrer" aria-label={`Open ${row.supplier_name}'s listing on ${platform(row)}`} title="Open the supplier's page">
+        <a href={row.url} target="_blank" rel="noopener noreferrer" aria-label={`Open ${row.supplier_name}'s listing on ${platform(row)}`} title={`Open the listing on ${platform(row)}`}>
           <ExternalLink aria-hidden />
         </a>
       </Button>
@@ -506,7 +513,7 @@ function Actions({ row, open }: { row: Row; open: (row: Row) => void }) {
   );
 }
 
-/** j/k or arrows move between rows, Enter opens the supplier in Profit, o opens its page (vault Product Page -
+/** j/k or arrows move between rows, Enter opens the supplier in Profit, o opens its listing (vault Product Page -
  *  Suppliers, Keyboard). Inner controls keep their own keys. */
 function onRowKey(e: React.KeyboardEvent<HTMLElement>, row: Row, open: (row: Row) => void) {
   if (e.target !== e.currentTarget) return;

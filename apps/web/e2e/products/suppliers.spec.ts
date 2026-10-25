@@ -19,7 +19,7 @@ test("two clicks from the product page reach a supplier's profit, with that supp
   await expect(pick(page, "Best margin")).toContainText("CJ Dropshipping");
   await expect(pick(page, "Best margin")).toContainText("▲+50.1%$15.03 per order before ads");
   await expect(pick(page, "Fastest shipping")).toContainText("Shenzhen Lamp Co.");
-  await expect(pick(page, "Fastest shipping")).toContainText("3–5 dYunExpress to the US");
+  await expect(pick(page, "Fastest shipping")).toContainText("3–5days by YunExpress to the US");
   await rowOf(page, "Shenzhen Lamp Co.").getByRole("button", { name: "Open Shenzhen Lamp Co. in Profit" }).click(); // click 2
   await expect(page).toHaveURL(`/products/${PRODUCT_ID}?tab=profit&supplier=88140`);
   await expect(page.getByRole("tab", { name: "Profit" })).toBeFocused();
