@@ -40,5 +40,5 @@ def test_missing_adapter_and_disabled_source_fail_closed(
     run = enqueue_run(session, source_id=1, trigger="manual", publish=lambda _: None)
     tasks.collect_run(run.id)
     session.refresh(run)
-    assert run.status == "failed" and run.error_code == "ValueError"
+    assert run.status == "failed" and run.error_code == "source_unavailable"
     factory.assert_not_called()

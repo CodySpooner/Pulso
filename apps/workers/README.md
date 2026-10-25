@@ -42,9 +42,15 @@ P1-27's fixed-text error wrapper and keeping worker/ML packages out of the API i
 
 Adapter lanes register `tasks.PLANS[source_key] = factory`. A factory receives
 `(session, source, job)` and returns `Plan(adapter, targets, wall_time_seconds,
-request_hook=None, collector_max_retries=None, finalize=None)`. Jobs are `catalog`, `variants_js`, `freight`, `trends`, `fx`;
+request_hook=None, collector_max_retries=None, finalize=None, collect=None)`. Jobs are `catalog`, `variants_js`, `trends`, `fx`, `images`;
 manual runs default to catalog (Trends/FX use their own job). Registration must be
 imported at worker startup. Missing adapters fail the queued run without fetching.
+Pre-run refusals store a fixed code and message (DEC-321): `source_unavailable`,
+`unknown_job` (the factory raised `UnknownJob`), `plan_failed` (any other factory error,
+message names only its class) and `plan_budget_invalid`. CJ registers `catalog` only: `collect`
+hands the run to `cj.collect`, so its guard, points, pacing and block rules wrap `execute_run`;
+the run's first request is the captured `getCategory` tree. CJ `freight` is unscheduled until
+a tracked-product selection exists (DEC-321b).
 Frankfurter and Shopify catalog are registered. Shopify's factory preloads successful
 captures and pacing evidence; both its `collect()` wrapper and worker plan use zero
 request retries and the same successful-store delisting/freshness finalizer (DEC-110).

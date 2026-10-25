@@ -135,3 +135,11 @@ This file holds deferred ideas and research extras that are **not** in the §11 
 | Deferred work | Evidence | When | Notes |
 |---|---|---|---|
 | Revisit Discover's aggregate sorts (momentum, fewest stores) and the price / has-stores filters | DEC-239 (g), DEC-041; lead answer on p2-03 | When unmerged products pass about 50k | Today each page runs LATERAL aggregates over the filtered set, then ORDER BY + keyset in SQL. Options then: a materialized per-product sort row refreshed by the feature job, or indexes on a denormalized store count. Only `newest` has an index (0006) |
+
+## data-07 CJ worker plan follow-ups (2026-10-25)
+
+| Deferred work | Evidence | When | Notes |
+|---|---|---|---|
+| CJ tracked-product selection and the freight / details-stock jobs | DEC-112, DEC-321b; `docs/reports/data-07.md` | With watchlists × CJ matching, or an owner selection rule (it spends points: owner) | Then restore `("cj", "freight", 30, 4, "1")` in `COLLECTION_SLOTS` and register `freight` (and the vault's daily `cj_details_stock`) in `cj_plan`. Points: 2 × 10 per tracked product, 10 per freight quote |
+| Weekly `cj_categories` tree job (vault Schedule: Sun 00:30) | DEC-321a | When daily tree requests matter | Each catalog run now sends one free `getCategory`; a stored weekly tree would save it but needs a reader for the stored raw payload |
+| PostgreSQL-backed CJ registered-plan test | `packages/sources/tests/cj/test_registered_plan.py` runs on SQLite | Next CJ worker change | Same flow under real locks and JSON types |

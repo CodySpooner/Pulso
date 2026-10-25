@@ -223,6 +223,29 @@ class CJAdapter:
         return UpsertStats(inserted=inserted, unchanged=len(records) - inserted)
 
 
+class CatalogAdapter(CJAdapter):
+    """Scheduled catalog: a captured getCategory first, then the approved names' panels."""
+
+    def __init__(self, names: Sequence[str]) -> None:
+        super().__init__()
+        self.names, self.tree = list(names), b""
+
+    def parse(self, body: bytes) -> list[Record]:
+        data = json.loads(body)
+        if isinstance(data, dict) and isinstance(data.get("data"), list):  # listV2 is a page
+            self.tree = body
+            return []
+        return parse(body)
+
+    def targets(self) -> list[Target]:
+        def requests() -> Iterator[Request]:
+            # The tree goes through the run's hook, so block, disable and raw capture apply.
+            yield Request(params={"endpoint": "/product/getCategory"})
+            yield from category_plan(self.tree, self.names)[0].requests
+
+        return [Target("cj_category_resolution", "catalog", requests())]
+
+
 def collect(
     session: Session,
     run_id: int,
@@ -230,6 +253,7 @@ def collect(
     *,
     settings: Settings,
     adapter: CJAdapter | TrackedAdapter | None = None,
+    stop_exceptions: tuple[type[BaseException], ...] = (),
 ) -> CollectorRun:
     """Call under the scheduler's source lock; own commits before actual HTTP attempts."""
     run = session.get_one(CollectorRun, run_id)
@@ -312,6 +336,7 @@ def collect(
             settings=settings,
             wall_time_seconds=settings.cj_wall_time_seconds,
             request_hook=hook,
+            stop_exceptions=stop_exceptions,
         )
     finally:
         if transport.auth.cache is not None:

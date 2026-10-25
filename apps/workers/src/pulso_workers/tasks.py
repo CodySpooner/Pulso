@@ -13,12 +13,13 @@ from sqlalchemy.orm import Session
 from pulso_core.db import get_session
 from pulso_core.logging import job_id
 from pulso_core.models import CollectorRun, Source
-from pulso_core.settings import get_settings
+from pulso_core.settings import Settings, get_settings
 from pulso_sources.framework import Adapter, RequestHook, Target, enqueue_run, execute_run, slot_key
 from pulso_workers.celery_app import app
 from pulso_workers.locks import AdvisoryLock
 
 logger = logging.getLogger("pulso.workers")
+StopExceptions = tuple[type[BaseException], ...]
 
 
 @dataclass(frozen=True)
@@ -29,6 +30,20 @@ class Plan:
     request_hook: RequestHook | None = None
     collector_max_retries: int | None = None
     finalize: Callable[[Session, CollectorRun], None] | None = None
+    # A source-owned wrapper around execute_run (CJ: guarded transport, points, blocks).
+    collect: Callable[[Session, int, Settings, StopExceptions], CollectorRun] | None = None
+
+
+class UnknownJob(ValueError):
+    """A factory's refusal of the run's job, stored as `unknown_job`."""
+
+
+class PreRunFailed(Exception):
+    """A refusal before execute_run. Code and message are fixed text: no settings or keys."""
+
+    def __init__(self, code: str, message: str) -> None:
+        super().__init__(message)
+        self.code = code
 
 
 PLANS: dict[str, Callable[[Session, Source, str], Plan]] = {}
@@ -183,31 +198,43 @@ def collect_run(run_id: int) -> None:
                 return
             source = session.get_one(Source, run.source_id)
             if not source.enabled or source.key not in PLANS:
-                raise ValueError("Source disabled or adapter unavailable")
+                raise PreRunFailed("source_unavailable", "Source disabled or adapter unavailable")
             job = run_job(source.key, run.slot_key)
-            plan = PLANS[source.key](session, source, job)
+            try:
+                plan = PLANS[source.key](session, source, job)
+            except UnknownJob:
+                raise PreRunFailed("unknown_job", "Source has no plan for this job") from None
+            except Exception as exc:
+                raise PreRunFailed("plan_failed", f"Plan failed: {type(exc).__name__}") from None
             if not 0 < plan.wall_time_seconds < get_settings().collect_soft_time_limit_seconds:
-                raise ValueError("Plan budget must be positive and below soft limit")
+                raise PreRunFailed(
+                    "plan_budget_invalid", "Plan budget must be positive and below soft limit"
+                )
             session.commit()
             settings = get_settings()
             if plan.collector_max_retries is not None:
                 settings = settings.model_copy(
                     update={"collector_max_retries": plan.collector_max_retries}
                 )
-            result = execute_run(
-                session,
-                run_id,
-                plan.adapter,
-                plan.targets,
-                settings=settings,
-                wall_time_seconds=plan.wall_time_seconds,
-                request_hook=plan.request_hook,
-                stop_exceptions=(SoftTimeLimitExceeded,),
-            )
+            stop: StopExceptions = (SoftTimeLimitExceeded,)
+            if plan.collect is not None:
+                result = plan.collect(session, run_id, settings, stop)
+            else:
+                result = execute_run(
+                    session,
+                    run_id,
+                    plan.adapter,
+                    plan.targets,
+                    settings=settings,
+                    wall_time_seconds=plan.wall_time_seconds,
+                    request_hook=plan.request_hook,
+                    stop_exceptions=stop,
+                )
             if plan.finalize is not None:
                 plan.finalize(session, result)
         except Exception as exc:
             session.rollback()
+            code = exc.code if isinstance(exc, PreRunFailed) else type(exc).__name__
             session.execute(
                 update(CollectorRun)
                 .where(
@@ -217,12 +244,12 @@ def collect_run(run_id: int) -> None:
                 .values(
                     status="failed",
                     finished_at=datetime.now(UTC),
-                    error_code=type(exc).__name__,
-                    error_message=type(exc).__name__,
+                    error_code=code,
+                    error_message=str(exc) if isinstance(exc, PreRunFailed) else code,
                 )
             )
             session.commit()
-            logger.error("collection_failed", extra={"error_type": type(exc).__name__})
+            logger.error("collection_failed", extra={"error_type": code})
         finally:
             lock.close()
 
