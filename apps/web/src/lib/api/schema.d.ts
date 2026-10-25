@@ -299,6 +299,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/profit/calc": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Calc Profit */
+        post: operations["calc_profit"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/settings": {
         parameters: {
             query?: never;
@@ -589,6 +606,18 @@ export interface components {
             raw_payload_id: number | null;
             run: components["schemas"]["Run"];
         };
+        /** InputSource */
+        InputSource: {
+            /** As Of */
+            as_of: string | null;
+            /** Raw Payload Id */
+            raw_payload_id: number | null;
+            /**
+             * Source
+             * @description sources.key, or `settings` / `owner_estimate`.
+             */
+            source: string;
+        };
         /** Me */
         Me: {
             /** Is Admin */
@@ -645,6 +674,116 @@ export interface components {
             supplier_count: components["schemas"]["Sourced"] | components["schemas"]["NoSource"];
             /** Title */
             title: string;
+        };
+        /** ProfitCalc */
+        ProfitCalc: {
+            /** Complete */
+            complete: boolean;
+            /**
+             * Currency
+             * @constant
+             */
+            currency: "USD";
+            /** Customs Fee Minor */
+            customs_fee_minor: number;
+            /** Ddp */
+            ddp: boolean;
+            /** Duty Minor */
+            duty_minor: number | null;
+            /** Estimates */
+            estimates: string[];
+            /** Freight Minor */
+            freight_minor: number | null;
+            /** Goods Minor */
+            goods_minor: number | null;
+            /** Landed Cost Minor */
+            landed_cost_minor: number | null;
+            /** Margin Bps */
+            margin_bps: number | null;
+            /**
+             * Margin Minor
+             * @description Before ads: the break-even CPA. Complete only.
+             */
+            margin_minor: number | null;
+            /** Method */
+            method: string | null;
+            /** Missing */
+            missing: ("price_missing" | "supplier_cost_missing" | "freight_missing" | "freight_variant_mismatch" | "duty_not_set" | "fx_missing")[];
+            /** Payment Fee Minor */
+            payment_fee_minor: number | null;
+            /** Price Minor */
+            price_minor: number | null;
+            /**
+             * Product Id
+             * Format: uuid
+             */
+            product_id: string;
+            /** Quantity */
+            quantity: number;
+            /** Returns Minor */
+            returns_minor: number | null;
+            /** Shopify Fee Minor */
+            shopify_fee_minor: number | null;
+            /** Sources */
+            sources: {
+                [key: string]: components["schemas"]["InputSource"];
+            };
+            /** Supplier Listing Id */
+            supplier_listing_id: number | null;
+            /** Variant Id */
+            variant_id: number | null;
+        };
+        /** ProfitCalcRequest */
+        ProfitCalcRequest: {
+            /** Customs Fee Minor */
+            customs_fee_minor?: number | null;
+            /**
+             * Ddp
+             * @description Freight includes duties.
+             * @default false
+             */
+            ddp: boolean;
+            /** Duty Bps */
+            duty_bps?: number | null;
+            /**
+             * Method
+             * @description Omitted: the cheapest exact quote.
+             */
+            method?: string | null;
+            /** Payment Fee Bps */
+            payment_fee_bps?: number | null;
+            /** Payment Fee Fixed Minor */
+            payment_fee_fixed_minor?: number | null;
+            /**
+             * Price Minor
+             * @description USD per order. Omitted: the median live store price, at quantity 1.
+             */
+            price_minor?: number | null;
+            /**
+             * Product Id
+             * Format: uuid
+             */
+            product_id: string;
+            /**
+             * Quantity
+             * @description Units per order.
+             * @default 1
+             */
+            quantity: number;
+            /** Returns Bps */
+            returns_bps?: number | null;
+            /** Shopify Fee Bps */
+            shopify_fee_bps?: number | null;
+            /**
+             * Supplier Listing Id
+             * @description A supplier listing of the product (supplier_offers.listing_id). Omitted: the supplier with the best complete margin.
+             */
+            supplier_listing_id?: number | null;
+            /**
+             * Variant Id
+             * @description A variant of `supplier_listing_id`.
+             */
+            variant_id?: number | null;
         };
         /** RowError */
         RowError: {
@@ -4638,6 +4777,235 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": {
+                        /** Code */
+                        code: string;
+                        /** Detail */
+                        detail: string;
+                        /** Errors */
+                        errors?: {
+                            [key: string]: unknown;
+                        }[];
+                        /** Request Id */
+                        request_id: string;
+                        /** Status */
+                        status: number;
+                        /** Title */
+                        title: string;
+                        /**
+                         * Type
+                         * @default about:blank
+                         */
+                        type: string;
+                    };
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": {
+                        /** Code */
+                        code: string;
+                        /** Detail */
+                        detail: string;
+                        /** Errors */
+                        errors?: {
+                            [key: string]: unknown;
+                        }[];
+                        /** Request Id */
+                        request_id: string;
+                        /** Status */
+                        status: number;
+                        /** Title */
+                        title: string;
+                        /**
+                         * Type
+                         * @default about:blank
+                         */
+                        type: string;
+                    };
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": {
+                        /** Code */
+                        code: string;
+                        /** Detail */
+                        detail: string;
+                        /** Errors */
+                        errors?: {
+                            [key: string]: unknown;
+                        }[];
+                        /** Request Id */
+                        request_id: string;
+                        /** Status */
+                        status: number;
+                        /** Title */
+                        title: string;
+                        /**
+                         * Type
+                         * @default about:blank
+                         */
+                        type: string;
+                    };
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": {
+                        /** Code */
+                        code: string;
+                        /** Detail */
+                        detail: string;
+                        /** Errors */
+                        errors?: {
+                            [key: string]: unknown;
+                        }[];
+                        /** Request Id */
+                        request_id: string;
+                        /** Status */
+                        status: number;
+                        /** Title */
+                        title: string;
+                        /**
+                         * Type
+                         * @default about:blank
+                         */
+                        type: string;
+                    };
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": {
+                        /** Code */
+                        code: string;
+                        /** Detail */
+                        detail: string;
+                        /** Errors */
+                        errors?: {
+                            [key: string]: unknown;
+                        }[];
+                        /** Request Id */
+                        request_id: string;
+                        /** Status */
+                        status: number;
+                        /** Title */
+                        title: string;
+                        /**
+                         * Type
+                         * @default about:blank
+                         */
+                        type: string;
+                    };
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": {
+                        /** Code */
+                        code: string;
+                        /** Detail */
+                        detail: string;
+                        /** Errors */
+                        errors?: {
+                            [key: string]: unknown;
+                        }[];
+                        /** Request Id */
+                        request_id: string;
+                        /** Status */
+                        status: number;
+                        /** Title */
+                        title: string;
+                        /**
+                         * Type
+                         * @default about:blank
+                         */
+                        type: string;
+                    };
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": {
+                        /** Code */
+                        code: string;
+                        /** Detail */
+                        detail: string;
+                        /** Errors */
+                        errors?: {
+                            [key: string]: unknown;
+                        }[];
+                        /** Request Id */
+                        request_id: string;
+                        /** Status */
+                        status: number;
+                        /** Title */
+                        title: string;
+                        /**
+                         * Type
+                         * @default about:blank
+                         */
+                        type: string;
+                    };
+                };
+            };
+        };
+    };
+    calc_profit: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                __session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProfitCalcRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfitCalc"];
+                };
             };
             /** @description Unauthorized */
             401: {
