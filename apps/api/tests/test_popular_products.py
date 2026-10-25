@@ -239,11 +239,19 @@ def test_category_week_and_staleness(api: TestClient, db_engine: Engine) -> None
         3,
     )
     assert get(api, f"?week={PREVIOUS}&category=Home")["rows"] == []  # not imported that week
-    old = LATEST - timedelta(days=21)
+    assert before["stale"] is False  # an earlier week by choice: the newest is fresh
+
+
+@pytest.mark.db
+@pytest.mark.parametrize(("days", "stale"), [(14, False), (15, True)])
+def test_stale_when_the_newest_week_started_over_14_days_ago(
+    api: TestClient, db_engine: Engine, days: int, stale: bool
+) -> None:
     with Session(db_engine) as session:
-        report(session, old, "Apparel", [{"rank": 1, "title": "Example old", "brand": None}])
+        week = TODAY - timedelta(days=days)
+        report(session, week, "Apparel", [{"rank": 1, "title": "Example", "brand": None}])
         session.commit()
-    assert get(api, f"?week={old}")["stale"] is True
+    assert get(api)["stale"] is stale
 
 
 @pytest.mark.db

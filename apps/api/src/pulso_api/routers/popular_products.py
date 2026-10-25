@@ -69,7 +69,7 @@ class PopularPage(BaseModel):
     source_name: str
     captured_at: AwareDatetime | None  # the report's import
     as_of: date | None  # the report week; null when nothing matches
-    stale: bool  # the report week started more than 14 days ago
+    stale: bool  # the newest imported week started more than 14 days ago
 
 
 def in_report(report: Row[Any]) -> list[ColumnElement[bool]]:
@@ -134,7 +134,7 @@ def list_popular_products(
         source_name=source.name,
         captured_at=None,
         as_of=None,
-        stale=False,
+        stale=bool(weeks) and datetime.now(UTC).date() - weeks[0] > timedelta(days=STALE_DAYS),
     )
     if report is None:
         return page
@@ -207,5 +207,4 @@ def list_popular_products(
     page.previous_week = previous_week if previous is not None else None
     page.captured_at = report.captured_at
     page.as_of = report.observed_for
-    page.stale = datetime.now(UTC).date() - report.observed_for > timedelta(days=STALE_DAYS)
     return page
