@@ -83,6 +83,11 @@ class InputSource(BaseModel):
 class ProfitCalc(BaseModel):
     product_id: UUID
     supplier_listing_id: int | None
+    in_stock: bool = Field(
+        description="The costed listing isn't known to be out of stock (DEC-243). False on the "
+        "default when no supplier is in stock (DEC-291), or on a chosen sold-out listing; true "
+        "with no listing."
+    )
     variant_id: int | None
     quantity: int
     method: str | None  # the freight quote's shipping method
@@ -182,6 +187,7 @@ def calc_profit(
     return ProfitCalc(
         product_id=product.id,
         supplier_listing_id=calc.listing_id,
+        in_stock=calc.in_stock,
         variant_id=body.variant_id,
         quantity=body.quantity,
         method=calc.method,

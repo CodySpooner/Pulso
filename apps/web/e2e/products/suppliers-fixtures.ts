@@ -55,7 +55,7 @@ function row(id: number, name: string, cost: Calc, over: Partial<Row> = {}): Row
 }
 
 // Best margin first (complete rows), then the incomplete one; the out-of-stock row comes last and never picks.
-const soldOut = row(88160, "Glowhub Trading", costed(88160, 500, 300, "YunExpress", [3, 5]), { in_stock: false, stock: cj(0) });
+const soldOut = row(88160, "Glowhub Trading", { ...costed(88160, 500, 300, "YunExpress", [3, 5]), in_stock: false }, { in_stock: false, stock: cj(0) });
 const best = row(88123, "CJ Dropshipping", complete, { picks: ["best_margin"] });
 const dear = row(88131, "Yiwu Brightway", costed(88131, 700, 485, "CJPacket", [8, 12]), {
   orders: { ...cj(96), semantics: "window", window_days: 30 },
@@ -104,7 +104,7 @@ export interface SuppliersMock {
 
 /** The product shell's calls, the suppliers endpoint (or `status` with a problem; `hold` never answers), and
  *  POST /v1/profit/calc answering each supplier's own row cost; without a supplier, the best complete margin in
- *  stock or not (DEC-246 f). Returns the calc request bodies, in order. */
+ *  stock, else out of stock (DEC-291). Returns the calc request bodies, in order. */
 export async function mockSuppliersApi(page: Page, options: SuppliersMock = {}) {
   await mockProductApi(page);
   const body = options.body ?? suppliers;
@@ -118,7 +118,8 @@ export async function mockSuppliersApi(page: Page, options: SuppliersMock = {}) 
   await page.route("**/api/v1/profit/calc", async (route) => {
     const request = route.request().postDataJSON() as S["ProfitCalcRequest"];
     requests.push(request);
-    const ranked = body.rows.filter((r) => r.cost.complete).sort((a, b) => b.cost.margin_minor! - a.cost.margin_minor!);
+    const pool = body.rows.some((r) => r.in_stock) ? body.rows.filter((r) => r.in_stock) : body.rows;
+    const ranked = pool.filter((r) => r.cost.complete).sort((a, b) => b.cost.margin_minor! - a.cost.margin_minor!);
     const chosen = body.rows.find((r) => r.listing_id === request.supplier_listing_id) ?? ranked[0] ?? body.rows[0];
     return route.fulfill({ json: chosen.cost });
   });

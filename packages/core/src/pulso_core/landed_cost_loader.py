@@ -61,6 +61,7 @@ class Calc:
     sources: dict[str, Provenance]
     inputs: Inputs  # what landed_cost() was given: the rates the lines use
     days: tuple[int | None, int | None] = (None, None)  # the freight quote's min and max days
+    in_stock: bool = True  # stocked(): not known to be out of stock; True with no listing (DEC-295)
 
 
 def traced(session: Session, row: Row[Any], name: str) -> tuple[Amount, dict[str, Provenance]]:
@@ -283,11 +284,12 @@ def calculate(
         inputs = replace(base, unit_cost=unit, freight=freight, freight_gap=gap)
         days = (chosen.min_days, chosen.max_days) if chosen else (None, None)
         quoted = chosen.method if chosen else None  # never `method`: the next listing asks for it
-        calcs[listing] = Calc(listing, quoted, landed_cost(inputs), found, inputs, days)
+        stock = stocked(session, listing)
+        calcs[listing] = Calc(listing, quoted, landed_cost(inputs), found, inputs, days, stock)
     if not calcs:
         return Calc(None, None, landed_cost(base), sources, base)
     # In stock first, as Suppliers' Best margin (DEC-264 b); with none, the out-of-stock ones.
-    pool = {key: calc for key, calc in calcs.items() if stocked(session, key)} or calcs
+    pool = {key: calc for key, calc in calcs.items() if calc.in_stock} or calcs
     pick = best({listing: calc.cost for listing, calc in pool.items()})
     if pick is None:  # nothing complete: the fewest missing inputs, then the lowest id
         pick = min(pool, key=lambda listing: len(pool[listing].cost.missing))

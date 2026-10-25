@@ -4,7 +4,7 @@ import { useEffect, useId, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { keepPreviousData } from "@tanstack/react-query";
-import { PencilLine, RotateCcw, TriangleAlert, Truck } from "lucide-react";
+import { CircleSlash, PencilLine, RotateCcw, TriangleAlert, Truck } from "lucide-react";
 import { Slider, ToggleGroup } from "radix-ui";
 
 import { useApiReady } from "@/components/data-health/api";
@@ -395,7 +395,16 @@ function ScenarioPanel({
         note="your CPA"
       />
       <p className="text-micro text-subtle-foreground">
-        Costed from the {supplier} listing {chosen ? "you opened from Suppliers" : "with the best complete margin"}. Defaults come from{" "}
+        Costed from the {supplier} listing{" "}
+        {/* Sold out: the chosen listing, or the default's when none is in stock (imp-351, DEC-291). */}
+        {!shown.in_stock && (
+          <>
+            <Pill tone="negative" icon={CircleSlash} className="align-middle">
+              Out of stock
+            </Pill>{" "}
+          </>
+        )}
+        {chosen ? "you opened from Suppliers" : `with the best complete margin${shown.in_stock ? "" : "; none is in stock"}`}. Defaults come from{" "}
         <Link href="/settings" className={link}>
           Settings
         </Link>
