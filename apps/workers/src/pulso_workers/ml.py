@@ -4,10 +4,13 @@ import logging
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from pulso_core.alerts import evaluate
 from pulso_core.db import get_session
 from pulso_core.logging import job_id
+from pulso_core.models import Alert, Workspace
 from pulso_core.settings import get_settings
 from pulso_workers.celery_app import app
 
@@ -83,6 +86,37 @@ def score(session: Session, day: date) -> None:
     written = nightly.run(session, day)
     session.commit()
     logger.info("scores_done day=%s written=%s", day, written)
+    evaluate_alerts(session, day)
+
+
+def evaluate_alerts(session: Session, day: date) -> None:
+    """WF-4 rules for day d at its cutoff, so a backfill replays point in time (DEC-334).
+    One commit per workspace: a failing one is logged and rolled back, never the scores."""
+    from pulso_ml.features.daily import cutoff
+
+    # ponytail: counts the whole table; the ml queue's concurrency 1 keeps other writers out.
+    total = select(func.count(Alert.id))
+    before = session.execute(total).scalar_one()
+    evaluated = skipped = failed = 0
+    for workspace_id in session.scalars(select(Workspace.id).order_by(Workspace.id)).all():
+        try:
+            statuses = evaluate(session, workspace_id, cutoff(day))
+            session.commit()
+        except Exception:
+            session.rollback()
+            failed += 1
+            logger.exception("alerts_failed day=%s workspace_id=%s", day, workspace_id)
+            continue
+        evaluated += 1
+        skipped += list(statuses.values()).count("skipped")
+    logger.info(
+        "alerts_done day=%s workspaces=%s fired=%s skipped=%s failed=%s",
+        day,
+        evaluated,
+        session.execute(total).scalar_one() - before,
+        skipped,
+        failed,
+    )
 
 
 def compute_features(task: Any, start: str | None = None, end: str | None = None) -> None:

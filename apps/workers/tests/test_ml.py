@@ -135,8 +135,8 @@ def clock(monkeypatch: pytest.MonkeyPatch) -> Mock:
 
 
 def run_task(monkeypatch: pytest.MonkeyPatch, name: str, **kwargs: str) -> tuple[Mock, MagicMock]:
-    """Runs an ml task with the flag on; returns the run/score/commit calls in order, and the
-    session."""
+    """Runs an ml task with the flag on; returns the run/score/commit/alerts calls in order, and
+    the session."""
     monkeypatch.setenv("FEATURES_ENABLED", "on")
     session = MagicMock()
     monkeypatch.setattr(ml, "get_session", Mock(return_value=session))
@@ -145,6 +145,7 @@ def run_task(monkeypatch: pytest.MonkeyPatch, name: str, **kwargs: str) -> tuple
     calls.score.side_effect = lambda _, day: day.month
     monkeypatch.setattr(daily, "run", calls.run)
     monkeypatch.setattr(nightly, "run", calls.score)
+    monkeypatch.setattr(ml, "evaluate_alerts", calls.alerts)
     calls.attach_mock(session.__enter__.return_value.commit, "commit")
     app.tasks[name].apply(kwargs=kwargs, throw=True)
     return calls, session.__enter__.return_value
@@ -155,8 +156,13 @@ def run_features(monkeypatch: pytest.MonkeyPatch, **kwargs: str) -> tuple[Mock, 
 
 
 def night(session: MagicMock, day: date) -> list[object]:
-    """One day of ml.features: its rows, a commit, then its scores and a commit (DEC-326)."""
-    return [call.run(session, day), call.commit(), call.score(session, day), call.commit()]
+    """One day of ml.features: its rows, a commit, its scores and a commit (DEC-326), then its
+    alerts (DEC-334)."""
+    return [call.run(session, day), call.commit(), *scored(session, day)]
+
+
+def scored(session: MagicMock, day: date) -> list[object]:
+    return [call.score(session, day), call.commit(), call.alerts(session, day)]
 
 
 def test_features_default_to_yesterday_in_utc(
@@ -221,9 +227,9 @@ def test_scores_default_to_yesterday_and_score_one_given_day(
 ) -> None:
     caplog.set_level("INFO", logger="pulso.ml")
     calls, session = run_task(monkeypatch, "ml.scores")
-    assert calls.mock_calls == [call.score(session, date(2026, 10, 24)), call.commit()]
+    assert calls.mock_calls == scored(session, date(2026, 10, 24))
     calls, session = run_task(monkeypatch, "ml.scores", day="2026-09-30")
-    assert calls.mock_calls == [call.score(session, date(2026, 9, 30)), call.commit()]
+    assert calls.mock_calls == scored(session, date(2026, 9, 30))
     assert "scores_done day=2026-09-30 written=9" in caplog.text
 
 
