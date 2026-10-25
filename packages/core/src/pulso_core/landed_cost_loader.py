@@ -58,7 +58,7 @@ def traced(session: Session, row: Row[Any], name: str) -> tuple[Amount, dict[str
     if row.currency == "USD":
         return Amount(row.minor, "USD"), found
     day = row.captured_at.astimezone(UTC).date()
-    # The rate's own date, not its capture time: the daily job stores day d's rate on d + 1.
+    # The rate's own date, not its capture time: the daily job usually stores day d's rate on d + 1.
     rate = session.execute(
         select(FxRate.rate, FxRate.captured_at, FxRate.raw_payload_id, Source.key)
         .join(RawPayload, RawPayload.id == FxRate.raw_payload_id)

@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 
 from pulso_api.auth import Principal, current_principal
 from pulso_api.dependencies import get_db
+from pulso_core.db import Base
 from pulso_core.models import (
     CollectorRun,
     FxRate,
@@ -86,7 +87,9 @@ def calc(api: TestClient, workspace_id: UUID, status: int = 200, **body: Any) ->
     return response.json()
 
 
-def observe(session: Session, model: Any, source_id: int, at: datetime = DAY, **values: Any) -> Any:
+def observe[T: Base](
+    session: Session, model: type[T], source_id: int, at: datetime = DAY, **values: Any
+) -> T:
     run = CollectorRun(source_id=source_id, trigger="manual", status="success")
     session.add(run)
     session.flush()
