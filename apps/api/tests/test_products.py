@@ -2,6 +2,7 @@ import math
 from collections.abc import Iterator
 from datetime import UTC, date, datetime, time, timedelta
 from typing import Any
+from unittest.mock import Mock
 from uuid import UUID, uuid4
 
 import pytest
@@ -30,6 +31,15 @@ from pulso_core.models import (
 
 STATS = ("store_count", "supplier_count", "price_min_minor", "price_max_minor")
 NOW = datetime.now(UTC)
+
+
+@pytest.fixture(autouse=True)
+def clock(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The router's clock reads NOW, so an age or a window can't shift when a run passes 00:00Z
+    or reaches this module minutes after it was imported (imp-303)."""
+    clock = Mock(wraps=datetime)
+    clock.now.return_value = NOW
+    monkeypatch.setattr("pulso_api.routers.products.datetime", clock)
 
 
 def test_product_requires_a_session(client: TestClient) -> None:
@@ -407,9 +417,8 @@ def test_feed_items_trace_every_number(api: TestClient, feed: dict[str, str]) ->
         ("shopify_stores", "disabled"),
         ("cj", "disabled"),
     ]
-    assert datetime.fromisoformat(body["as_of"]) > NOW - timedelta(
-        minutes=5
-    )  # the newest raw payload
+    # The newest raw payload: seeded seconds ago on Postgres's clock, not NOW (imp-304).
+    assert datetime.fromisoformat(body["as_of"]) > datetime.now(UTC) - timedelta(minutes=5)
 
 
 @pytest.mark.db
@@ -527,7 +536,7 @@ SPOT_CHECK = text(
         (SELECT CASE WHEN EXISTS (
                     SELECT FROM listing_snapshots s JOIN listings l ON l.id = s.listing_id
                     WHERE l.product_id = p.id)
-                THEN (now() AT TIME ZONE 'UTC')::date - (p.first_seen_at AT TIME ZONE 'UTC')::date
+                THEN CAST(:today AS date) - (p.first_seen_at AT TIME ZONE 'UTC')::date
                 END
          FROM products p WHERE p.id = :product) AS age_days,
         (SELECT round(velocity_7d) FROM product_daily_features
@@ -643,7 +652,9 @@ def test_overview_stats_match_sql_spot_checks(
         body = api.get(f"/v1/products/{product_id}/overview").json()
         counts = {item["vendor"]: item["count"]["value"] for item in body["appearances"]}
         with Session(db_engine) as session:
-            expected = session.execute(SPOT_CHECK, {"product": product_id}).one()._asdict()
+            # The router's date (the clock fixture), not Postgres now(): one date on both sides.
+            query = {"product": product_id, "today": NOW.date()}
+            expected = session.execute(SPOT_CHECK, query).one()._asdict()
         assert {
             "price_min": body["price_min_minor"]["value"],
             "price_median": body["price_median_minor"]["value"],
