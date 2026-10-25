@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 from pulso_api.auth import Principal, current_principal
 from pulso_api.dependencies import get_db
 from pulso_api.main import create_app
+from pulso_api.routers.products import NO_MARGIN, NO_SIGNAL
 from pulso_core.models import (
     Category,
     CollectorRun,
@@ -80,6 +81,7 @@ def test_every_number_in_a_product_resource_carries_as_of() -> None:
 
 def test_product_requires_a_session(client: TestClient) -> None:
     assert client.get(f"/v1/products/{uuid4()}").status_code == 401
+    assert client.get(f"/v1/products/{uuid4()}/overview").status_code == 401
 
 
 @pytest.fixture
@@ -522,3 +524,220 @@ def test_newest_pages_scan_the_first_seen_index_backward(
             assert scan["Index Name"] == "ix_products_first_seen_at_id"
             assert scan["Scan Direction"] == "Backward"
             assert scan["Actual Rows"] == 49  # one page plus the probe row, never the table
+
+
+# The Overview's numbers, recomputed in plain SQL straight from the tables (UX-4 verify).
+SPOT_CHECK = text(
+    """
+    WITH latest AS (
+        SELECT DISTINCT ON (s.listing_id) s.*, l.store_id, l.supplier_id
+        FROM listing_snapshots s JOIN listings l ON l.id = s.listing_id
+        WHERE l.product_id = :product AND l.delisted_at IS NULL
+        ORDER BY s.listing_id, s.captured_at DESC, s.id DESC
+    ), retail AS (
+        SELECT * FROM latest
+        WHERE store_id IS NOT NULL AND currency = 'USD' AND price_min_minor IS NOT NULL
+    ), offers AS (
+        SELECT * FROM latest
+        WHERE supplier_id IS NOT NULL AND currency = 'USD' AND price_min_minor IS NOT NULL
+          AND available IS NOT FALSE AND coalesce(stock, 1) > 0
+    )
+    SELECT
+        (SELECT min(price_min_minor) FROM retail) AS price_min,
+        (SELECT percentile_disc(0.5) WITHIN GROUP (ORDER BY price_min_minor) FROM retail)
+            AS price_median,
+        (SELECT max(coalesce(price_max_minor, price_min_minor)) FROM retail) AS price_max,
+        (SELECT min(price_min_minor) FROM offers) AS best_cost,
+        (SELECT count(DISTINCT store_id) FROM latest) AS stores,
+        (SELECT count(*) FROM latest WHERE supplier_id IS NOT NULL) AS offers,
+        (SELECT CASE WHEN EXISTS (
+                    SELECT FROM listing_snapshots s JOIN listings l ON l.id = s.listing_id
+                    WHERE l.product_id = p.id)
+                THEN (now() AT TIME ZONE 'UTC')::date - (p.first_seen_at AT TIME ZONE 'UTC')::date
+                END
+         FROM products p WHERE p.id = :product) AS age_days,
+        (SELECT round(velocity_7d) FROM product_daily_features
+         WHERE product_id = :product AND family IN ('shp_inv', 'shp_bump', 'cj_stock')
+           AND velocity_7d IS NOT NULL AND growth_7d IS NOT NULL
+         ORDER BY feature_date DESC,
+                  array_position(ARRAY['shp_inv', 'shp_bump', 'cj_stock'], family::text),
+                  feature_version DESC
+         LIMIT 1) AS velocity
+    """
+)
+
+
+def feature(product: Product, family: str, days_ago: int, v7: float, growth: float | None) -> Any:
+    return ProductDailyFeature(
+        product_id=product.id,
+        feature_date=(NOW - timedelta(days=days_ago)).date(),
+        family=family,
+        feature_version="1",
+        velocity_7d=v7,
+        growth_7d=growth,
+        coverage=1,
+        has_gap=False,
+    )
+
+
+@pytest.fixture
+def overview_products(db_engine: Engine) -> dict[str, Any]:
+    """Five products that cover every Overview branch, with the payload ids the test traces."""
+    with Session(db_engine) as session:
+        cj = Supplier(platform="cj", external_id="cj", name="CJ Dropshipping")  # one row, as CJ
+        stores = [Store(domain=f"o{i}.example.test", platform="shopify") for i in range(6)]
+        names = ("full", "unmatched", "even", "out_of_stock", "single")
+        products = {
+            name: Product(name=name, first_seen_at=NOW - timedelta(days=9)) for name in names
+        }
+        session.add_all([cj, *stores, *products.values()])
+        session.flush()
+
+        full = products["full"]
+        a = listing(session, full, 1, store_id=stores[0].id)
+        first = snapshot(session, a, 200, price_min_minor=1900, price_max_minor=4500)  # superseded
+        snapshot(session, a, 5, price_min_minor=2400, price_max_minor=3900)
+        a2 = listing(session, full, 1, store_id=stores[0].id)  # a second listing, same store
+        median = snapshot(session, a2, 7, price_min_minor=2600)
+        snapshot(session, listing(session, full, 1, store_id=stores[1].id), 4, price_min_minor=2900)
+        top = snapshot(
+            session,
+            listing(session, full, 1, store_id=stores[2].id),
+            6,
+            price_min_minor=3100,
+            price_max_minor=5200,
+        )
+        cad = listing(session, full, 1, store_id=stores[3].id)
+        snapshot(session, cad, 3, price_min_minor=100, currency="CAD")  # a store, no USD price
+        gone = listing(session, full, 1, store_id=stores[4].id, delisted_at=NOW)
+        snapshot(session, gone, 1, price_min_minor=50)
+        offer = {"supplier_id": cj.id}
+        snapshot(session, listing(session, full, 2, **offer), 9, price_min_minor=800)
+        snapshot(
+            session, listing(session, full, 2, **offer), 8, price_min_minor=650, available=False
+        )
+        snapshot(session, listing(session, full, 2, **offer), 8, price_min_minor=700, stock=0)
+        cheapest = snapshot(
+            session, listing(session, full, 2, **offer), 8, price_min_minor=720, stock=5
+        )
+        session.add_all(
+            [
+                feature(full, "shp_bump", 1, 12.4, 0.3),
+                feature(full, "shp_inv", 1, 20.6, 0.5),  # same day, better grade
+                feature(full, "shp_inv", 3, 99, 0.9),  # an older day
+            ]
+        )
+
+        even = products["even"]
+        for store, price in zip(stores[:2], (3000, 1000), strict=True):
+            snapshot(
+                session, listing(session, even, 1, store_id=store.id), 2, price_min_minor=price
+            )
+        session.add(feature(even, "shp_inv", 1, 7, None))  # no growth yet: doesn't qualify
+
+        out = products["out_of_stock"]
+        snapshot(
+            session, listing(session, out, 2, **offer), 2, price_min_minor=500, available=False
+        )
+        snapshot(session, listing(session, out, 2, **offer), 2, price_min_minor=600, stock=0)
+
+        single = products["single"]
+        snapshot(
+            session, listing(session, single, 1, store_id=stores[5].id), 2, price_min_minor=1500
+        )
+        snapshot(
+            session, listing(session, single, 2, **offer), 2, price_min_minor=900, currency="CAD"
+        )
+        cheap_gone = listing(session, single, 2, delisted_at=NOW, **offer)
+        snapshot(session, cheap_gone, 2, price_min_minor=10)
+        session.add(feature(single, "cj_stock", 2, 4.2, -0.1))
+        session.commit()
+        return {
+            "ids": {name: str(product.id) for name, product in products.items()},
+            "first": first.raw_payload_id,
+            "median": median.raw_payload_id,
+            "top": top.raw_payload_id,
+            "cheapest": cheapest.raw_payload_id,
+        }
+
+
+@pytest.mark.db
+def test_overview_stats_match_sql_spot_checks(
+    api: TestClient, db_engine: Engine, overview_products: dict[str, Any]
+) -> None:
+    for name, product_id in overview_products["ids"].items():
+        body = api.get(f"/v1/products/{product_id}/overview").json()
+        counts = {item["vendor"]: item["count"]["value"] for item in body["appearances"]}
+        with Session(db_engine) as session:
+            expected = session.execute(SPOT_CHECK, {"product": product_id}).one()._asdict()
+        assert {
+            "price_min": body["price_min_minor"]["value"],
+            "price_median": body["price_median_minor"]["value"],
+            "price_max": body["price_max_minor"]["value"],
+            "best_cost": body["best_supplier_cost_minor"]["value"],
+            "stores": counts.get("store", 0),  # the API omits a source with no listing; never 0
+            "offers": counts.get("supplier", 0),
+            "age_days": body["age_days"]["value"],
+            "velocity": body["velocity"]["value"],
+        } == expected, name
+        assert body["landed_margin_minor"] == {"value": None, "reason": NO_MARGIN}
+        assert body["ad_count"]["value"] is None
+
+
+@pytest.mark.db
+def test_overview_traces_each_stat(api: TestClient, overview_products: dict[str, Any]) -> None:
+    ids = overview_products["ids"]
+    body = api.get(f"/v1/products/{ids['full']}/overview").json()
+    assert body["currency"] == "USD"
+    # 2,400 / 2,600 / 2,900 / 3,100 from four USD listings; the lower median is 2,600.
+    assert body["price_median_minor"]["value"] == 2600
+    assert body["price_median_minor"]["raw_payload_id"] == overview_products["median"]
+    assert body["price_max_minor"]["raw_payload_id"] == overview_products["top"]
+    cost = body["best_supplier_cost_minor"]
+    assert (cost["value"], cost["platform"], cost["source"]) == (720, "cj", "cj")
+    assert cost["raw_payload_id"] == overview_products["cheapest"]
+    age = body["age_days"]
+    assert (age["value"], age["source"], age["stale"]) == (9, "shopify_stores", False)
+    assert age["raw_payload_id"] == overview_products["first"]  # the first observation
+    assert body["velocity"] | {"as_of": None, "stale": None} == {
+        "value": 21,
+        "source": "shopify_stores",
+        "source_name": "Shopify stores",
+        "as_of": None,
+        "raw_payload_id": None,
+        "method": "Shopify inventory drops",
+        "stale": None,
+        "family": "shp_inv",
+        "grade": "A",
+        "growth": 0.5,
+        "gap": False,
+    }
+    assert [(item["vendor"], item["count"]["source"]) for item in body["appearances"]] == [
+        ("supplier", "cj"),
+        ("store", "shopify_stores"),
+    ]
+    assert [item["count"]["value"] for item in body["appearances"]] == [4, 4]
+
+    empty = api.get(f"/v1/products/{ids['unmatched']}/overview").json()
+    assert empty["appearances"] == []
+    for key in ("price_min_minor", "price_median_minor", "best_supplier_cost_minor", "age_days"):
+        assert empty[key]["value"] is None and empty[key]["reason"], key
+    assert empty["velocity"] == {"value": None, "reason": NO_SIGNAL}
+    single = api.get(f"/v1/products/{ids['single']}/overview").json()
+    assert single["velocity"]["grade"] == "unproven"
+    assert single["best_supplier_cost_minor"]["value"] is None  # CAD only; the cheap one is gone
+
+
+@pytest.mark.db
+def test_overview_of_an_unknown_or_merged_product(api: TestClient, db_engine: Engine) -> None:
+    with Session(db_engine) as session:
+        survivor = Product(name="Survivor")
+        session.add(survivor)
+        session.flush()
+        merged = Product(name="Merged", merged_into_id=survivor.id)
+        session.add(merged)
+        session.commit()
+        merged_id = merged.id
+    assert api.get(f"/v1/products/{uuid4()}/overview").status_code == 404
+    response = api.get(f"/v1/products/{merged_id}/overview")
+    assert (response.status_code, response.json()["code"]) == (409, "merged")

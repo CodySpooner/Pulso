@@ -299,6 +299,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/products/{product_id}/overview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Product Overview */
+        get: operations["get_product_overview"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/settings": {
         parameters: {
             query?: never;
@@ -350,6 +367,16 @@ export interface components {
              * Format: date-time
              */
             transaction_at: string;
+        };
+        /** Appearance */
+        Appearance: {
+            /** Count */
+            count: components["schemas"]["Sourced"] | components["schemas"]["NoSource"];
+            /**
+             * Vendor
+             * @enum {string}
+             */
+            vendor: "store" | "supplier";
         };
         /**
          * CJActivity
@@ -646,6 +673,38 @@ export interface components {
             /** Title */
             title: string;
         };
+        /**
+         * ProductOverview
+         * @description The Overview tab's key stats and where the product appears (UX-4, DEC-243).
+         */
+        ProductOverview: {
+            ad_count: components["schemas"]["NoSource"];
+            /** Age Days */
+            age_days: components["schemas"]["Sourced"] | components["schemas"]["NoSource"];
+            /** Appearances */
+            appearances: components["schemas"]["Appearance"][];
+            /** Best Supplier Cost Minor */
+            best_supplier_cost_minor: components["schemas"]["SupplierCost"] | components["schemas"]["NoSource"];
+            /**
+             * Currency
+             * @constant
+             */
+            currency: "USD";
+            /**
+             * First Seen At
+             * Format: date-time
+             */
+            first_seen_at: string;
+            landed_margin_minor: components["schemas"]["NoSource"];
+            /** Price Max Minor */
+            price_max_minor: components["schemas"]["Sourced"] | components["schemas"]["NoSource"];
+            /** Price Median Minor */
+            price_median_minor: components["schemas"]["Sourced"] | components["schemas"]["NoSource"];
+            /** Price Min Minor */
+            price_min_minor: components["schemas"]["Sourced"] | components["schemas"]["NoSource"];
+            /** Velocity */
+            velocity: components["schemas"]["Velocity"] | components["schemas"]["NoSource"];
+        };
         /** RowError */
         RowError: {
             /** Column */
@@ -904,6 +963,31 @@ export interface components {
             as_of: string;
             /** Method */
             method?: string | null;
+            /** Raw Payload Id */
+            raw_payload_id: number | null;
+            /** Source */
+            source: string;
+            /** Source Name */
+            source_name: string;
+            /** Stale */
+            stale: boolean;
+            /** Value */
+            value: number;
+        };
+        /**
+         * SupplierCost
+         * @description The lowest current unit cost among in-stock supplier offers.
+         */
+        SupplierCost: {
+            /**
+             * As Of
+             * Format: date-time
+             */
+            as_of: string;
+            /** Method */
+            method?: string | null;
+            /** Platform */
+            platform: string;
             /** Raw Payload Id */
             raw_payload_id: number | null;
             /** Source */
@@ -4638,6 +4722,233 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": {
+                        /** Code */
+                        code: string;
+                        /** Detail */
+                        detail: string;
+                        /** Errors */
+                        errors?: {
+                            [key: string]: unknown;
+                        }[];
+                        /** Request Id */
+                        request_id: string;
+                        /** Status */
+                        status: number;
+                        /** Title */
+                        title: string;
+                        /**
+                         * Type
+                         * @default about:blank
+                         */
+                        type: string;
+                    };
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": {
+                        /** Code */
+                        code: string;
+                        /** Detail */
+                        detail: string;
+                        /** Errors */
+                        errors?: {
+                            [key: string]: unknown;
+                        }[];
+                        /** Request Id */
+                        request_id: string;
+                        /** Status */
+                        status: number;
+                        /** Title */
+                        title: string;
+                        /**
+                         * Type
+                         * @default about:blank
+                         */
+                        type: string;
+                    };
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": {
+                        /** Code */
+                        code: string;
+                        /** Detail */
+                        detail: string;
+                        /** Errors */
+                        errors?: {
+                            [key: string]: unknown;
+                        }[];
+                        /** Request Id */
+                        request_id: string;
+                        /** Status */
+                        status: number;
+                        /** Title */
+                        title: string;
+                        /**
+                         * Type
+                         * @default about:blank
+                         */
+                        type: string;
+                    };
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": {
+                        /** Code */
+                        code: string;
+                        /** Detail */
+                        detail: string;
+                        /** Errors */
+                        errors?: {
+                            [key: string]: unknown;
+                        }[];
+                        /** Request Id */
+                        request_id: string;
+                        /** Status */
+                        status: number;
+                        /** Title */
+                        title: string;
+                        /**
+                         * Type
+                         * @default about:blank
+                         */
+                        type: string;
+                    };
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": {
+                        /** Code */
+                        code: string;
+                        /** Detail */
+                        detail: string;
+                        /** Errors */
+                        errors?: {
+                            [key: string]: unknown;
+                        }[];
+                        /** Request Id */
+                        request_id: string;
+                        /** Status */
+                        status: number;
+                        /** Title */
+                        title: string;
+                        /**
+                         * Type
+                         * @default about:blank
+                         */
+                        type: string;
+                    };
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": {
+                        /** Code */
+                        code: string;
+                        /** Detail */
+                        detail: string;
+                        /** Errors */
+                        errors?: {
+                            [key: string]: unknown;
+                        }[];
+                        /** Request Id */
+                        request_id: string;
+                        /** Status */
+                        status: number;
+                        /** Title */
+                        title: string;
+                        /**
+                         * Type
+                         * @default about:blank
+                         */
+                        type: string;
+                    };
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": {
+                        /** Code */
+                        code: string;
+                        /** Detail */
+                        detail: string;
+                        /** Errors */
+                        errors?: {
+                            [key: string]: unknown;
+                        }[];
+                        /** Request Id */
+                        request_id: string;
+                        /** Status */
+                        status: number;
+                        /** Title */
+                        title: string;
+                        /**
+                         * Type
+                         * @default about:blank
+                         */
+                        type: string;
+                    };
+                };
+            };
+        };
+    };
+    get_product_overview: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                product_id: string;
+            };
+            cookie?: {
+                __session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProductOverview"];
+                };
             };
             /** @description Unauthorized */
             401: {
