@@ -35,8 +35,11 @@ def test_flag_on_matches_with_stored_fx_and_logs_counts(
     caplog.set_level("INFO", logger="pulso.ml")
     session = MagicMock()
     monkeypatch.setattr(ml, "get_session", Mock(return_value=session))
-    match = Mock(return_value=matcher.Counts(5, 1, 2, 2, 3))
+    match = Mock(return_value=matcher.Counts(5, 1, 2, 2, 3, 4, 6))
     monkeypatch.setattr(matcher, "match", match)
     app.tasks["ml.match"].apply(throw=True)
     match.assert_called_once_with(session.__enter__.return_value, rate_as_of)
-    assert "scored=5 linked=1 queued=2 discarded=2 skipped_no_embedding=3" in caplog.text
+    assert (
+        "scored=5 linked=1 queued=2 discarded=2 skipped_no_embedding=3 gtin_linked=4 gtin_queued=6"
+        in caplog.text
+    )

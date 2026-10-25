@@ -16,6 +16,7 @@ from pulso_core.models import (
     Image,
     Listing,
     ListingSnapshot,
+    ListingVariant,
     MatchCandidate,
     MatchDecision,
     Product,
@@ -24,7 +25,7 @@ from pulso_core.models import (
     Supplier,
 )
 from pulso_core.models.catalog import EMBEDDING_DIM
-from pulso_ml.matching.matcher import Counts, match, neighbours
+from pulso_ml.matching.matcher import GTIN_VERSION, Counts, match, neighbours
 from pulso_ml.matching.score import CONFIG
 
 pytestmark = pytest.mark.db
@@ -123,6 +124,12 @@ class World:
             )
         self.session.flush()
         return listing
+
+    def barcode(self, listing: Listing, barcode: str) -> None:
+        self.session.add(
+            ListingVariant(listing_id=listing.id, external_id=uuid4().hex, barcode=barcode)
+        )
+        self.session.flush()
 
     def rates(self, session: Session, quote: str, day: date) -> FxRate | None:
         self.rate_calls.append((quote, day))
@@ -337,3 +344,137 @@ def test_r15_every_pointer_change_has_exactly_one_decision_and_reruns_add_nothin
     assert table(session, MatchCandidate) == candidates
     assert table(session, MatchDecision) == all_decisions
     assert dict(session.execute(select(Listing.id, Listing.product_id)).tuples().all()) == after
+
+
+def test_shared_gtin_links_across_formats_at_confidence_one_and_reruns_add_nothing(
+    world: World,
+) -> None:
+    # No embeddings, and a price M-3's gate calls insane: only the GTIN pass can link them.
+    upc = world.listing(world.store(), 0, embedded=False, age_days=1)
+    ean = world.listing(world.supplier(), 1, price=5000, embedded=False)
+    world.barcode(upc, "036000291452")
+    world.barcode(ean, "0036000291452")
+    world.barcode(ean, "not a barcode")
+    counts = world.run()
+    session = world.session
+
+    first, second = products(session, upc, ean)
+    assert first is not None and first == second
+    assert session.get_one(Product, first).name == upc.title  # named after the older listing
+    pair = candidate(session, upc, ean)
+    assert pair is not None
+    assert (pair.status, pair.score, pair.scorer_version) == (
+        "accepted",
+        Decimal("1.0000"),
+        GTIN_VERSION,
+    )
+    decisions = session.scalars(select(MatchDecision).order_by(MatchDecision.listing_id)).all()
+    assert [decision.listing_id for decision in decisions] == sorted((upc.id, ean.id))
+    for decision in decisions:
+        assert (decision.actor, decision.action, decision.candidate_id) == ("algo", "link", pair.id)
+        assert (decision.from_product_id, decision.to_product_id) == (None, first)
+        assert decision.confidence == Decimal("1.0000")
+        assert decision.reason == f"{GTIN_VERSION}: GTIN 00036000291452"
+    assert session.get_one(Listing, ean.id).match_confidence == Decimal("1.0000")
+    assert (counts.gtin_linked, counts.gtin_queued, counts.scored) == (1, 0, 0)
+
+    rows = [table(session, model) for model in (MatchCandidate, MatchDecision, Product)]
+    again = world.run()
+    assert (again.gtin_linked, again.gtin_queued) == (0, 0)
+    assert [table(session, model) for model in (MatchCandidate, MatchDecision, Product)] == rows
+
+
+def test_invalid_placeholder_and_reused_gtins_never_link(world: World) -> None:
+    for code in ("036000291453", "123456789012", "212345678909"):  # check digit, placeholder, RCN
+        for vendor in (world.store(), world.store()):
+            world.barcode(world.listing(vendor, 0, embedded=False), code)
+    reuser = world.store()
+    for vendor in (reuser, reuser, world.store()):  # one store puts the GTIN on two listings
+        world.barcode(world.listing(vendor, 0, embedded=False), "4006381333931")
+    counts = world.run()
+    session = world.session
+    assert (counts.gtin_linked, counts.gtin_queued) == (0, 0)
+    assert table(session, MatchCandidate) == table(session, MatchDecision) == []
+    linked = select(func.count()).select_from(Listing).where(Listing.product_id.is_not(None))
+    assert session.scalar(linked) == 0
+
+
+@pytest.mark.parametrize("status", ["rejected", "split"])
+def test_gtin_pairs_honour_manual_decisions_and_outrank_image_scores(
+    world: World, status: str
+) -> None:
+    session = world.session
+    # A rejected or split pair, and a third listing sharing their GTIN.
+    a, b, bridge = (world.listing(world.store(), 0, embedded=False) for _ in range(3))
+    # An owner unlinked this listing: it never moves.
+    unlinked, partner = (world.listing(world.store(), 1, embedded=False) for _ in range(2))
+    # Two products is a merge (M-5). Image neighbours in M-3's queue band, so M-3 sees them too.
+    on_one = world.listing(world.store(), 2, product=world.product())
+    on_other = world.listing(world.store(), 2, QUEUE_ANGLE, product=world.product())
+    # M-3 queued this pair at 0.83 in an earlier run.
+    queued = tuple(world.listing(world.store(), 3, embedded=False) for _ in range(2))
+    for code, listings in (
+        ("036000291452", (a, b, bridge)),
+        ("4006381333931", (unlinked, partner)),
+        ("96385074", (on_one, on_other)),
+        ("10036000291459", queued),
+    ):
+        for listing in listings:
+            world.barcode(listing, code)
+    for (x, y), pair_status, score in (((a, b), status, "0.5"), (queued, "pending", "0.83")):
+        low, high = sorted((x.id, y.id))
+        session.add(
+            MatchCandidate(
+                listing_a_id=low,
+                listing_b_id=high,
+                score=Decimal(score),
+                scorer_version="m3-older",
+                status=pair_status,
+            )
+        )
+    session.add(
+        MatchDecision(
+            actor="owner",
+            action="unlink",
+            listing_id=unlinked.id,
+            from_product_id=world.product(),
+            reason="manual",
+        )
+    )
+    session.flush()
+    decided = table(session, MatchCandidate)[0]
+    merge_products = products(session, on_one, on_other)
+    counts = world.run()
+
+    assert table(session, MatchCandidate)[0] == decided
+    # The bridge forms a product with one side; the other side never joins it.
+    first, other, bridged = products(session, a, b, bridge)
+    assert first is not None and first == bridged and other is None
+    vetoed = candidate(session, b, bridge)
+    assert vetoed is not None and (vetoed.status, vetoed.score) == ("pending", Decimal("1.0000"))
+    assert products(session, unlinked, partner) == [None, None]
+    assert candidate(session, unlinked, partner).status == "pending"  # type: ignore[union-attr]
+    merge = candidate(session, on_one, on_other)
+    assert merge is not None
+    assert (merge.status, merge.score, merge.scorer_version) == (
+        "pending",
+        Decimal("1.0000"),
+        GTIN_VERSION,
+    )
+    assert products(session, on_one, on_other) == merge_products
+    outranked = candidate(session, *queued)
+    assert outranked is not None
+    assert (outranked.status, outranked.score, outranked.scorer_version) == (
+        "accepted",
+        Decimal("1.0000"),
+        GTIN_VERSION,
+    )
+    q1, q2 = products(session, *queued)
+    assert q1 is not None and q1 == q2
+    algo = session.scalars(select(MatchDecision.listing_id).where(MatchDecision.actor == "algo"))
+    assert sorted(algo) == sorted((a.id, bridge.id, *(listing.id for listing in queued)))
+    assert (counts.gtin_linked, counts.gtin_queued) == (2, 3)
+
+    rows = [table(session, model) for model in (MatchCandidate, MatchDecision, Product)]
+    world.run()
+    assert [table(session, model) for model in (MatchCandidate, MatchDecision, Product)] == rows

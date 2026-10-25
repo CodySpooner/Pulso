@@ -24,12 +24,15 @@ def match_listings(task: Any) -> None:
             counts = match(session, rate_as_of)
         # The shared JSON formatter omits extras; keep the counts in the message.
         logger.info(
-            "matcher_done scored=%s linked=%s queued=%s discarded=%s skipped_no_embedding=%s",
+            "matcher_done scored=%s linked=%s queued=%s discarded=%s skipped_no_embedding=%s"
+            " gtin_linked=%s gtin_queued=%s",
             counts.scored,
             counts.linked,
             counts.queued,
             counts.discarded,
             counts.skipped_no_embedding,
+            counts.gtin_linked,
+            counts.gtin_queued,
         )
 
 

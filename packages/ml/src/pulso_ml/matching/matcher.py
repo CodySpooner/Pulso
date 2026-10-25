@@ -1,9 +1,11 @@
-"""Candidates from the HNSW image index, pending-only re-scoring and R-15 auto-links (DEC-249)."""
+"""GTIN pairs (DEC-255), then HNSW candidates, pending-only re-scoring and auto-links (DEC-249)."""
 
+from collections import defaultdict
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
+from itertools import combinations
 from typing import Any
 from uuid import UUID
 
@@ -16,10 +18,12 @@ from pulso_core.models import (
     Image,
     Listing,
     ListingSnapshot,
+    ListingVariant,
     MatchCandidate,
     MatchDecision,
     Product,
 )
+from pulso_ml.matching.gtin import gtin14
 from pulso_ml.matching.score import (
     CONFIG,
     Price,
@@ -33,6 +37,8 @@ from pulso_ml.phash import similarity
 
 # pulso_sources.fx_frankfurter.rate_as_of, passed in: pulso-sources already depends on pulso-ml.
 RateLookup = Callable[[Session, str, date], FxRate | None]
+# match_candidates.scorer_version of a GTIN pair; bump it when gtin14's rules change.
+GTIN_VERSION = "gtin-1"
 
 
 @dataclass
@@ -42,6 +48,8 @@ class Counts:
     queued: int = 0
     discarded: int = 0
     skipped_no_embedding: int = 0
+    gtin_linked: int = 0
+    gtin_queued: int = 0
 
 
 @dataclass
@@ -87,7 +95,7 @@ def neighbours(
 
 
 def match(session: Session, rates: RateLookup, config: ScorerConfig = CONFIG) -> Counts:
-    """Score each embedded listing's neighbours; one transaction per listing.
+    """Link GTIN pairs, then score each embedded listing's neighbours; one transaction per listing.
 
     ponytail: a full pass every run (one HNSW query per listing); restrict to listings
     with new images or titles once the universe makes a pass slow.
@@ -106,6 +114,7 @@ def match(session: Session, rates: RateLookup, config: ScorerConfig = CONFIG) ->
         .tuples()
         .all()
     )
+    gtins(session, merged, counts)
     usd_rates: dict[tuple[str, date], Decimal | None] = {}
     seen: set[tuple[int, int]] = set()
 
@@ -162,8 +171,10 @@ def match(session: Session, rates: RateLookup, config: ScorerConfig = CONFIG) ->
                 )
                 .with_for_update()
             )
-            if candidate is not None and candidate.status != "pending":
-                continue  # accepted, rejected, merged and split pairs are never touched
+            if candidate is not None and (
+                candidate.status != "pending" or candidate.scorer_version == GTIN_VERSION
+            ):
+                continue  # decided pairs are never touched; a GTIN pair outranks any score
             phash_sim = None if a.phash is None or b.phash is None else similarity(a.phash, b.phash)
             score = combined(config, image_cos, titles.get(other_id), phash_sim)
             assert score is not None  # image_cos is always present
@@ -190,7 +201,8 @@ def match(session: Session, rates: RateLookup, config: ScorerConfig = CONFIG) ->
             else:
                 for key, value in values.items():  # the ORM writes only changed values
                     setattr(candidate, key, value)
-            if verdict == "link" and link(session, candidate, merged, config):
+            reason = f"{config.version}: score {score} >= auto {config.auto}"
+            if verdict == "link" and link(session, candidate, merged, reason):
                 counts.linked += 1
             elif verdict == "discard":
                 counts.discarded += 1
@@ -198,6 +210,66 @@ def match(session: Session, rates: RateLookup, config: ScorerConfig = CONFIG) ->
                 counts.queued += 1
         session.commit()
     return counts
+
+
+def gtins(session: Session, merged: dict[UUID, UUID | None], counts: Counts) -> None:
+    """Listings of different vendors sharing a valid GTIN pair at score 1.0 (M-4, DEC-255).
+
+    A vendor that puts one GTIN on two of its listings isn't using it as an identifier, so
+    those listings drop out of that GTIN. Each pair goes through link(), so M-3's R-15,
+    two-product and manual rules hold. One transaction per GTIN.
+
+    ponytail: every barcode is read into memory each run; group a normalised column in SQL
+    once listing_variants outgrows that.
+    """
+    groups: defaultdict[str, defaultdict[tuple[int | None, ...], set[int]]] = defaultdict(
+        lambda: defaultdict(set)
+    )
+    for barcode, listing_id, store_id, supplier_id in session.execute(
+        select(ListingVariant.barcode, Listing.id, Listing.store_id, Listing.supplier_id)
+        .join(Listing, Listing.id == ListingVariant.listing_id)
+        .where(ListingVariant.barcode.is_not(None))
+    ).tuples():
+        if (code := gtin14(barcode)) is not None:
+            vendorless = store_id is None and supplier_id is None
+            groups[code][store_id, supplier_id, listing_id if vendorless else None].add(listing_id)
+    seen: set[tuple[int, int]] = set()
+    for code, vendors in sorted(groups.items()):
+        ids = sorted(next(iter(listings)) for listings in vendors.values() if len(listings) == 1)
+        for pair in combinations(ids, 2):
+            if pair in seen:
+                continue
+            seen.add(pair)
+            on = session.scalars(select(Listing.product_id).where(Listing.id.in_(pair)))
+            products = {canonical(merged, product_id) for product_id in on}
+            if len(products) == 1 and None not in products:
+                continue  # already on one product
+            candidate = session.scalar(
+                select(MatchCandidate)
+                .where(
+                    MatchCandidate.listing_a_id == pair[0], MatchCandidate.listing_b_id == pair[1]
+                )
+                .with_for_update()
+            )
+            if candidate is not None and candidate.status != "pending":
+                continue  # accepted, rejected, merged and split pairs are never touched
+            if candidate is None:
+                candidate = MatchCandidate(
+                    listing_a_id=pair[0],
+                    listing_b_id=pair[1],
+                    status="pending",
+                    score=Decimal(1),
+                    scorer_version=GTIN_VERSION,
+                )
+                session.add(candidate)
+                session.flush()
+            else:  # a GTIN outranks an image/title score; the components stay as evidence
+                candidate.score, candidate.scorer_version = Decimal(1), GTIN_VERSION
+            if link(session, candidate, merged, f"{GTIN_VERSION}: GTIN {code}"):
+                counts.gtin_linked += 1
+            else:
+                counts.gtin_queued += 1
+        session.commit()
 
 
 def load_facts(
@@ -240,7 +312,7 @@ def link(
     session: Session,
     candidate: MatchCandidate,
     merged: dict[UUID, UUID | None],
-    config: ScorerConfig,
+    reason: str,
 ) -> bool:
     """Point the pair's product-less listings at one product, one decision per pointer (R-15).
 
@@ -281,7 +353,7 @@ def link(
                 to_product_id=target,
                 candidate_id=candidate.id,
                 confidence=candidate.score,
-                reason=f"{config.version}: score {candidate.score} >= auto {config.auto}",
+                reason=reason,
             )
         )
         listing.product_id, listing.match_confidence = target, candidate.score
