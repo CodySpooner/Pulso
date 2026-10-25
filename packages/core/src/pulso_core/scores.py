@@ -94,6 +94,8 @@ class Explanation(BaseModel):
     coverage: float = Field(ge=0, le=1)  # present configured weight / all configured weight
     panel_size: int | None = Field(default=None, ge=0)  # Saturation: stores tracked since t−28
     penalties: tuple[Penalty, ...] = ()  # Trend: points off after the weighted inputs
+    reason: str | None = None  # why the value is NULL, or the Lifecycle rule that fired tonight
+    pending: Stage | None = None  # Lifecycle: tonight's stage, shown once a 2nd night matches
 
     @model_validator(mode="after")
     def _missing_names_the_missing_inputs(self) -> Self:
@@ -156,7 +158,7 @@ class ScoreRow(NamedTuple):
     product_id: UUID
     date: date_type  # the UTC day scored, from inputs captured before date+1 00:00Z (DEC-031)
     kind: Kind
-    value: float | None  # 0–100, stored to 0.1; None when every input is missing
+    value: float | None  # 0–100, stored to 0.1; None: every input missing, or `reason`
     explanation: Explanation
     stage: Stage | None = None  # lifecycle only, which has no value
 

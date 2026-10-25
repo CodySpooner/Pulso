@@ -3658,3 +3658,57 @@ Superseded review defaults, not given entries: default #0 (move the repo) is don
 
   Seventeen one-line mutations each fail a test (`docs/reports/p4-15.md`).
 - **Not here:** the inbox endpoints (`GET /v1/alerts`, `/unread-count`, `POST /v1/alerts/read`, `/archive`) are WF-4a2; `velocity_spike`, `saturation_cross` and `lifecycle_change` wait for stored scores (SC-6); `price_drop`, `new_competitor_seller` and `store_launch` wait for Shopify (off, DEC-261); variant-level stock; the Celery task and its place in the nightly chain (SC-6); the bell and `/alerts` UI (WF-4b); channels and deliveries (Phase 7); the backtest preview; per-entity mute (backlog rows in the report).
+
+### DEC-326 · SC-6 nightly scores: one job scores UTC day d from its stored feature rows into append-only `scores`, one primary demand family per product for Trend and Lifecycle, a NULL row naming its reason, two-night Lifecycle hysteresis, chained after `ml.features`
+**2026-10-25 · proposed (p4-17)** · Phase 4 task SC-6; backlog imp-382, imp-397, imp-413, imp-426, imp-427 and the p4-14 demand `as_of` row; SPEC §7; DEC-031, DEC-040, DEC-261, DEC-275 (d), DEC-278, DEC-306 (b–e), DEC-307, DEC-310, DEC-318, DEC-323; vault Intelligence/Score Definitions §5 and §8, Intelligence/Lifecycle Stage, Intelligence/Demand Signals rules 1–3; `docs/reports/p4-17.md`; no migration, endpoint, UI, dependency, flag or Beat entry
+- **Decision:**
+  - **(a) The job.** `pulso_ml.scores.nightly.run(session, d)` reads the current `FEATURE_VERSION`'s `product_daily_features` rows dated d and d−7, each product's first demand-family row date up to d, and the lifecycle rows dated d−1 under the current lifecycle version. Nothing dated after d is read, and each row already holds only captures before its own cutoff (DEC-031).
+    - **Saturation (SC-3):** every product with a `shp_sellers` row on d.
+    - **Trend (SC-2):** every product with a demand-family row on d, its penalty from tonight's Saturation.
+    - **Lifecycle (SC-4):** the same products as Trend.
+    - Rows are appended through `pulso_core.scores.write` (`ON CONFLICT DO NOTHING`), so a re-run inserts nothing and a config change appends under its new `model_version`. Nothing is updated or deleted.
+    - **Running it:** Celery `ml.scores(day=None)` scores one day: yesterday (UTC) by default, refusing a day that isn't over. `ml.features` runs the same step after each day it commits, in order. `python -m pulso_ml.scores.nightly <day>` runs one day against fixtures.
+    - **Missed nights:** a day without feature rows writes nothing. A missed night gets scores only once its feature rows exist (a features backfill for that day). Nothing is interpolated or carried forward.
+  - **(b) Primary family (Demand Signals rules 1–3).** Until the owner's R-12 memo names a label family, a product's primary family is, of its demand families (`shp_inv`, `cj_stock`) with a row on d, the one with the earliest first row (the longest observed); a tie goes by family name. Trend and Lifecycle share it.
+    - Each night reads that family's rows at d and d−7 alone, so families never mix within a night. Across nights, hysteresis restarts when the family changes, and `days_observed` counts the new family's own days.
+    - With the Shopify crawler off (DEC-261), `cj_stock` is the only live family.
+    - A product with no demand-family row on d gets no Trend or Lifecycle row (rule 3: no source).
+  - **(c) Insufficient signal (imp-426): a NULL row with its reason.** A product in a score's set that gets no value is still written: `value` (Lifecycle: `stage`) NULL, and an explanation of `{model_version, config_digest, components: [], missing: [], coverage: 0, reason}`.
+    - The reasons are the scores' own: `no velocity growth`, `velocity growth doesn't vary`, `seller counts don't vary`; Lifecycle's `insufficient history` and `gap`.
+    - So `latest(kind)` returns tonight's NULL and its reason, never an older value as if it were tonight's.
+    - A product outside the set (no demand family; no `shp_sellers` row) gets no row, and readers read that as "no source".
+  - **(d) Contract (DEC-306 c).** `Explanation` gains two optional fields, both defaulting to None, so earlier rows still validate (jsonb, no migration): `reason` (why the value is NULL, or Lifecycle's rule tonight) and `pending` (Lifecycle's held stage).
+  - **(e) The Lifecycle row.** `stage` is the stored stage; `reason` is tonight's rule; `pending` is tonight's stage while it is held.
+    - **Components:** `<family>_v7`, `<family>_v7_prev`, `<family>_g7`, `<family>_acc` (from SC-1's `family_velocity`), `days_observed` and `age_days`. They have weight 0, because rules read them and no sum does. `coverage` is the share present.
+    - **`age_days`:** family `launch`, source the listing's source; missing ("no source yet") when no listing has a launch date. It reads the earliest `source_created_at`, else `source_published_at`, among the product's listings at the cutoff (`membership()` replay), ignoring one at or after the cutoff, because a re-crawl rewrites today's value. Never `first_seen_at` (DEC-307 a).
+    - **`delisted_all`:** the product has listings at the cutoff, and every one was delisted before it.
+  - **(f) Hysteresis (imp-382).** A new stage is stored once its rule has matched two nights in a row.
+    - When tonight's stage differs from the d−1 row's stored stage (same version, same family), the d−1 stage is stored and tonight's goes in `pending`. When the d−1 row's `pending` equals tonight's stage, tonight's is stored.
+    - No stage tonight stores no stage: a gap is never bridged. A d−1 row that's missing, has no stage or another family holds nothing, so tonight's stage shows.
+    - The "stalled after a run" label is not built.
+  - **(g) One `days_observed` (imp-397):** (d − the primary family's first row date) + 1, passed to `family_velocity` and `lifecycle_stage` alike. Lifecycle's docstring now says so.
+  - **(h) `as_of` (imp-427, p4-14's demand row).** A present component whose row carries no capture time gets the cutoff, d+1 00:00Z. `gt_slope` keeps its `gt_as_of`, and missing components stay None. A present G7 means day d was covered (DEC-275 d), so its newest capture falls within that day.
+  - **(i) One version format (imp-413).** Lifecycle's `VERSION` is `pulso_core.scores.version(CONFIG)` (`000-<hash12>`) and its local `version()` is gone. Lifecycle's `v7` and `v7_prev` are typed `float | None`, the stored column's type. `methodology.json` is regenerated.
+  - **(j) Flag and schedule.** `ml.scores` runs behind `FEATURES_ENABLED`: one nightly chain, one flag. It has no Beat entry. The nightly slot is imp-284's `ml.features` entry, which runs scores after features.
+- **Alternatives:**
+  - **(b) A fixed family priority, or a nightly "best coverage" pick:** the first goes against rule 1, and the second would switch families night to night.
+  - **(b) No primary family for a two-family product:** none exists while Shopify is off.
+  - **(c) No row** (Score Definitions §5's wording): `latest()` would serve the last valued night as current, and the reason would be lost.
+  - **(c) A NULL row for every catalog product:** rows for products no source feeds.
+  - **(f) Holding a stage through a no-stage night:** this carries a stage across a gap, which DEC-307 refuses.
+  - **(f) Holding the newest stage at any date:** a stage weeks old could be held.
+  - **(h) Each input's newest capture:** an `AsOf` read per input that the feature rows already made. FS-1 can store it (backlog row).
+  - **(j) A `SCORES_ENABLED` flag:** settings and `.env.example` changes for a job that reads only `FEATURES_ENABLED`'s rows.
+  - **(a) Scoring only the latest date on a catch-up** (Score Definitions §8): the SC-6 brief asks for missed nights whose feature rows exist, and a later run reads the same point-in-time rows. Reverting is one line (score only the last day in `ml.features`).
+- **Why:** `packages/ml/tests/test_nightly.py` has 12 tests, 9 on `pgvector/pgvector:0.8.7-pg18-trixie`, over fixture feature rows for two days and two demand families:
+  - one row per (kind, product, d, model_version), 13 in all, and a re-run inserts 0 with xmin unchanged;
+  - a Trend weight change appends 5 trend rows under the new version and leaves every old row's xmin and value;
+  - a NULL G7 stores a NULL trend row with `no velocity growth`, and `latest()` returns it over the night before's value; a search slope alone writes nothing;
+  - the primary family is shared by Trend and Lifecycle; every present component has an `as_of`, every missing one none;
+  - a feature row dated d+1, a product first seen on d+1 and a row of another feature version leave day d's rows identical;
+  - a stage held after one disagreeing night and switched after two; a gap night and a family change hold nothing;
+  - launch dates and delistings as of the cutoff (emerging, dead · delisted, and both after the cutoff ignored);
+  - categories read with their ancestors.
+
+  `apps/workers/tests/test_ml.py` adds the `ml.scores` task (ml queue, no Beat entry, flag off, yesterday or one given day, an unfinished day refused) and `ml.features` scoring each day after its commit. 22 one-line mutations each fail a test (`docs/reports/p4-17.md`). The leakage test stays green.
+- **Not here:** the Beat slot (imp-284); the "stalled after a run" label; confidence (MT-1); every UI (SC-5, WF-1); the stage alerts (p4-15).

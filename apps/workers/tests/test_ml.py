@@ -8,6 +8,7 @@ import pytest
 from pulso_ml import embeddings
 from pulso_ml.features import daily
 from pulso_ml.matching import matcher
+from pulso_ml.scores import nightly
 from pulso_sources.fx_frankfurter import rate_as_of
 from pulso_sources.storage import read_capture
 from pulso_workers import ml
@@ -133,17 +134,29 @@ def clock(monkeypatch: pytest.MonkeyPatch) -> Mock:
     return clock
 
 
-def run_features(monkeypatch: pytest.MonkeyPatch, **kwargs: str) -> tuple[Mock, MagicMock]:
-    """Runs ml.features with the flag on; returns the run/commit calls in order, and the session."""
+def run_task(monkeypatch: pytest.MonkeyPatch, name: str, **kwargs: str) -> tuple[Mock, MagicMock]:
+    """Runs an ml task with the flag on; returns the run/score/commit calls in order, and the
+    session."""
     monkeypatch.setenv("FEATURES_ENABLED", "on")
     session = MagicMock()
     monkeypatch.setattr(ml, "get_session", Mock(return_value=session))
     calls = Mock()
     calls.run.side_effect = lambda _, day: day.day  # rows written: the day of the month
+    calls.score.side_effect = lambda _, day: day.month
     monkeypatch.setattr(daily, "run", calls.run)
+    monkeypatch.setattr(nightly, "run", calls.score)
     calls.attach_mock(session.__enter__.return_value.commit, "commit")
-    app.tasks["ml.features"].apply(kwargs=kwargs, throw=True)
+    app.tasks[name].apply(kwargs=kwargs, throw=True)
     return calls, session.__enter__.return_value
+
+
+def run_features(monkeypatch: pytest.MonkeyPatch, **kwargs: str) -> tuple[Mock, MagicMock]:
+    return run_task(monkeypatch, "ml.features", **kwargs)
+
+
+def night(session: MagicMock, day: date) -> list[object]:
+    """One day of ml.features: its rows, a commit, then its scores and a commit (DEC-326)."""
+    return [call.run(session, day), call.commit(), call.score(session, day), call.commit()]
 
 
 def test_features_default_to_yesterday_in_utc(
@@ -152,8 +165,9 @@ def test_features_default_to_yesterday_in_utc(
     caplog.set_level("INFO", logger="pulso.ml")
     calls, session = run_features(monkeypatch)
     clock.now.assert_called_once_with(UTC)
-    assert calls.mock_calls == [call.run(session, date(2026, 10, 24)), call.commit()]
+    assert calls.mock_calls == night(session, date(2026, 10, 24))
     assert "features_done day=2026-10-24 written=24" in caplog.text
+    assert "scores_done day=2026-10-24 written=10" in caplog.text
 
 
 def test_features_backfill_the_range_inclusive_one_commit_per_day(
@@ -162,7 +176,7 @@ def test_features_backfill_the_range_inclusive_one_commit_per_day(
     caplog.set_level("INFO", logger="pulso.ml")
     calls, session = run_features(monkeypatch, start="2026-09-29", end="2026-10-02")
     days = [date(2026, 9, 29), date(2026, 9, 30), date(2026, 10, 1), date(2026, 10, 2)]
-    assert calls.mock_calls == [c for day in days for c in (call.run(session, day), call.commit())]
+    assert calls.mock_calls == [c for day in days for c in night(session, day)]
     assert "features_done day=2026-10-02 written=2" in caplog.text
 
 
@@ -181,4 +195,44 @@ def test_features_refuse_an_unfinished_day_or_a_reversed_range(
     monkeypatch.setattr(ml, "get_session", get_session)
     with pytest.raises(ValueError):
         app.tasks["ml.features"].apply(kwargs=kwargs, throw=True)
+    get_session.assert_not_called()
+
+
+def test_scores_task_runs_on_the_ml_queue_without_a_schedule() -> None:
+    assert "ml.scores" in app.tasks
+    assert app.amqp.router.route({}, "ml.scores")["queue"].name == "ml"
+    assert all(entry["task"] != "ml.scores" for entry in app.conf.beat_schedule.values())
+
+
+@pytest.mark.parametrize("flag", [None, "off"])
+def test_scores_flag_off_logs_and_never_opens_the_database(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture, flag: str | None
+) -> None:
+    if flag is not None:
+        monkeypatch.setenv("FEATURES_ENABLED", flag)
+    caplog.set_level("INFO", logger="pulso.ml")
+    monkeypatch.setattr(ml, "get_session", Mock(side_effect=AssertionError("database touched")))
+    app.tasks["ml.scores"].apply(throw=True)
+    assert "scores_disabled" in caplog.text
+
+
+def test_scores_default_to_yesterday_and_score_one_given_day(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture, clock: Mock
+) -> None:
+    caplog.set_level("INFO", logger="pulso.ml")
+    calls, session = run_task(monkeypatch, "ml.scores")
+    assert calls.mock_calls == [call.score(session, date(2026, 10, 24)), call.commit()]
+    calls, session = run_task(monkeypatch, "ml.scores", day="2026-09-30")
+    assert calls.mock_calls == [call.score(session, date(2026, 9, 30)), call.commit()]
+    assert "scores_done day=2026-09-30 written=9" in caplog.text
+
+
+def test_scores_refuse_a_day_still_being_collected(
+    monkeypatch: pytest.MonkeyPatch, clock: Mock
+) -> None:
+    monkeypatch.setenv("FEATURES_ENABLED", "on")
+    get_session = Mock(side_effect=AssertionError("database touched"))
+    monkeypatch.setattr(ml, "get_session", get_session)
+    with pytest.raises(ValueError):
+        app.tasks["ml.scores"].apply(kwargs={"day": "2026-10-25"}, throw=True)
     get_session.assert_not_called()

@@ -106,6 +106,8 @@ def test_the_vault_lamp_scores_68_6_with_its_explanation() -> None:
             {"name": "saturation", "source": "shopify_stores", "raw": 73.3, "points": 6.99,
              "missing": False},
         ],
+        "reason": None,
+        "pending": None,
     }  # fmt: skip
     assert Explanation.model_validate(score.explanation.model_dump(mode="json")) == (
         score.explanation
