@@ -1,6 +1,6 @@
 """imp-311 (DEC-287): a NUL character in free text answers a 422 problem, never a 500.
 
-Postgres text can't hold NUL (XR-32). Body text and the shared `Brand` carry NoNul, so FastAPI
+Postgres text can't hold NUL (XR-32). Body text and the shared `Brand` carry NoNulStr, so FastAPI
 refuses them before any SQL. Query, path and cursor text that reaches a SQL parameter meets
 the NUL DataError handler instead. Tabs and newlines pass both, as before."""
 
@@ -64,7 +64,7 @@ MOVE = {"action": "split", "listing_ids": [1]}
 DECISIONS = "/v1/admin/matching/decisions"
 BRANDS = "/v1/popular-products/brands"
 
-# Typed with NoNul: the field, its NUL request, the same request with a tab or newline, and
+# Typed with NoNulStr: the field, its NUL request, the same request with a tab or newline, and
 # that request's status before and after imp-311.
 TYPED: dict[str, tuple[tuple[str | int, ...], Case, Case, int]] = {
     "tag": (
