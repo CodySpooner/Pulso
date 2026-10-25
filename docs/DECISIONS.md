@@ -106,6 +106,7 @@ New entries go at the bottom with the next number. Never renumber or delete; mar
 | DEC-131 | Collector seeds and source controls: worker-container step, fail-closed evidence gates, private seed file | proposed (P1-42) |
 | DEC-202 | While Codex is off, a fresh Claude session does the owed cross-reviews | approved by owner 2026-10-23 |
 | DEC-261 | The Shopify crawler stays off: the owner won't risk their Shopify stores | approved by owner 2026-10-25 |
+| DEC-320 | CI runs on main always finish, so Railway deploys | approved by owner 2026-10-25 |
 
 Superseded review defaults, not given entries: default #0 (move the repo) is done, see DEC-005. Default #2 (no local collection at all) is replaced by DEC-002. Default #15 (CSS-only motion) is replaced by DEC-007, and its remaining rules are in DEC-025. Review question D1 (Railway Pro from Phase 1) is answered by DEC-001, D2 by DEC-003, D3 by DEC-004, D5 by DEC-008 and D8 by DEC-006.
 
@@ -3400,3 +3401,11 @@ Superseded review defaults, not given entries: default #0 (move the repo) is don
 
   `packages/core/tests/test_models.py`'s `WorkspaceOwned` contract covers both tables, and the migration round trip matches the models. Ten one-line mutations each fail a test (`docs/reports/p4-07.md`).
 - **Not here:** the 30-day sparkline batch, "since added" deltas, `GET /v1/watchlists/summary`, the `/watchlists` UI, the `W` shortcut, and a read of a product's star state (backlog rows in the report).
+
+### DEC-320 · CI runs on main always finish, so Railway deploys
+**2026-10-25 · approved by owner 2026-10-25** · amends DEC-050 (cancellation of superseded runs) for `main` only; DEC-014 and DEC-102 (Railway "Wait for CI")
+- **Owner's answer (2026-10-25, in the owner's session):** "Yes: change CI so runs on main always finish (keep cancelling only on other branches), so Railway deploys again. I approve this .github change."
+- **Problem:** `cancel-in-progress: true` applied to every ref. A run on `main` takes about 28 minutes and the lead pushes every 15–30 minutes, so newer pushes cancelled most `main` runs. Railway's Wait for CI needs a passing run on the exact commit, so the site stayed on `d341e64` (deployed 12:59Z) until this change: the runs on `c0aa24c`, `aef57c4`, `0c9e969`, `179b189`, `2e43a29` and `fca91dd` were all cancelled.
+- **Decision:** `cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}`. Other branches still cancel superseded runs. On `main` the concurrency group keeps one running and one pending run: a running run always finishes, and a newer push replaces only the pending one. Railway deploys every commit whose run passes.
+- **Alternatives:** a unique group per `main` run (every push runs in parallel, more load for no gain); turning Wait for CI off (deploys untested code); batching lead pushes (slows merges).
+- **Cost:** none; GitHub Actions is free for public repositories.
