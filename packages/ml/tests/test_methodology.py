@@ -74,7 +74,6 @@ def test_unbuilt_scores_name_their_phase_and_carry_no_numbers() -> None:
     planned = [s for s in methodology.build()["scores"] if s["status"] == "not built yet"]
     assert [s["id"] for s in planned] == [
         "trend-score",
-        "saturation",
         "opportunity",
         "risk",
         "supplier-reliability",
@@ -97,8 +96,9 @@ def test_the_contract_names_its_fields_and_the_missing_rule() -> None:
         "components",
         "missing",
         "coverage",
+        "panel_size",
     ]
-    coverage = contract["explanation"]["fields"][-1]
+    coverage = contract["explanation"]["fields"][4]
     assert coverage["note"] == "present configured weight / all configured weight"
     assert "no source yet" in contract["missing_inputs"]["text"]
     assert contract["confidence"]["status"] == "not built yet"

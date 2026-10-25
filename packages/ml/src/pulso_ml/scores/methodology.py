@@ -16,7 +16,7 @@ from types import ModuleType
 from typing import Any
 
 from pulso_core import scores as contract
-from pulso_ml.scores import lifecycle, velocity
+from pulso_ml.scores import lifecycle, saturation, velocity
 
 OUT = Path("apps/web/src/lib/methodology.json")
 
@@ -24,11 +24,11 @@ OUT = Path("apps/web/src/lib/methodology.json")
 BUILT: list[tuple[str, str, ModuleType, str, str]] = [
     ("velocity", "Velocity & Acceleration", velocity, "family_velocity", "SC-1"),
     ("lifecycle-stage", "Lifecycle Stage", lifecycle, "lifecycle_stage", "SC-4"),
+    ("saturation", "Saturation", saturation, "saturation_scores", "SC-3"),
 ]
 # (anchor, title, phase, task) per score with no code yet (vault Score Definitions registry).
 PLANNED: list[tuple[str, str, int, str | None]] = [
     ("trend-score", "Trend Score v0", 4, "SC-2"),
-    ("saturation", "Saturation", 4, "SC-3"),
     ("opportunity", "Opportunity", 4, "SC-5"),
     ("risk", "Risk & Refund Risk", 5, None),
     ("supplier-reliability", "Supplier Reliability", 7, None),

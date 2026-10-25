@@ -26,6 +26,15 @@ Kind = Literal["trend", "saturation", "lifecycle", "risk", "refund_risk"]  # sco
 Stage = Literal["emerging", "rising", "peaking", "declining", "dead"]
 
 
+class Normalization(BaseModel):
+    """The products a robust z was taken over (vault Score Definitions §4)."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    category_id: int | None  # the category used, after any fallback; None: every product
+    n: int = Field(ge=1)  # products with a value there
+
+
 class Component(BaseModel):
     """One input as the explanation records it.
 
@@ -43,6 +52,7 @@ class Component(BaseModel):
     weight_eff: float = 0.0  # renormalised over the present inputs
     raw: float | None = None
     z: float | None = None
+    normalization: Normalization | None = None  # where z's median and MAD came from
     contribution: float | None = None  # weight_eff × z: this input's share of the value
     as_of: AwareDatetime | None = None  # the input's newest capture
     missing: bool = False
@@ -67,6 +77,7 @@ class Explanation(BaseModel):
     components: tuple[Component, ...]
     missing: tuple[str, ...]
     coverage: float = Field(ge=0, le=1)  # present configured weight / all configured weight
+    panel_size: int | None = Field(default=None, ge=0)  # Saturation: stores tracked since t−28
 
     @model_validator(mode="after")
     def _missing_names_the_missing_inputs(self) -> Self:
