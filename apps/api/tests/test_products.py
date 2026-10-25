@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 
 from pulso_api.auth import Principal, current_principal
 from pulso_api.dependencies import get_db
-from pulso_api.routers.products import NO_MARGIN, NO_SIGNAL
+from pulso_api.routers.products import NO_SETTINGS, NO_SIGNAL
 from pulso_core.models import (
     Category,
     CollectorRun,
@@ -665,7 +665,8 @@ def test_overview_stats_match_sql_spot_checks(
             "age_days": body["age_days"]["value"],
             "velocity": body["velocity"]["value"],
         } == expected, name
-        assert body["landed_margin_minor"] == {"value": None, "reason": NO_MARGIN}
+        # A workspace with no settings row: Discover's reason (imp-280)
+        assert body["landed_margin_minor"] == {"value": None, "reason": NO_SETTINGS, "missing": []}
         assert body["ad_count"]["value"] is None
 
 

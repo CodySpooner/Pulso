@@ -1681,7 +1681,8 @@ export interface components {
              * Format: date-time
              */
             first_seen_at: string;
-            landed_margin_minor: components["schemas"]["NoSource"];
+            /** Landed Margin Minor */
+            landed_margin_minor: components["schemas"]["Margin"] | components["schemas"]["Incomplete"];
             /** Price Max Minor */
             price_max_minor: components["schemas"]["Sourced"] | components["schemas"]["NoSource"];
             /** Price Median Minor */

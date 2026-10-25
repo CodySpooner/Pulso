@@ -1,5 +1,5 @@
 """Product resources (UX-3, UX-2, UX-4). Products are global market data, so auth applies and
-no workspace filter; only notes, tags and Discover's best margin (Settings) are the workspace's."""
+no workspace filter; only notes, tags and the best margin (Settings) are the workspace's."""
 
 import json
 from collections import defaultdict
@@ -66,7 +66,6 @@ categories_router = APIRouter(prefix="/v1/categories", dependencies=[Depends(cur
 DB = Annotated[Session, Depends(get_db)]
 NO_PRICE = "No USD retail price observed yet."
 NO_SIGNAL = "No demand family has a 7-day growth yet."  # the UI reads "Insufficient signal"
-NO_MARGIN = "The landed-cost engine arrives with UX-8."
 NO_SETTINGS = "No workspace settings yet."
 MARGIN = "Landed cost, default scenario: price - landed cost - fees - returns, before ads"
 NEEDS = {  # landed_cost.MISSING: what a margin needs, as the Profit tab words it
@@ -269,6 +268,19 @@ def best_feature(product_id: InstrumentedAttribute[UUID] | UUID) -> Select[Any]:
     )
 
 
+def best_margins(
+    session: Session, workspace_id: UUID, product_ids: Sequence[UUID]
+) -> dict[UUID, RowMapping]:
+    """The workspace's workspace_product_economics rows: the read behind every best margin."""
+    view = workspace_product_economics.c
+    rows = session.execute(
+        select(workspace_product_economics).where(
+            view.workspace_id == workspace_id, view.product_id.in_(product_ids)
+        )
+    ).mappings()
+    return {row["product_id"]: row for row in rows}
+
+
 def margin_stat(
     row: RowMapping | None, sources: dict[str, Source], now: datetime
 ) -> Margin | Incomplete:
@@ -468,16 +480,7 @@ def list_products(
         }[sort]
         next_cursor = json.dumps([value, str(last.id)])
     snapshots = latest_snapshots(session, [row.id for row in page])
-    view = workspace_product_economics.c
-    margins = {
-        row["product_id"]: row
-        for row in session.execute(
-            select(workspace_product_economics).where(
-                view.workspace_id == principal.workspace_id,
-                view.product_id.in_([row.id for row in page]),
-            )
-        ).mappings()
-    }
+    margins = best_margins(session, principal.workspace_id, [row.id for row in page])
     by_key = {row.Source.key: row.Source for row in sources}
     feeding = [row for row in sources if row.feeding]
     degraded = []
@@ -602,7 +605,7 @@ class ProductOverview(BaseModel):
     price_median_minor: Stat  # the lower median of the USD store listings' lowest prices
     price_max_minor: Stat
     best_supplier_cost_minor: SupplierCost | NoSource
-    landed_margin_minor: NoSource
+    landed_margin_minor: Margin | Incomplete  # Discover's best margin for this product (imp-280)
     first_seen_at: AwareDatetime
     age_days: Stat  # UTC days since first_seen_at, traced to the product's first observation
     velocity: Velocity | NoSource
@@ -630,7 +633,9 @@ def appearance(store: bool, group: list[Row[Any]], now: datetime) -> Appearance:
 
 
 @router.get("/{product_id}/overview", response_model=ProductOverview)
-def get_product_overview(product_id: UUID, session: DB) -> ProductOverview:
+def get_product_overview(
+    product_id: UUID, session: DB, principal: Annotated[Principal, Depends(current_principal)]
+) -> ProductOverview:
     product = live_product(session, product_id)
     now = datetime.now(UTC)
     rows = latest_snapshots(session, [product.id])[product.id]
@@ -680,7 +685,11 @@ def get_product_overview(product_id: UUID, session: DB) -> ProductOverview:
         ),
         price_max_minor=stats["price_max_minor"],
         best_supplier_cost_minor=cost,
-        landed_margin_minor=NoSource(value=None, reason=NO_MARGIN),
+        landed_margin_minor=margin_stat(
+            best_margins(session, principal.workspace_id, [product.id]).get(product.id),
+            sources,
+            now,
+        ),
         first_seen_at=product.first_seen_at,
         age_days=age,
         velocity=velocity_stat(feature, sources, now),

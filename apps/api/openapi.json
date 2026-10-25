@@ -2876,7 +2876,15 @@
             "type": "string"
           },
           "landed_margin_minor": {
-            "$ref": "#/components/schemas/NoSource"
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Margin"
+              },
+              {
+                "$ref": "#/components/schemas/Incomplete"
+              }
+            ],
+            "title": "Landed Margin Minor"
           },
           "price_max_minor": {
             "anyOf": [
