@@ -259,7 +259,7 @@ export function SourcesPanel({ now, onOpen, onImport }: { now: number; onOpen: (
                     <SourceName source={s} onOpen={onOpen} />
                     {waiting(state) ? pillSkeleton : <StatePill state={state} />}
                   </div>
-                  {!waiting(state) && <StatusNote source={s} state={state} missed={missed(s, state)} className="-mt-1" />}
+                  {!waiting(state) && <StatusNote source={s} state={state} missed={missed(s, state)} now={now} className="-mt-1" />}
                   <dl className="zone-data grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-muted-foreground">
                     <dt>Last run</dt>
                     <dd className="text-foreground">
@@ -336,7 +336,7 @@ export function SourcesPanel({ now, onOpen, onImport }: { now: number; onOpen: (
                       <td className="px-2 pointer-coarse:py-3">
                         <div className="flex flex-col items-start gap-0.5">
                           {waiting(state) ? pillSkeleton : <StatePill state={state} />}
-                          {!waiting(state) && <StatusNote source={s} state={state} missed={missed(s, state)} />}
+                          {!waiting(state) && <StatusNote source={s} state={state} missed={missed(s, state)} now={now} />}
                           {s.activity && <Activity activity={s.activity} label onEdit={() => openActivity(s)} />}
                         </div>
                       </td>
@@ -444,7 +444,7 @@ function SourceName({ source, onOpen }: { source: SourceHealth; onOpen: (key: st
   );
 }
 
-function StatusNote({ source, state, missed, className }: { source: SourceHealth; state: SourceState; missed: MissedSlot | null; className?: string }) {
+function StatusNote({ source, state, missed, now, className }: { source: SourceHealth; state: SourceState; missed: MissedSlot | null; now: number; className?: string }) {
   const reason = [
     source.disabled_reason,
     state === "skipped" && source.last_run && skipNote(source.last_run),
@@ -467,7 +467,12 @@ function StatusNote({ source, state, missed, className }: { source: SourceHealth
           Gap check didn&apos;t load<span className="sr-only"> (retry on the Collector host card)</span>
         </HostRetryLink>
       )}
-      {source.retry_not_before && <span className="whitespace-nowrap">Retry after {formatUtc(source.retry_not_before)}</span>}
+      {/* The dialog's relative hint too, from the data time, so it holds still until the next refetch (imp-120). */}
+      {source.retry_not_before && (
+        <span className="whitespace-nowrap">
+          Retry after {formatUtc(source.retry_not_before)} ({formatAgo(source.retry_not_before, now)})
+        </span>
+      )}
       {/* Never truncated: the slot and reason are the why (imp-124). The slot sizes its column: a same-day slot is
           one unbreakable phrase, a longer one breaks between phrases (p1-53). Under a coarse pointer the table
           puts 18 px between the pill and the link, so their 44 px hit squares don't overlap (A11Y-02). */}

@@ -267,10 +267,10 @@ for (const [width, height] of [
     expect(reason.x + reason.width).toBeLessThanOrEqual((await retry.boundingBox())!.x);
   });
 
-  for (const [footer, label, drawerOf] of [
-    ["runs", "Load older runs", "CJ Dropshipping"],
-    ["targets", "Load more targets", "Shopify stores"],
-    ["gaps", "Load older gaps", null],
+  for (const [footer, label, retryLabel, drawerOf] of [
+    ["runs", "Load older runs", "Retry loading older runs", "CJ Dropshipping"],
+    ["targets", "Load more targets", "Retry loading targets", "Shopify stores"],
+    ["gaps", "Load older gaps", "Retry loading older gaps", null],
   ] as const) {
     test(`${width}px: offline, the ${footer} footer's Retry is locked, and its reason covers nothing (imp-136)`, async ({ page, context }) => {
       await page.setViewportSize({ width, height });
@@ -279,10 +279,10 @@ for (const [width, height] of [
       await page.goto("/admin/data-health");
       if (drawerOf) await page.getByRole("button", { name: `${drawerOf}: open runs` }).locator("visible=true").click();
       const scope = drawerOf ? page.getByRole("dialog", { name: drawerOf }) : page.locator("main");
-      const more = scope.getByRole("button", { name: new RegExp(`^(${label}|Loading…|Retry)$`) });
+      const more = scope.getByRole("button", { name: new RegExp(`^(${label}|Loading…|${retryLabel})$`) });
       await more.focus();
       await page.keyboard.press("Enter");
-      await expect(more).toHaveText("Retry");
+      await expect(more).toHaveText(retryLabel);
       await setOffline(true);
       await expect(more).toHaveAttribute("aria-disabled", "true");
       await page.keyboard.press("Enter"); // a press only shows why, as a stale line's Retry does (DEC-220 b)

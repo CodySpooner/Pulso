@@ -209,6 +209,7 @@ function DrawerBody({ source, now, onGaps, onImport }: { source: SourceHealth; n
               <LoadMore
                 note={runs.hasNextPage ? `Showing ${plural(items.length, "run")} · older runs not loaded yet` : `Showing all ${plural(items.length, "run")}`}
                 label="Load older runs"
+                retryLabel="Retry loading older runs"
                 more={runs.hasNextPage}
                 pending={runs.isFetchingNextPage}
                 error={runs.isFetchNextPageError ? runs.error : null}
@@ -346,6 +347,7 @@ function RunDetailView({ run, title }: { run: Run; title: React.RefObject<HTMLEl
             <LoadMore
               note={targetsNote(targets.length, (more.pages.at(-1) ?? detail.data).target_count, more.hasMore)}
               label="Load more targets"
+              retryLabel="Retry loading targets"
               more={more.hasMore}
               pending={more.pending}
               error={more.error}

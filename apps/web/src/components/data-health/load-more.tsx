@@ -13,12 +13,13 @@ import { TapTooltip } from "./atoms";
 
 /**
  * The footer under a bounded list (DEC-166): what is shown, and one button that loads the next page or retries
- * a failed one. The button keeps focus while it loads; once nothing is left it goes, and focus moves to the
- * note rather than falling back to the page.
+ * a failed one, saying what it retries when `retryLabel` is set (imp-112). The button keeps focus while it loads;
+ * once nothing is left it goes, and focus moves to the note rather than falling back to the page.
  */
 export function LoadMore({
   note,
   label,
+  retryLabel = "Retry",
   more,
   pending,
   error,
@@ -27,6 +28,7 @@ export function LoadMore({
 }: {
   note: string;
   label: string;
+  retryLabel?: string;
   more: boolean;
   pending: boolean;
   error: unknown;
@@ -87,7 +89,7 @@ export function LoadMore({
               onClick={() => !pending && !locked && onLoad()}
             >
               {pending && <LoaderCircle className="motion-safe:animate-spin" aria-hidden />}
-              {pending ? "Loading…" : error != null ? "Retry" : label}
+              {pending ? "Loading…" : error != null ? retryLabel : label}
             </Button>
           </TapTooltip>
         )}

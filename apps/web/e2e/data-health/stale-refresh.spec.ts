@@ -107,7 +107,7 @@ test("a failed older-runs page keeps the runs already loaded in the drawer", asy
   await drawer.getByRole("button", { name: "Load older runs" }).click();
   // imp-136: the list's footer says it, as Load more targets does; no stale line, since the loaded runs are current.
   await expect(drawer).toContainText("Couldn't load older runs. The API is restarting. Try again. Error ID req-runs-2", { timeout: 15_000 });
-  await expect(drawer.getByRole("button", { name: "Retry" })).toBeVisible();
+  await expect(drawer.getByRole("button", { name: "Retry loading older runs" })).toBeVisible();
   await expect(staleLines(page)).toHaveCount(0);
   await expect(drawer.getByRole("list", { name: "CJ Dropshipping runs" }).getByRole("listitem")).toHaveCount(1);
 });

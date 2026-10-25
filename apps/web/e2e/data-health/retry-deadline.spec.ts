@@ -4,7 +4,8 @@ import { mockAdminApi, NOW, sources, suppressedSources } from "./fixtures";
 
 // imp-094 (aud-010 A10-03, aud-011 B11-06): a blocked source's retry deadline stays readable in its row and
 // card, the re-enable dialog states a future deadline instead of implying it has passed, and the source type
-// and status notes are at least 12px. Fixtures: now 14:00 UTC, Shopify retry_not_before 15:00 UTC.
+// and status notes are at least 12px. Fixtures: now 14:00 UTC, Shopify retry_not_before 15:00 UTC. imp-120: the row and
+// card add the dialog's relative hint, measured from the data time, so it holds still until the next refetch.
 
 const PAGE = "/admin/data-health";
 const DEADLINE = "Oct 22, 15:00 UTC";
@@ -60,8 +61,9 @@ test("1440: the blocked row shows its full retry deadline; type and status text 
   await open(page);
   const table = page.getByRole("region", { name: "Sources table" });
   const shopify = table.getByRole("row", { name: /Shopify stores/ });
-  await expect(shopify).toContainText(DEADLINE);
+  await expect(shopify).toContainText(`Retry after ${DEADLINE} (in 1h)`);
   expect(await fullyShown(shopify, DEADLINE)).toBe(true);
+  expect(await fullyShown(shopify, "in 1h")).toBe(true);
 
   for (const [name, type] of typeLabels) expect(await fontSize(table.getByRole("row", { name: new RegExp(name) }), type)).toBeGreaterThanOrEqual(12);
   expect(await fontSize(shopify, "5 consecutive 429 responses")).toBeGreaterThanOrEqual(12);
@@ -76,12 +78,30 @@ test.describe("phone width", () => {
     await mockAdminApi(page);
     await open(page);
     const card = page.getByRole("listitem").filter({ has: page.getByRole("button", { name: "Shopify stores: open runs" }) });
-    await expect(card).toContainText(DEADLINE);
+    await expect(card).toContainText(`Retry after ${DEADLINE} (in 1h)`);
     expect(await fullyShown(card, DEADLINE)).toBe(true);
+    expect(await fullyShown(card, "in 1h")).toBe(true);
     expect(await fontSize(card, "Public endpoint")).toBeGreaterThanOrEqual(12);
     expect(await fontSize(card, new RegExp(DEADLINE))).toBeGreaterThanOrEqual(12);
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(375);
   });
+});
+
+test("the row's relative hint holds still between fetches and follows the next one; a passed deadline says so", async ({ page }) => {
+  await mockAdminApi(page);
+  await open(page);
+  const shopify = page.getByRole("region", { name: "Sources table" }).getByRole("row", { name: /Shopify stores/ });
+  await expect(shopify).toContainText(`Retry after ${DEADLINE} (in 1h)`);
+  await page.clock.setFixedTime(new Date(NOW.getTime() + 2 * 60_000)); // two minutes on, no refetch yet
+  await shopify.hover(); // a re-render
+  await page.waitForTimeout(1_000);
+  await expect(shopify).toContainText(`Retry after ${DEADLINE} (in 1h)`); // no ticking (no fake liveness)
+  await page.getByRole("button", { name: "Refresh" }).click();
+  await expect(shopify).toContainText(`Retry after ${DEADLINE} (in 58m)`);
+
+  await mockAdminApi(page, { sources: shopifyRetry(1) });
+  await open(page);
+  await expect(shopify).toContainText("Retry after Oct 22, 13:00 UTC (1h ago)");
 });
 
 test("re-enable before the deadline: the dialog states it once and that earlier runs are deferred; the PATCH is unchanged", async ({ page }) => {

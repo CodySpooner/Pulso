@@ -229,7 +229,7 @@ function OpenGaps({ names, host }: { names: Map<string, string> | null; host: Re
     <div className="flex flex-col gap-2 border-t border-border-subtle pt-3">
       {/* The target of GapsLink: following it focuses this heading; the scroll margin clears the phone's top bar. */}
       <h3 id={OPEN_GAPS_ID} tabIndex={-1} className="scroll-mt-18 text-data font-medium text-foreground lg:scroll-mt-4">
-        Open gaps <span className="font-normal text-subtle-foreground">· {plural(ranges.length, "range")}{older.hasMore ? " loaded" : ""}, newest first · feature dates touching them carry gap flags</span>
+        Open gaps <span className="font-normal text-subtle-foreground">· {plural(ranges.length, "range")}, newest first · feature dates touching them carry gap flags</span>
       </h3>
       <ScrollCue label="Open gaps">
         <table className="zone-data w-full min-w-150">
@@ -259,6 +259,7 @@ function OpenGaps({ names, host }: { names: Map<string, string> | null; host: Re
         <LoadMore
           note={gapsNote(shown.length, ranges.length, gaps.length, older.hasMore)}
           label={older.hasMore ? "Load older gaps" : `Show ${plural(hidden, "older range")}`}
+          retryLabel="Retry loading older gaps"
           more={hidden > 0 || older.hasMore}
           pending={older.pending}
           error={older.error}

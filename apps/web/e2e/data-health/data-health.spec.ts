@@ -290,6 +290,9 @@ test.describe("states", () => {
     await expect(page.getByRole("heading", { level: 2, name: "Can't reach the API" })).toBeVisible({ timeout: 15_000 });
     await expect(page.getByText("When it runs on your PC, this also means the PC is off.")).toBeVisible();
     expect(await headingLevels(page)).toEqual([1, 2]);
+    // imp-118: one control, one verb: the card's Retry. The header Refresh would run the same refresh, so it's hidden.
+    await expect(page.getByRole("button", { name: /^Refresh/ })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Retry" })).toHaveCount(1);
   });
 
   test("a failed panel's error stays an h3 under its panel's h2", async ({ page }) => {
