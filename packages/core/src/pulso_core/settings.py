@@ -83,6 +83,8 @@ class Settings(BaseSettings):
     image_requests_per_minute: Annotated[int, Field(gt=0, le=30)] = 30  # per host
     # Product matcher (DEC-249); its weights and thresholds are code config, never env.
     matcher_enabled: bool = False
+    # OpenCLIP embeddings job (DEC-269); needs the ml worker's `clip` extra and baked weights.
+    embeddings_enabled: bool = False
 
     @model_validator(mode="after")
     def _collector_limits(self) -> Self:
