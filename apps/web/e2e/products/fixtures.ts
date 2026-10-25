@@ -260,6 +260,11 @@ export const feedItems = (n: number) =>
   Array.from({ length: n }, (_, i) => discoverItem(i)).sort((a, b) => growth(b) - growth(a));
 const growth = (item: S["DiscoverItem"]) => ("growth" in item.velocity ? item.velocity.growth : -Infinity);
 export const FEED_PATH = (url: URL) => url.pathname === "/api/v1/products";
+/** The stores and suppliers the feed names for its filter chips (imp-242): the palette's search fixtures' ids. */
+export const FEED_VENDORS: Record<"store" | "supplier", Record<string, string>> = {
+  store: { 4101: "glowbeam.example.test", 4102: "nightglow.example.test" },
+  supplier: { 88: "Shenzhen Glowtech Co." },
+};
 
 export interface FeedOptions {
   items?: S["DiscoverItem"][];
@@ -293,7 +298,12 @@ export async function mockFeedApi(page: Page, options: FeedOptions = {}) {
     const status = offset ? (options.failMore ? 503 : 0) : options.status;
     if (status) return route.fulfill({ status, contentType: "application/problem+json", json: problem(status, `e2e-feed-${status}`) });
     const end = offset + pageSize;
-    const body: S["DiscoverPage"] = { items: items.slice(offset, end), next_cursor: end < items.length ? String(end) : null, as_of: at(6), degraded };
+    const vendor = (key: "store" | "supplier") => {
+      const id = url.searchParams.get(key);
+      return id && FEED_VENDORS[key][id] ? { id: Number(id), name: FEED_VENDORS[key][id] } : null;
+    };
+    const next_cursor = end < items.length ? String(end) : null;
+    const body: S["DiscoverPage"] = { items: items.slice(offset, end), next_cursor, as_of: at(6), degraded, store: vendor("store"), supplier: vendor("supplier") };
     return route.fulfill({ json: body });
   });
   return calls;

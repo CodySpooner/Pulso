@@ -16,6 +16,8 @@ export interface Filters {
   source: keyof typeof SOURCES | null;
   first_seen_days: (typeof FIRST_SEEN)[number] | null;
   has_sellers: boolean | null;
+  store: number | null; // stores.id: no control, only a chip (a palette store row lands here, imp-242)
+  supplier: number | null;
 }
 
 export interface FeedState extends Filters {
@@ -23,9 +25,10 @@ export interface FeedState extends Filters {
   sort: Sort;
 }
 
-export const NO_FILTERS: Filters = { category: null, price_min: null, price_max: null, source: null, first_seen_days: null, has_sellers: null };
+export const NO_FILTERS: Filters = { category: null, price_min: null, price_max: null, source: null, first_seen_days: null, has_sellers: null, store: null, supplier: null };
 
 const whole = (raw: string | null) => (raw !== null && /^\d{1,7}$/.test(raw) ? Number(raw) : null);
+const id = (raw: string | null) => (raw !== null && /^[1-9]\d{0,14}$/.test(raw) ? Number(raw) : null); // a safe integer
 const oneOf = <T extends string>(raw: string | null, values: readonly T[]) => (values.includes(raw as T) ? (raw as T) : null);
 
 export function parseFeed(params: URLSearchParams): FeedState {
@@ -40,6 +43,8 @@ export function parseFeed(params: URLSearchParams): FeedState {
     source: oneOf(params.get("source"), Object.keys(SOURCES) as (keyof typeof SOURCES)[]),
     first_seen_days: FIRST_SEEN.find((d) => d === days) ?? null,
     has_sellers: sellers === "true" ? true : sellers === "false" ? false : null,
+    store: id(params.get("store")),
+    supplier: id(params.get("supplier")),
   };
 }
 
@@ -53,9 +58,9 @@ export function feedSearch(state: FeedState): string {
 }
 
 /** The API query for a state: prices in minor units. */
-export function apiQuery({ sort, category, price_min, price_max, source, first_seen_days, has_sellers }: FeedState) {
+export function apiQuery({ sort, category, price_min, price_max, source, first_seen_days, has_sellers, store, supplier }: FeedState) {
   const minor = (usd: number | null) => (usd === null ? null : usd * 100);
-  const query = { sort, category, price_min: minor(price_min), price_max: minor(price_max), source, first_seen_days, has_sellers };
+  const query = { sort, category, price_min: minor(price_min), price_max: minor(price_max), source, first_seen_days, has_sellers, store, supplier };
   return Object.fromEntries(Object.entries(query).filter(([, value]) => value !== null)) as Partial<typeof query>;
 }
 

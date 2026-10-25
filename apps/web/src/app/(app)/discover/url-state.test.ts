@@ -17,6 +17,8 @@ describe("Discover URL state", () => {
     "sort=fewest_sellers&category=7&price_min=20&price_max=60",
     "source=cj&first_seen_days=30&has_sellers=false",
     "view=table&sort=newest&category=503&price_min=0&source=shopify_stores&first_seen_days=7&has_sellers=true",
+    "store=4101",
+    "sort=newest&store=4101&supplier=88",
   ])("%s round-trips", (search) => {
     const state = parse(search);
     expect(feedSearch(state)).toBe(search);
@@ -26,12 +28,16 @@ describe("Discover URL state", () => {
   test("unknown or malformed values fall back to the default", () => {
     expect(parse("view=list&sort=trend&category=abc&price_min=-5&price_max=1e3&source=amazon&first_seen_days=14&has_sellers=yes")).toEqual(DEFAULT);
     expect(parse("category=0").category).toBeNull();
+    for (const id of ["0", "-1", "abc", "1e3", "01", "9".repeat(16)]) expect(parse(`store=${id}&supplier=${id}`)).toEqual(DEFAULT);
   });
 
   test("the API gets minor units and no nulls; filters count without sort or view", () => {
     const state = parse("view=table&sort=newest&price_min=20&has_sellers=false");
     expect(apiQuery(state)).toEqual({ sort: "newest", price_min: 2000, has_sellers: false });
     expect(activeFilters(state)).toEqual(["price_min", "has_sellers"]);
+    const vendor = parse("store=4101&supplier=88");
+    expect(apiQuery(vendor)).toEqual({ sort: "momentum", store: 4101, supplier: 88 });
+    expect(activeFilters(vendor)).toEqual(["store", "supplier"]);
   });
 });
 
