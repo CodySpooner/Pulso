@@ -48,9 +48,7 @@ def hold(
     nothing: a gap is never bridged and families are never spliced (Demand Signals rule 2)."""
     if stage is None or prior is None or prior.family != family or prior.stage in (None, stage):
         return stage, None
-    if prior.pending == stage:
-        return stage, None
-    return prior.stage, stage
+    return (stage, None) if prior.pending == stage else (prior.stage, stage)
 
 
 def stamped(explanation: Explanation, at: datetime) -> Explanation:
@@ -102,8 +100,8 @@ class Night:
         self.before: Rows = {
             (r.product_id, r.family): r for r in rows if r.feature_date == week_ago
         }
-        self.first = dict(
-            ((p, fam), d)
+        self.first = {
+            (p, fam): d
             for p, fam, d in self.session.execute(
                 select(feature.product_id, feature.family, func.min(feature.feature_date))
                 .where(
@@ -111,7 +109,7 @@ class Night:
                 )
                 .group_by(feature.product_id, feature.family)
             ).tuples()
-        )
+        }
         self.demand: Rows = {(r.product_id, r.family): r for r in self.now if r.family in FAMILIES}
         self.primary = primary_families(self.demand.keys(), self.first)
 

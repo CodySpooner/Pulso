@@ -347,6 +347,7 @@ def test_a_stage_shows_once_its_rule_matched_two_nights_in_a_row() -> None:
     )
     assert hold("rising", rising._replace(pending="peaking"), "cj_stock") == ("rising", None)
     assert hold(None, rising, "cj_stock") == (None, None)  # no stage is never held over
+    assert hold(None, rising._replace(pending="peaking"), "cj_stock") == (None, None)
     assert hold("peaking", Prior(None, None, "cj_stock"), "cj_stock") == ("peaking", None)
     assert hold("peaking", rising, "shp_inv") == ("peaking", None)  # a new family restarts
 
@@ -360,3 +361,8 @@ def test_the_primary_family_is_the_one_observed_longest_then_by_name() -> None:
         (q, "cj_stock"): DAY - timedelta(days=30),
     }
     assert primary_families(first.keys(), first) == {p: "shp_inv", q: "cj_stock"}
+
+
+def test_the_cli_refuses_a_day_still_being_collected() -> None:
+    with pytest.raises(SystemExit):
+        nightly.main([datetime.now(UTC).date().isoformat()])
