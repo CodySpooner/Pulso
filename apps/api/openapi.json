@@ -1359,6 +1359,57 @@
         "title": "CategoryOption",
         "type": "object"
       },
+      "Change": {
+        "properties": {
+          "input": {
+            "enum": [
+              "price_minor",
+              "freight_quote_id",
+              "goods_minor",
+              "freight_minor",
+              "duty_bps",
+              "customs_fee_minor",
+              "payment_fee_bps",
+              "payment_fee_fixed_minor",
+              "shopify_fee_bps",
+              "returns_bps",
+              "ad_cost_minor",
+              "margin_minor"
+            ],
+            "title": "Input",
+            "type": "string"
+          },
+          "new": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "New"
+          },
+          "old": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Old"
+          }
+        },
+        "required": [
+          "input",
+          "old",
+          "new"
+        ],
+        "title": "Change",
+        "type": "object"
+      },
       "Cluster": {
         "description": "A side's product: what a merge moves (listings) and what stays and follows (notes, tags).",
         "properties": {
@@ -5321,11 +5372,23 @@
         "title": "ProductTestCreate",
         "type": "object"
       },
-      "ProductTestOut": {
+      "ProductTestDetail": {
         "properties": {
           "ad_spend_minor": {
             "title": "Ad Spend Minor",
             "type": "integer"
+          },
+          "break_even_cpa_minor": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The start snapshot's margin before ads; null without a complete snapshot.",
+            "title": "Break Even Cpa Minor"
           },
           "cpa_minor": {
             "anyOf": [
@@ -5438,6 +5501,45 @@
             "description": "revenue_minor / ad_spend_minor; null with no spend.",
             "title": "Roas"
           },
+          "signal": {
+            "anyOf": [
+              {
+                "enum": [
+                  "over_stop_loss",
+                  "winner_candidate"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "While Testing: over_stop_loss when orders = 0 and spend >= k x break-even CPA, or orders >= N (N = 5) and cpa_minor > break-even CPA; winner_candidate when orders >= N and cpa_minor <= break-even CPA.",
+            "title": "Signal"
+          },
+          "signal_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "While Testing, why there is no break-even.",
+            "title": "Signal Reason"
+          },
+          "since_start": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SinceStart"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The start snapshot against a fresh Profit calc of the same scenario (R-21); null before the test has a snapshot."
+          },
           "stage": {
             "enum": [
               "idea",
@@ -5474,6 +5576,18 @@
             ],
             "title": "Started On"
           },
+          "stop_loss_minor": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "k x break-even CPA (k = 2): the no-order stop-loss line and the suggested test budget; null without a positive break-even CPA.",
+            "title": "Stop Loss Minor"
+          },
           "updated_at": {
             "format": "date-time",
             "title": "Updated At",
@@ -5497,6 +5611,249 @@
           "notes",
           "kill_reason",
           "start_snapshot",
+          "break_even_cpa_minor",
+          "stop_loss_minor",
+          "signal",
+          "signal_reason",
+          "created_at",
+          "updated_at",
+          "since_start"
+        ],
+        "title": "ProductTestDetail",
+        "type": "object"
+      },
+      "ProductTestOut": {
+        "properties": {
+          "ad_spend_minor": {
+            "title": "Ad Spend Minor",
+            "type": "integer"
+          },
+          "break_even_cpa_minor": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The start snapshot's margin before ads; null without a complete snapshot.",
+            "title": "Break Even Cpa Minor"
+          },
+          "cpa_minor": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "ad_spend_minor / orders, half-even to the cent; null with no orders.",
+            "title": "Cpa Minor"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "currency": {
+            "const": "USD",
+            "title": "Currency",
+            "type": "string"
+          },
+          "ended_on": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ended On"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "kill_reason": {
+            "anyOf": [
+              {
+                "enum": [
+                  "no_sales_over_stop_loss",
+                  "cpa_above_break_even",
+                  "low_ctr_creatives",
+                  "supplier_issue",
+                  "sample_quality",
+                  "margin_too_thin",
+                  "saturated",
+                  "ad_account_rejection",
+                  "other"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Kill Reason"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "orders": {
+            "title": "Orders",
+            "type": "integer"
+          },
+          "product_id": {
+            "format": "uuid",
+            "title": "Product Id",
+            "type": "string"
+          },
+          "product_image_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Product Image Url"
+          },
+          "product_title": {
+            "title": "Product Title",
+            "type": "string"
+          },
+          "revenue_minor": {
+            "title": "Revenue Minor",
+            "type": "integer"
+          },
+          "roas": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "revenue_minor / ad_spend_minor; null with no spend.",
+            "title": "Roas"
+          },
+          "signal": {
+            "anyOf": [
+              {
+                "enum": [
+                  "over_stop_loss",
+                  "winner_candidate"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "While Testing: over_stop_loss when orders = 0 and spend >= k x break-even CPA, or orders >= N (N = 5) and cpa_minor > break-even CPA; winner_candidate when orders >= N and cpa_minor <= break-even CPA.",
+            "title": "Signal"
+          },
+          "signal_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "While Testing, why there is no break-even.",
+            "title": "Signal Reason"
+          },
+          "stage": {
+            "enum": [
+              "idea",
+              "researching",
+              "testing",
+              "winner",
+              "killed"
+            ],
+            "title": "Stage",
+            "type": "string"
+          },
+          "start_snapshot": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The Profit calc (ProfitCalc fields plus captured_at) when the test first entered Testing. Never rewritten; null until then.",
+            "title": "Start Snapshot"
+          },
+          "started_on": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started On"
+          },
+          "stop_loss_minor": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "k x break-even CPA (k = 2): the no-order stop-loss line and the suggested test budget; null without a positive break-even CPA.",
+            "title": "Stop Loss Minor"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "product_id",
+          "product_title",
+          "product_image_url",
+          "stage",
+          "started_on",
+          "ended_on",
+          "currency",
+          "ad_spend_minor",
+          "revenue_minor",
+          "orders",
+          "cpa_minor",
+          "roas",
+          "notes",
+          "kill_reason",
+          "start_snapshot",
+          "break_even_cpa_minor",
+          "stop_loss_minor",
+          "signal",
+          "signal_reason",
           "created_at",
           "updated_at"
         ],
@@ -8744,6 +9101,50 @@
           "product_id"
         ],
         "title": "Side",
+        "type": "object"
+      },
+      "SinceStart": {
+        "properties": {
+          "as_of": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The fresh calc's oldest observation.",
+            "title": "As Of"
+          },
+          "changes": {
+            "description": "Each compared input the fresh calc differs on; empty: no changes since start.",
+            "items": {
+              "$ref": "#/components/schemas/Change"
+            },
+            "title": "Changes",
+            "type": "array"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Why the fresh calc couldn't run; `changes` is empty.",
+            "title": "Reason"
+          }
+        },
+        "required": [
+          "changes",
+          "reason",
+          "as_of"
+        ],
+        "title": "SinceStart",
         "type": "object"
       },
       "SourceHealth": {
@@ -42898,7 +43299,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ProductTestOut"
+                  "$ref": "#/components/schemas/ProductTestDetail"
                 }
               }
             },

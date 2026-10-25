@@ -1,5 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 
+import { contrastMisses } from "../p2-39/screens";
 import { mockProductApi, PRODUCT_ID } from "../products/fixtures";
 import { mockTestingApi } from "./fixtures";
 
@@ -203,3 +204,75 @@ test("Start a test on the Product Page adds an Idea test and links to it; a seco
   await expect(page.getByRole("status").filter({ hasText: "Already on the board." })).toBeVisible();
   await expect(page.getByRole("link", { name: "Open the board" })).toHaveAttribute("href", "/testing");
 });
+
+test("Testing cards show the API's stop-loss chip, day N and the spend bar (DEC-340)", async ({ page }) => {
+  await mockTestingApi(page);
+  await page.goto("/testing");
+  // The worked example: no orders at $48.66, 2 × the $24.33 break-even CPA. Started Oct 19, on the fixture clock of Oct 22: day 4.
+  const lights = card(page, "Testing", "LED strip lights");
+  await expect(lights.getByText("Over stop-loss")).toBeVisible();
+  await expect(lights.getByText("Day 4", { exact: true })).toBeVisible();
+  await expect(lights.getByText(/^Stop-loss\s*\$48\.66$/)).toBeVisible(); // the spend bar's caption
+  const winner = card(page, "Testing", "Heatless curling ribbon"); // 6 orders at $20.00 ≤ $24.33
+  await expect(winner.getByText("Winner candidate")).toBeVisible();
+  await expect(winner.getByText("Over stop-loss")).toHaveCount(0);
+  // 3 orders: under N, so no call either way; an incomplete snapshot gives the reason, never a chip.
+  await expect(card(page, "Testing", "Posture corrector brace").getByText(/Over stop-loss|Winner candidate/)).toHaveCount(0);
+  const projector = card(page, "Testing", "Galaxy star projector");
+  await expect(projector.getByText("Set price and supplier to compute break-even.")).toBeVisible();
+  await expect(projector.getByText(/^Stop-loss/)).toHaveCount(0);
+  await expect(card(page, "Winner", "Mini waffle maker").getByText(/Day \d|stop-loss/)).toHaveCount(0); // Testing only
+});
+
+test("the drawer lists what changed since start, by keyboard only, and the snapshot stays", async ({ page }) => {
+  await mockTestingApi(page);
+  await page.goto("/testing");
+  await page.locator("#test-9").focus();
+  await expect(page.locator("#test-9")).toBeFocused();
+  await page.keyboard.press("Enter");
+  const drawer = page.getByRole("dialog", { name: "LED strip lights" });
+  await expect(drawer).toContainText("Suggested test budget $48.66: 2 × break-even CPA.");
+  const changed = drawer.getByRole("list", { name: "Changed inputs" });
+  await expect(changed.getByRole("listitem")).toHaveText([
+    /Freight quote\s*Re-quoted\s*#41\s*→\s*changed to\s*#57/,
+    /Freight\s*▲\+\$1\.20\s*\$4\.00\s*→\s*changed to\s*\$5\.20/,
+    /Duty rate\s*▲\+5 pts\s*20%\s*→\s*changed to\s*25%/,
+    /Break-even CPA\s*▼−\$1\.62\s*\$24\.33\s*→\s*changed to\s*\$22\.71/,
+  ]);
+  await expect(drawer.locator('dt:text-is("Break-even CPA") + dd')).toHaveText("$24.33"); // the start snapshot, as it was
+  await expect(drawer).toContainText("data as of");
+  // Tab walks the drawer with a visible ring; Escape closes it and focus is back on the card.
+  await page.keyboard.press("Tab");
+  expect(await page.evaluate(() => getComputedStyle(document.activeElement!).outlineStyle !== "none" || getComputedStyle(document.activeElement!).boxShadow !== "none")).toBe(true);
+  await page.keyboard.press("Escape");
+  await expect(page.locator("#test-9")).toBeFocused();
+});
+
+test("changed since start: nothing changed, a calc that can't run, and a failed request", async ({ page }) => {
+  await mockTestingApi(page, {
+    sinceStart: { 1: "error", 2: { changes: [], reason: "Supplier listing not found on this product.", as_of: null } },
+  });
+  await page.goto("/testing?test=3");
+  await expect(page.getByRole("dialog", { name: "Mini waffle maker" })).toContainText("No changes since start.");
+  await page.goto("/testing?test=2");
+  await expect(page.getByRole("dialog")).toContainText("Can't compare with today's numbers: Supplier listing not found on this product. Check the Profit tab");
+  await page.goto("/testing?test=1");
+  await expect(page.getByRole("dialog").getByRole("heading", { name: "Couldn't compare with today's numbers" })).toBeVisible();
+  await page.goto("/testing?test=7"); // no snapshot yet: no comparison
+  await expect(page.getByRole("dialog", { name: "Sunset projection lamp" })).not.toContainText("Changed since start");
+});
+
+for (const theme of ["dark", "light"] as const)
+  test(`AA contrast on the Testing cards and the drawer's comparison (${theme})`, async ({ page }) => {
+    await page.emulateMedia({ colorScheme: theme, reducedMotion: "reduce" });
+    await page.addInitScript((t) => localStorage.setItem("theme", t), theme);
+    await mockTestingApi(page);
+    await page.goto("/testing");
+    await expect(card(page, "Testing", "LED strip lights").getByText("Over stop-loss")).toBeVisible();
+    await page.waitForTimeout(300); // past the chip's fade-in
+    expect(await page.evaluate(contrastMisses, '[aria-labelledby="column-testing"]')).toEqual([]);
+    await page.goto("/testing?test=9");
+    await expect(page.getByRole("list", { name: "Changed inputs" })).toBeVisible();
+    await page.waitForTimeout(400); // past the sheet's slide-in
+    expect(await page.evaluate(contrastMisses, '[aria-labelledby="since-start"]')).toEqual([]);
+  });

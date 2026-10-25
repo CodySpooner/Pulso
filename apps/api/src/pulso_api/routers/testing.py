@@ -1,9 +1,10 @@
 """Testing Board (WF-5 part a, DEC-312): the workspace's product tests. CPA and ROAS are
-computed on read, never stored; the start snapshot keeps the economics a test began with (R-21)."""
+computed on read, never stored; the start snapshot keeps the economics a test began with (R-21).
+The stop-loss signal and "changed since start" are computed on read too (DEC-340)."""
 
 from datetime import UTC, date, datetime
 from fractions import Fraction
-from typing import Annotated, Any, Literal
+from typing import Annotated, Any, Literal, get_args
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Path, Query
@@ -38,6 +39,26 @@ KillReason = Literal[
 ]
 ENDED = {"winner", "killed"}
 NOT_NULL = {"stage", "ad_spend_minor", "revenue_minor", "orders", "scenario"}
+# ponytail: v0 constants (DEC-340); k and N editable in Settings is a follow-up
+STOP_LOSS_K = 2  # x break-even CPA: the no-order stop-loss and the suggested test budget
+WINNER_ORDERS = 5  # N: orders before CPA is judged against break-even
+NO_BREAK_EVEN = "Set price and supplier to compute break-even."
+Signal = Literal["over_stop_loss", "winner_candidate"]
+# "Changed since start": the scenario's inputs and lines a fresh calc can move, then the result.
+Compared = Literal[
+    "price_minor",
+    "freight_quote_id",
+    "goods_minor",
+    "freight_minor",
+    "duty_bps",
+    "customs_fee_minor",
+    "payment_fee_bps",
+    "payment_fee_fixed_minor",
+    "shopify_fee_bps",
+    "returns_bps",
+    "ad_cost_minor",
+    "margin_minor",
+]
 
 
 class ProductTestPatch(BaseModel):
@@ -96,8 +117,42 @@ class ProductTestOut(BaseModel):
         description="The Profit calc (ProfitCalc fields plus captured_at) when the test first "
         "entered Testing. Never rewritten; null until then."
     )
+    break_even_cpa_minor: int | None = Field(
+        description="The start snapshot's margin before ads; null without a complete snapshot."
+    )
+    stop_loss_minor: int | None = Field(
+        description=f"k x break-even CPA (k = {STOP_LOSS_K}): the no-order stop-loss line and "
+        "the suggested test budget; null without a positive break-even CPA."
+    )
+    signal: Signal | None = Field(
+        description="While Testing: over_stop_loss when orders = 0 and spend >= k x break-even "
+        f"CPA, or orders >= N (N = {WINNER_ORDERS}) and cpa_minor > break-even CPA; "
+        "winner_candidate when orders >= N and cpa_minor <= break-even CPA."
+    )
+    signal_reason: str | None = Field(description="While Testing, why there is no break-even.")
     created_at: AwareDatetime
     updated_at: AwareDatetime
+
+
+class Change(BaseModel):
+    input: Compared
+    old: int | None  # the start snapshot's
+    new: int | None  # the fresh calc's
+
+
+class SinceStart(BaseModel):
+    changes: list[Change] = Field(
+        description="Each compared input the fresh calc differs on; empty: no changes since start."
+    )
+    reason: str | None = Field(description="Why the fresh calc couldn't run; `changes` is empty.")
+    as_of: AwareDatetime | None = Field(description="The fresh calc's oldest observation.")
+
+
+class ProductTestDetail(ProductTestOut):
+    since_start: SinceStart | None = Field(
+        description="The start snapshot against a fresh Profit calc of the same scenario (R-21); "
+        "null before the test has a snapshot."
+    )
 
 
 class ProductTestPage(BaseModel):
@@ -110,7 +165,12 @@ class ProductTestPage(BaseModel):
 
 # A test's product name and main image: the board lists them with one query, not one per card.
 CARD = (Product.name, Image.url)
-COMPUTED = {"cpa_minor", "roas", "product_title", "product_image_url"}
+COMPUTED = {"cpa_minor", "roas", "product_title", "product_image_url"} | {
+    "break_even_cpa_minor",
+    "stop_loss_minor",
+    "signal",
+    "signal_reason",
+}
 
 
 def with_card[Q: Select[Any]](query: Q) -> Q:
@@ -121,16 +181,61 @@ def with_card[Q: Select[Any]](query: Q) -> Q:
     )
 
 
+def stop_loss(
+    stage: str, snapshot: dict[str, Any] | None, spend: int, orders: int, cpa: int | None
+) -> dict[str, Any]:
+    """Break-even CPA from the start snapshot, k x it, and the Testing signal (vault Features/
+    Testing Board, stop-loss rules). Integer cents: CPA is the half-even cent the card shows."""
+    be: int | None = snapshot.get("margin_minor") if snapshot else None  # complete only (R-16)
+    signal = None
+    if be is not None and stage == "testing":
+        if orders >= WINNER_ORDERS and cpa is not None:
+            signal = "winner_candidate" if cpa <= be else "over_stop_loss"
+        elif orders == 0 and spend >= STOP_LOSS_K * be:
+            signal = "over_stop_loss"
+    return {
+        "break_even_cpa_minor": be,
+        "stop_loss_minor": STOP_LOSS_K * be if be is not None and be > 0 else None,
+        "signal": signal,
+        "signal_reason": NO_BREAK_EVEN if stage == "testing" and be is None else None,
+    }
+
+
 def view(row: ProductTest, title: str, image_url: str | None) -> ProductTestOut:
     spend, orders = row.ad_spend_minor, row.orders
+    cpa = round(Fraction(spend, orders)) if orders else None  # round() is half-even
     fields = ProductTestOut.model_fields.keys() - COMPUTED
     return ProductTestOut(
         **{name: getattr(row, name) for name in fields},
         product_title=title,
         product_image_url=image_url,
-        cpa_minor=round(Fraction(spend, orders)) if orders else None,  # round() is half-even
+        cpa_minor=cpa,
         roas=row.revenue_minor / spend if spend else None,
+        **stop_loss(row.stage, row.start_snapshot, spend, orders, cpa),
     )
+
+
+def since_start(session: Session, principal: Principal, row: ProductTest) -> SinceStart | None:
+    """The start snapshot against a fresh calc of its scenario: the same supplier, variant,
+    quantity, method, DDP, price and owner estimates, with settings and observations read now."""
+    snap = row.start_snapshot
+    if snap is None:
+        return None
+    pinned = ("supplier_listing_id", "variant_id", "quantity", "method", "ddp", "price_minor")
+    scenario = {key: snap[key] for key in (*pinned, *snap["estimates"]) if snap[key] is not None}
+    try:
+        fresh = calc_profit(
+            ProfitCalcRequest(product_id=row.product_id, **scenario), principal, session
+        )
+    except APIError as exc:  # the listing, variant or product is gone
+        return SinceStart(changes=[], reason=exc.detail, as_of=None)
+    new = fresh.model_dump()
+    changes = [
+        Change(input=key, old=snap[key], new=new[key])
+        for key in get_args(Compared)
+        if snap[key] != new[key]
+    ]
+    return SinceStart(changes=changes, reason=None, as_of=fresh.as_of)
 
 
 def owned(session: Session, principal: Principal, test_id: int) -> ProductTest:
@@ -219,9 +324,11 @@ def create_test(
     return view_one(session, row)
 
 
-@router.get("/{test_id}", response_model=ProductTestOut)
-def get_test(test_id: TestId, principal: CurrentPrincipal, session: DB) -> ProductTestOut:
-    return view_one(session, owned(session, principal, test_id))
+@router.get("/{test_id}", response_model=ProductTestDetail)
+def get_test(test_id: TestId, principal: CurrentPrincipal, session: DB) -> ProductTestDetail:
+    row = owned(session, principal, test_id)
+    test = view_one(session, row)  # first: the fresh calc may commit, which expires the row
+    return ProductTestDetail(**test.model_dump(), since_start=since_start(session, principal, row))
 
 
 @router.patch("/{test_id}", response_model=ProductTestOut)

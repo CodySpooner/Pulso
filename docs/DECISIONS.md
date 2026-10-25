@@ -4118,3 +4118,45 @@ Superseded review defaults, not given entries: default #0 (move the repo) is don
   - the note's "fires in 30d" and channels columns (channels arrive in Phase 7);
   - the rule backtest preview;
   - Load more past 100 rules.
+
+### DEC-340 · Testing Board stop-loss (WF-5c): break-even CPA, k × it and an over-stop-loss / winner-candidate signal computed on every test read; day N and a spend bar on Testing cards; "changed since start" on `GET /v1/tests/{id}` from a fresh Profit calc of the snapshot's scenario
+**2026-10-25 · proposed (p4-28)** · Phase 4 task WF-5 part c (imp-398, imp-449, imp-399); SPEC §6.11, §6.4; R-21; DEC-040, DEC-246, DEC-312, DEC-315; vault Features/Testing Board (stop-loss rules, worked example, drawer), Design/Motion System, Design/Component Inventory; `docs/reports/p4-28.md`; API change additive (four fields on every test, `since_start` on one test's GET); no migration, flag, dependency or new endpoint
+- **Decision:**
+  - **(a) The rule, in the API, one place.** `stop_loss()` in `routers/testing.py` is a pure function of the stage, the start snapshot, spend and orders. Break-even CPA is the snapshot's `margin_minor` (the margin before ads, null unless the calc was complete, R-16). While the test is in Testing:
+    - **over_stop_loss:** orders = 0 and spend ≥ k × break-even CPA, or orders ≥ N and CPA > break-even CPA;
+    - **winner_candidate:** orders ≥ N and CPA ≤ break-even CPA;
+    - otherwise none, including 1 to N − 1 orders.
+
+    Every test read adds `break_even_cpa_minor`, `stop_loss_minor` (k × break-even CPA, which is both the no-order stop-loss line and the suggested test budget), `signal` and `signal_reason`. Testing with no break-even gives no signal and the reason "Set price and supplier to compute break-even." That text covers every incomplete snapshot (a missing duty rate too), as the drawer already did. Other stages get no signal and no reason.
+  - **(b) k = 2 and N = 5 are named constants** (`STOP_LOSS_K`, `WINNER_ORDERS`): no migration while p4-24 adds 0022. Editable k and N in Settings is a follow-up backlog row (a `workspace_settings` column pair, then `stop_loss()` takes them).
+  - **(c) Money and rounding.** Integer cents end to end. k × break-even CPA is exact (integer k). The CPA compared is `cpa_minor`, the half-even cent the card shows, so the chip never disagrees with the number beside it: $121.67 over 5 orders is $24.334 → $24.33 ≤ $24.33, a winner candidate. A break-even of $0 or less still signals over stop-loss at any spend, and gets no budget (`stop_loss_minor` null).
+  - **(d) Cards.** A Testing card shows "Day N" (day 1 is the UTC `started_on`; none before it), the chip (radius-sm tag, `--negative` with `OctagonAlert` or `--positive` with `Trophy`; icon and words, never colour alone; a 2 px fade-in, `duration.base`, once), and a spend bar. The bar's track runs to 1.5 × the stop-loss, so the stop-loss line sits at two thirds. The fill is neutral, `--negative` only with the over-stop-loss signal, a static `scaleX` with no animation. Its caption is "Stop-loss $48.66". With `signal_reason`, the card shows the reason instead.
+  - **(e) Drawer.** "Economics at start" adds "Suggested test budget $48.66: 2 × break-even CPA…". A new last section, "Changed since start", reads `GET /v1/tests/{id}`. It lists each changed input as old → new, with a signed delta and ▲/▼ toned by whether the change helps the margin (a cost rise is red ▲; rates in points). A quote shows "Re-quoted", a value gone shows "No source yet", and a new one shows "New since start". The section has these states:
+    - "No changes since start.";
+    - "Can't compare with today's numbers: {reason}", with a Profit tab link;
+    - loading skeletons, `PanelError` with Retry, and `StaleLine`;
+    - a footer with the fresh calc's `as_of`.
+
+    Closing the drawer now returns focus to the card's button.
+  - **(f) The comparison (R-21).** `since_start` runs the one `calc_profit()` for the snapshot's own scenario:
+    - pinned from the snapshot: supplier listing, variant, quantity, method, DDP, the snapshot's price, and every input in its `estimates` (the owner's overrides);
+    - read fresh: the settings rates and the observations.
+
+    It compares 12 fields: price, `freight_quote_id`, the goods and freight lines, duty, customs fee, payment fee (bps and fixed), Shopify fee, returns, CPA, and the result `margin_minor` (break-even CPA). A calc that can't run (the listing delisted, the product merged) returns its 404 detail as `reason`, never a blank. The start snapshot is only read. Re-snapshot (imp-400) is out of scope.
+  - **(g) No new endpoint.** The existing `GET /v1/tests/{id}` returns `ProductTestDetail` (`ProductTestOut` plus `since_start`). The list and PATCH stay `ProductTestOut`, because a Profit calc per card would multiply the board's queries. The drawer is the only reader, and only for a test with a snapshot.
+- **Alternatives:**
+  - **The comparison in the browser** (the drawer posting `/v1/profit/calc` and diffing in TS): the scenario rules and the diff would live in TS, outside the API tests the acceptance names.
+  - **`since_start` on every list row:** one Profit calc per card.
+  - **Pinning nothing but the supplier:** a new median store price would show as a change the test never made. The test's price is its own decision.
+  - **Comparing the exact CPA (a fraction):** a card could read "CPA $24.33, break-even $24.33" beside "Over stop-loss".
+  - **Two booleans (`over_stop_loss`, `winner_candidate`, as the vault sketched):** they're exclusive; one nullable enum can't hold both.
+  - **A stop-loss line at the track's end:** spend past it would have nowhere to go.
+- **Why:** `apps/api/tests/test_testing.py` on a throwaway `pgvector/pgvector:0.8.7-pg18-trixie` (35 passed):
+  - the worked example through the real `landed_cost()`: $14.20 + $1.46 fees on $39.99, so $24.33 and $48.66, no signal at $48.65 and over at $48.66;
+  - 11 boundary cases (N − 1 and N orders at $24.33, $24.334, $24.336 and $24.34);
+  - the reason for an incomplete snapshot, and no signal outside Testing;
+  - a new freight quote and a 20% → 25% duty rate listed as `freight_quote_id`, `freight_minor`, `duty_bps` and `margin_minor` $22.53 → $21.03, while the store price ($39.99 → $44.99) and the default CPA move without showing (pinned), and `start_snapshot` stays equal in the API and the database;
+  - a delisted supplier gives "Supplier listing not found on this product.".
+
+  Six one-line mutations each fail a test (`cpa <`, `spend >`, `orders >`, price unpinned, estimates unpinned, any stage). Vitest `testing/model.test.ts` (13): day N, the spend bar at $48.66, change rows. Playwright `e2e/testing/board.spec.ts` (14), screenshots `docs/screenshots/p4-28/` (28).
+- **Not here:** editable k and N in Settings; validation gates on Researching cards; CPA vs break-even and ROAS vs break-even ROAS on cards; re-snapshot (imp-400); CSV (imp-403); collapsed columns and the table view (imp-444); a reason per missing input instead of the one "Set price and supplier" text.
