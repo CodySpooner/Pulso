@@ -734,6 +734,11 @@ export interface components {
         };
         /** AliExpressProduct */
         AliExpressProduct: {
+            /**
+             * As Of
+             * Format: date-time
+             */
+            as_of: string;
             /** Product Id */
             product_id: string;
             /** Rating */
@@ -751,6 +756,11 @@ export interface components {
         };
         /** AliExpressShipping */
         AliExpressShipping: {
+            /**
+             * As Of
+             * Format: date-time
+             */
+            as_of: string;
             /** Code */
             code: string;
             /** Company */
@@ -774,6 +784,11 @@ export interface components {
         };
         /** AliExpressSku */
         AliExpressSku: {
+            /**
+             * As Of
+             * Format: date-time
+             */
+            as_of: string;
             /**
              * Currency
              * @default USD

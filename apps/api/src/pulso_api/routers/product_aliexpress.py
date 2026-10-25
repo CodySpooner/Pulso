@@ -8,7 +8,7 @@ the `aliexpress` source row's shared block state.
 import re
 from collections.abc import Iterator
 from datetime import UTC, datetime, time, timedelta
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 from urllib.parse import parse_qs, urlsplit
 from uuid import UUID
 
@@ -28,6 +28,7 @@ from pulso_sources.aliexpress import Shipping, Sku
 from pulso_sources.aliexpress.lookup import (
     DAILY_CALL_CAP,
     TTL_SECONDS,
+    Answer,
     Transport,
     https_transport,
     lookup,
@@ -40,17 +41,19 @@ HOST = re.compile(r"(?:[a-z0-9-]+\.)*aliexpress\.(?:com|us)")
 PATH = re.compile(rf"/item/({DIGITS})\.html")
 
 
-# Renamed copies of lookup()'s models, so the OpenAPI schema never names a bare "Product".
+# Renamed copies of lookup()'s models, so the OpenAPI schema never names a bare "Product". Each
+# repeats the lookup's as_of: every number in a product resource carries one (Q-1, DEC-238).
 class AliExpressSku(Sku):
-    pass
+    as_of: AwareDatetime
 
 
 class AliExpressProduct(Item):
     skus: list[AliExpressSku]  # type: ignore[assignment]  # pydantic validates into the subclass
+    as_of: AwareDatetime
 
 
 class AliExpressShipping(Shipping):
-    pass
+    as_of: AwareDatetime
 
 
 class AliExpressLookup(BaseModel):
@@ -100,6 +103,16 @@ def parse_link(link: str) -> tuple[str, str | None] | None:
         return None
     sku = parse_qs(parts.query).get("skuId", [""])[0]
     return path[1], sku if re.fullmatch(DIGITS, sku) else None
+
+
+def _stamped(answer: Answer) -> dict[str, Any]:
+    """The answer with its as_of on the product, each SKU and each shipping option."""
+    data, stamp = answer.model_dump(), {"as_of": answer.as_of}
+    if product := data["product"]:
+        data["product"] = {**product, **stamp, "skus": [{**s, **stamp} for s in product["skus"]]}
+    if data["shipping"] is not None:
+        data["shipping"] = [{**option, **stamp} for option in data["shipping"]]
+    return data
 
 
 def _key(principal: Principal, product_id: UUID) -> str:
@@ -173,7 +186,7 @@ def lookup_product_aliexpress(
             status="throttled", retry_at=_retry_at(session, cache, datetime.now(UTC))
         )
     expires_at = answer.as_of and answer.as_of + timedelta(seconds=TTL_SECONDS)
-    result = AliExpressLookup.model_validate({**answer.model_dump(), "expires_at": expires_at})
+    result = AliExpressLookup.model_validate({**_stamped(answer), "expires_at": expires_at})
     if expires_at:  # ok and not_found: gone when lookup()'s own entry goes
         cache.set(_key(principal, product_id), result.model_dump_json(), exat=expires_at)
     return result

@@ -129,6 +129,11 @@
       },
       "AliExpressProduct": {
         "properties": {
+          "as_of": {
+            "format": "date-time",
+            "title": "As Of",
+            "type": "string"
+          },
           "product_id": {
             "title": "Product Id",
             "type": "string"
@@ -196,13 +201,19 @@
           "review_count",
           "sales",
           "store_name",
-          "skus"
+          "skus",
+          "as_of"
         ],
         "title": "AliExpressProduct",
         "type": "object"
       },
       "AliExpressShipping": {
         "properties": {
+          "as_of": {
+            "format": "date-time",
+            "title": "As Of",
+            "type": "string"
+          },
           "code": {
             "title": "Code",
             "type": "string"
@@ -266,13 +277,19 @@
           "free",
           "min_days",
           "max_days",
-          "ship_from"
+          "ship_from",
+          "as_of"
         ],
         "title": "AliExpressShipping",
         "type": "object"
       },
       "AliExpressSku": {
         "properties": {
+          "as_of": {
+            "format": "date-time",
+            "title": "As Of",
+            "type": "string"
+          },
           "currency": {
             "const": "USD",
             "default": "USD",
@@ -307,7 +324,8 @@
           "sku_id",
           "price_minor",
           "sale_price_minor",
-          "stock"
+          "stock",
+          "as_of"
         ],
         "title": "AliExpressSku",
         "type": "object"
