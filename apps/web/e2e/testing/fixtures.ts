@@ -44,6 +44,10 @@ function test(id: number, product_title: string, over: Partial<Test> = {}): Test
     notes: null,
     kill_reason: null,
     start_snapshot: null,
+    break_even_cpa_minor: null,
+    stop_loss_minor: null,
+    signal: null,
+    signal_reason: null,
     created_at: at(240),
     updated_at: at(2),
     ...over,
@@ -51,6 +55,9 @@ function test(id: number, product_title: string, over: Partial<Test> = {}): Test
 }
 
 export const tests = (): Test[] => [
+  // The worked example at its $48.66 stop-loss with no orders, and six orders at $20.00 against $24.33 (DEC-340).
+  test(9, "LED strip lights", { stage: "testing", started_on: "2026-10-19", ad_spend_minor: 4866, start_snapshot: snapshot, updated_at: at(3) }),
+  test(8, "Heatless curling ribbon", { stage: "testing", started_on: "2026-10-12", ad_spend_minor: 12000, revenue_minor: 23994, orders: 6, start_snapshot: snapshot, updated_at: at(5) }),
   test(7, "Sunset projection lamp"),
   test(6, "Magnetic car phone mount", { stage: "researching", product_image_url: null }),
   test(5, "Posture corrector brace", { stage: "testing", started_on: "2026-10-19", ad_spend_minor: 20000, revenue_minor: 25999, orders: 3, start_snapshot: snapshot, updated_at: at(1) }),
@@ -60,13 +67,39 @@ export const tests = (): Test[] => [
   test(1, "Pet hair remover roller", { stage: "killed", started_on: "2026-09-10", ended_on: "2026-09-16", ad_spend_minor: 15000, revenue_minor: 7998, orders: 2, kill_reason: "cpa_above_break_even", start_snapshot: snapshot }),
 ];
 
-/** What the API computes on read: CPA half-even to the cent, ROAS a float, both null on a zero divisor. */
+/** What the API computes on read: CPA half-even to the cent, ROAS a float, both null on a zero divisor; break-even
+ *  CPA, 2 × it and the Testing signal (k = 2, N = 5, DEC-340). */
 function computed(t: Test): Test {
   const exact = t.ad_spend_minor / t.orders;
   const floor = Math.floor(exact);
   const half = exact - floor === 0.5 ? (floor % 2 === 0 ? floor : floor + 1) : Math.round(exact);
-  return { ...t, cpa_minor: t.orders ? half : null, roas: t.ad_spend_minor ? t.revenue_minor / t.ad_spend_minor : null };
+  const cpa = t.orders ? half : null;
+  const be = (t.start_snapshot as { margin_minor?: number | null } | null)?.margin_minor ?? null;
+  const testing = t.stage === "testing" && be != null;
+  const over = testing && ((t.orders === 0 && t.ad_spend_minor >= 2 * be) || (t.orders >= 5 && cpa! > be));
+  return {
+    ...t,
+    cpa_minor: cpa,
+    roas: t.ad_spend_minor ? t.revenue_minor / t.ad_spend_minor : null,
+    break_even_cpa_minor: be,
+    stop_loss_minor: be != null && be > 0 ? 2 * be : null,
+    signal: over ? "over_stop_loss" : testing && t.orders >= 5 ? "winner_candidate" : null,
+    signal_reason: t.stage === "testing" && be == null ? "Set price and supplier to compute break-even." : null,
+  };
 }
+
+/** GET /v1/tests/{id}'s comparison: a newer freight quote and a higher duty rate on the worked example, none for the
+ *  rest; `sinceStart` overrides it per test id. */
+const SINCE: S["SinceStart"] = {
+  changes: [
+    { input: "freight_quote_id", old: 41, new: 57 },
+    { input: "freight_minor", old: 400, new: 520 },
+    { input: "duty_bps", old: 2000, new: 2500 },
+    { input: "margin_minor", old: 2433, new: 2271 }, // $8.50 goods: duty $1.70 → $2.12; $24.33 − $1.20 − $0.42
+  ],
+  reason: null,
+  as_of: at(20),
+};
 
 export interface TestingMock {
   items?: Test[];
@@ -76,6 +109,8 @@ export interface TestingMock {
   status?: number;
   /** PATCH answers 503. */
   failPatch?: boolean;
+  /** GET /v1/tests/{id}'s `since_start` by test id; tests 5 and 9 default to SINCE, the rest to no changes. */
+  sinceStart?: Record<number, S["SinceStart"] | "error">;
 }
 
 export async function mockTestingApi(page: Page, options: TestingMock = {}) {
@@ -112,6 +147,11 @@ export async function mockTestingApi(page: Page, options: TestingMock = {}) {
     }
     const one = path.match(/^\/v1\/tests\/(\d+)$/);
     const row = one && rows.find((t) => t.id === Number(one[1]));
+    if (request.method() === "GET" && row) {
+      const since = options.sinceStart?.[row.id] ?? ([5, 9].includes(row.id) ? SINCE : { changes: [], reason: null, as_of: at(20) });
+      if (since === "error") return fail(503, "unavailable", "The API is restarting. Try again.");
+      return json({ ...row, since_start: row.start_snapshot ? since : null } satisfies S["ProductTestDetail"]);
+    }
     if (request.method() === "PATCH" && row) {
       const body = request.postDataJSON() as Partial<Test>;
       patches.push(body);

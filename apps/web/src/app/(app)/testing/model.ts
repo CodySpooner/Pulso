@@ -6,9 +6,10 @@ import type { QueryClient, QueryKey, UseMutationOptions } from "@tanstack/react-
 import { $api, isProblem } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
 
-import type { Calc } from "../products/[id]/profit/model";
+import { money, pct, type Calc } from "../products/[id]/profit/model";
 
 export type Test = components["schemas"]["ProductTestOut"];
+export type Change = components["schemas"]["Change"];
 export type Page = components["schemas"]["ProductTestPage"];
 export type Stage = Test["stage"];
 export type KillReason = NonNullable<Test["kill_reason"]>;
@@ -86,3 +87,47 @@ export function breakEven(test: Test) {
 
 /** A Testing card whose metrics are over 48 h old (vault Features/Testing Board, States). */
 export const staleMetrics = (test: Test, now: number) => test.stage === "testing" && now - Date.parse(test.updated_at) > 48 * 3_600_000;
+
+// WF-5c (DEC-340): the API's stop-loss signal in words, day N and the spend bar, and "changed since start" rows.
+export const SIGNALS = { over_stop_loss: "Over stop-loss", winner_candidate: "Winner candidate" } as const;
+
+/** Day N of a running test: day 1 is its UTC start date; null before it starts. */
+export function testDay(test: Test, now: number) {
+  if (test.stage !== "testing" || !test.started_on) return null;
+  const day = Math.floor((now - Date.parse(test.started_on)) / 86_400_000) + 1;
+  return day >= 1 ? day : null;
+}
+
+/** The spend bar's track runs to 1.5 × the stop-loss, so the stop-loss line sits at two thirds. */
+export const TRACK = 1.5;
+export function spendBar(test: Test) {
+  const line = test.stop_loss_minor;
+  return line == null ? null : { fill: Math.min(test.ad_spend_minor / (TRACK * line), 1), line: money(line), past: test.ad_spend_minor >= line };
+}
+
+const CHANGED: Record<Change["input"], { label: string; unit: "money" | "rate" | "quote"; good: "up" | "down" }> = {
+  price_minor: { label: "Price", unit: "money", good: "up" },
+  freight_quote_id: { label: "Freight quote", unit: "quote", good: "up" },
+  goods_minor: { label: "Supplier cost", unit: "money", good: "down" },
+  freight_minor: { label: "Freight", unit: "money", good: "down" },
+  duty_bps: { label: "Duty rate", unit: "rate", good: "down" },
+  customs_fee_minor: { label: "Customs fee", unit: "money", good: "down" },
+  payment_fee_bps: { label: "Payment fee", unit: "rate", good: "down" },
+  payment_fee_fixed_minor: { label: "Payment fee, fixed", unit: "money", good: "down" },
+  shopify_fee_bps: { label: "Shopify fee", unit: "rate", good: "down" },
+  returns_bps: { label: "Returns", unit: "rate", good: "down" },
+  ad_cost_minor: { label: "Planned CPA", unit: "money", good: "down" },
+  margin_minor: { label: "Break-even CPA", unit: "money", good: "up" },
+};
+const points = new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 });
+
+/** A changed input in words: old → new (null: none then, or none now) and a signed delta with its glyph, toned by
+ *  whether the change helps the margin (a cost rise is red ▲). A quote id has no delta: the freight line shows it. */
+export function describeChange({ input, old, new: now }: Change) {
+  const { label, unit, good } = CHANGED[input];
+  const show = (v: number | null) => (v == null ? null : unit === "money" ? money(v) : unit === "rate" ? pct(v) : `#${v}`);
+  if (old == null || now == null || unit === "quote") return { label, old: show(old), new: show(now), delta: null };
+  const up = now > old;
+  const size = unit === "money" ? money(Math.abs(now - old)) : `${points.format(Math.abs(now - old) / 100)} pts`;
+  return { label, old: show(old), new: show(now), delta: { glyph: up ? "▲" : "▼", text: `${up ? "+" : "−"}${size}`, tone: up === (good === "up") ? "positive" : "negative" } } as const;
+}

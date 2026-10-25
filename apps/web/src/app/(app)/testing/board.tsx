@@ -7,7 +7,7 @@ import { DndContext, DragOverlay, PointerSensor, useDraggable, useDroppable, use
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { AnimatePresence, LayoutGroup } from "motion/react";
 import * as m from "motion/react-m";
-import { ArrowRightLeft, Clock, FlaskConical } from "lucide-react";
+import { ArrowRightLeft, Clock, FlaskConical, OctagonAlert, Trophy } from "lucide-react";
 import { DropdownMenu } from "radix-ui";
 
 import { useApiReady } from "@/components/data-health/api";
@@ -21,7 +21,7 @@ import { duration, ease, spring } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 
 import { money } from "../products/[id]/profit/model";
-import { KILL_REASONS, LIST, listKey, moveOptions, reasonOf, STAGES, stageLabel, staleMetrics, type KillReason, type Move, type Stage, type Test } from "./model";
+import { KILL_REASONS, LIST, listKey, moveOptions, reasonOf, SIGNALS, spendBar, STAGES, stageLabel, staleMetrics, testDay, TRACK, type KillReason, type Move, type Stage, type Test } from "./model";
 import { TestDrawer, Thumb } from "./test-drawer";
 
 interface Note {
@@ -236,6 +236,7 @@ function CardBody({ test, now, onOpen, menu, className }: { test: Test; now: num
         <Stat label="CPA">{test.cpa_minor == null ? <Missing reason="No source yet: no orders recorded" /> : money(test.cpa_minor)}</Stat>
         <Stat label="ROAS">{test.roas == null ? <Missing reason="No source yet: no ad spend recorded" /> : `${test.roas.toFixed(2)}×`}</Stat>
       </dl>
+      {test.stage === "testing" && <StopLoss test={test} now={now} />}
       <p className="text-micro text-subtle-foreground">
         {stale ? (
           <Pill tone="warning" icon={Clock} className="h-auto min-h-5.5 py-0.5 whitespace-normal">
@@ -250,6 +251,51 @@ function CardBody({ test, now, onOpen, menu, className }: { test: Test; now: num
         )}
       </p>
     </article>
+  );
+}
+
+/** A Testing card's day N, the API's stop-loss signal and spend against the stop-loss line (DEC-340). The chip
+ *  recommends; the owner decides. Colour follows the signal only, and the chip always carries an icon and words. */
+function StopLoss({ test, now }: { test: Test; now: number }) {
+  const day = testDay(test, now);
+  const bar = spendBar(test);
+  const over = test.signal === "over_stop_loss";
+  return (
+    <div className="flex flex-col gap-1.5">
+      {(day != null || test.signal) && (
+        <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-label text-muted-foreground">
+          {test.signal && (
+            // The Pill shape (radius-sm tag) in the signal's tone; it fades in with 2 px of y, once.
+            <m.span
+              initial={{ opacity: 0, y: 2 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: duration.base, ease: ease.out }}
+              className={cn("inline-flex h-5.5 items-center gap-1 rounded-sm px-1.5 font-medium whitespace-nowrap", over ? "bg-negative-muted text-negative" : "bg-positive-muted text-positive")}
+            >
+              {over ? <OctagonAlert className="size-3.5" aria-hidden /> : <Trophy className="size-3.5" aria-hidden />}
+              {SIGNALS[test.signal]}
+            </m.span>
+          )}
+          {day != null && <span className="font-mono tabular-nums">Day {day}</span>}
+        </p>
+      )}
+      {test.signal_reason ? (
+        <p className="text-micro text-subtle-foreground">{test.signal_reason}</p>
+      ) : (
+        bar && (
+          <div className="flex flex-col gap-1">
+            <p className="flex items-baseline justify-between gap-2 text-micro text-subtle-foreground">
+              Spend vs stop-loss
+              <span className="font-mono text-muted-foreground tabular-nums">{bar.line}</span>
+            </p>
+            <div aria-hidden className="relative h-1.5 rounded-full bg-border-subtle">
+              <div className={cn("absolute inset-0 origin-left rounded-full", over ? "bg-negative" : "bg-muted-foreground")} style={{ transform: `scaleX(${bar.fill})` }} />
+              <div className="absolute -inset-y-0.5 w-0.5 rounded-full bg-foreground" style={{ left: `${100 / TRACK}%` }} />
+            </div>
+          </div>
+        )
+      )}
+    </div>
   );
 }
 

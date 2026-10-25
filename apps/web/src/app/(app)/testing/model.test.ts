@@ -1,7 +1,7 @@
 import { MutationObserver, QueryClient } from "@tanstack/react-query";
 import { describe, expect, test, vi } from "vitest";
 
-import { breakEven, moved, moveOptions, staleMetrics, type Page, type Test } from "./model";
+import { breakEven, describeChange, moved, moveOptions, spendBar, staleMetrics, testDay, type Page, type Test } from "./model";
 
 const NOW = Date.parse("2026-10-25T12:00:00Z");
 const test_ = (id: number, over: Partial<Test> = {}): Test => ({
@@ -21,6 +21,10 @@ const test_ = (id: number, over: Partial<Test> = {}): Test => ({
   notes: null,
   kill_reason: null,
   start_snapshot: null,
+  break_even_cpa_minor: null,
+  stop_loss_minor: null,
+  signal: null,
+  signal_reason: null,
   created_at: "2026-10-20T10:00:00Z",
   updated_at: "2026-10-20T10:00:00Z",
   ...over,
@@ -116,4 +120,38 @@ test("staleMetrics: a Testing card not updated for over 48 h", () => {
   expect(staleMetrics(test_(1, { stage: "testing", updated_at: at(49) }), NOW)).toBe(true);
   expect(staleMetrics(test_(1, { stage: "testing", updated_at: at(47) }), NOW)).toBe(false);
   expect(staleMetrics(test_(1, { stage: "idea", updated_at: at(200) }), NOW)).toBe(false);
+});
+
+describe("the Testing card's day and spend bar (DEC-340)", () => {
+  test("day 1 is the UTC start date; none before a start or outside Testing", () => {
+    expect(testDay(test_(1, { stage: "testing", started_on: "2026-10-25" }), NOW)).toBe(1);
+    expect(testDay(test_(1, { stage: "testing", started_on: "2026-10-19" }), NOW)).toBe(7);
+    expect(testDay(test_(1, { stage: "testing", started_on: "2026-10-26" }), NOW)).toBeNull();
+    expect(testDay(test_(1, { stage: "winner", started_on: "2026-10-19" }), NOW)).toBeNull();
+  });
+
+  test("the worked example: spend against a $48.66 stop-loss at two thirds of the track", () => {
+    const at = (spend: number) => spendBar(test_(1, { stage: "testing", ad_spend_minor: spend, stop_loss_minor: 4866 }));
+    expect(at(0)).toEqual({ fill: 0, line: "$48.66", past: false });
+    expect(at(4865)).toMatchObject({ past: false });
+    expect(at(4866)).toEqual({ fill: 2 / 3, line: "$48.66", past: true });
+    expect(at(10 ** 6)?.fill).toBe(1); // the bar stops at the track's end
+    expect(spendBar(test_(1, { stage: "testing", ad_spend_minor: 500 }))).toBeNull(); // no break-even
+  });
+});
+
+describe("describeChange", () => {
+  test("money: old → new with a signed delta, a cost rise red ▲ and a break-even fall red ▼", () => {
+    expect(describeChange({ input: "freight_minor", old: 400, new: 500 })).toEqual({ label: "Freight", old: "$4.00", new: "$5.00", delta: { glyph: "▲", text: "+$1.00", tone: "negative" } });
+    expect(describeChange({ input: "margin_minor", old: 2253, new: 2103 })).toEqual({ label: "Break-even CPA", old: "$22.53", new: "$21.03", delta: { glyph: "▼", text: "−$1.50", tone: "negative" } });
+    expect(describeChange({ input: "goods_minor", old: 1000, new: 900 }).delta).toEqual({ glyph: "▼", text: "−$1.00", tone: "positive" });
+  });
+
+  test("rates in points, a quote without a delta, and a value missing then or now", () => {
+    expect(describeChange({ input: "duty_bps", old: 2000, new: 2500 })).toEqual({ label: "Duty rate", old: "20%", new: "25%", delta: { glyph: "▲", text: "+5 pts", tone: "negative" } });
+    expect(describeChange({ input: "payment_fee_bps", old: 290, new: 350 }).delta?.text).toBe("+0.6 pts");
+    expect(describeChange({ input: "freight_quote_id", old: 12, new: 15 })).toEqual({ label: "Freight quote", old: "#12", new: "#15", delta: null });
+    expect(describeChange({ input: "freight_minor", old: 400, new: null })).toEqual({ label: "Freight", old: "$4.00", new: null, delta: null });
+    expect(describeChange({ input: "price_minor", old: null, new: 3999 })).toMatchObject({ old: null, new: "$39.99", delta: null });
+  });
 });

@@ -4,16 +4,17 @@ import { useId, useState } from "react";
 import Link from "next/link";
 import { useQueryClient } from "@tanstack/react-query";
 
-import { Missing } from "@/components/data-health/atoms";
+import { Ago, Missing, PanelError, StaleLine } from "@/components/data-health/atoms";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet";
-import { fetchClient } from "@/lib/api/client";
+import { Skeleton } from "@/components/ui/skeleton";
+import { $api, fetchClient } from "@/lib/api/client";
 import { formatUtc } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 import { Thumb as ListingThumb } from "../admin/matching/compare";
 import { money, parseMinor, toInput } from "../products/[id]/profit/model";
-import { breakEven, KILL_REASONS, listKey, reasonOf, stageLabel, type Test } from "./model";
+import { breakEven, describeChange, KILL_REASONS, listKey, reasonOf, stageLabel, type Test } from "./model";
 
 const field = "h-(--input-h) w-full min-w-0 rounded-md border border-input bg-background px-2.5 text-body text-foreground aria-invalid:border-negative";
 const link = "link-inline rounded-sm underline decoration-border-strong underline-offset-2 hover:decoration-current";
@@ -31,6 +32,8 @@ export function TestDrawer({ test, onClose }: { test: Test | undefined; onClose:
         className="overflow-y-auto"
         // The sheet itself takes focus, so a phone doesn't open its keypad on the first field; Tab goes on from there.
         onOpenAutoFocus={(e) => (e.preventDefault(), (e.currentTarget as HTMLElement).focus())}
+        // It opens from state, not a trigger, so closing hands focus back to the test's card by hand.
+        onCloseAutoFocus={(e) => (e.preventDefault(), document.getElementById(`test-${shown?.id}`)?.focus())}
       >
         {shown && <Body key={shown.id} test={shown} />}
       </SheetContent>
@@ -150,6 +153,12 @@ function Body({ test }: { test: Test }) {
                 {economics.roas == null ? <Missing reason="No break-even: the margin before ads is not positive" /> : <Times value={economics.roas} />}
               </Figure>
             </dl>
+            {test.stop_loss_minor != null && (
+              <p className="text-data text-muted-foreground">
+                Suggested test budget <span className="font-mono text-foreground tabular-nums">{money(test.stop_loss_minor)}</span>: 2 × break-even CPA. With no
+                orders by then, or a CPA above break-even after 5 orders, the card says Over stop-loss.
+              </p>
+            )}
             <p className="text-label text-subtle-foreground">
               Captured{" "}
               <time dateTime={economics.capturedAt} title={formatUtc(economics.capturedAt)}>
@@ -160,7 +169,83 @@ function Body({ test }: { test: Test }) {
           </>
         )}
       </section>
+
+      {test.start_snapshot != null && <SinceStart test={test} />}
     </div>
+  );
+}
+
+const tone = { positive: "text-positive", negative: "text-negative" } as const;
+
+/** R-21's "changed since start": the API compares the start snapshot with a fresh Profit calc of the same scenario
+ *  (DEC-340). The snapshot itself never changes; this only says what moved since. */
+function SinceStart({ test }: { test: Test }) {
+  const detail = $api.useQuery("get", "/v1/tests/{test_id}", { params: { path: { test_id: test.id } } });
+  const since = detail.data?.since_start;
+  const retry = () => void detail.refetch();
+  return (
+    <section aria-labelledby="since-start" className="flex flex-col gap-2">
+      <h3 id="since-start" className="text-label font-semibold text-muted-foreground uppercase">
+        Changed since start
+      </h3>
+      {detail.isRefetchError && <StaleLine what="Couldn't refresh the comparison" error={detail.error} asOf={detail.dataUpdatedAt} retry={retry} />}
+      {!detail.data ? (
+        detail.isError ? (
+          <PanelError title="Couldn't compare with today's numbers" headingLevel="h3" error={detail.error} retry={retry} />
+        ) : (
+          <div role="status" aria-label="Comparing with today's Profit calc" className="flex flex-col gap-2">
+            <Skeleton className="h-9" />
+            <Skeleton className="h-9" />
+          </div>
+        )
+      ) : since?.reason ? (
+        <p className="rounded-lg border border-border bg-secondary px-3 py-2.5 text-data text-foreground">Can&apos;t recalculate today: {since.reason}</p>
+      ) : !since?.changes.length ? (
+        <p className="text-data text-muted-foreground">No changes since start.</p>
+      ) : (
+        <ul aria-label="Changed inputs" className="flex flex-col divide-y divide-border-subtle rounded-lg border border-border-subtle">
+          {since.changes.map((change) => {
+            const row = describeChange(change);
+            return (
+              <li key={change.input} className="grid grid-cols-[1fr_auto] items-baseline gap-x-3 gap-y-0.5 px-3 py-2 text-data">
+                <span className="text-muted-foreground">{row.label}</span>
+                <span className="justify-self-end font-mono tabular-nums">
+                  {row.delta ? (
+                    <span className={cn("inline-flex items-center gap-1", tone[row.delta.tone])}>
+                      <span aria-hidden className="text-micro">
+                        {row.delta.glyph}
+                      </span>
+                      {row.delta.text}
+                    </span>
+                  ) : null}
+                </span>
+                <span className="col-span-2 font-mono text-foreground tabular-nums">
+                  {row.old ?? <Missing reason="None at start" />}
+                  <span aria-hidden className="px-1.5 text-subtle-foreground">
+                    →
+                  </span>
+                  <span className="sr-only"> changed to </span>
+                  {row.new ?? <Missing reason="No source yet: none today" />}
+                </span>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+      {since && !since.reason && (
+        <p className="text-label text-subtle-foreground">
+          Against today&apos;s Profit calc for the same supplier, price and estimates
+          {since.as_of ? (
+            <>
+              , data as of <Ago iso={since.as_of} now={detail.dataUpdatedAt} source="The oldest observation in today's calc" />
+            </>
+          ) : (
+            ", from settings only"
+          )}
+          .
+        </p>
+      )}
+    </section>
   );
 }
 
