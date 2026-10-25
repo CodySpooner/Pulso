@@ -30,6 +30,7 @@ from pulso_api.routers import (
     product_suppliers,
     products,
     profit,
+    pulse,
     search,
     testing,
     watchlists,
@@ -122,6 +123,7 @@ def create_app() -> FastAPI:
     app.include_router(popular_products.router)
     app.include_router(products.router)
     app.include_router(products.categories_router)
+    app.include_router(pulse.router)
     app.include_router(profit.router)
     app.include_router(product_aliexpress.router)
     app.include_router(product_keywords.router)

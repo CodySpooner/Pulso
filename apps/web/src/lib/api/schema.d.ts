@@ -970,6 +970,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/pulse": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Pulse
+         * @description The Daily Pulse for one UTC day (SPEC §6.1, DEC-337): each section with its own as_of,
+         *     sources and status, at most 10 items, every number from captures before the cutoff.
+         */
+        get: operations["get_pulse"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/search": {
         parameters: {
             query?: never;
@@ -1227,6 +1248,24 @@ export interface components {
              * @description Pass as `cursor` with the same filters.
              */
             next_cursor: string | null;
+        };
+        /** AlertSection */
+        AlertSection: {
+            /** As Of */
+            as_of: string | null;
+            /** Items */
+            items: components["schemas"]["AlertOut"][];
+            /** Reason */
+            reason: string | null;
+            /** Sources */
+            sources: string[];
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "ok" | "empty" | "no_source";
+            /** Unread */
+            unread: number;
         };
         /**
          * AliExpressLookup
@@ -1834,6 +1873,41 @@ export interface components {
             store: components["schemas"]["Vendor"] | null;
             supplier: components["schemas"]["Vendor"] | null;
         };
+        /** Emerging */
+        Emerging: {
+            /**
+             * As Of
+             * Format: date-time
+             */
+            as_of: string;
+            /** Model Version */
+            model_version: string;
+            product: components["schemas"]["Ref"];
+            since_yesterday: components["schemas"]["ScoreMove"] | null;
+            /**
+             * Stage
+             * @enum {string}
+             */
+            stage: "emerging" | "rising" | "peaking" | "declining" | "dead";
+            /** Value */
+            value: number;
+        };
+        /** EmergingSection */
+        EmergingSection: {
+            /** As Of */
+            as_of: string | null;
+            /** Items */
+            items: components["schemas"]["Emerging"][];
+            /** Reason */
+            reason: string | null;
+            /** Sources */
+            sources: string[];
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "ok" | "empty" | "no_source";
+        };
         /**
          * Explanation
          * @description `scores.explanation`: every input, the missing ones by name, and the weight present.
@@ -2106,6 +2180,42 @@ export interface components {
             /** Trend */
             trend: components["schemas"]["StoredScore"] | components["schemas"]["NoSource"];
         };
+        /** Launch */
+        Launch: {
+            /**
+             * As Of
+             * Format: date-time
+             */
+            as_of: string;
+            /** Listing Id */
+            listing_id: number;
+            product: components["schemas"]["Ref"] | null;
+            /**
+             * Published At
+             * Format: date-time
+             */
+            published_at: string;
+            /** Store */
+            store: string;
+            /** Title */
+            title: string;
+        };
+        /** LaunchSection */
+        LaunchSection: {
+            /** As Of */
+            as_of: string | null;
+            /** Items */
+            items: components["schemas"]["Launch"][];
+            /** Reason */
+            reason: string | null;
+            /** Sources */
+            sources: string[];
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "ok" | "empty" | "no_source";
+        };
         /** ListingDetail */
         ListingDetail: {
             /** Delisted At */
@@ -2172,6 +2282,45 @@ export interface components {
             supplier_listing_id: number;
             /** Value */
             value: number;
+        };
+        /**
+         * MarginMove
+         * @description The best landed margin (the economics view, default scenario) at the day's cutoff against
+         *     the day before's, under today's workspace settings.
+         */
+        MarginMove: {
+            /**
+             * As Of
+             * Format: date-time
+             */
+            as_of: string;
+            /** Change Bps */
+            change_bps: number;
+            /** Duty Not Set */
+            duty_not_set: boolean;
+            /** New Bps */
+            new_bps: number;
+            /** Old Bps */
+            old_bps: number;
+            product: components["schemas"]["Ref"];
+            /** Supplier Listing Id */
+            supplier_listing_id: number | null;
+        };
+        /** MarginSection */
+        MarginSection: {
+            /** As Of */
+            as_of: string | null;
+            /** Items */
+            items: components["schemas"]["MarginMove"][];
+            /** Reason */
+            reason: string | null;
+            /** Sources */
+            sources: string[];
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "ok" | "empty" | "no_source";
         };
         /** Match */
         Match: {
@@ -2264,6 +2413,39 @@ export interface components {
             listing_ids: number[];
             /** Reason */
             reason?: string | null;
+        };
+        /** Mover */
+        Mover: {
+            /**
+             * As Of
+             * Format: date-time
+             */
+            as_of: string;
+            /** Change */
+            change: number;
+            /** Model Version */
+            model_version: string;
+            /** New */
+            new: number;
+            /** Old */
+            old: number;
+            product: components["schemas"]["Ref"];
+        };
+        /** MoversSection */
+        MoversSection: {
+            /** As Of */
+            as_of: string | null;
+            /** Items */
+            items: components["schemas"]["Mover"][];
+            /** Reason */
+            reason: string | null;
+            /** Sources */
+            sources: string[];
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "ok" | "empty" | "no_source";
         };
         /**
          * NoSource
@@ -3014,6 +3196,20 @@ export interface components {
              */
             variant_id?: number | null;
         };
+        /** Pulse */
+        Pulse: {
+            /**
+             * Cutoff
+             * Format: date-time
+             */
+            cutoff: string;
+            /**
+             * Day
+             * Format: date
+             */
+            day: string;
+            sections: components["schemas"]["Sections"];
+        };
         /** QueueItem */
         QueueItem: {
             a: components["schemas"]["Side"];
@@ -3110,6 +3306,18 @@ export interface components {
             all: boolean;
             /** Ids */
             ids?: number[] | null;
+        };
+        /** Ref */
+        Ref: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Image Url */
+            image_url: string | null;
+            /** Name */
+            name: string;
         };
         /** RowError */
         RowError: {
@@ -3359,6 +3567,38 @@ export interface components {
             /** Target Id */
             target_id: string;
         };
+        /**
+         * ScoreMove
+         * @description A Trend Score against the day before's newest row, both under one model_version.
+         */
+        ScoreMove: {
+            /**
+             * As Of
+             * Format: date-time
+             */
+            as_of: string;
+            /** Change */
+            change: number;
+            /** New */
+            new: number;
+            /** Old */
+            old: number;
+        };
+        /** SearchMover */
+        SearchMover: {
+            /**
+             * As Of
+             * Format: date-time
+             */
+            as_of: string;
+            /** Change Pct */
+            change_pct: number;
+            /** Keywords */
+            keywords: number;
+            product: components["schemas"]["Ref"];
+            /** Slope */
+            slope: number;
+        };
         /** SearchResults */
         SearchResults: {
             /** Catalog Empty */
@@ -3369,6 +3609,34 @@ export interface components {
             stores: components["schemas"]["StoreHit"][];
             /** Suppliers */
             suppliers: components["schemas"]["SupplierHit"][];
+        };
+        /** SearchSection */
+        SearchSection: {
+            /** As Of */
+            as_of: string | null;
+            /** Items */
+            items: components["schemas"]["SearchMover"][];
+            /** Reason */
+            reason: string | null;
+            /** Sources */
+            sources: string[];
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "ok" | "empty" | "no_source";
+        };
+        /** Sections */
+        Sections: {
+            alerts: components["schemas"]["AlertSection"];
+            emerging: components["schemas"]["EmergingSection"];
+            margins: components["schemas"]["MarginSection"];
+            movers_down: components["schemas"]["MoversSection"];
+            movers_up: components["schemas"]["MoversSection"];
+            new_in_stores: components["schemas"]["LaunchSection"];
+            search: components["schemas"]["SearchSection"];
+            suppliers: components["schemas"]["SupplierSection"];
+            watchlists: components["schemas"]["WatchlistSection"];
         };
         /** SellerRow */
         SellerRow: {
@@ -3786,6 +4054,38 @@ export interface components {
             /** Top Product Id */
             top_product_id: string | null;
         };
+        /**
+         * SupplierMove
+         * @description A supplier offer whose price or stock changed on the day.
+         */
+        SupplierMove: {
+            /**
+             * As Of
+             * Format: date-time
+             */
+            as_of: string;
+            /** Currency */
+            currency: string | null;
+            /** In Stock */
+            in_stock: boolean | null;
+            /** Listing Id */
+            listing_id: number;
+            /** New Price Minor */
+            new_price_minor: number | null;
+            /** Old Price Minor */
+            old_price_minor: number | null;
+            /** Price Change Pct */
+            price_change_pct: number | null;
+            product: components["schemas"]["Ref"] | null;
+            /** Raw Payload Id */
+            raw_payload_id: number;
+            /** Source */
+            source: string;
+            /** Title */
+            title: string;
+            /** Was In Stock */
+            was_in_stock: boolean | null;
+        };
         /** SupplierRow */
         SupplierRow: {
             /**
@@ -3841,6 +4141,22 @@ export interface components {
             /** Years Active */
             years_active: components["schemas"]["Sourced"] | components["schemas"]["NoSource"];
         };
+        /** SupplierSection */
+        SupplierSection: {
+            /** As Of */
+            as_of: string | null;
+            /** Items */
+            items: components["schemas"]["SupplierMove"][];
+            /** Reason */
+            reason: string | null;
+            /** Sources */
+            sources: string[];
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "ok" | "empty" | "no_source";
+        };
         /** SuppliersPage */
         SuppliersPage: {
             /** As Of */
@@ -3893,6 +4209,21 @@ export interface components {
             title_weight: number;
             /** Version */
             version: string;
+        };
+        /** TrendPoint */
+        TrendPoint: {
+            /**
+             * As Of
+             * Format: date-time
+             */
+            as_of: string;
+            /**
+             * Day
+             * Format: date
+             */
+            day: string;
+            /** Value */
+            value: number;
         };
         /**
          * TrendsBudget
@@ -3977,6 +4308,24 @@ export interface components {
              */
             watchlist_id: string;
         };
+        /** WatchedProduct */
+        WatchedProduct: {
+            /**
+             * Added At
+             * Format: date-time
+             */
+            added_at: string;
+            /** Alerts */
+            alerts: string[];
+            product: components["schemas"]["Ref"];
+            /** Series */
+            series: components["schemas"]["TrendPoint"][];
+            /** Stage */
+            stage: ("emerging" | "rising" | "peaking" | "declining" | "dead") | null;
+            /** Stage Before */
+            stage_before: ("emerging" | "rising" | "peaking" | "declining" | "dead") | null;
+            trend: components["schemas"]["ScoreMove"] | null;
+        };
         /** Watchlist */
         Watchlist: {
             /**
@@ -4035,6 +4384,38 @@ export interface components {
             name?: string | null;
             /** Position */
             position?: number | null;
+        };
+        /** WatchlistSection */
+        WatchlistSection: {
+            /** As Of */
+            as_of: string | null;
+            /** Items */
+            items: components["schemas"]["WatchlistSummary"][];
+            /** Reason */
+            reason: string | null;
+            /** Sources */
+            sources: string[];
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "ok" | "empty" | "no_source";
+        };
+        /** WatchlistSummary */
+        WatchlistSummary: {
+            /** As Of */
+            as_of: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Item Count */
+            item_count: number;
+            /** Items */
+            items: components["schemas"]["WatchedProduct"][];
+            /** Name */
+            name: string;
         };
     };
     responses: never;
@@ -18303,6 +18684,234 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ProfitCalc"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": {
+                        /** Code */
+                        code: string;
+                        /** Detail */
+                        detail: string;
+                        /** Errors */
+                        errors?: {
+                            [key: string]: unknown;
+                        }[];
+                        /** Request Id */
+                        request_id: string;
+                        /** Status */
+                        status: number;
+                        /** Title */
+                        title: string;
+                        /**
+                         * Type
+                         * @default about:blank
+                         */
+                        type: string;
+                    };
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": {
+                        /** Code */
+                        code: string;
+                        /** Detail */
+                        detail: string;
+                        /** Errors */
+                        errors?: {
+                            [key: string]: unknown;
+                        }[];
+                        /** Request Id */
+                        request_id: string;
+                        /** Status */
+                        status: number;
+                        /** Title */
+                        title: string;
+                        /**
+                         * Type
+                         * @default about:blank
+                         */
+                        type: string;
+                    };
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": {
+                        /** Code */
+                        code: string;
+                        /** Detail */
+                        detail: string;
+                        /** Errors */
+                        errors?: {
+                            [key: string]: unknown;
+                        }[];
+                        /** Request Id */
+                        request_id: string;
+                        /** Status */
+                        status: number;
+                        /** Title */
+                        title: string;
+                        /**
+                         * Type
+                         * @default about:blank
+                         */
+                        type: string;
+                    };
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": {
+                        /** Code */
+                        code: string;
+                        /** Detail */
+                        detail: string;
+                        /** Errors */
+                        errors?: {
+                            [key: string]: unknown;
+                        }[];
+                        /** Request Id */
+                        request_id: string;
+                        /** Status */
+                        status: number;
+                        /** Title */
+                        title: string;
+                        /**
+                         * Type
+                         * @default about:blank
+                         */
+                        type: string;
+                    };
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": {
+                        /** Code */
+                        code: string;
+                        /** Detail */
+                        detail: string;
+                        /** Errors */
+                        errors?: {
+                            [key: string]: unknown;
+                        }[];
+                        /** Request Id */
+                        request_id: string;
+                        /** Status */
+                        status: number;
+                        /** Title */
+                        title: string;
+                        /**
+                         * Type
+                         * @default about:blank
+                         */
+                        type: string;
+                    };
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": {
+                        /** Code */
+                        code: string;
+                        /** Detail */
+                        detail: string;
+                        /** Errors */
+                        errors?: {
+                            [key: string]: unknown;
+                        }[];
+                        /** Request Id */
+                        request_id: string;
+                        /** Status */
+                        status: number;
+                        /** Title */
+                        title: string;
+                        /**
+                         * Type
+                         * @default about:blank
+                         */
+                        type: string;
+                    };
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": {
+                        /** Code */
+                        code: string;
+                        /** Detail */
+                        detail: string;
+                        /** Errors */
+                        errors?: {
+                            [key: string]: unknown;
+                        }[];
+                        /** Request Id */
+                        request_id: string;
+                        /** Status */
+                        status: number;
+                        /** Title */
+                        title: string;
+                        /**
+                         * Type
+                         * @default about:blank
+                         */
+                        type: string;
+                    };
+                };
+            };
+        };
+    };
+    get_pulse: {
+        parameters: {
+            query?: {
+                /** @description A UTC day; the newest day with stored scores if absent. */
+                date?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: {
+                __session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Pulse"];
                 };
             };
             /** @description Unauthorized */

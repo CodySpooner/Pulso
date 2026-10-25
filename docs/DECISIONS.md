@@ -3920,3 +3920,71 @@ Superseded review defaults, not given entries: default #0 (move the repo) is don
 
   Ten of 11 one-line mutations each fail a test. The 11th, dropping `complete` from the run filter, is an equivalent mutant: only `execute_run` writes `success`, and only for a complete run (`docs/reports/imp-496.md`).
 - **Not here:** XR-65 (a merged product's rules stop watching); a gap filled by a catch-up run (`filled_by_run_id`) still holds, as before; per-offer capture evidence.
+
+### DEC-337 · Daily Pulse backend (WF-6 part a): `GET /v1/pulse?date=`, nine sections, each with status ok | empty | no_source, its own `as_of` and sources, at most 10 items, every number from captures before the day's cutoff; landed-margin changes through a dated reading of the economics view
+**2026-10-25 · proposed (p4-25)** · Phase 4 task WF-6 part a; backlog imp-421; SPEC §6.1, §10; DEC-031, DEC-040, DEC-243, DEC-261, DEC-263, DEC-265, DEC-291, DEC-311, DEC-322, DEC-324, DEC-326, DEC-330, DEC-331; vault Features/Daily Pulse; `docs/reports/p4-25.md`; one endpoint and the regenerated client; no migration, write, flag, dependency, Celery task or UI
+- **Decision:**
+  - **(a) Endpoint.** `GET /v1/pulse?date=YYYY-MM-DD` (operationId `get_pulse`, router `pulse.py`) returns `{day, cutoff, sections}`. The day's window is [d 00:00Z, d + 1 00:00Z), and `cutoff` is d + 1 00:00Z (DEC-031). Every number reads only captures before the cutoff, so a past day replays as the data stood. The field is `day`, as on `StoredScore` and the series `Point`.
+    - **Default day:** the date of the newest `scores` row by id (one step back along the primary key), else yesterday. Nights are scored in day order (DEC-326 a), so that is the newest scored day.
+  - **(b) Section contract.** Each section has:
+    - `status`: `ok` when it has items, `empty` when fed but nothing moved, `no_source` when nothing feeds it on that day (DEC-040), never zeros;
+    - `as_of`: the newest capture behind its items, null without items;
+    - `sources`: the score kinds, view name or `sources.key` it reads;
+    - `reason`: why it is empty or has no source;
+    - at most 10 items, one per surviving product: a merged product reads as its survivor and the first-ranked row is kept (DEC-263, `watchlists.resolve`).
+  - **(c) Emerging and movers.** These read each product's newest Trend and Lifecycle row per day (its latest computation, as `latest()` picks).
+    - **Emerging:** Trend Score among products whose Lifecycle on d is emerging or rising, highest first, with `since_yesterday`.
+    - **Movers:** d against d − 1, only when both rows share a `model_version` (a fix is a new version, never a move). Each item has `old`, `new` and a signed `change`. Up holds change > 0 and down change < 0, so the two lists are disjoint.
+    - No Trend row on d is `no_source`.
+    - This follows the WF-6 brief, not the vault's 7-day-growth movers (backlog row).
+  - **(d) New in tracked stores.** Listings first seen on d in the workspace's tracked stores and published (`source_published_at`, else `source_created_at`) within 7 days before the cutoff, so a newly tracked store's back catalogue doesn't flood it (review M15).
+    - `no_source` while `shopify_stores` is disabled (DEC-261) or the workspace tracks no store. A past day's rows still list.
+  - **(e) Alerts.** The workspace's alerts fired on d and not archived (DEC-330), unread first then newest, with the day's `unread` count. `read_at` is the inbox state now.
+  - **(f) Watchlists (imp-421).** The workspace's lists in sub-nav order (up to 20), each with `item_count` and its 10 most recently added products as survivors. Each product carries:
+    - a 14-day Trend Score series (scored days only, never filled in);
+    - `trend` since yesterday (the rule in c);
+    - Lifecycle `stage_before` and `stage`;
+    - the types of d's alerts on its supplier offers.
+
+    Membership is the lists as they stand now; the numbers are the day's.
+  - **(g) Landed-margin changes.**
+    - **Candidates:** products with a store listing and a capture (listing snapshot or freight quote) on d, up to 500.
+    - **Re-costing:** each candidate is re-costed at both cutoffs under today's workspace settings, so only market inputs move it. `opportunity.margin_of()` gives the margin, costed at duty 0 when duty is the only gap (DEC-331 b). Items are both-present margins that differ: `old_bps`, `new_bps` and a signed `change_bps`.
+    - **The dated reading:** migration 0014's frozen view text, edited three ways:
+      - every `listing_snapshots` and `shipping_options` read becomes `(SELECT * … WHERE captured_at < :cutoff)`;
+      - `delisted_at IS NULL` becomes "live until its delisting time";
+      - the rows are filtered to the workspace and the candidates.
+
+      Each edit asserts its count. At a cutoff after every capture, the reading equals the live view. It is the dated reader 0010's comment plans.
+    - **No source:** no settings, or no store or supplier listing before the cutoff.
+  - **(h) Supplier changes.** Supplier listings with a snapshot on d. A price change compares the newest priced snapshot before the cutoff with the newest before d, in the same currency. A stock change compares `in_stock()` (DEC-243) of the newest snapshot with stock fields. Stock flips come first, then the largest price change.
+  - **(i) Search movers.** The day's `gt_interest` rows under the current `FEATURE_VERSION` (DEC-311), by |`gt_slope`| (the 4 latest complete weeks against the 8 before), with `change_pct` = e^slope − 1. No row on d is `no_source`.
+  - **(j) Provenance.** `/v1/pulse` joins the Q-1 contract. Every object with a number has a required `as_of`; `AlertOut.id` is exempt as a row id.
+  - **(k) Bounds.** Each section runs a fixed number of statements: scores 4, alerts 1, launches 3, watchlists 9, margins 9, suppliers 4, search 3, and the default day 1. A day's captures are found by one `(listing_id, captured_at)` index probe per listing: a `LIMIT 1` subquery, because as `EXISTS` the planner scans the whole table.
+- **Alternatives:**
+  - **The live economics view for margins:** it is not point in time. A test shows it pricing a freight quote captured after the cutoff, so a past day wouldn't replay.
+  - **A SQL function with a cutoff, or a copy of the view text:** the first needs a migration, which the brief rules out. A copy is 200 lines that drift; the frozen text and a parity test keep one definition.
+  - **Movers by 7-day growth** (the vault's rule): the brief asks for the Trend Score's day-over-day change. Growth movers are a backlog row.
+  - **CJ stock from `variant_snapshots`:** it would be a second in-stock rule beside DEC-243. CJ writes stock only there, so every listing-level reader (Suppliers tab, R-23 stock-out rule, this section) misses CJ stock-outs. That is a backlog row, to fix once.
+  - **Keyword-level search movers** (including seed keywords): a keyword has no page to open; backlog row.
+  - **`max(date)` for the default day:** it reads every `scores` row (269 ms on a year-long fixture against 0.05 ms).
+  - **Point-in-time watchlist membership** (`added_at < cutoff`): a product starred today wouldn't show on today's pulse.
+  - **Historic workspace settings:** none are stored. Today's settings mean only market inputs move a margin.
+- **Why:**
+  - `apps/api/tests/test_pulse.py` (8 tests, 7 on a throwaway `pgvector/pgvector:0.8.7-pg18-trixie`):
+    - with only CJ, Trends and scores fixtures and Shopify disabled, five sections are ok and new-in-stores is `no_source`;
+    - no row of any kind captured after the cutoff reaches the day, and the next day reads them;
+    - movers carry old, new and a signed change, are disjoint, and skip a version change;
+    - three-workspace isolation for alerts, watchlists and margins (duty 0, duty unset, no settings);
+    - the dated view at a late cutoff equals the live view;
+    - launches exclude a back catalogue and untracked stores;
+    - an empty database answers 200 with every section empty or `no_source`.
+  - 18 of 19 one-line mutations fail a test. The survivor drops the watchlist items' workspace filter: lists are already workspace-scoped, so it is equivalent.
+  - EXPLAIN on a year-long fixture shows every section's main query on an index (`docs/reports/p4-25.md`).
+- **Not here:**
+  - the page (WF-6b);
+  - the collection status line (Data Health's reads);
+  - the R-22 shortlist (after WF-1);
+  - Opportunity in the pulse (imp-489; the dated reading here can serve it);
+  - model picks (Phase 6) and the digest (Phase 7);
+  - a cache keyed by scoring run.
