@@ -952,6 +952,22 @@
             "title": "Added At",
             "type": "string"
           },
+          "best_margin_minor": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Margin"
+              },
+              {
+                "$ref": "#/components/schemas/Incomplete"
+              }
+            ],
+            "title": "Best Margin Minor"
+          },
+          "currency": {
+            "const": "USD",
+            "title": "Currency",
+            "type": "string"
+          },
           "image_url": {
             "anyOf": [
               {
@@ -962,6 +978,29 @@
               }
             ],
             "title": "Image Url"
+          },
+          "lifecycle": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LatestScore"
+              },
+              {
+                "$ref": "#/components/schemas/NoSource"
+              }
+            ],
+            "title": "Lifecycle"
+          },
+          "merged_into_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Merged Into Id"
           },
           "name": {
             "title": "Name",
@@ -982,10 +1021,54 @@
             "title": "Position",
             "type": "integer"
           },
+          "price_max_minor": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Sourced"
+              },
+              {
+                "$ref": "#/components/schemas/NoSource"
+              }
+            ],
+            "title": "Price Max Minor"
+          },
+          "price_min_minor": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Sourced"
+              },
+              {
+                "$ref": "#/components/schemas/NoSource"
+              }
+            ],
+            "title": "Price Min Minor"
+          },
           "product_id": {
             "format": "uuid",
             "title": "Product Id",
             "type": "string"
+          },
+          "saturation": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LatestScore"
+              },
+              {
+                "$ref": "#/components/schemas/NoSource"
+              }
+            ],
+            "title": "Saturation"
+          },
+          "trend": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LatestScore"
+              },
+              {
+                "$ref": "#/components/schemas/NoSource"
+              }
+            ],
+            "title": "Trend"
           }
         },
         "required": [
@@ -994,7 +1077,15 @@
           "image_url",
           "position",
           "note",
-          "added_at"
+          "added_at",
+          "merged_into_id",
+          "currency",
+          "price_min_minor",
+          "price_max_minor",
+          "best_margin_minor",
+          "trend",
+          "saturation",
+          "lifecycle"
         ],
         "title": "BoardItem",
         "type": "object"
@@ -24765,7 +24856,7 @@
     },
     "/v1/boards/{board_id}/items": {
       "get": {
-        "description": "The cards in board order, `product_id` breaking ties.",
+        "description": "The cards in board order, `product_id` breaking ties, each with its stats.",
         "operationId": "list_board_items",
         "parameters": [
           {

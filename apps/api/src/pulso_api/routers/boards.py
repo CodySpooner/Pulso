@@ -1,10 +1,12 @@
 """Boards (WF-3 part a, DEC-319): the workspace's boards of product ideas. Cards keep a manual
 order and a board-only note, and send-to-testing opens Idea tests through the Testing Board's
-create path. The /boards UI, the Add-to-board popover and the CSV exports come later."""
+create path. The /boards UI, the Add-to-board popover and the CSV exports come later. Each card
+carries its stats, read for the whole page in a fixed number of queries (imp-454)."""
 
 import json
-from datetime import datetime
-from typing import Annotated
+from collections.abc import Sequence
+from datetime import UTC, datetime
+from typing import Annotated, Any, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query
@@ -17,19 +19,32 @@ from pydantic import (
     TypeAdapter,
     ValidationError,
 )
-from sqlalchemy import ColumnElement, Select, delete, func, select, tuple_
+from sqlalchemy import ColumnElement, Row, Select, delete, func, select, tuple_
 from sqlalchemy.orm import Session
 
 from pulso_api.auth import current_principal
 from pulso_api.errors import APIError
-from pulso_api.routers.products import DB, CurrentPrincipal
+from pulso_api.routers.products import (
+    DB,
+    CurrentPrincipal,
+    Incomplete,
+    Margin,
+    best_margins,
+    latest_snapshots,
+    listing_stats,
+    margin_stat,
+)
+from pulso_api.routers.screener import LatestScore, score_value
 from pulso_api.routers.testing import ProductTestCreate, ProductTestOut, create_test
-from pulso_api.routers.watchlists import ItemsIn, Name, survivors
+from pulso_api.routers.watchlists import ItemsIn, Name, resolve, survivors
+from pulso_api.schemas.provenance import NoSource, Stat
 from pulso_api.schemas.text import NoNulStr
 from pulso_core.models import Board as BoardRow
 from pulso_core.models import BoardItem as ItemRow
-from pulso_core.models import Image, Product, ProductTest
+from pulso_core.models import Image, Product, ProductTest, Source
 from pulso_core.models.core import TEST_STAGES
+from pulso_core.scores import Kind
+from pulso_ml.scores import opportunity as op
 
 router = APIRouter(prefix="/v1/boards", dependencies=[Depends(current_principal)])
 ITEM_CURSOR = TypeAdapter(tuple[int, UUID])
@@ -71,6 +86,16 @@ class BoardItem(BaseModel):
     position: int
     note: str | None
     added_at: AwareDatetime
+    # The survivor, when the product was merged after the add: cards aren't rewritten (DEC-319
+    # e), so the card keeps its product and shows the survivor's stats below.
+    merged_into_id: UUID | None
+    currency: Literal["USD"]  # of the *_minor stats
+    price_min_minor: Stat  # Discover's price range: the live USD store listings'
+    price_max_minor: Stat
+    best_margin_minor: Margin | Incomplete  # Discover's best landed margin, this workspace's
+    trend: LatestScore | NoSource  # the newest stored rows, as the Screener reads them
+    saturation: LatestScore | NoSource
+    lifecycle: LatestScore | NoSource
 
 
 class BoardItemPage(BaseModel):
@@ -131,6 +156,35 @@ def cards(
         .outerjoin(Image, Image.id == Product.main_image_id)
         .where(ItemRow.board_id == board_id)
     )
+
+
+def with_stats(session: Session, workspace_id: UUID, rows: Sequence[Row[Any]]) -> list[BoardItem]:
+    """`cards` rows with their stats: one query per part for any number of cards, through the
+    reads Discover and the Screener use (the margin only through the economics view)."""
+    into = resolve(session, [row.product_id for row in rows])
+    products = list(set(into.values()))
+    snapshots = latest_snapshots(session, products)
+    margins = best_margins(session, workspace_id, products)
+    kinds: tuple[Kind, ...] = ("trend", "saturation", "lifecycle")
+    scores = {kind: op.latest_rows(session, kind, products) for kind in kinds}
+    sources = {source.key: source for source in session.scalars(select(Source))}
+    now = datetime.now(UTC)
+    items = []
+    for row in rows:
+        survivor = into[row.product_id]
+        prices = listing_stats(snapshots[survivor], now)
+        items.append(
+            BoardItem(
+                **row._mapping,
+                merged_into_id=None if survivor == row.product_id else survivor,
+                currency="USD",
+                price_min_minor=prices["price_min_minor"],
+                price_max_minor=prices["price_max_minor"],
+                best_margin_minor=margin_stat(margins.get(survivor), sources, now),
+                **{kind: score_value(scores[kind].get(survivor)) for kind in kinds},
+            )
+        )
+    return items
 
 
 @router.get("", response_model=list[Board])
@@ -201,7 +255,7 @@ def list_board_items(
     cursor: str | None = None,
     limit: Annotated[int, Query(ge=1, le=100)] = 50,
 ) -> BoardItemPage:
-    """The cards in board order, `product_id` breaking ties."""
+    """The cards in board order, `product_id` breaking ties, each with its stats."""
     owned(session, principal.workspace_id, board_id)
     query = cards(board_id)
     if cursor is not None:
@@ -215,7 +269,7 @@ def list_board_items(
     ).all()
     last = rows[limit - 1] if len(rows) > limit else None
     return BoardItemPage(
-        items=[BoardItem.model_validate(row, from_attributes=True) for row in rows[:limit]],
+        items=with_stats(session, principal.workspace_id, rows[:limit]),
         next_cursor=json.dumps([last.position, str(last.product_id)]) if last else None,
     )
 
@@ -278,10 +332,8 @@ def update_board_item(
         for position, each in enumerate(order):
             each.position = position
     session.commit()
-    return BoardItem.model_validate(
-        session.execute(cards(board_id).where(ItemRow.product_id == product_id)).one(),
-        from_attributes=True,
-    )
+    row = session.execute(cards(board_id).where(ItemRow.product_id == product_id)).one()
+    return with_stats(session, principal.workspace_id, [row])[0]
 
 
 @router.delete("/{board_id}/items/{product_id}", response_model=Board)
