@@ -39,6 +39,7 @@ test("one click opens every Amazon list", async ({ page }) => {
 test("a product no imported row links to reads as not ranked", async ({ page }) => {
   await open(page, { body: notRanked });
   await expect(section(page).getByText("Not in an imported Amazon list.")).toBeVisible();
+  await expect(section(page).getByRole("link", { name: "Open CSV import" })).toHaveAttribute("href", "/admin/data-health#import");
   await expect(section(page).getByRole("table")).toHaveCount(0);
 });
 

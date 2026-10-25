@@ -62,8 +62,9 @@ export function AmazonSection({ id }: { id: string }) {
           Import Best Sellers or Movers &amp; Shakers ranks from a tool whose terms allow it, or a list made by hand. Never a scrape.
         </Note>
       ) : data.rows.length === 0 ? (
-        <Note icon={SearchX} title="Not in an imported Amazon list">
-          No imported Amazon row shares a barcode (GTIN) with this product&apos;s listings. Pulso links by barcode only, never by title.
+        <Note icon={SearchX} title="Not in an imported Amazon list" href={IMPORT} action="Open CSV import">
+          No imported Amazon row shares a barcode (GTIN) with this product&apos;s listings. Pulso links by barcode only, never by title, so fill the
+          file&apos;s gtins column.
         </Note>
       ) : (
         <>
