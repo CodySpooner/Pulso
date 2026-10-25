@@ -180,7 +180,9 @@ def test_cards_append_move_take_notes_and_go(
     assert client.delete(f"/v1/boards/{board}/items/{ids['p0']}").json()["item_count"] == 3
     moved = client.patch(f"/v1/boards/{board}/items/{ids['p1']}", json={"position": 99})
     assert moved.json()["position"] == 2
-    order = [str(ids[k]) for k in ("p3", "p2", "p1")]
+    between = client.patch(f"/v1/boards/{board}/items/{ids['p1']}", json={"position": 1})
+    assert between.json()["position"] == 1
+    order = [str(ids[k]) for k in ("p3", "p1", "p2")]
     with Session(db_engine) as fresh:  # persisted, read back outside the API
         stored = fresh.execute(
             select(BoardItem.product_id, BoardItem.position)
