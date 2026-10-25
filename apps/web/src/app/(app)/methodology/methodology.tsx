@@ -60,7 +60,7 @@ function Sub({ title, note, children }: { title: string; note?: string; children
     <div className="flex min-w-0 flex-col gap-2">
       <div className="flex flex-wrap items-baseline gap-x-2">
         <h3 className="text-data font-semibold text-foreground">{title}</h3>
-        {note && <code className="min-w-0 truncate text-label text-subtle-foreground">{note}</code>}
+        {note && <code className="min-w-0 break-all text-label text-subtle-foreground">{note}</code>}
       </div>
       {children}
     </div>
@@ -75,7 +75,8 @@ interface Row {
 }
 
 // Terminal-dense reference rows (vault Design/Tables & Data Density): the name with its code comment under it, and
-// the value or type right-aligned in mono, so no table needs to scroll sideways at 375px.
+// the value or type right-aligned in mono, so no table needs to scroll sideways at 375px. Below sm a type wraps at its
+// spaces (a value never does): on one line, Mapping[UUID, Sequence[int]] made the inputs table wider than its card.
 function Rows({ label, columns, rows }: { label: string; columns: [string, string]; rows: Row[] }) {
   return (
     <table aria-label={label} className="w-full border-separate border-spacing-0 zone-data">
@@ -110,7 +111,8 @@ function Rows({ label, columns, rows }: { label: string; columns: [string, strin
   );
 }
 
-const typed = (fields: Field[]): Row[] => fields.map((f) => ({ name: f.name, note: f.note, value: <span className="text-muted-foreground">{f.type}</span> }));
+const typed = (fields: Field[]): Row[] =>
+  fields.map((f) => ({ name: f.name, note: f.note, value: <span className="text-muted-foreground max-sm:whitespace-normal">{f.type}</span> }));
 
 function ScoreSection({ score, missing }: { score: BuiltScore; missing: string }) {
   const config = score.code.replace(/\.\w+$/, ".Config");
