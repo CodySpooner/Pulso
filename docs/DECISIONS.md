@@ -20,7 +20,7 @@ New entries go at the bottom with the next number. Never renumber or delete; mar
 |---|---|---|
 | DEC-001 | Railway hosts everything; collection runs on the home PC until go-live | approved by owner 2026-10-22 |
 | DEC-002 | One collector host, one scheduler (env flag + Postgres advisory lock) | approved by owner 2026-10-22 |
-| DEC-003 | Shopify crawler: ToS risk accepted, strict §4.2 | approved by owner 2026-10-22 |
+| DEC-003 | Shopify crawler: ToS risk accepted, strict §4.2 | superseded by DEC-261 (owner, 2026-10-25) |
 | DEC-004 | Markets: US only, USD | approved by owner 2026-10-22 |
 | DEC-005 | Repo at C:\dev\pulso; vault stays in OneDrive | approved by owner 2026-10-22 |
 | DEC-006 | Notes home: Obsidian vault, one note per feature and aspect | approved by owner 2026-10-22 |
@@ -90,7 +90,7 @@ New entries go at the bottom with the next number. Never renumber or delete; mar
 | DEC-075 | Reject import mappings changed by metadata sanitization | proposed (P1-24) |
 | DEC-076 | Seed revision ordering and stored-target validation | proposed (P1-25) |
 | DEC-077 | Bounded Shopify probe: whole-run request budget, first-block run stop, public bot page | proposed (data-01) |
-| DEC-090 | SPK-3: Shopify crawler go/no-go after SPK-2 (conditional go; enables nothing) | proposed (data-04) |
+| DEC-090 | SPK-3: Shopify crawler go/no-go after SPK-2 (conditional go; enables nothing) | declined by owner 2026-10-25 (DEC-261) |
 | DEC-087 | Shopify catalog evidence, conservative cache and store exclusions | proposed (P1-07) |
 | DEC-088 | Frankfurter gap recovery, first-rate evidence and explicit FX rounding | proposed (P1-09) |
 | DEC-089 | Queued publishing and guarded Beat | proposed (P1-04) |
@@ -105,6 +105,7 @@ New entries go at the bottom with the next number. Never renumber or delete; mar
 | DEC-136 | Use CJ now until the 30-day rule lapses it; Pulso is for the owner's own stores, not a paid app | approved by owner 2026-10-23 |
 | DEC-131 | Collector seeds and source controls: worker-container step, fail-closed evidence gates, private seed file | proposed (P1-42) |
 | DEC-202 | While Codex is off, a fresh Claude session does the owed cross-reviews | approved by owner 2026-10-23 |
+| DEC-261 | The Shopify crawler stays off: the owner won't risk their Shopify stores | approved by owner 2026-10-25 |
 
 Superseded review defaults, not given entries: default #0 (move the repo) is done, see DEC-005. Default #2 (no local collection at all) is replaced by DEC-002. Default #15 (CSS-only motion) is replaced by DEC-007, and its remaining rules are in DEC-025. Review question D1 (Railway Pro from Phase 1) is answered by DEC-001, D2 by DEC-003, D3 by DEC-004, D5 by DEC-008 and D8 by DEC-006.
 
@@ -146,6 +147,7 @@ Superseded review defaults, not given entries: default #0 (move the repo) is don
 
 ### DEC-003 · Shopify competitor-store crawler: ToS risk accepted, strict §4.2
 **2026-10-22 · approved by owner 2026-10-22** · Review H2, D2
+- *Superseded by DEC-261 (2026-10-25): the owner withdrew this risk acceptance; the crawler stays off.*
 - **Decision:**
   - **Risk acceptance:** the owner accepts the risk under Shopify Terms of Service §1 item 9 to his own merchant accounts. This entry is the written risk acceptance the review asked for.
   - **Compliance:** the crawler follows §4.2 strictly:
@@ -1024,6 +1026,7 @@ Superseded review defaults, not given entries: default #0 (move the repo) is don
 
 ### DEC-090 · SPK-3 — Shopify crawler go/no-go after SPK-2
 **2026-10-22 · proposed (data-04)** · task_48353588040b; SPK-3; evidence: the SPK-2 report `C:\Users\Xody2\orca\workspaces\pulso\spike-SPK-2.md`, summarized in `docs/DATA_SOURCES.md` (Shopify, "SPK-2 results (2026-10-22)"); builds on DEC-003, DEC-033, DEC-069, DEC-073 and DEC-077
+- *Declined by the owner on 2026-10-25 (DEC-261): `shopify_stores` is never enabled.*
 - **Decision:** a **conditional go**. Work on the `shopify_stores` adapter continues toward enabling, but enabling stays gated on all five conditions below. Each one is built into the adapter and covered by a fixture test before the flag can turn on.
   - **(a) Per-store spacing.** Requests to the same store are spaced well above 3 s. A store's `Retry-After`, and any robots.txt crawl delay, set a minimum that is never shortened. The global cap of ≤ 30 requests/min (DEC-033) still applies on top. The adapter task sets and tests the exact interval.
   - **(b) No repeated URL in a run.** A run never requests the same URL twice. Conditional requests use the ETag stored by an earlier run (`If-None-Match`, DEC-033), so 304s come from repeats across runs, never within one run.
@@ -2351,3 +2354,14 @@ Superseded review defaults, not given entries: default #0 (move the repo) is don
 - **Alternatives:** a new router with renamed operations and a PUT (rejected by the lead under AGENTS.md §7); an empty box meaning "not set" (ambiguous with a half-typed value); guessed defaults such as 2.9% + $0.30 or a 5% return rate (the table defaults are 0, and changing them needs a migration); a per-section Save with an impact preview (the preview needs the margin view, UX-8 part c); an in-app navigation guard (the App Router has no route-blocking API, so only `beforeunload` is covered).
 - **Why:** `apps/api/tests/test_workspace_settings.py` holds 25 boundary cases (every field below 0 and above its cap, floats, strings, booleans, null, country, currency, extra fields) and Postgres tests for: defaults on the first GET (one row after two GETs), the round trip with duty 0, null, 15,000 and 100,000 bps, an omitted duty staying put, A's PATCH never changing B under real tokens with a forged `X-Workspace-ID`, and the UX-10 verify: raising the processing rate from 290 to 590 bps moves the next `POST /v1/profit/calc` margin from 1503 to 1413 cents (payment fee 117 → 207), then duty null withholds the margin and duty 0 completes it. Vitest checks the conversions (every bps 0..10000 round-trips exactly) and the validation; 12 Playwright specs cover load, edit and save in two clicks, Reset, validation, a failed save, a 422 on its field, not set vs 0%, keyboard order with visible rings and Ctrl+S, loading, error, stale, 375 px and the shell link.
 - **Not here:** Discover's best margin (UX-8 part c / UX-6), so the Discover half of UX-10's verify moves there; the impact preview, optimistic concurrency (`If-Match`) and the conflict state; guessed defaults and labelled-guess chips; shipping charged to the customer, a DDP default, max ship days, display timezone, workspace name, duty rules by category and product, and the Phase 4–7 sections (testing rules, AI budget, notifications), which need columns or tables this task doesn't add.
+
+### DEC-261 · The Shopify crawler stays off: the owner won't risk their Shopify stores
+**2026-10-25 · approved by owner 2026-10-25** · supersedes DEC-003's risk acceptance; declines DEC-090; DEC-010; DEC-136; SPEC §4.2
+- **Owner's answer (2026-10-25, in the owner's session):** after a plain-English rundown of DEC-090, including that Shopify's Terms of Service §1 item 9 may bind the owner as a merchant and that the worst case is a warning, limit or closure of the owner's merchant accounts: "so if this puts our shopify stores at risk we do not need it we need to find a different route"
+- **Decision:**
+  - `shopify_stores` is never enabled. DEC-090 is declined, and DEC-003's risk acceptance is withdrawn. The collector's `enable shopify_stores` gate already refuses, since DEC-090 is not owner-approved.
+  - Nothing in Pulso fetches from Shopify storefronts or Shopify-run hosts: no crawler run, no URL-paste fetch, and no Shopify host in `IMAGE_HOSTS`. Manual CSV import of data the owner obtained by hand stays available.
+  - Views that rely on store data (Sellers tab, Store Spy, store-count saturation) show "no source yet" until another source fills them (DEC-040).
+  - The owner picks a replacement route. Options in the owner's session: CJ listing counts (DEC-136, coming online), Google Merchant Center Popular products (the owner's own account, if eligible), Google Trends, and paid or vendor data only with the owner's approval (DEC-010, SPEC §0).
+- **Alternatives:** approve DEC-090 (declined: risk to the owner's stores); run the crawler from another network (it doesn't change who the terms bind, and SPEC §4.2 forbids switching networks to dodge a block).
+- **Why:** the owner's own Shopify stores matter more than a competitor-store signal.
