@@ -85,6 +85,8 @@ class Settings(BaseSettings):
     matcher_enabled: bool = False
     # OpenCLIP embeddings job (DEC-269); needs the ml worker's `clip` extra and baked weights.
     embeddings_enabled: bool = False
+    # product_daily_features job (DEC-275, DEC-278): yesterday's rows, append-only.
+    features_enabled: bool = False
 
     @model_validator(mode="after")
     def _collector_limits(self) -> Self:
