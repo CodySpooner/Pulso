@@ -60,7 +60,7 @@ export function apiQuery({ sort, category, price_min, price_max, source, first_s
 }
 
 // Keyset pages over live keys (momentum, store count) can repeat a product whose key moved between loads; the first
-// place wins, so each card and row keeps a unique key (XR-19, DEC-260 b).
+// place wins, so each card and row keeps a unique key (XR-19, DEC-260 a).
 export function joinPages<T extends { id: string }>(pages: readonly { items: readonly T[] }[] | undefined): T[] {
   const byId = new Map<string, T>();
   for (const item of (pages ?? []).flatMap((p) => p.items)) if (!byId.has(item.id)) byId.set(item.id, item);
