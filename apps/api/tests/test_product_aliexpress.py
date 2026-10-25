@@ -210,6 +210,10 @@ def test_unknown_products_and_bad_links_are_refused(api: TestClient, product: UU
     assert api.post(f"/v1/products/{uuid4()}/aliexpress", json={"link": PID}).status_code == 404
     bad = api.post(f"/v1/products/{product}/aliexpress", json={"link": "https://example.com/x"})
     assert (bad.status_code, bad.json()["code"]) == (422, "invalid_link")
+    nul = api.post(f"/v1/products/{product}/aliexpress", json={"link": f"{PID}\x00"})  # DEC-287
+    assert [(e["loc"], e["type"]) for e in nul.json()["errors"]] == [
+        (["body", "link"], "string_pattern_mismatch")
+    ]
 
 
 @pytest.mark.parametrize(

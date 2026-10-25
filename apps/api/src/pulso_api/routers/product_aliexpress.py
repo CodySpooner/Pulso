@@ -21,6 +21,7 @@ from sqlalchemy.orm import Session
 from pulso_api.auth import Principal, current_principal
 from pulso_api.errors import APIError
 from pulso_api.routers.products import DB
+from pulso_api.schemas.text import NoNulStr
 from pulso_core.models import Product, Source
 from pulso_core.settings import Settings, get_settings
 from pulso_sources.aliexpress import Product as Item
@@ -68,7 +69,7 @@ class AliExpressLookup(BaseModel):
 
 
 class LookupRequest(BaseModel):
-    link: str = Field(max_length=2048, description="An AliExpress product link or number.")
+    link: NoNulStr = Field(max_length=2048, description="An AliExpress product link or number.")
 
 
 def get_cache(settings: Annotated[Settings, Depends(get_settings)]) -> Iterator[Redis]:

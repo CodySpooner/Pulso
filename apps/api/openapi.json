@@ -2014,6 +2014,7 @@
           "link": {
             "description": "An AliExpress product link or number.",
             "maxLength": 2048,
+            "pattern": "^[^\\x00]*$",
             "title": "Link",
             "type": "string"
           }
