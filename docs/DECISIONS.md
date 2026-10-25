@@ -3194,3 +3194,36 @@ Superseded review defaults, not given entries: default #0 (move the repo) is don
   - (c2) Opening the rate from an effect: the React Compiler lint (`react-hooks/set-state-in-effect`) rejects a setState in an effect. The existing adjust-during-render sync builds the first draft instead.
 - **Why:** `overview-model.test.ts` covers the order: duty beside a supplier gap, no gaps, a supplier gap beside a price gap, variant mismatch, price, FX and amount. `overview.spec.ts` clicks each state's action once: Set duty lands on Settings with "Set a rate" checked and the rate box focused; Open Suppliers, by keyboard from the margin's number, has a solid focus outline and focuses the Suppliers tab; Enter a price focuses the Profit tab; Open Settings opens Settings. Each test failed before the change. `settings.spec.ts` still passes.
 - **Not here:** focusing the Profit tab's sell price box (not the tab) after "Enter a price", and per-state next actions on the other cards (price, supplier cost, velocity). Both are backlog rows in the report.
+
+### DEC-310 · Velocity & Acceleration (SC-1): a pure `family_velocity()` over one demand family's rows at t and t−7, each NULL with its reason (no source, insufficient history, or a gap naming its window), exact values kept through a tolerated gap, versioned through `pulso_core.scores.version`
+**2026-10-25 · proposed (p4-03)** · Phase 4 task SC-1; SPEC §7; DEC-031, DEC-040, DEC-261, DEC-275 (d, e), DEC-306 (d, g), DEC-307; vault Intelligence/Velocity & Acceleration, Intelligence/Demand Signals, Intelligence/Score Definitions §3 and §7; `docs/reports/p4-03.md`; no migration, table, endpoint, UI, flag, Beat or dependency change
+- **Decision:**
+  - **(a) Function.** `pulso_ml.scores.velocity.family_velocity(now, week_ago, days_observed)` is pure. It takes one product's `product_daily_features` rows in one family for t and t−7 (anything with `velocity_7d`, `growth_7d` and `has_gap`: a `Feature`, the ORM row or a `Demand`; None when there's no row) and `days_observed`, the days since the product's first row in that family with t included (DEC-307's input). It returns `Velocity(v7, g7, acc, has_gap)`, each a `Measure(value, why)`. V7 and G7 are the stored values (DEC-275 d: G7 = ln((V7(t) + 5) / (V7(t−7) + 5)) over the listings covered at t−14 and t). Acc(t) = G7(t) − G7(t−7) is the two rows' stored G7 subtracted, so no column and no new G7 code. Families never mix: the caller passes one family's rows. `shp_bump` has no feature code, so it always reads "no source".
+  - **(b) Every NULL says why.** These are checked in order:
+    - `no source`: there's no row at t. The family has no series for the product (DEC-275 e, DEC-040).
+    - `insufficient history`: fewer days than the window needs. V7 needs 8 (t−7..t), G7 needs 15 (t−14..t) and Acc needs 22 (G7(t−7) reads t−21).
+    - `gap <window>`: the history is long enough but the value is NULL. The window is `t-7..t` (V7), `t-14..t` (G7), or for Acc the NULL G7's: `t-14..t`, or `t-21..t-7` when G7(t−7) is NULL or its row is missing.
+    Only the rows at t and t−7 are read, so nothing is interpolated or carried forward from a neighbouring day.
+  - **(c) The gap rule is the stored one.** The rows already apply the vault's tolerance over their whole windows (DEC-275 d). A target-coverage gap over 3 days, or an uncovered window end, stores NULL. A shorter gap keeps the exact value, because inventory differencing spans it. `has_gap` is set when a value is NULL from a gap, or when either row's flag marks a tolerated gap behind a present V7. DEC-275 also flags a V7 that is NULL only from a short history, and that flag is not read as a gap, so a new product reads `insufficient history` with `has_gap` False.
+    - **Ceiling:** the stable panel's size isn't on the row. A product whose every listing was replaced within 14 days has an empty G7 panel, and that reads as `gap t-14..t`, where a stored `panel_size` would read `insufficient history`. A test pins this. Storing the size needs the feature writer and a column or the `features` JSON (FS-1), so it's a backlog row.
+  - **(d) Version.** A frozen `Config(revision=0, feature_version=FEATURE_VERSION)`. `VERSION, _ = pulso_core.scores.version(CONFIG)` (DEC-306 d) is now `000-b80f4a7f4a93`. A new G7 maths (a new `FEATURE_VERSION`) or a rule change (bump `revision`) is a new version, and `feature_version` names the rows the rules read.
+- **Alternatives:**
+  - **NULL on any gap flag, even when the stored value is present** (DEC-307's choice for a stage). A one-day outage would then blank every product's G7 for two weeks and its Acc for three. With a NULL G7 there's no Trend Score row (it's the required component). Strict rules on Acc would also need the t−14 row's flag. Velocity is data, not a judgement, and Score Definitions §3 already carries `gap` beside a present input.
+  - **"NULL without a gap flag is insufficient history"** (DEC-307's order). A 4-day gap in t−21..t−15 leaves both rows unflagged with G7(t−7) NULL, so it would read as short history. So would the second of two listings missing t−7 exactly: both rows are unflagged, G7(t) is NULL, and V7(t) drops that listing.
+  - **Recomputing from the pure demand inputs** (`product_demand` at t and t−7): that gives the panel size, but scores read the stored rows (Feature Store "Phase 4 scores read only from it"), and those inputs need an `AsOf` read per score.
+  - **A `panel_size` helper lifted from `product_demand`'s stable-set closure:** nothing could call it until the writer stores the size, and `demand.py` is under p4-04's parallel FS-1 change.
+- **Why:** `packages/ml/tests/test_velocity.py` has 25 cases. Gappy fixtures run through the real `product_demand` at t and t−7:
+  - the 3 → 30 unit jump (G7 = ln(35/8) = 1.476, Acc = ln(35/8) − ln(8/6));
+  - tolerated 3-day gaps in t−7..t and t−14..t−8 (exact values, flagged);
+  - 4-day gaps in each of the three weeks, and uncovered ends at t, t−7, t−14 and t−21 (NULL with the window named);
+  - no history (1 day and 10 days);
+  - no source;
+  - no row a week ago (with 21 and 22 days);
+  - the 7/8, 14/15 and 21/22-day boundaries;
+  - the vault lamp's Acc of 0.208;
+  - a listing joining mid-window, which moves neither G7 nor Acc;
+  - a second listing missing t−7 exactly, with both rows unflagged;
+  - the emptied panel;
+  - the version.
+  21 one-line mutations each fail a test (`docs/reports/p4-03.md`).
+- **Not here:** storing `panel_size` (FS-1 backlog row), an acceleration column or Screener filter (WF-1), SC-2's components (`<fam>_g7`, `<fam>_acc`) and SC-6's nightly read, R-25 (Untrackable store reason: Shopify is off for good, DEC-261; backlog row).

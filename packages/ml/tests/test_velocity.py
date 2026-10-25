@@ -116,6 +116,16 @@ def test_a_listing_joining_mid_window_moves_neither_growth_nor_acceleration() ->
     assert family_velocity(now, week_ago, 22)[1:] == run(ALL)[1:]
 
 
+def test_a_second_listing_missing_t_minus_7_reads_as_a_gap_though_no_row_is_flagged() -> None:
+    units = {n: {day(-i): Day(1) for i in range(22)} for n in (1, 2)}
+    covered = {1: {day(i) for i in ALL}, 2: {day(i) for i in ALL - {-7}}}
+    now, week_ago = (product_demand(units, covered, [1, 2], day(i)) for i in (0, -7))
+    assert (now.has_gap, week_ago.has_gap) == (False, False)
+    assert family_velocity(now, week_ago, 22) == Velocity(
+        Measure(7), gap("t-14..t"), gap("t-14..t"), True
+    )
+
+
 def test_an_emptied_stable_panel_reads_as_a_gap_until_its_size_is_stored() -> None:
     # listing 1 last covered t−7, listing 2 from t−10: nobody spans t−14..t, so G7(t) has no panel
     units = {**UNITS, 2: {day(-i): Day(2) for i in range(10)}}
