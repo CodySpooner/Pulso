@@ -301,8 +301,8 @@ function NoSource() {
           </Button>
         }
       >
-        This database has no Amazon source, so there is nothing to import into yet. Pulso&apos;s database update adds it; Data Health lists it once it&apos;s
-        there.
+        Pulso&apos;s database doesn&apos;t have the Amazon source yet, so Amazon files can&apos;t be imported. Update Pulso to add it; Data Health then lists
+        Amazon as CSV only.
       </EmptyState>
     </section>
   );
