@@ -31,6 +31,7 @@ from pulso_core.models import (
     WatchlistItem,
     Workspace,
     WorkspaceSettings,
+    WorkspaceTrackedStore,
     workspace_product_economics,
 )
 from pulso_core.scores import Explanation, Kind, ScoreRow, Stage, write
@@ -209,6 +210,9 @@ def market(session: Session) -> dict[str, UUID]:
     snap(session, fan_offer, at(Y, 6), price_min_minor=1200, stock=25)
     snap(session, fan_offer, at(D, 7), stock=0)  # an inventory read: stock only
     snap(session, fan_offer, AFTER, stock=40)
+    mat_offer = offer(session, mat)  # stock read on both days, still in stock
+    snap(session, mat_offer, at(Y, 6), stock=10)
+    snap(session, mat_offer, at(D, 7), stock=5)
     slope(session, lamp, D, 0.4)
     slope(session, fan, D, -0.2)
     slope(session, mat, D, None)  # insufficient signal
@@ -448,3 +452,38 @@ def test_an_empty_database_answers_every_section_empty_or_no_source(
         assert (section["items"], section["as_of"]) == ([], None)
         assert section["reason"]
     assert statuses(body)["emerging"] == "no_source"
+
+
+@pytest.mark.db
+def test_launches_list_tracked_stores_new_listings_but_not_their_back_catalogue(
+    api: TestClient, db_engine: Engine
+) -> None:
+    with Session(db_engine) as session:
+        tracking, other = workspace(session), workspace(session)
+        session.execute(text("UPDATE sources SET enabled = true WHERE key = 'shopify_stores'"))
+        stores = [Store(domain=f"s{i}.example.test", platform="shopify") for i in range(2)]
+        session.add_all(stores)
+        session.flush()
+        session.add(WorkspaceTrackedStore(workspace_id=tracking, store_id=stores[0].id))
+        for store, published, title in (
+            (stores[0], at(Y, 12), "Launch"),
+            (stores[0], at(D - timedelta(days=200), 0), "Back catalogue"),
+            (stores[1], at(Y, 12), "Untracked store"),
+        ):
+            session.add(
+                Listing(
+                    source_id=SHOPIFY, external_id=uuid4().hex, url="https://example.test/p",
+                    title=title, store_id=store.id, first_seen_at=at(D, 3),
+                    source_published_at=published,
+                )
+            )  # fmt: skip
+        session.commit()
+    new = get(api, tracking, date=D.isoformat())["sections"]["new_in_stores"]
+    assert [(i["title"], i["store"], i["product"]) for i in new["items"]] == [
+        ("Launch", "s0.example.test", None)
+    ]
+    assert (new["status"], new["as_of"]) == ("ok", f"{D.isoformat()}T03:00:00Z")
+    quiet = get(api, other, date=D.isoformat())["sections"]["new_in_stores"]
+    assert (quiet["status"], quiet["reason"]) == ("no_source", "No tracked stores yet.")
+    later = get(api, tracking, date=(D + timedelta(days=1)).isoformat())["sections"]
+    assert later["new_in_stores"]["status"] == "empty"

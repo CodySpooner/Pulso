@@ -549,9 +549,15 @@ def economics(
 
 def touched(
     table: type[ListingSnapshot] | type[ShippingOption], start: datetime, end: datetime
-) -> Any:
-    return exists().where(
-        table.listing_id == Listing.id, table.captured_at >= start, table.captured_at < end
+) -> ColumnElement[bool]:
+    """The listing has a capture on the day. LIMIT 1 keeps it one (listing_id, captured_at) index
+    probe per listing: as EXISTS, the planner scans the whole table for the day's captures."""
+    return (
+        select(table.id)
+        .where(table.listing_id == Listing.id, table.captured_at >= start, table.captured_at < end)
+        .limit(1)
+        .scalar_subquery()
+        .is_not(None)
     )
 
 
@@ -567,11 +573,14 @@ def margins(session: Session, workspace_id: UUID, start: datetime, end: datetime
     settings = session.get(WorkspaceSettings, workspace_id)
     if settings is None:
         return built(MarginSection, [], False, [op.VIEW], "", NO_SETTINGS)
+    store = aliased(Listing)
     changed = session.scalars(
         select(Listing.product_id)
         .where(
             Listing.product_id.is_not(None),
             or_(touched(ListingSnapshot, start, end), touched(ShippingOption, start, end)),
+            # a margin needs a market price: a store listing (DEC-265)
+            exists().where(store.product_id == Listing.product_id, store.store_id.is_not(None)),
         )
         .distinct()
         .limit(CANDIDATES)
@@ -760,9 +769,11 @@ def search(session: Session, day: date) -> SearchSection:
 
 
 def newest_day(session: Session) -> date:
-    """The newest UTC day with a stored Trend Score, else yesterday."""
-    # ponytail: reads the trend rows' index end to end; a scoring-runs read if it gets slow.
-    found = session.scalar(select(func.max(Score.date)).where(Score.kind == "trend"))
+    """The day of the newest score written, else yesterday. Nights are scored in day order
+    (DEC-326 a), so that is the newest scored day; one step back along the primary key finds it,
+    where max(date) reads every row. ponytail: a backfill run out of order shows its day until the
+    next night."""
+    found = session.scalar(select(Score.date).order_by(Score.id.desc()).limit(1))
     return found or datetime.now(UTC).date() - timedelta(days=1)
 
 
