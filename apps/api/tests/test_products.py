@@ -472,6 +472,21 @@ def test_feed_rejects_bad_queries(api: TestClient, feed: dict[str, str]) -> None
 
 
 @pytest.mark.db
+def test_xr18_integers_past_the_column_range_answer_422(
+    api: TestClient, feed: dict[str, str]
+) -> None:
+    for query in (
+        {"price_min": 2**63},
+        {"price_max": 10**30},
+        {"category": 2**31},
+        {"sort": "fewest_sellers", "cursor": f'[{2**63}, "{uuid4()}"]'},
+    ):
+        assert api.get("/v1/products", params=query).status_code == 422, query
+    edge = {"price_min": 2**63 - 1, "price_max": 2**63 - 1, "category": 2**31 - 1}
+    assert api.get("/v1/products", params=edge).status_code == 200
+
+
+@pytest.mark.db
 def test_categories_lists_categories_in_use(api: TestClient, db_engine: Engine) -> None:
     with Session(db_engine) as session:
         session.add_all(
