@@ -1662,6 +1662,18 @@
               }
             ],
             "title": "Velocity"
+          },
+          "watched": {
+            "title": "Watched",
+            "type": "boolean"
+          },
+          "watchlist_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Watchlist Ids",
+            "type": "array"
           }
         },
         "required": [
@@ -1675,6 +1687,8 @@
           "supplier_count",
           "price_min_minor",
           "price_max_minor",
+          "watched",
+          "watchlist_ids",
           "velocity",
           "best_margin_minor",
           "as_of",
@@ -3553,6 +3567,18 @@
           "title": {
             "title": "Title",
             "type": "string"
+          },
+          "watched": {
+            "title": "Watched",
+            "type": "boolean"
+          },
+          "watchlist_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Watchlist Ids",
+            "type": "array"
           }
         },
         "required": [
@@ -3565,7 +3591,9 @@
           "store_count",
           "supplier_count",
           "price_min_minor",
-          "price_max_minor"
+          "price_max_minor",
+          "watched",
+          "watchlist_ids"
         ],
         "title": "ProductHeader",
         "type": "object"
@@ -7936,6 +7964,9 @@
             "title": "Name",
             "type": "string"
           },
+          "product": {
+            "$ref": "#/components/schemas/DiscoverItem"
+          },
           "product_id": {
             "format": "uuid",
             "title": "Product Id",
@@ -7946,7 +7977,8 @@
           "product_id",
           "name",
           "image_url",
-          "added_at"
+          "added_at",
+          "product"
         ],
         "title": "WatchlistItem",
         "type": "object"

@@ -1,6 +1,7 @@
 """Watchlists (WF-2 part a, DEC-314): the workspace's named product lists. A star (the ★ toggle
-and `W`) adds to the list named "Main", created by the first star. Rows show the product's
-name, image and first added_at; sparklines, "since added" deltas and the summary come later."""
+and `W`) adds to the list named "Main", created by the first star. Rows show the product as
+Discover reads it and the first added_at; sparklines, "since added" deltas and the summary
+come later."""
 
 import json
 from typing import Annotated
@@ -22,7 +23,14 @@ from sqlalchemy.orm import Session
 
 from pulso_api.auth import current_principal
 from pulso_api.errors import APIError
-from pulso_api.routers.products import DB, CurrentPrincipal, with_merged
+from pulso_api.routers.products import (
+    DB,
+    MAIN,
+    CurrentPrincipal,
+    DiscoverItem,
+    discover_items,
+    with_merged,
+)
 from pulso_api.schemas.text import NoNulStr
 from pulso_core.models import Image, Product
 from pulso_core.models import Watchlist as ListRow
@@ -30,7 +38,6 @@ from pulso_core.models import WatchlistItem as ItemRow
 
 router = APIRouter(prefix="/v1/watchlists", dependencies=[Depends(current_principal)])
 products_router = APIRouter(prefix="/v1/products", dependencies=[Depends(current_principal)])
-MAIN = "Main"
 ORDER = (ListRow.position, ListRow.created_at, ListRow.id)
 ITEM_CURSOR = TypeAdapter(tuple[AwareDatetime, UUID])
 Name = Annotated[NoNulStr, StringConstraints(strip_whitespace=True, min_length=1, max_length=80)]
@@ -69,6 +76,9 @@ class WatchlistItem(BaseModel):
     name: str
     image_url: str | None
     added_at: AwareDatetime  # the first add, kept through re-adds and moves
+    # The product now, as Discover reads it. One merged after the add reads as its survivor,
+    # so product.id differs from product_id: the UI's "merged" note (DEC-314 d, DEC-322).
+    product: DiscoverItem
 
 
 class WatchlistItemPage(BaseModel):
@@ -112,9 +122,9 @@ def last_position(workspace_id: UUID) -> ScalarSelect[int]:
     )
 
 
-def survivors(session: Session, product_ids: list[UUID]) -> list[UUID]:
-    """Each product, or the product it was merged into through any chain of merges (DEC-263),
-    once each. An unknown id is a 404."""
+def resolve(session: Session, product_ids: list[UUID]) -> dict[UUID, UUID]:
+    """Each product's survivor: itself, or the product it was merged into through any chain of
+    merges (DEC-263). An unknown id is a 404."""
     merged_into: dict[UUID, UUID | None] = {}
     todo = set(product_ids)
     while todo:
@@ -133,7 +143,12 @@ def survivors(session: Session, product_ids: list[UUID]) -> list[UUID]:
             product_id = into
         return product_id
 
-    return list(dict.fromkeys(survivor(product_id) for product_id in product_ids))
+    return {product_id: survivor(product_id) for product_id in product_ids}
+
+
+def survivors(session: Session, product_ids: list[UUID]) -> list[UUID]:
+    """Each product's survivor, once each."""
+    return list(dict.fromkeys(resolve(session, product_ids).values()))
 
 
 @router.get("", response_model=list[Watchlist])
@@ -214,8 +229,13 @@ def list_watchlist_items(
         query.order_by(ItemRow.added_at.desc(), ItemRow.product_id.desc()).limit(limit + 1)
     ).all()
     last = rows[limit - 1] if len(rows) > limit else None
+    into = resolve(session, [row.product_id for row in rows[:limit]])
+    products = discover_items(session, principal.workspace_id, list(set(into.values())))
     return WatchlistItemPage(
-        items=[WatchlistItem.model_validate(row, from_attributes=True) for row in rows[:limit]],
+        items=[
+            WatchlistItem(**row._mapping, product=products[into[row.product_id]])
+            for row in rows[:limit]
+        ],
         next_cursor=json.dumps([last.added_at.isoformat(), str(last.product_id)]) if last else None,
     )
 

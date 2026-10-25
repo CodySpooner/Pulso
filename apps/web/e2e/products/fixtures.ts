@@ -29,6 +29,8 @@ export const product: S["ProductHeader"] = {
   supplier_count: { value: 3, source: "cj", source_name: "CJ Dropshipping", as_of: at(9), raw_payload_id: 901877, method: null, stale: false },
   price_min_minor: shopify(2400, 6, 902051),
   price_max_minor: shopify(3999, 7, 901994),
+  watched: false,
+  watchlist_ids: [],
 };
 
 const none = (reason: string): S["NoSource"] => ({ value: null, reason });
@@ -241,6 +243,8 @@ export function discoverItem(i: number): S["DiscoverItem"] {
     best_margin_minor: margin(i, noStores, low),
     as_of: noStores ? at(9) : at(staleShop ? 74 : 9),
     stale: staleShop && !noStores,
+    watched: false,
+    watchlist_ids: [],
   };
 }
 
