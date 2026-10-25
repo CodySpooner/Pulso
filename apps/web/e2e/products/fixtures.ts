@@ -105,9 +105,10 @@ export const manyNotes = (n: number): S["Note"][] =>
   Array.from({ length: n }, (_, i) => ({ id: `7c1f0a52-0000-4000-8000-${String(1000 + i).padStart(12, "0")}`, body: `Note ${n - i}`, created_at: at(i + 1) }));
 
 export interface ProductMock {
-  /** GET /v1/products/{id}; `status` answers it with a problem, and `hold` never answers. */
+  /** GET /v1/products/{id}; `status` answers it with a problem (`code`, default "unavailable"), and `hold` never answers. */
   body?: S["ProductHeader"];
   status?: number;
+  code?: string;
   hold?: boolean;
   overview?: S["ProductOverview"];
   overviewStatus?: number;
@@ -121,7 +122,11 @@ export interface ProductMock {
   holdSaves?: boolean;
 }
 
-const fail = (status: number, id: string) => ({ status, contentType: "application/problem+json", json: problem(status, id) });
+const fail = (status: number, id: string, code?: string) => ({
+  status,
+  contentType: "application/problem+json",
+  json: { ...problem(status, id), ...(code && { code }) },
+});
 
 /** The shell's admin calls, plus the product's header, overview, notes and tags. Notes and tags keep what the page
  *  saves, like the API (notes newest first, 20 a page, cursor = offset). Returns the product requests' URLs. */
@@ -162,7 +167,7 @@ export async function mockProductApi(page: Page, options: ProductMock = {}) {
       return route.fulfill({ json: { items: saved.notes.slice(offset, end), next_cursor: end < saved.notes.length ? String(end) : null } });
     }
     if (options.hold) return; // never answers: the first-load skeleton stays
-    if (options.status) return route.fulfill(fail(options.status, `e2e-product-${options.status}`));
+    if (options.status) return route.fulfill(fail(options.status, `e2e-product-${options.status}`, options.code));
     if (part === "series") return route.fulfill({ json: trendsSeries }); // the Trends tab (p2-09)
     if (part === "suppliers") return route.fulfill({ json: noSuppliers }); // the Suppliers tab (p2-26); its spec mocks rows
     return route.fulfill({ json: options.body ?? product });
