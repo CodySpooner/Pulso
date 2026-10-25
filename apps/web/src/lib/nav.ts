@@ -123,7 +123,7 @@ export const navGroups: NavGroup[] = [
     label: "Trust",
     items: [
       { label: "Track Record", href: "/track-record", icon: Target, phase: 6, summary: "How accurate Pulso's forecasts have been, published as they resolve." },
-      { label: "Methodology", href: "/methodology", icon: BookOpen, phase: 4, summary: "How every score is computed and where each number comes from." },
+      { label: "Methodology", href: "/methodology", icon: BookOpen, phase: 4, built: true, summary: "How every score is computed and where each number comes from." },
     ],
   },
   {
