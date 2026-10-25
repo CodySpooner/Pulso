@@ -260,10 +260,11 @@ export const feedItems = (n: number) =>
   Array.from({ length: n }, (_, i) => discoverItem(i)).sort((a, b) => growth(b) - growth(a));
 const growth = (item: S["DiscoverItem"]) => ("growth" in item.velocity ? item.velocity.growth : -Infinity);
 export const FEED_PATH = (url: URL) => url.pathname === "/api/v1/products";
-/** The stores and suppliers the feed names for its filter chips (imp-242): the palette's search fixtures' ids. */
+/** The stores and suppliers the feed names for its filter chips (imp-242): the palette's search fixtures' ids, plus a
+ *  long supplier name for the phone layout. */
 export const FEED_VENDORS: Record<"store" | "supplier", Record<string, string>> = {
   store: { 4101: "glowbeam.example.test", 4102: "nightglow.example.test" },
-  supplier: { 88: "Shenzhen Glowtech Co." },
+  supplier: { 88: "Shenzhen Glowtech Co.", 90: "Yiwu Brightstar Household Products Trading Co., Ltd." },
 };
 
 export interface FeedOptions {

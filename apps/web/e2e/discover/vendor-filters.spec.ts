@@ -25,7 +25,7 @@ test("a palette store row opens Discover filtered by that store in 1 click; its 
   await expect.poll(() => calls.at(-1)?.searchParams.has("store")).toBe(false);
 });
 
-test("keyboard only: both chips, each remove button focusable with a ring; Tab moves on after a removal", async ({ page }) => {
+test("keyboard only: both chips reachable with a ring; focus goes to the other chip, then to the page heading", async ({ page }) => {
   const calls = await mockFeedApi(page, { items: feedItems(5) });
   await page.goto("/discover?sort=newest&store=4101&supplier=88");
   await expect(chips(page).getByRole("listitem")).toHaveText(["Storeglowbeam.example.test", "SupplierShenzhen Glowtech Co."]);
@@ -40,12 +40,12 @@ test("keyboard only: both chips, each remove button focusable with a ring; Tab m
   await page.keyboard.press("Enter");
   await expect(page).toHaveURL("/discover?sort=newest&supplier=88"); // sort and the other filter stay
   await expect(chips(page).getByRole("listitem")).toHaveText(["SupplierShenzhen Glowtech Co."]);
-  await page.keyboard.press("Tab");
   await expect(chips(page).getByRole("button", { name: "Remove “Supplier: Shenzhen Glowtech Co.”" })).toBeFocused();
   await page.keyboard.press("Enter");
   await expect(page).toHaveURL("/discover?sort=newest");
+  await expect(page.getByRole("heading", { level: 1, name: "Discover" })).toBeFocused(); // never lost to the body
   await page.keyboard.press("Tab");
-  await expect(cards(page).first().getByRole("link")).toBeFocused(); // straight on to the feed
+  await expect(page.getByLabel("Sort", { exact: true })).toBeFocused();
 });
 
 test("a vendor with no products: the filtered empty state names it and removes it", async ({ page }) => {
@@ -68,7 +68,7 @@ test("an unknown id reads as not found once the feed answers; while it loads the
   await mockFeedApi(page, { hold: true });
   await page.goto("/discover?store=4101");
   await expect(chips(page)).toHaveText("Storeloading");
-  await expect(chips(page).locator(".bg-skeleton")).toHaveCount(1);
+  await expect(chips(page).locator("div[aria-hidden]")).toHaveCount(1);
 });
 
 test("reduced motion: removing a chip runs no transform animation", async ({ page }) => {
