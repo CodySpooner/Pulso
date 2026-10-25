@@ -25,7 +25,7 @@ const LABELS: Record<Field, string> = {
   target_margin_bps: "Target margin",
   duty_default_bps: "Default duty rate",
   customs_fee_minor: "Import fee per order",
-  returns_bps: "Refund rate",
+  returns_bps: "Return rate",
 };
 const inputId = (key: Field) => `setting-${key}`;
 const focusField = (key: Field) => requestAnimationFrame(() => document.getElementById(inputId(key))?.focus());
@@ -170,7 +170,7 @@ export function SettingsForm() {
     <form
       noValidate
       aria-label="Workspace settings"
-      className="flex flex-col gap-4"
+      className="flex flex-col gap-6"
       onSubmit={(e) => {
         e.preventDefault();
         save();
@@ -227,18 +227,18 @@ export function SettingsForm() {
         {field("default_cpa_minor", "$", "What one sale costs in ads. The Profit tab uses it for margin after ads.")}
       </Section>
 
-      <Section id="target" title="Target margin" description="The margin you aim for on each order, after ad cost.">
-        {field("target_margin_bps", "%", "Margins are compared with it as they arrive in Discover and the Profit tab.")}
+      <Section id="target" title="Targets" description="What a product has to clear to be worth testing.">
+        {field("target_margin_bps", "%", "Margin per order after ad cost. Margins are compared with it as they arrive in Discover and the Profit tab.")}
       </Section>
 
       <Section id="duty" title="Duty default" description="US import duty on the goods. With no de minimis exemption, imported orders pay it.">
         <fieldset className="flex min-w-0 flex-col gap-1.5">
           <legend className="mb-1.5 text-data font-medium text-foreground">Duty</legend>
-          <div className="inline-flex w-fit rounded-md border border-border bg-secondary p-0.5">
+          <div className="inline-flex h-(--input-h) w-fit rounded-md border border-border bg-secondary p-0.5">
             {[false, true].map((set) => (
               <label
                 key={String(set)}
-                className="relative hit-area flex h-7 cursor-pointer items-center rounded-sm px-3 text-label font-medium text-muted-foreground transition-colors duration-(--duration-fast) select-none hover:text-foreground has-checked:bg-card has-checked:text-foreground has-checked:shadow-card has-focus-visible:outline-2 has-focus-visible:outline-offset-2 has-focus-visible:outline-ring"
+                className="relative hit-area flex h-full cursor-pointer items-center rounded-sm px-3 text-label font-medium text-muted-foreground transition-colors duration-(--duration-fast) select-none hover:text-foreground has-checked:bg-card has-checked:text-foreground has-checked:shadow-card has-focus-visible:outline-2 has-focus-visible:outline-offset-2 has-focus-visible:outline-ring"
               >
                 <input type="radio" name="duty-set" className="sr-only" checked={draft.dutySet === set} onChange={() => edit({}, set)} />
                 {set ? "Set a rate" : "Not set"}
@@ -260,8 +260,8 @@ export function SettingsForm() {
         {field("customs_fee_minor", "$", "Clearance or brokerage your carrier passes on. DDP quotes skip it.")}
       </Section>
 
-      <Section id="returns" title="Returns %" description="What you refund. Goods and freight aren't recovered.">
-        {field("returns_bps", "%", "Share of revenue refunded.")}
+      <Section id="returns" title="Returns" description="What returns cost you. Goods and freight aren't recovered.">
+        {field("returns_bps", "%", "Share of revenue you give back on returns.")}
       </Section>
 
       <div className="sticky bottom-[calc(4.25rem+env(safe-area-inset-bottom))] z-10 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-xl border border-border bg-popover px-4 py-3 shadow-popover md:bottom-4">
@@ -312,17 +312,19 @@ function SaveStatus({
   if (failure != null && !pending) {
     const problem = isProblem(failure) ? failure : null;
     return (
-      <div role="alert" className="flex flex-wrap items-center gap-x-2 gap-y-1">
+      <div role="alert" className="flex flex-col gap-1">
         <p className="text-foreground">
           <TriangleAlert className="mr-1.5 inline size-3.5 align-[-2px] text-negative" aria-hidden />
           <span className="font-medium">Couldn&apos;t save. Your changes are still here.</span>{" "}
           {problem ? problem.detail : "The Pulso API didn't answer."}
         </p>
         {problem && (
-          <span className="flex items-center gap-1 font-mono text-label text-muted-foreground">
-            Error ID <SelectableId value={problem.request_id} label="Error ID" className="break-all" />
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+            <p className="min-w-0 font-mono text-label text-muted-foreground">
+              Error ID <SelectableId value={problem.request_id} label="Error ID" className="inline-block max-w-full break-all" />
+            </p>
             <CopyButton value={problem.request_id} label="Copy error ID" />
-          </span>
+          </div>
         )}
       </div>
     );
@@ -442,7 +444,7 @@ function NumberField({
 /** The loading form, at its final layout: section cards with a label and a field box per row. */
 function FormSkeleton() {
   return (
-    <div aria-busy className="flex flex-col gap-4">
+    <div aria-busy className="flex flex-col gap-6">
       <span className="sr-only" role="status">
         Loading your settings…
       </span>

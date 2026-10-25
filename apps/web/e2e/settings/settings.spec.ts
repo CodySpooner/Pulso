@@ -24,7 +24,7 @@ test("loads the settings in percent and dollars, with the market locked", async 
   await mockSettingsApi(page);
   await page.goto("/settings");
   await expect(page.getByRole("heading", { level: 1, name: "Settings" })).toBeVisible();
-  await expect(page.getByRole("region").getByRole("heading", { level: 2 })).toHaveText(["Market", "Fees", "Target margin", "Duty default", "Returns %"]);
+  await expect(page.getByRole("region").getByRole("heading", { level: 2 })).toHaveText(["Market", "Fees", "Targets", "Duty default", "Returns"]);
   await expect(field(page, "Processing rate")).toHaveValue("2.9");
   await expect(field(page, "Fixed fee per order")).toHaveValue("0.30");
   await expect(field(page, "Shopify transaction fee")).toHaveValue("0");
@@ -32,7 +32,7 @@ test("loads the settings in percent and dollars, with the market locked", async 
   await expect(field(page, "Target margin")).toHaveValue("20");
   await expect(field(page, "Default duty rate")).toHaveValue("15");
   await expect(field(page, "Import fee per order")).toHaveValue("1.50");
-  await expect(field(page, "Refund rate")).toHaveValue("5");
+  await expect(field(page, "Return rate")).toHaveValue("5");
   await expect(page.getByRole("radio", { name: "Set a rate" })).toBeChecked();
   // The market is read-only text, not a disabled input.
   const market = page.getByRole("region", { name: "Market" });
@@ -68,10 +68,10 @@ test("editing a fee and saving takes two clicks and sends basis points and cents
 test("Reset returns every field to the saved values", async ({ page }) => {
   const { patches } = await mockSettingsApi(page);
   await page.goto("/settings");
-  await field(page, "Refund rate").fill("8");
+  await field(page, "Return rate").fill("8");
   await field(page, "Fixed fee per order").fill("0.5");
   await reset(page).click();
-  await expect(field(page, "Refund rate")).toHaveValue("5");
+  await expect(field(page, "Return rate")).toHaveValue("5");
   await expect(field(page, "Fixed fee per order")).toHaveValue("0.30");
   await expect(save(page)).toHaveAttribute("aria-disabled", "true");
   expect(patches).toEqual([]);
@@ -83,7 +83,7 @@ test("Reset returns every field to the saved values", async ({ page }) => {
 test("invalid input shows on blur, blocks Save and focuses the field", async ({ page }) => {
   const { patches } = await mockSettingsApi(page);
   await page.goto("/settings");
-  const refunds = field(page, "Refund rate");
+  const refunds = field(page, "Return rate");
   await refunds.fill("101");
   await expect(refunds).not.toHaveAttribute("aria-invalid"); // not while typing
   await refunds.blur();
@@ -92,7 +92,7 @@ test("invalid input shows on blur, blocks Save and focuses the field", async ({ 
   await field(page, "Fixed fee per order").fill("0.305");
   await field(page, "Target margin").focus();
   await save(page).click();
-  await expect(alert(page)).toHaveText("Fix 2 fields to save: Fixed fee per order, Refund rate.");
+  await expect(alert(page)).toHaveText("Fix 2 fields to save: Fixed fee per order, Return rate.");
   await expect(field(page, "Fixed fee per order")).toBeFocused();
   await expect(field(page, "Fixed fee per order")).toHaveAccessibleDescription("Use whole cents: at most 2 decimals.");
   expect(patches).toEqual([]);
@@ -107,13 +107,13 @@ test("a failed save keeps the input and says why, with the error ID", async ({ p
   const { patches } = await mockSettingsApi(page, { failSaves: true });
   await page.goto("/settings");
   await field(page, "Processing rate").fill("3.1");
-  await field(page, "Refund rate").fill("7.25");
+  await field(page, "Return rate").fill("7.25");
   await save(page).click();
   await expect(alert(page)).toContainText("Couldn't save. Your changes are still here. The API is restarting. Try again.");
   await expect(alert(page)).toContainText("Error ID e2e-settings-save");
   await expect(alert(page).getByRole("button", { name: "Copy error ID" })).toBeVisible();
   await expect(field(page, "Processing rate")).toHaveValue("3.1");
-  await expect(field(page, "Refund rate")).toHaveValue("7.25");
+  await expect(field(page, "Return rate")).toHaveValue("7.25");
   await expect(save(page)).toHaveAttribute("aria-disabled", "false"); // still dirty: try again
   expect(patches).toHaveLength(1);
 });
@@ -123,12 +123,12 @@ test("an API 422 lands on the field it names", async ({ page }) => {
     rejectSaves: [{ loc: ["body", "returns_bps"], msg: "Input should be less than or equal to 10000", type: "less_than_equal" }],
   });
   await page.goto("/settings");
-  await field(page, "Refund rate").fill("9");
+  await field(page, "Return rate").fill("9");
   await save(page).click();
-  await expect(field(page, "Refund rate")).toHaveAccessibleDescription("Input should be less than or equal to 10000");
-  await expect(field(page, "Refund rate")).toHaveValue("9");
-  await field(page, "Refund rate").fill("8");
-  await expect(field(page, "Refund rate")).toHaveAccessibleDescription("Share of revenue refunded.");
+  await expect(field(page, "Return rate")).toHaveAccessibleDescription("Input should be less than or equal to 10000");
+  await expect(field(page, "Return rate")).toHaveValue("9");
+  await field(page, "Return rate").fill("8");
+  await expect(field(page, "Return rate")).toHaveAccessibleDescription("Share of revenue you give back on returns.");
 });
 
 test("duty: not set is its own state, and 0% is a rate", async ({ page }) => {
@@ -209,13 +209,13 @@ test("loading shows the form skeleton; a failed load says why with Retry", async
 test("a failed refresh keeps the form and the owner's edit, marked stale", async ({ page }) => {
   const api = await mockSettingsApi(page);
   await page.goto("/settings");
-  await field(page, "Refund rate").fill("6");
+  await field(page, "Return rate").fill("6");
   api.failGets();
   await page.clock.setFixedTime(new Date(NOW.getTime() + 6 * 60_000)); // past the 5-minute stale time
   await refocus(page);
   const stale = page.getByRole("group", { name: "Couldn't refresh your settings" });
   await expect(stale).toContainText("Showing data as of Oct 22, 14:00 UTC");
-  await expect(field(page, "Refund rate")).toHaveValue("6");
+  await expect(field(page, "Return rate")).toHaveValue("6");
 });
 
 test("375px: no sideways scroll, and the save bar sits above the tab bar", async ({ page }) => {
@@ -227,7 +227,7 @@ test("375px: no sideways scroll, and the save bar sits above the tab bar", async
   const bar = await save(page).boundingBox();
   const tabs = await page.getByRole("navigation", { name: "Tab bar" }).boundingBox();
   expect(bar && tabs && bar.y + bar.height <= tabs.y).toBe(true);
-  await field(page, "Refund rate").fill("5");
+  await field(page, "Return rate").fill("5");
   await expect(save(page)).toBeInViewport();
   expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBe(0);
 });
