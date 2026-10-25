@@ -16,6 +16,7 @@ COVERED_OPERATIONS = {
     "get_product_overview",
     "get_product_sellers",
     "get_product_series",
+    "get_product_suppliers",
     "list_product_notes",
     "create_product_note",
     "list_product_tags",
@@ -112,7 +113,9 @@ def test_dropping_as_of_from_a_covered_resource_fails_the_contract() -> None:
         if "as_of" in node.get("required", [])
         and any(map(holds_number, node["properties"].values()))
     ]
-    assert {"Sourced", "ProfitCalc"} <= {where for _, where in carriers}
+    assert {"Sourced", "ProfitCalc", "SupplierRow", "Rating", "Orders", "BulkTier"} <= {
+        where for _, where in carriers
+    }
     for index, where in carriers:
         mutated = copy.deepcopy(spec)
         _, node = objects(mutated)[index]

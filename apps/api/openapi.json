@@ -95,6 +95,35 @@
         "title": "Band",
         "type": "object"
       },
+      "BulkTier": {
+        "properties": {
+          "as_of": {
+            "format": "date-time",
+            "title": "As Of",
+            "type": "string"
+          },
+          "currency": {
+            "title": "Currency",
+            "type": "string"
+          },
+          "min_quantity": {
+            "title": "Min Quantity",
+            "type": "integer"
+          },
+          "unit_minor": {
+            "title": "Unit Minor",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "min_quantity",
+          "unit_minor",
+          "currency",
+          "as_of"
+        ],
+        "title": "BulkTier",
+        "type": "object"
+      },
       "CJActivity": {
         "description": "DEC-216: missing or invalid stored evidence is unknown, with every other field null.",
         "properties": {
@@ -1014,6 +1043,114 @@
         "title": "NotePage",
         "type": "object"
       },
+      "Orders": {
+        "properties": {
+          "as_of": {
+            "format": "date-time",
+            "title": "As Of",
+            "type": "string"
+          },
+          "method": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Method"
+          },
+          "raw_payload_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Raw Payload Id"
+          },
+          "semantics": {
+            "enum": [
+              "lifetime",
+              "window"
+            ],
+            "title": "Semantics",
+            "type": "string"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "source_name": {
+            "title": "Source Name",
+            "type": "string"
+          },
+          "stale": {
+            "title": "Stale",
+            "type": "boolean"
+          },
+          "value": {
+            "title": "Value",
+            "type": "integer"
+          },
+          "window_days": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Window Days"
+          }
+        },
+        "required": [
+          "value",
+          "source",
+          "source_name",
+          "as_of",
+          "raw_payload_id",
+          "stale",
+          "semantics",
+          "window_days"
+        ],
+        "title": "Orders",
+        "type": "object"
+      },
+      "Picks": {
+        "properties": {
+          "best_margin": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SupplierRow"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "fastest": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SupplierRow"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "best_margin",
+          "fastest"
+        ],
+        "title": "Picks",
+        "type": "object"
+      },
       "Point": {
         "properties": {
           "as_of": {
@@ -1855,6 +1992,76 @@
           "product_id"
         ],
         "title": "ProfitCalcRequest",
+        "type": "object"
+      },
+      "Rating": {
+        "description": "`value` is hundredths of a star out of 5: 470 is 4.70.",
+        "properties": {
+          "as_of": {
+            "format": "date-time",
+            "title": "As Of",
+            "type": "string"
+          },
+          "count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Count"
+          },
+          "method": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Method"
+          },
+          "raw_payload_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Raw Payload Id"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "source_name": {
+            "title": "Source Name",
+            "type": "string"
+          },
+          "stale": {
+            "title": "Stale",
+            "type": "boolean"
+          },
+          "value": {
+            "title": "Value",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "value",
+          "source",
+          "source_name",
+          "as_of",
+          "raw_payload_id",
+          "stale",
+          "count"
+        ],
+        "title": "Rating",
         "type": "object"
       },
       "RowError": {
@@ -3570,6 +3777,271 @@
           "top_product_id"
         ],
         "title": "SupplierHit",
+        "type": "object"
+      },
+      "SupplierRow": {
+        "properties": {
+          "as_of": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The latest listing snapshot (`unit_cost_minor`, stock, rating, orders); every other number carries its own trace.",
+            "title": "As Of"
+          },
+          "bulk_tiers": {
+            "items": {
+              "$ref": "#/components/schemas/BulkTier"
+            },
+            "title": "Bulk Tiers",
+            "type": "array"
+          },
+          "cost": {
+            "$ref": "#/components/schemas/ProfitCalc",
+            "description": "POST /v1/profit/calc's answer for this supplier at quantity 1 (DEC-246)."
+          },
+          "currency": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Currency"
+          },
+          "in_stock": {
+            "title": "In Stock",
+            "type": "boolean"
+          },
+          "last_seen": {
+            "format": "date-time",
+            "title": "Last Seen",
+            "type": "string"
+          },
+          "listing_id": {
+            "title": "Listing Id",
+            "type": "integer"
+          },
+          "moq": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Sourced"
+              },
+              {
+                "$ref": "#/components/schemas/NoSource"
+              }
+            ],
+            "title": "Moq"
+          },
+          "orders": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Orders"
+              },
+              {
+                "$ref": "#/components/schemas/NoSource"
+              }
+            ],
+            "title": "Orders"
+          },
+          "picks": {
+            "items": {
+              "enum": [
+                "best_margin",
+                "fastest"
+              ],
+              "type": "string"
+            },
+            "title": "Picks",
+            "type": "array"
+          },
+          "platform": {
+            "title": "Platform",
+            "type": "string"
+          },
+          "rating": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Rating"
+              },
+              {
+                "$ref": "#/components/schemas/NoSource"
+              }
+            ],
+            "title": "Rating"
+          },
+          "source_name": {
+            "title": "Source Name",
+            "type": "string"
+          },
+          "stale": {
+            "title": "Stale",
+            "type": "boolean"
+          },
+          "stock": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Sourced"
+              },
+              {
+                "$ref": "#/components/schemas/NoSource"
+              }
+            ],
+            "title": "Stock"
+          },
+          "supplier_country": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Supplier Country"
+          },
+          "supplier_name": {
+            "title": "Supplier Name",
+            "type": "string"
+          },
+          "supplier_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Supplier Url"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "unit_cost_minor": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit Cost Minor"
+          },
+          "url": {
+            "title": "Url",
+            "type": "string"
+          },
+          "warehouse_country": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Warehouse Country"
+          },
+          "years_active": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Sourced"
+              },
+              {
+                "$ref": "#/components/schemas/NoSource"
+              }
+            ],
+            "title": "Years Active"
+          }
+        },
+        "required": [
+          "listing_id",
+          "title",
+          "url",
+          "supplier_name",
+          "platform",
+          "supplier_url",
+          "supplier_country",
+          "warehouse_country",
+          "unit_cost_minor",
+          "currency",
+          "cost",
+          "picks",
+          "in_stock",
+          "stock",
+          "rating",
+          "orders",
+          "years_active",
+          "moq",
+          "bulk_tiers",
+          "source_name",
+          "last_seen",
+          "stale",
+          "as_of"
+        ],
+        "title": "SupplierRow",
+        "type": "object"
+      },
+      "SuppliersPage": {
+        "properties": {
+          "as_of": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "As Of"
+          },
+          "country": {
+            "const": "US",
+            "title": "Country",
+            "type": "string"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Pass as `cursor` with the same query.",
+            "title": "Next Cursor"
+          },
+          "picks": {
+            "$ref": "#/components/schemas/Picks"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/SupplierRow"
+            },
+            "title": "Rows",
+            "type": "array"
+          }
+        },
+        "required": [
+          "country",
+          "rows",
+          "next_cursor",
+          "picks",
+          "as_of"
+        ],
+        "title": "SuppliersPage",
         "type": "object"
       },
       "Tags": {
@@ -13316,6 +13788,472 @@
           }
         ],
         "summary": "Get Product Series"
+      }
+    },
+    "/v1/products/{product_id}/suppliers": {
+      "get": {
+        "operationId": "get_product_suppliers",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "product_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Product Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Destination; US only in v1",
+            "in": "query",
+            "name": "country",
+            "required": false,
+            "schema": {
+              "const": "US",
+              "default": "US",
+              "description": "Destination; US only in v1",
+              "title": "Country",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "__session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "  Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuppliersPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "308": {
+            "description": "Merged: the survivor's suppliers, query string kept."
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "properties": {
+                    "code": {
+                      "title": "Code",
+                      "type": "string"
+                    },
+                    "detail": {
+                      "title": "Detail",
+                      "type": "string"
+                    },
+                    "errors": {
+                      "items": {
+                        "additionalProperties": true,
+                        "type": "object"
+                      },
+                      "title": "Errors",
+                      "type": "array"
+                    },
+                    "request_id": {
+                      "title": "Request Id",
+                      "type": "string"
+                    },
+                    "status": {
+                      "title": "Status",
+                      "type": "integer"
+                    },
+                    "title": {
+                      "title": "Title",
+                      "type": "string"
+                    },
+                    "type": {
+                      "default": "about:blank",
+                      "title": "Type",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "title",
+                    "status",
+                    "code",
+                    "detail",
+                    "request_id"
+                  ],
+                  "title": "Problem",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "properties": {
+                    "code": {
+                      "title": "Code",
+                      "type": "string"
+                    },
+                    "detail": {
+                      "title": "Detail",
+                      "type": "string"
+                    },
+                    "errors": {
+                      "items": {
+                        "additionalProperties": true,
+                        "type": "object"
+                      },
+                      "title": "Errors",
+                      "type": "array"
+                    },
+                    "request_id": {
+                      "title": "Request Id",
+                      "type": "string"
+                    },
+                    "status": {
+                      "title": "Status",
+                      "type": "integer"
+                    },
+                    "title": {
+                      "title": "Title",
+                      "type": "string"
+                    },
+                    "type": {
+                      "default": "about:blank",
+                      "title": "Type",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "title",
+                    "status",
+                    "code",
+                    "detail",
+                    "request_id"
+                  ],
+                  "title": "Problem",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "properties": {
+                    "code": {
+                      "title": "Code",
+                      "type": "string"
+                    },
+                    "detail": {
+                      "title": "Detail",
+                      "type": "string"
+                    },
+                    "errors": {
+                      "items": {
+                        "additionalProperties": true,
+                        "type": "object"
+                      },
+                      "title": "Errors",
+                      "type": "array"
+                    },
+                    "request_id": {
+                      "title": "Request Id",
+                      "type": "string"
+                    },
+                    "status": {
+                      "title": "Status",
+                      "type": "integer"
+                    },
+                    "title": {
+                      "title": "Title",
+                      "type": "string"
+                    },
+                    "type": {
+                      "default": "about:blank",
+                      "title": "Type",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "title",
+                    "status",
+                    "code",
+                    "detail",
+                    "request_id"
+                  ],
+                  "title": "Problem",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "properties": {
+                    "code": {
+                      "title": "Code",
+                      "type": "string"
+                    },
+                    "detail": {
+                      "title": "Detail",
+                      "type": "string"
+                    },
+                    "errors": {
+                      "items": {
+                        "additionalProperties": true,
+                        "type": "object"
+                      },
+                      "title": "Errors",
+                      "type": "array"
+                    },
+                    "request_id": {
+                      "title": "Request Id",
+                      "type": "string"
+                    },
+                    "status": {
+                      "title": "Status",
+                      "type": "integer"
+                    },
+                    "title": {
+                      "title": "Title",
+                      "type": "string"
+                    },
+                    "type": {
+                      "default": "about:blank",
+                      "title": "Type",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "title",
+                    "status",
+                    "code",
+                    "detail",
+                    "request_id"
+                  ],
+                  "title": "Problem",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "properties": {
+                    "code": {
+                      "title": "Code",
+                      "type": "string"
+                    },
+                    "detail": {
+                      "title": "Detail",
+                      "type": "string"
+                    },
+                    "errors": {
+                      "items": {
+                        "additionalProperties": true,
+                        "type": "object"
+                      },
+                      "title": "Errors",
+                      "type": "array"
+                    },
+                    "request_id": {
+                      "title": "Request Id",
+                      "type": "string"
+                    },
+                    "status": {
+                      "title": "Status",
+                      "type": "integer"
+                    },
+                    "title": {
+                      "title": "Title",
+                      "type": "string"
+                    },
+                    "type": {
+                      "default": "about:blank",
+                      "title": "Type",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "title",
+                    "status",
+                    "code",
+                    "detail",
+                    "request_id"
+                  ],
+                  "title": "Problem",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "properties": {
+                    "code": {
+                      "title": "Code",
+                      "type": "string"
+                    },
+                    "detail": {
+                      "title": "Detail",
+                      "type": "string"
+                    },
+                    "errors": {
+                      "items": {
+                        "additionalProperties": true,
+                        "type": "object"
+                      },
+                      "title": "Errors",
+                      "type": "array"
+                    },
+                    "request_id": {
+                      "title": "Request Id",
+                      "type": "string"
+                    },
+                    "status": {
+                      "title": "Status",
+                      "type": "integer"
+                    },
+                    "title": {
+                      "title": "Title",
+                      "type": "string"
+                    },
+                    "type": {
+                      "default": "about:blank",
+                      "title": "Type",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "title",
+                    "status",
+                    "code",
+                    "detail",
+                    "request_id"
+                  ],
+                  "title": "Problem",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "properties": {
+                    "code": {
+                      "title": "Code",
+                      "type": "string"
+                    },
+                    "detail": {
+                      "title": "Detail",
+                      "type": "string"
+                    },
+                    "errors": {
+                      "items": {
+                        "additionalProperties": true,
+                        "type": "object"
+                      },
+                      "title": "Errors",
+                      "type": "array"
+                    },
+                    "request_id": {
+                      "title": "Request Id",
+                      "type": "string"
+                    },
+                    "status": {
+                      "title": "Status",
+                      "type": "integer"
+                    },
+                    "title": {
+                      "title": "Title",
+                      "type": "string"
+                    },
+                    "type": {
+                      "default": "about:blank",
+                      "title": "Type",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "title",
+                    "status",
+                    "code",
+                    "detail",
+                    "request_id"
+                  ],
+                  "title": "Problem",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Product Suppliers"
       }
     },
     "/v1/products/{product_id}/tags": {
