@@ -10,7 +10,8 @@ type ClerkWindow = { Clerk?: { session?: { getToken(): Promise<string | null> } 
 // Browser client for the FastAPI service (DEC-019). Calls go through Next's same-origin /api/* rewrite
 // (no CORS) with the Clerk session token as a Bearer header, which the API verifies (DEC-020). Types come
 // from schema.d.ts, which `pnpm gen:api` regenerates: never edit it by hand.
-export const fetchClient = createFetchClient<paths>({ baseUrl: "/api" });
+// The app reads JSON and problems; a `?format=csv` export is read raw with parseAs "stream" (DEC-316).
+export const fetchClient = createFetchClient<paths, "application/json" | "application/problem+json">({ baseUrl: "/api" });
 
 fetchClient.use({
   async onRequest({ request }) {

@@ -1,3 +1,5 @@
+import csv
+import io
 import math
 from collections.abc import Iterator
 from datetime import UTC, date, datetime, time, timedelta
@@ -14,7 +16,7 @@ from sqlalchemy.orm import Session
 
 from pulso_api.auth import Principal, current_principal
 from pulso_api.dependencies import get_db
-from pulso_api.routers.products import NO_SETTINGS, NO_SIGNAL
+from pulso_api.routers.products import DISCOVER_CSV, NO_SETTINGS, NO_SIGNAL
 from pulso_core.models import (
     Category,
     CollectorRun,
@@ -366,6 +368,90 @@ def test_each_filter_narrows_the_feed(api: TestClient, feed: dict[str, str]) -> 
     assert names(has_sellers=True) == {"small_base", "steady", "no_signal", "old"}
     assert names(has_sellers=False) == {"supplier_only", "unmatched"}
     assert names(has_sellers=True, category=7, sort="newest") == {"steady", "old"}
+
+
+def export(api: TestClient, **query: Any) -> list[dict[str, str]]:
+    """The CSV export of one query, checked for the format every export shares (DEC-316)."""
+    response = api.get("/v1/products", params={**query, "format": "csv"})
+    assert response.status_code == 200, response.text
+    assert response.headers["content-type"] == "text/csv; charset=utf-8"
+    assert response.headers["content-disposition"] == (
+        f'attachment; filename="pulso_discover_{datetime.now(UTC).date().isoformat()}.csv"'
+    )
+    assert response.content.startswith(b"\xef\xbb\xbf")  # the BOM, for Excel on Windows
+    text = response.content.decode("utf-8-sig")
+    assert text.splitlines()[0] == ",".join(DISCOVER_CSV)
+    rows = list(csv.DictReader(io.StringIO(text)))
+    assert response.headers["x-total-count"] == str(len(rows))
+    return rows
+
+
+@pytest.mark.db
+def test_csv_export_is_every_filtered_row_once_in_the_tables_order(
+    api: TestClient, feed: dict[str, str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr("pulso_api.csv_export.CHUNK", 2)  # three fetches, each batching lookups
+    for query in ({"sort": "momentum"}, {"sort": "newest"}, {"sort": "fewest_sellers"}):
+        pages = [item["id"] for item in walk(api, limit=2, **query)]  # three pages
+        assert [row["id"] for row in export(api, limit=2, **query)] == pages, query
+    narrowed = [item["id"] for item in walk(api, has_sellers=True, category=7, sort="newest")]
+    assert [row["id"] for row in export(api, has_sellers=True, category=7, sort="newest")] == (
+        narrowed
+    )
+    # A cursor is the JSON page's; the export starts at the first row anyway.
+    cursor = api.get("/v1/products", params={"limit": 2}).json()["next_cursor"]
+    assert len(export(api, cursor=cursor)) == len(feed)
+
+    rows = {row["id"]: row for row in export(api)}
+    steady = rows[feed["steady"]]
+    assert {key: steady[key] for key in DISCOVER_CSV[1:13]} == {
+        "product": "Steady",
+        "category": "Home & Garden > Lighting > Lamps",
+        "price_min": "15.00",  # minor units 1500, in dollars
+        "price_max": "25.00",
+        "currency": "USD",
+        "velocity_7d": "35",
+        "velocity_grade": "B",
+        "velocity_gap": "true",
+        "momentum_g7": str(g7(35, 20)),
+        "stores": "2",
+        "suppliers": "1",
+        "best_margin": "",  # no workspace settings: no source yet, never 0
+    }
+    assert steady["first_seen_at"].endswith("Z") and steady["as_of"].endswith("Z")
+    assert datetime.fromisoformat(steady["as_of"]) <= NOW
+    assert steady["stale"] == "false"
+    unmatched = rows[feed["unmatched"]]
+    assert [unmatched[key] for key in ("price_min", "velocity_7d", "stores", "as_of")] == [""] * 4
+
+
+@pytest.mark.db
+def test_csv_export_neutralises_cells_a_spreadsheet_would_run(
+    api: TestClient, db_engine: Engine
+) -> None:
+    titles = ['=HYPERLINK("http://x.test","Win")', "+1 lamp", "-2 lamp", "@SUM(A1)", "Lamp"]
+    with Session(db_engine) as session:
+        for title in titles:
+            seed_product(session, title, 1)
+        session.commit()
+    exported = {row["product"] for row in export(api)}
+    assert exported == {f"'{title}" for title in titles[:4]} | {"Lamp"}
+
+
+@pytest.mark.db
+def test_csv_export_over_the_cap_is_a_422_and_no_file(
+    api: TestClient, feed: dict[str, str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr("pulso_api.csv_export.MAX_ROWS", 5)  # the feed has 6
+    response = api.get("/v1/products", params={"format": "csv"})
+    assert response.status_code == 422
+    assert response.headers["content-type"] == "application/problem+json"
+    assert (response.json()["code"], response.json()["detail"]) == (
+        "export_too_large",
+        "6 rows exceed the 5 export limit. Narrow your filters.",
+    )
+    assert len(export(api, has_sellers=True)) == 4  # narrowed under the cap, it exports
+    assert api.get("/v1/products", params={"format": "xlsx"}).status_code == 422
 
 
 @pytest.fixture

@@ -1,3 +1,5 @@
+import csv
+import io
 from collections.abc import Iterator
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
@@ -929,6 +931,19 @@ def test_discover_best_margin_reads_only_the_callers_workspace(
         "reason": "No workspace settings yet.",
         "missing": [],
     }
+
+    def exported(workspace_id: UUID) -> dict[str, tuple[str, str]]:
+        """The CSV export's best margin and its percent by product id (DEC-316)."""
+        assert isinstance(api.app, FastAPI)
+        api.app.dependency_overrides[current_principal] = lambda: Principal(uuid4(), workspace_id)
+        response = api.get("/v1/products", params={"format": "csv"})
+        assert response.status_code == 200, response.text
+        rows = csv.DictReader(io.StringIO(response.content.decode("utf-8-sig")))
+        return {row["id"]: (row["best_margin"], row["best_margin_pct"]) for row in rows}
+
+    assert exported(a) == {ids[0]: ("15.03", "50.12"), ids[1]: ("", "")}
+    assert exported(b)[ids[0]][0] == "17.70"
+    assert exported(bare_id) == {ids[0]: ("", ""), ids[1]: ("", "")}
 
 
 @pytest.mark.db

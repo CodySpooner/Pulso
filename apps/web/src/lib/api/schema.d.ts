@@ -8774,6 +8774,8 @@ export interface operations {
                 supplier?: number | null;
                 cursor?: string | null;
                 limit?: number;
+                /** @description csv: every matching row in this sort, no cursor or limit (DEC-316) */
+                format?: "json" | "csv";
             };
             header?: never;
             path?: never;
@@ -8783,13 +8785,14 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Successful Response */
+            /** @description JSON, or with format=csv every matching row as a CSV download. */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
                     "application/json": components["schemas"]["DiscoverPage"];
+                    "text/csv": string;
                 };
             };
             /** @description Unauthorized */

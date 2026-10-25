@@ -88,13 +88,15 @@ test("a 10,000-row table loads by cursor as it scrolls and never animates a row"
   }
 });
 
-test("keyboard only: Tab from the last filter reaches the first card, and Enter opens its product page", async ({ page }) => {
+test("keyboard only: Tab from the last filter reaches Export CSV, then the first card, and Enter opens its product page", async ({ page }) => {
   const [first] = feedItems(1);
   await mockFeedApi(page);
   await mockProductApi(page, { body: { ...product, id: first.id, title: first.title } });
   await page.goto("/discover");
   await expect(cards(page).first()).toBeVisible();
   await select(page, "Stores").focus();
+  await page.keyboard.press("Tab");
+  await expect(page.getByRole("button", { name: "Export CSV" })).toBeFocused(); // on the count line (p4-09)
   await page.keyboard.press("Tab");
   const link = cards(page).first().getByRole("link", { name: first.title });
   await expect(link).toBeFocused();
