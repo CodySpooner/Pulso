@@ -965,3 +965,76 @@ def test_profit_and_discover_both_skip_a_known_out_of_stock_supplier(
     default = calc(api, ws, product_id=product_id)
     assert (default["supplier_listing_id"], default["in_stock"]) == (gone, False)  # flagged
     assert discover(api, ws)[product_id]["supplier_listing_id"] == gone
+
+
+# The overview's landed margin (imp-280, DEC-299): Discover's read, for one product.
+
+
+def overview_margin(api: TestClient, workspace_id: UUID, product_id: str) -> Any:
+    assert isinstance(api.app, FastAPI)
+    api.app.dependency_overrides[current_principal] = lambda: Principal(uuid4(), workspace_id)
+    response = api.get(f"/v1/products/{product_id}/overview")
+    assert response.status_code == 200, response.text
+    return response.json()["landed_margin_minor"]
+
+
+@pytest.mark.db
+def test_the_overviews_landed_margin_is_discovers_best_margin(
+    api: TestClient, db_engine: Engine
+) -> None:
+    with Session(db_engine) as session:
+        ws = workspace(session, duty_default_bps=2000, **FEES)
+        complete = lamp(session)
+        cj = supplier_listing(session, complete, 620)
+        quote(session, cj, 485)
+        unquoted = lamp(session)  # R-16: no freight quote, no margin
+        supplier_listing(session, unquoted, 620)
+        no_supplier = lamp(session)
+        session.commit()
+        ids = [str(p.id) for p in (complete, unquoted, no_supplier)]
+
+    feed = discover(api, ws)
+    margins = [overview_margin(api, ws, product_id) for product_id in ids]
+    assert margins == [feed[product_id] for product_id in ids]
+    assert (margins[0]["value"], margins[0]["margin_bps"], margins[0]["supplier_listing_id"]) == (
+        1503,
+        5012,
+        cj,
+    )
+    assert margins[1] == {
+        "value": None,
+        "reason": "Needs a freight quote.",
+        "missing": ["freight_missing"],
+    }
+    assert margins[2] == {
+        "value": None,
+        "reason": "Needs a supplier price and a freight quote.",
+        "missing": ["supplier_cost_missing", "freight_missing"],
+    }
+
+
+@pytest.mark.db
+def test_the_overviews_landed_margin_reads_only_the_callers_workspace(
+    api: TestClient, db_engine: Engine
+) -> None:
+    with Session(db_engine) as session:
+        a = workspace(session, duty_default_bps=2000, **FEES)
+        b = workspace(session)  # duty not set
+        bare = Workspace(name="No settings yet")
+        session.add(bare)
+        product = lamp(session)
+        quote(session, supplier_listing(session, product, 620), 485)
+        session.commit()
+        product_id, bare_id = str(product.id), bare.id
+
+    assert overview_margin(api, a, product_id)["value"] == 1503
+    assert overview_margin(api, b, product_id) == {
+        "value": None,
+        "reason": "Needs a duty rate.",
+        "missing": ["duty_not_set"],
+    }
+    assert overview_margin(api, bare_id, product_id) == {
+        "value": None,
+        "reason": "No workspace settings yet.",
+        "missing": [],
+    }

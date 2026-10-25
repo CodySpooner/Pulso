@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 
-import { mockProductApi, overviewStale, overviewUnmatched, PRODUCT_ID } from "./fixtures";
+import { mockProductApi, overviewNoDuty, overviewStale, overviewUnmatched, PRODUCT_ID } from "./fixtures";
 
 // UX-4: the Overview tab and the context rail, against fixture responses (the E2E auth bypass, never a database restore).
 const URL = `/products/${PRODUCT_ID}`;
@@ -18,7 +18,7 @@ test("the five Phase 2 stats show, each traced; the score cards stay hidden", as
   await expect(text).toContainText("Median $29.99");
   await expect(text).toContainText("$8.12");
   await expect(text).toContainText("Lowest in-stock unit cost · CJ");
-  await expect(text).toContainText("The landed-cost engine arrives with UX-8.");
+  await expect(text).toContainText("$11.8839.6% margin · before adsCJ Dropshipping · 9h ago");
   await expect(text).toContainText(/Oct 13, 2026\s*9 days ago/);
   await expect(text).toContainText("34/7dGrade A");
   await expect(text).toContainText("▲ +0.47 momentum");
@@ -32,10 +32,37 @@ test("the five Phase 2 stats show, each traced; the score cards stay hidden", as
     await expect(numbers.nth(i)).toBeFocused();
     await expect(openCard(page)).toHaveCount(1);
     const name = await numbers.nth(i).getAttribute("aria-label");
-    if (name === "Landed margin: No source yet") await expect(openCard(page)).toContainText("No source yet. The landed-cost engine arrives with UX-8.");
-    else await expect(openCard(page)).toContainText(/Source(Shopify stores|CJ Dropshipping)As of.*UTC/);
+    await expect(openCard(page)).toContainText(/Source(Shopify stores|CJ Dropshipping)As of.*UTC/);
+    if (name === "Landed margin: $11.88") await expect(openCard(page)).toContainText("MethodEstimate · Landed cost, default scenario");
   }
   await expect(numbers.first()).toHaveCSS("font-variant-numeric", "tabular-nums");
+});
+
+test("the landed margin shows Discover's answer, or what it still needs", async ({ page }) => {
+  // imp-280: one look on the default tab, no click. Its hover names the oldest input's source and as-of.
+  await mockProductApi(page);
+  await page.goto(URL);
+  const margin = grid(page).getByRole("button", { name: "Landed margin: $11.88" });
+  await margin.hover();
+  await expect(openCard(page)).toContainText(/SourceCJ DropshippingAs of.*UTC · 9h ago/);
+  await expect(openCard(page)).toContainText("Raw payload#901903");
+
+  // Incomplete: the gap R-16 withholds it for. Duty, the one Settings closes, reads amber and in words.
+  await page.unrouteAll({ behavior: "ignoreErrors" });
+  await mockProductApi(page, { overview: overviewNoDuty });
+  await page.goto(URL);
+  const noDuty = grid(page).getByRole("button", { name: "Landed margin: Duty not set" });
+  await expect(noDuty).toHaveClass(/text-warning/);
+  await expect(grid(page)).toContainText("Duty not setNeeds a duty rate.");
+  await noDuty.focus();
+  await expect(openCard(page)).toContainText("Duty not set. Needs a duty rate.");
+
+  // No supplier pick and no market price: no number, never $0, and every missing input named.
+  await page.unrouteAll({ behavior: "ignoreErrors" });
+  await mockProductApi(page, { overview: overviewUnmatched });
+  await page.goto(URL);
+  await expect(grid(page).getByRole("button", { name: "Landed margin: No source yet" })).toBeVisible();
+  await expect(grid(page)).toContainText("Needs a market price, a supplier price and a freight quote.");
 });
 
 test("where it appears counts per source and opens the Suppliers and Sellers tabs", async ({ page }) => {
