@@ -26,7 +26,7 @@ export const complete: Calc = {
   price_minor: 2999, goods_minor: 620, freight_minor: 485, duty_minor: 124, customs_fee_minor: 0, payment_fee_minor: 117,
   shopify_fee_minor: 0, returns_minor: 150, landed_cost_minor: 1229, margin_minor: 1503, margin_bps: 5012, ad_cost_minor: 1500,
   net_minor: 3, net_bps: 10, duty_bps: 2000, payment_fee_bps: 290, payment_fee_fixed_minor: 30, shopify_fee_bps: 0, returns_bps: 500,
-  complete: true, missing: [], estimates: [],
+  complete: true, missing: [], estimates: [], as_of: at(9), // the oldest observation (DEC-259)
   sources: {
     price_minor: observed("shopify_stores", "Shopify stores", 6, 902077),
     unit_cost: observed("cj", "CJ Dropshipping", 9, 901877),
@@ -66,11 +66,12 @@ export const noPrice: Calc = {
 export const noSupplier: Calc = {
   ...noPrice, supplier_listing_id: null, method: null, freight_min_days: null, freight_max_days: null, goods_minor: null, freight_minor: null,
   duty_minor: null, landed_cost_minor: null, missing: ["price_missing", "supplier_cost_missing", "freight_missing"],
+  sources: without(complete.sources, "price_minor", "unit_cost", "freight"), as_of: null,
 };
 
 /** CJ last answered 3 days ago, past twice its interval. */
 export const stale: Calc = {
-  ...complete,
+  ...complete, as_of: at(74),
   sources: { ...complete.sources, unit_cost: observed("cj", "CJ Dropshipping", 74, 880211, true), freight: observed("cj", "CJ Dropshipping", 74, 880214, true) },
 };
 
