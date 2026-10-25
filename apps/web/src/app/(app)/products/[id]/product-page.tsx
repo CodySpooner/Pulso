@@ -23,6 +23,7 @@ import { ContextRail } from "./context-rail";
 import { Overview } from "./overview";
 import { ProfitTab } from "./profit/profit-tab";
 import { SellersTab } from "./sellers/sellers-tab";
+import { SuppliersTab } from "./suppliers/suppliers-tab";
 import { card, newest, StatCard } from "./stat-card";
 import { resolveTab, TAB_FLAGS, TABS, type Tab } from "./tabs";
 import { TrendsTab } from "./trends";
@@ -223,16 +224,14 @@ function ProductTabs({ id }: { id: string }) {
             <m.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: duration.fast }}>
               {t.value === "overview" ? (
                 <Overview id={id} goTo={goTo} />
+              ) : t.value === "suppliers" ? (
+                <SuppliersTab id={id} goTo={goTo} />
               ) : t.value === "sellers" ? (
                 <SellersTab id={id} />
               ) : t.value === "trends" ? (
                 <TrendsTab id={id} />
-              ) : t.value === "profit" ? (
-                <ProfitTab id={id} />
               ) : (
-                <EmptyState icon={t.icon} headingLevel="h2" title={`The ${t.label} tab arrives in Phase 2`}>
-                  {t.summary} Task {t.task} builds it; nothing shows here until it comes from a real source.
-                </EmptyState>
+                <ProfitTab id={id} />
               )}
             </m.div>
           </Tabs.Content>

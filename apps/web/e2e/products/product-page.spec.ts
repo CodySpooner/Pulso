@@ -7,17 +7,15 @@ const URL = `/products/${PRODUCT_ID}`;
 const openCard = (page: Page) => page.locator('[role="tooltip"]');
 const stats = (page: Page) => page.getByRole("main").locator("dl").first();
 const metrics = (page: Page) => stats(page).getByRole("button");
-// Overview is built (UX-4); the other tabs still name the task that builds them.
-const panelHeading = (page: Page, label: string) =>
-  page.getByRole("tabpanel").getByRole("heading", { name: label === "Overview" ? "Where it appears" : `The ${label} tab arrives in Phase 2` });
+const overviewHeading = (page: Page) => page.getByRole("tabpanel").getByRole("heading", { name: "Where it appears" });
 
-// Sellers (p2-11) and Profit (p2-20) have their bodies and their own specs, sellers.spec.ts and profit.spec.ts.
-for (const [value, label] of Object.entries(TAB_LABELS).filter(([value]) => value !== "sellers" && value !== "profit")) {
+// Suppliers (p2-26), Sellers (p2-11) and Profit (p2-20) have their own specs: suppliers, sellers and profit.spec.ts.
+for (const [value, label] of Object.entries(TAB_LABELS).filter(([value]) => !["suppliers", "sellers", "profit"].includes(value))) {
   test(`?tab=${value} deep-links to ${label}`, async ({ page }) => {
     await mockProductApi(page);
     await page.goto(`${URL}?tab=${value}`);
     await expect(page.getByRole("tab", { name: label })).toHaveAttribute("aria-selected", "true");
-    await expect(value === "trends" ? page.getByRole("tabpanel").getByRole("group", { name: "Range" }) : panelHeading(page, label)).toBeVisible();
+    await expect(value === "trends" ? page.getByRole("tabpanel").getByRole("group", { name: "Range" }) : overviewHeading(page)).toBeVisible();
   });
 }
 
@@ -26,7 +24,7 @@ for (const value of ["bogus", "risk", "PROFIT", ""]) {
     await mockProductApi(page);
     await page.goto(`${URL}?tab=${value}`);
     await expect(page.getByRole("tab", { name: "Overview" })).toHaveAttribute("aria-selected", "true");
-    await expect(panelHeading(page, "Overview")).toBeVisible();
+    await expect(overviewHeading(page)).toBeVisible();
     await expect(page.getByRole("heading", { level: 1 })).toHaveText(product.title);
   });
 }

@@ -125,6 +125,9 @@ const fail = (status: number, id: string) => ({ status, contentType: "applicatio
 
 /** The shell's admin calls, plus the product's header, overview, notes and tags. Notes and tags keep what the page
  *  saves, like the API (notes newest first, 20 a page, cursor = offset). Returns the product requests' URLs. */
+/** No supplier listing is matched yet (GET /v1/products/{id}/suppliers). */
+export const noSuppliers: S["SuppliersPage"] = { country: "US", rows: [], next_cursor: null, picks: { best_margin: null, fastest: null }, as_of: null };
+
 export async function mockProductApi(page: Page, options: ProductMock = {}) {
   const calls: string[] = [];
   const saved = { notes: [...(options.notes ?? notes)], tags: [...(options.tags ?? ["Q4 test", "TikTok"])] };
@@ -161,6 +164,7 @@ export async function mockProductApi(page: Page, options: ProductMock = {}) {
     if (options.hold) return; // never answers: the first-load skeleton stays
     if (options.status) return route.fulfill(fail(options.status, `e2e-product-${options.status}`));
     if (part === "series") return route.fulfill({ json: trendsSeries }); // the Trends tab (p2-09)
+    if (part === "suppliers") return route.fulfill({ json: noSuppliers }); // the Suppliers tab (p2-26); its spec mocks rows
     return route.fulfill({ json: options.body ?? product });
   });
   return calls;

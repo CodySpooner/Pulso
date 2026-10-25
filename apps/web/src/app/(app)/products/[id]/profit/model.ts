@@ -72,9 +72,11 @@ export interface Scenario {
 
 export const DEFAULTS: Scenario = { quantity: 1 };
 
-/** The calc request for a scenario: unchanged inputs stay out, so the server applies its defaults. */
-export const request = (id: string, s: Scenario) => ({
+/** The calc request for a scenario: unchanged inputs stay out, so the server applies its defaults. `supplier` is the
+ *  listing chosen on the Suppliers tab (`?supplier=`); without one the server costs the best complete margin. */
+export const request = (id: string, s: Scenario, supplier: number | null = null) => ({
   product_id: id,
+  supplier_listing_id: supplier ?? undefined,
   quantity: s.quantity,
   ddp: false, // a DDP toggle is backlog; the client types it as required (it has a default)
   price_minor: s.price,
