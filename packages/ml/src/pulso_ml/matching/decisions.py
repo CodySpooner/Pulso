@@ -152,15 +152,15 @@ def membership(session: Session, at: datetime) -> dict[int, UUID]:
 
     Replays match_decisions alone, never listings.product_id or merged_into_id, which hold
     today's state, so a later merge or split can't change an earlier answer. A listing with
-    no decision before `at`, or none that put it on a product, is absent.
+    no decision before `at`, or none that put it on a product, is absent. The latest is the
+    highest id: every writer inserts under the matching lock, so ids follow the order moves
+    took it, while decided_at is each transaction's start (XR-29, DEC-266).
     ponytail: one pass over the log per call; materialise membership if replay measures slow.
     """
     rows = session.execute(
         select(MatchDecision.listing_id, MatchDecision.to_product_id)
         .where(MatchDecision.decided_at < at)
-        .order_by(
-            MatchDecision.listing_id, MatchDecision.decided_at.desc(), MatchDecision.id.desc()
-        )
+        .order_by(MatchDecision.listing_id, MatchDecision.id.desc())
         .distinct(MatchDecision.listing_id)
     ).tuples()
     return {listing_id: product_id for listing_id, product_id in rows if product_id is not None}
