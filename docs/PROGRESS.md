@@ -1,18 +1,19 @@
 # Pulso — Progress
 
-**Last updated:** 2026-10-25 (p2-39 Phase 2 end, on `origin/main` `16abd9a`)
+**Last updated:** 2026-10-25 (p3-12 Phase 3 end, on `origin/main` `b3d082a`)
 
 ## Current status
 
-**Phase 3 (signals expansion) is being built. Phase 2's build is done; its data checks wait on real data and the owner. Phase 1's data checks run in the background.**
+**Phase 4 (scores and workflow) is being built. Phase 3's build is done; its open checks wait on the owner. Phase 2's data checks wait on real data and the owner, and Phase 1's run in the background.**
 
 - On 2026-10-24 at 22:23Z the owner moved the build on: "we are not gonna wait until oct 31st if we need to skip this and build the rest of the site" (vault `Agents/Lead State`, `current_phase`). Phase 1's open exit criteria never block (DEC-049).
 - **Phase 0:** built. Left: CI-4 (the Clerk secrets in GitHub Actions, optional) and the DOC-4 fresh-agent walkthrough.
 - **Phase 1:** every build task is merged except P1-10 (coverage memo CLI) and P1-15 (exit checks). Five data- or owner-gated exit criteria are pending ([Phase 1 exit criteria](#phase-1-exit-criteria)).
 - **Phase 2:** build done. Every Phase 2 task is merged on `origin/main`, the last as `16abd9a` (P2-37). The phase-end UI checklist and design review ran in p2-39 (`docs/reports/p2-39.md`). Six of eight exit criteria are met or met on fixtures; the other two wait on real data and the owner ([Phase 2 exit criteria](#phase-2-exit-criteria)). None blocks Phase 3 (DEC-049).
-- **Phase 3:** in progress since 2026-10-25, overlapping Phase 2's end. p3-01 (AMZ-1 Amazon CSV import, DEC-279), p3-02 (KW-1 product keywords, DEC-281) and p3-03 (AE-1 + AE-2 AliExpress client and 24 h cache, DEC-283) are running. The web app's `CURRENT_PHASE` is 3 (DEC-284).
-- **Data:** only Frankfurter FX collects. It has been enabled on the collector host since 2026-10-24T18:47Z (`docs/DATA_SOURCES.md`). `seed_v1` was loaded there on 2026-10-24 at 21:18Z (30 stores, 10 CJ categories, 50 keywords). The host runs `88ce93b` (migration 0004). Its update to the current head waits for the open DEC-072 review batch.
-- **Shopify is off for good** (DEC-261, `3abfd73`). No `enable shopify_stores` and no new crawler work. Store-based views show "no source yet" until a replacement source fills them. The owner chose Google Merchant Center Popular products as the replacement (P2-29, running).
+- **Phase 3:** build done. Every buildable Phase 3 task is merged on `origin/main`, the last as `586a183` (p3-10, Q-2). Store Spy (SS-1..SS-4) has no source while the Shopify crawler stays off, so its pages read "no source yet" (DEC-261, DEC-302 a). Four exit criteria wait on the owner or on that source ([Phase 3 exit criteria](#phase-3-exit-criteria)). None blocks Phase 4 (DEC-049).
+- **Phase 4:** in progress since 2026-10-25, overlapping Phase 3's end: p4-01 (scores table and explanation contract, DEC-306) and p4-02 (SC-4 lifecycle stage, DEC-307). The web app's `CURRENT_PHASE` is 4 (p3-12, DEC-284).
+- **Data:** only Frankfurter FX collects. It has been enabled on the collector host since 2026-10-24T18:47Z (`docs/DATA_SOURCES.md`). `seed_v1` was loaded there on 2026-10-24 at 21:18Z (30 stores, 10 CJ categories, 50 keywords). The host runs `d341e64` (migration 0014) since 2026-10-25. The p3-11 review cleared 0015 (the AliExpress source row); the host moves to it once CI is green on `main` (vault `Agents/Lead State`).
+- **Shopify is off for good** (DEC-261, `3abfd73`). No `enable shopify_stores` and no new crawler work. Store-based views show "no source yet" until a replacement source fills them. The owner chose Google Merchant Center Popular products as the replacement (P2-29, built: `/google-popular`); Phase 3 added the Amazon CSV (`/amazon`).
 - **CI** runs on GitHub (the repo went public on 2026-10-22). **Docker** runs on the PC (engine 29.9.2) since 2026-10-23, so the database tests run locally.
 - **Workers:** Codex has been off since 2026-10-23 (usage used up). The lead runs up to 4 Claude workers (owner, 2026-10-25). While Codex is off, a fresh Claude session does the DEC-072 cross-reviews (DEC-202).
 
@@ -23,8 +24,8 @@
 | 0 | Foundation | built | Left: CI-4 Clerk secrets in GitHub Actions (optional), DOC-4 walkthrough |
 | 1 | Data engine | build done (owner, 2026-10-24); data checks pending | FX collects since 2026-10-24. CJ is next (DEC-136). Shopify off for good (DEC-261). Trends waits on OPEN-1/2 evidence |
 | 2 | Core product experience | build done; data checks pending | p2-01..p2-39 merged or delivered. Exit criteria wait on `enable cj`, `listing_images`, the owner's labels and Settings values |
-| 3 | Signals expansion | in progress | p3-01 AMZ-1, p3-02 KW-1, p3-03 AE-1/AE-2 running. The AliExpress app review has a lead time; the application is the owner's |
-| 4 | Scores and workflow | not started | |
+| 3 | Signals expansion | build done; owner checks pending | p3-01..p3-10 merged. Store Spy reads "no source yet" (DEC-261). Waits on the owner's AliExpress approval and the top-50 keyword confirms |
+| 4 | Scores and workflow | in progress | p4-01 scores contract, p4-02 lifecycle stage running |
 | 5 | AI layer | not started | Needs an Anthropic API key and AI caps at entry |
 | 6 | Forecasting v1 | not started | Build work may start after 6–8 weeks of collection. First 14-day forecasts need about 12 weeks of continuous collection, 30-day about 17 (DEC-044) |
 | 7 | Store operations | not started | Review the Shopify API Terms before building the app (DEC-003) |
@@ -192,18 +193,57 @@ Pending items are non-blocking (DEC-049). Phase 3 runs alongside them.
 | Polish checklist passes for Discover, the product page tabs, the Matching Queue and Settings | **Passes, with backlog rows** (p2-39): design-review scores of 87–98 per screen. Every checklist line passes except three contrast items (one appears only while Profit recalculates), now backlog rows | The p2-39 backlog rows |
 | Summary to the owner | **Written** (`docs/reports/p2-39.md`, Phase summary) | The lead pastes it into the Phase 2 note and Owner To-Dos |
 
+## Phase 3 (build done; owner checks pending)
+
+### Merged tasks
+
+| Task | Item | What | Merge | DEC |
+|---|---|---|---|---|
+| p3-01 | AMZ-1 | Amazon CSV template and import; append-only `amazon_ranks` (migration 0012); disabled source 8; a re-import inserts nothing | `8109cfc` | DEC-279 |
+| p3-03 | AE-1, AE-2 | AliExpress client signed per the Open Platform docs; 24 h Redis lookup with no durable writes | `60ba49d` | DEC-283 |
+| p2-40 | — | Cross-review of p2-27, p2-37 and p3-01 | `ad73864` | DEC-285 |
+| p3-02 | KW-1 | `product_keywords` (migration 0013); title candidates on read; one-click confirm on the Trends tab | `cdd7c21` | DEC-281 |
+| p3-04 | AMZ-1b | `GET /v1/amazon/ranks` and the `/amazon` page | `db6965b` | DEC-286 |
+| p3-06 | KW-2 | Weekly Trends set: approved seeds plus confirmed keywords, capped at the monthly limit // 5, behind `TRENDS_CONFIRMED_KEYWORDS` (off) | `d341e64` | DEC-292 |
+| p3-08 | — | Cross-review of p3-03, p3-02, imp-289, p3-06 and riders: 0 high, 0 medium, 9 low | `b82260d` | — (DEC-294 unused) |
+| p3-07 | AMZ-1c | `GET /v1/products/{id}/amazon-ranks`; Amazon ranks on the Trends tab | `ba54fd9` | DEC-293 |
+| p3-05 | AE-3 | AliExpress rows on the Suppliers tab, "live · not stored"; GET/POST lookup; source 9 seeded off (migration 0015) | `fe15473` | DEC-289 |
+| p3-09 | Q-1 | `DATA_SOURCES.md` AliExpress and Amazon entries dated 2026-10-25 | `4cf782f` | — (DEC-301 unused) |
+| p3-10 | Q-2 | Every Phase 3 view's states and its §8 checklist; Store Spy and Sellers read "no source yet"; a CSV-only source reads "No import yet" | `586a183` | DEC-302 |
+| p3-11 | — | Cross-review of p3-05, imp-280, imp-341 and riders: 0 high, 0 medium, 3 low; 0015 cleared | done, not merged yet | DEC-304 |
+| p3-12 | Phase end | This refresh, the Phase summary, `CURRENT_PHASE` 4 | this branch | — (DEC-308 unused) |
+
+Also merged during Phase 3: p2-39 (`c91fbad`, DEC-284), imp-267 (`e92e2de`, DEC-282), imp-303 + imp-304 (`1ad2f5b`), imp-311 (`5cf9161`, DEC-287), imp-289 (`504fc4f`, DEC-291, migration 0014), imp-313 + imp-314 + imp-316 (`7298cd8`, DEC-290), imp-347 (`f3ec50e`), imp-351 (`f38bd31`, DEC-295), imp-280 (`34e2cc8`, DEC-299), imp-358 + imp-355 + imp-343 (`2251234`, DEC-298), imp-341 (`d9b73ef`, DEC-297) and imp-112 + imp-118 + imp-120 (`b3d082a`, DEC-303).
+
+Every Phase 3 source ships off. The AliExpress row and `ALIEXPRESS_ENABLED` stay off until the owner's app approval. The Amazon row stays disabled, and its CSV import works anyway. `TRENDS_CONFIRMED_KEYWORDS` stays off until the owner turns it on.
+
+### Phase 3 exit criteria
+
+These are proposed in the vault Phase 3 note. Pending items don't block anything (DEC-049), and Phase 4 runs alongside them.
+
+| Criterion | State | Waits on |
+|---|---|---|
+| Store Spy shows launch timelines, price changes and catalog size for every tracked store with a working crawl | **No source** (DEC-261). No store crawl runs, so no store qualifies. `/stores` and `/stores/[id]` read "no source yet" (DEC-302 a, `586a183`). SS-1..SS-4 are not built | An owner decision on a source for competitor stores |
+| Launch detection precision checked by the owner (≥ 90% of 20) | **No source** (DEC-261). SS-3 is not built | As above |
+| AliExpress live lookups work (if approved) and the no-durable-write test passes; if not approved, the state says so | **Met for "not approved".** The no-durable-write test passes (AE-2 `60ba49d`). The Suppliers tab says "AliExpress is off: needs the owner's app approval" (AE-3 `fe15473`, Q-2 `586a183`) | The owner's app approval and the written storage answer. Then the keys in `.env.collector`, `ALIEXPRESS_ENABLED=on`, the source row on, and where lookups may run (DEC-289) |
+| Amazon CSV import works; keywords linked for the top 50 products | **Half met.** The Amazon CSV import works, and a re-import inserts nothing (AMZ-1 `8109cfc`). The ranks show on `/amazon` and the Trends tab (`db6965b`, `ba54fd9`). Keywords are built (KW-1 `cdd7c21`, KW-2 `d341e64`), but none is confirmed yet | The owner confirming a keyword for each of the top 50 products (1 click each on the Trends tab) |
+| Tests, lint, typecheck green; PROGRESS, DECISIONS, DATA_SOURCES and vault notes updated | **Met, except one CI item.** The lead's checks were green at every merge. DATA_SOURCES is dated (Q-1 `4cf782f`), and this file is current. CI on `main` was red on two Data Health e2e specs (`loading-stability`, `retry-focus`) at `fe15473` and `d9b73ef` | imp-372 (the CI fix, in flight). The lead applies the vault lines in `docs/reports/p3-12.md` |
+| Polish checklist passes for `/stores` and `/stores/[id]` | **Passes as the no-source state** (p3-10 `586a183`, `docs/reports/p3-10.md`). Every other Phase 3 view passes the §8 checklist there, with styleseed scores of 97–99 | — |
+| Summary to the owner | **Written** (`docs/reports/p3-12.md`, Phase summary) | The lead pastes it into the Phase 3 note and Owner To-Dos |
+
 ## §6 items done and pending (DEC-048)
 
-Phases 0–2 only. Everything else is pending in its phase (vault `00 Home`).
+Phases 0–3 only. Everything else is pending in its phase (vault `00 Home`).
 
 | §6 item | Phase | State |
 |---|---|---|
 | 6.1 Daily Pulse | 4 | Empty shell since Phase 0 (`f03e4e0`) |
 | 6.2 Discover feed, filters, sort | 2 | Built (p2-03 `3bc3a01`); best margin from complete rows (p2-27 `98d0bc5`); momentum from the feature store (p2-38 `fd6ca2d`). Score columns wait for Phase 4; margin sort and filter are imp-279. Quick actions are Phase 4 |
 | 6.4 Overview: key stats, notes, tags | 2 | Built (p2-07 `8bde264`). The watchlist toggle is Phase 4; the forecast card is v2 |
-| 6.4 Trends tab | 2 | Built (p2-09 `dec9661`). Search and ads rows show "no source yet"; search fills once Trends is enabled |
-| 6.4 Suppliers tab | 2 | Built (p2-26 `672d46d`). Supplier rows fill once `enable cj` runs |
-| 6.4 Sellers tab | 2 | Built (p2-11 `53ae1ef`). It shows "no source yet" while Shopify is off (DEC-261) |
+| 6.4 Trends tab | 2, 3 | Built (p2-09 `dec9661`). Search keywords: candidates and confirm (p3-02 `cdd7c21`) and the weekly Trends set (p3-06 `d341e64`, flag off). Amazon ranks section (p3-07 `ba54fd9`). Search interest fills once Trends is enabled; the ads rows show "no source yet" |
+| 6.4 Suppliers tab | 2, 3 | Built (p2-26 `672d46d`). AliExpress live rows, not stored (p3-05 `fe15473`), off until the owner's app approval. CJ rows fill once `enable cj` runs |
+| 6.4 Sellers tab | 2 | Built (p2-11 `53ae1ef`). It reads "Sellers: no source yet" while Shopify is off (DEC-261, DEC-302 b); imported sellers show under a neutral "Store crawler off" line |
+| 6.6 Store Spy: stores by domain, store page, launch alert | 3 | **No source** (DEC-261): `/stores` and `/stores/[id]` read "no source yet" (p3-10 `586a183`). SS-1..SS-4 are not built |
 | 6.4 Profit tab: calculator, scenario sliders | 2 | Built (p2-10 `b560704`, p2-20 `786fce6`, economics view p2-27 `98d0bc5`) |
 | 6.4 Risk tab: saturation | 4 | Not started |
 | 6.17 Data Health | 1 | Built (P1-11 `9e2d4b7`, P1-11b `1aea91a`, P1-11c `81c2bed`, P1-12 `415f197`). Real runs: FX only so far |
@@ -215,6 +255,7 @@ Phases 0–2 only. Everything else is pending in its phase (vault `00 Home`).
 | Added: `/admin/ui` gallery (WEB-9) | 0 | Built (`f012f7f`) |
 | Added: Google popular (Merchant Center weekly report) | 2 | Built (p2-29 `ce50c4c`, p2-33 `d48d935`, p2-37 `16abd9a`). Fills once the owner imports the weekly CSV |
 | Added: feature store and leakage test | 2 | Built (p2-35 `c0b48c2`, p2-38 `fd6ca2d`), flag off. The nightly Beat entry waits on imp-284 |
+| Added: Amazon ranks (CSV import, `/amazon`) | 3 | Built (p3-01 `8109cfc`, p3-04 `db6965b`, p3-07 `ba54fd9`). Fills once the owner imports a CSV; Data Health reads "No import yet" until then (DEC-302 c) |
 
 ## Improvement and audit work
 
@@ -230,14 +271,14 @@ Phases 0–2 only. Everything else is pending in its phase (vault `00 Home`).
 
 ## Next
 
-1. The lead merges p2-39, pastes its Phase summary, Owner To-Dos and 00 Home lines into the vault, and sets Lead State `current_phase` to 3.
-2. The open DEC-072 review batch of the risky merges since P2-34 (Lead State), then the collector `update` to the current head, `status`, and p2-17's `map` run.
+1. The lead merges p3-12 and p3-11, pastes the Phase 3 summary, Owner To-Dos and 00 Home lines from `docs/reports/p3-12.md` into the vault, and sets Lead State `current_phase` to 4.
+2. imp-372 turns CI on `main` green. Then the collector `update` to 0015 (cleared by p3-11) and `status`.
 3. The FX first-run check after 2026-10-25T17:00Z, then `enable cj` (DEC-136).
-4. Phase 3: p3-01 AMZ-1, p3-02 KW-1, p3-03 AE-1/AE-2, then the rest of the Phase 3 note's task table.
+4. Phase 4: p4-01 (scores contract) and p4-02 (lifecycle stage), then the rest of the Phase 4 note's task table.
 
 ## Owner to-dos (summary)
 
-The canonical list is the vault note `Phases/Owner To-Dos`. Open items that affect Phases 1 and 2:
+The canonical list is the vault note `Phases/Owner To-Dos`. Open items that affect Phases 1 to 3:
 
 | To-do | Unblocks | Status |
 |---|---|---|
@@ -251,7 +292,11 @@ The canonical list is the vault note `Phases/Owner To-Dos`. Open items that affe
 | Read the coverage memo; pick a label source or "no defensible label yet" | Phase 6 labels | after 14 collection days |
 | Vendor-data policy (DEC-010) | Whether forecasting may use a vendor series | pending owner |
 | Clerk secrets in GitHub Actions | CI-4 (optional) | open |
-| Google Trends API alpha; AliExpress applications | Phase 3 sources | open (lead time) |
+| Google Trends API alpha | The official Trends route | open (lead time) |
+| AliExpress app approval, plus the written answer on storing derived metrics | AliExpress lookups on the Suppliers tab (AE-3) | open (lead time) |
+| Amazon route: a manual CSV habit, or Keepa (paid; ask first) | Amazon ranks on `/amazon` and the Trends tab | open |
+| Confirm a search keyword for each of the top 50 products (Trends tab, 1 click each) | KW-1's verify; confirmed keywords in the weekly Trends set | open |
+| Set `TRENDS_CONFIRMED_KEYWORDS=on` in `.env.collector` | KW-2's verify | open; it matters once Trends is enabled |
 
 ## Open questions for the owner
 
