@@ -3806,3 +3806,64 @@ Superseded review defaults, not given entries: default #0 (move the repo) is don
   - **An index on `watchlist_items (workspace_id, product_id)`:** the brief rules out a migration. The workspace index serves a single user's few hundred items; add it if lists grow.
 - **Why:** `apps/api/tests/test_watchlists.py` (7 DB tests): the star read is watched and list ids on a starred product, false and empty otherwise, through a merge, on the product read and Discover rows alike; a 50-row Discover page and a 50-item list page run the same number of statements as a 1-row page; workspace B reads none of A's lists. 5 mutations each fail a test. `model.test.ts` (9 Vitest) covers the undo window, the optimistic patch and its rollback, and the merged note. `e2e/watchlists/watchlists.spec.ts` (8 Playwright, fixtures): star from Discover, see it on Main, move, remove and undo inside 5 s, all by keyboard; bulk; list create, rename and delete; the merged note; no source yet; phone cards; states.
 - **Not here:** sparklines (imp-419), since-added deltas (imp-420), `GET /v1/watchlists/summary` (imp-421), the `W` shortcut (imp-423), and Export CSV for a list (a backlog row in the report).
+
+### DEC-329 · Boards UI (WF-3 part b): `/boards` tiles and `/boards/[id]` as a grid or a table on the generated client, cards reordered by drag or keyboard through `@dnd-kit/sortable` with an optimistic move, notes that autosave one save at a time with Retry, and a selection that sends to Testing or removes with Undo
+**2026-10-25 · proposed (p4-18)** · Phase 4 task WF-3 part b (imp-453); SPEC §6.10; DEC-319 (b, d, e, f); DEC-315 (a); DEC-040; DEC-284; AGENTS.md §8; vault Features/Boards, Design/UI States, Design/Motion System; `docs/reports/p4-18.md`; no API, migration, OpenAPI, flag, score or collector change
+- **Decision:**
+  - **(a) Dependency.** `@dnd-kit/sortable` 10.0.0, exact pin (MIT, free, a peer of the `@dnd-kit/core` 6.3.1 that DEC-315 a added). Its `sortableKeyboardCoordinates` moves a lifted card to the neighbour in the arrow's direction across a wrapping grid, and `rectSortingStrategy` / `verticalListSortingStrategy` shift the others. With `core` alone, that collision and geometry code would be hand-written.
+  - **(b) Reading a board.**
+    - There is no `GET /v1/boards/{id}`, so the page finds the board in the two lists (`archived=false` and `true`). They're the index's own queries, so opening a tile shows its header from cache.
+    - "Board not found" when both lists answered without it, or when the items read answers 404.
+    - Cards read `GET …/items?limit=100` once. Those 100 are a prefix of the board order, so a move's 0-based place inside them is right on the server too. `ponytail:` the page says "Showing the first 100 products" and doesn't page past that.
+  - **(c) Order.**
+    - Drag by a handle (pointer, 4 px to start), or use the keyboard: focus the handle, Space or Enter to lift, the arrows, Space or Enter to drop, Escape to cancel.
+    - Each card's … menu also has Move to top, up, down and to bottom, so a drag is never required.
+    - Each sends `update_board_item {position}`. The move is optimistic: `moved()` renumbers 0…n−1 as the API does. A failure restores the order from before and says "Couldn't save the order: … Reverted."; the page refetches either way.
+    - dnd-kit's live region speaks the pick-up, each position as "N of M", the drop and a cancel. It skips the pick-up's report of the card over itself.
+  - **(d) Notes.**
+    - Every card and row has a note field. `autosave()` saves the latest text after an 800 ms pause or on blur, one save at a time; text typed during a save saves next.
+    - It never retries on its own. A failure keeps the text in the field, marks it invalid and shows "Couldn't save the note. Retry"; Retry or more typing saves the newest text.
+    - A pending edit saves when the card unmounts (a view switch, leaving the page). A blank note is sent as `null`.
+  - **(e) Header.**
+    - The name and description edit in place: Enter or leaving the field saves, Escape cancels, and a blank name keeps the old one.
+    - A 409 keeps the field open with "You already have a board with that name. Archived boards count too."
+    - Archive and Unarchive each answer with an Undo toast. An archived board says so in a banner with Unarchive.
+  - **(f) Selection.**
+    - A checkbox per card; Shift-click selects a range from the last one picked; Ctrl/Cmd+A and Escape work from anything but a text field.
+    - The bar offers Send to Testing and Remove. The Send toast names what was sent and the products already testing, with an Open Testing link.
+    - Removal is optimistic, one `DELETE` per card. Undo adds them back in one `POST`, then puts each at its old place with its note (`PATCH {position, note}`, lowest place first).
+  - **(g) Index.**
+    - Tiles sort by newest activity, as the API sorts them; `?archived=1` shows the archived ones.
+    - The cover is the first four cards' images, one `limit=4` items read per tile, laid out as a 1-, 2-, 3- or 4-image mosaic. An empty board says "No products yet". `ponytail:` one small read per board; a `cover_images` field on the board list replaces it if the index slows.
+    - "New board" opens a name field in a new first tile. The new tile takes focus, so Enter opens it. With no boards, the empty state holds the name field itself.
+  - **(h) Merged products.**
+    - DEC-319 e's "merged" note is left out. The items page carries no merge field, and the only signal, `GET /v1/products/{id}` answering 308, costs one request per card.
+    - A card's link still works, because the Product Page follows the 308. The note comes with imp-454's batched card read (backlog row in the report).
+  - **(i) States and freshness.**
+    - Loading skeletons (tiles, header and cards); empty (no boards, no archived boards, an empty board); error (`PanelError` with Retry); stale (`StaleLine` with the as-of time after a failed refetch); "Board not found".
+    - A product with no image says "No image yet", its no-source state.
+    - Times show as "Updated 3h ago" and "Added 2d ago", with the UTC time and source on hover.
+    - Card stats (price, margin, trend) have sources and come with imp-454.
+  - **(j) Layout and motion.**
+    - The grid has 1, 2, 3 or 4 columns, changing at 480, 768 and 1280 px. Under 480 px a card lies on its side (image left), so a phone shows about twice as many.
+    - Neighbours shift with `ease.standard` at `duration.base`. A lifted card scales to 1.02 (motion-safe) with the popover shadow. The global reduced-motion rule clamps the shift, and nothing is virtualized.
+    - A selected card has a brand border and ring, and its checkbox is ticked. A selected table row uses `bg-selected` with the Matching queue's brand inset bar, because `bg-brand-muted` put subtle text at 4.45:1 in dark.
+- **Alternatives:**
+  - **`@dnd-kit/core` only:** grid keyboard moves would need a custom coordinate getter and drop-target maths that `sortable` already ships and tests.
+  - **Paging every card into the board:** a board holds tens of cards. The prefix rule keeps moves correct, and the page states the cap.
+  - **A per-card `GET /v1/products/{id}` for the merged note:** up to 100 requests, each computing listing stats, for a rare case (AGENTS §7: no N+1).
+  - **A confirm dialog before Remove:** a remove can be undone, so Undo saves a click (vault Design/UI States: a toast with Undo for reversible actions).
+  - **Saving a note on every keystroke, or only on blur:** the first floods the API with PATCHes; the second loses a note typed just before the tab closes.
+- **Why:**
+  - `apps/web/src/app/(app)/boards/model.test.ts`, 9 Vitest cases: moves with gaps and past the end; the optimistic move and its rollback; the debounce; a failure keeping its text until Retry; typing during a save; a failure while newer text waits. Six one-line mutations each fail one.
+  - `apps/web/e2e/boards/boards.spec.ts`, 10 Playwright tests on fixture data under the E2E auth bypass:
+    - create inline (with a 409), rename, add a description, archive, and find the board under Archived;
+    - swap two cards by keyboard only, with the announcements, still swapped after a reload;
+    - a failed move is reverted;
+    - a note autosaves, fails, is retried, and survives a reload;
+    - Shift-range, Send to Testing with a skipped product, Ctrl+A, Escape, Remove and Undo;
+    - the table view;
+    - loading, error, empty, stale, no image and not found;
+    - 375 px without horizontal scroll;
+    - AA contrast in both themes.
+- **Not here:** card stats and the merged note (imp-454); the Add-to-board popover and `B` (imp-455); board CSV (imp-456); the Shopify CSV (imp-457); deleting a board; table column sorting; moving or copying cards to another board. Backlog rows are in the report.

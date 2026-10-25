@@ -102,7 +102,7 @@ export const navGroups: NavGroup[] = [
     label: "Workflow",
     items: [
       { label: "Watchlists", href: "/watchlists", icon: Star, phase: 4, built: true, summary: "Products you are watching, with 30-day sparklines and daily change." },
-      { label: "Boards", href: "/boards", icon: Bookmark, phase: 4, summary: "Saved collections of products and notes for an idea or a niche." },
+      { label: "Boards", href: "/boards", icon: Bookmark, phase: 4, built: true, summary: "Saved collections of products and notes for an idea or a niche." },
       { label: "Testing", href: "/testing", icon: FlaskConical, phase: 4, built: true, summary: "Your product tests from idea to winner or kill, with spend, revenue and ROAS." },
     ],
   },
@@ -149,6 +149,7 @@ export const settingsItem: NavItem = {
 const detailRoutes = [
   { prefix: "/products/", label: "Product", parentHref: "/discover", phase: 2, summary: "One product's demand, suppliers, sellers, profit and risk in one place." },
   { prefix: "/stores/", label: "Store", parentHref: "/stores", phase: 3, summary: "One competitor store's catalog, launches and price changes." },
+  { prefix: "/boards/", label: "Board", parentHref: "/boards", phase: 4, summary: "One board's products in your order, with a note on each." },
 ];
 
 export const allNavItems: NavItem[] = [...navGroups.flatMap((g) => g.items), settingsItem];
