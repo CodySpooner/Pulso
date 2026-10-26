@@ -374,22 +374,20 @@ def scored(session: Session, rule: AlertRule, as_of: datetime) -> str:
         )
     )
     for row in rows:
-        key, day = f"product:{row.product_id}", str(row.date)
-        at = midnight(row.date + timedelta(days=1)).isoformat()
+        key, at = f"product:{row.product_id}", midnight(row.date + timedelta(days=1)).isoformat()
         state = before.get(key)
         value, ref, held, source = reading(session, rule, row, as_of)
-        if state is not None and state["date"] == day:  # nothing new since the last evaluation
-            entities[key] = state
-        elif held:  # gap-suppressed (vault Firing semantics): no alert, and the state stays
-            entities[key] = (state or {}) | {"date": day, "held": held}
+        # ponytail: a re-run reads the same row again; a crossing is idempotent on it, so no
+        # "nothing new" check is needed.
+        if held:  # gap-suppressed (vault Firing semantics): no alert, and the state stays
+            entities[key] = (state or {}) | {"held": held}
         elif value is None:  # no score: no source, never a crossing from 0
             if state is not None:
                 entities[key] = state
             continue
         elif state is None or state.get("version") != row.model_version:  # the reference
             armed = past(rule, ref, value) is not True
-            entities[key] = {"value": value, "at": at, "date": day,
-                             "version": row.model_version, "armed": armed}  # fmt: skip
+            entities[key] = {"value": value, "at": at, "version": row.model_version, "armed": armed}
         else:
             state = {name: v for name, v in state.items() if name != "held"}
             level = past(rule, ref, value)
@@ -402,7 +400,7 @@ def scored(session: Session, rule: AlertRule, as_of: datetime) -> str:
                 state["armed"] = False
             elif level is False:
                 state["armed"] = True
-            entities[key] = state | {"value": value, "at": at, "date": day}
+            entities[key] = state | {"value": value, "at": at}
         status = "ok" if status == "no_source" else status
         if "held" in entities[key]:
             status, skipped = "skipped", entities[key]["held"]

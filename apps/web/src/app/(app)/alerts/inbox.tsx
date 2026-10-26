@@ -128,7 +128,8 @@ export function AlertsInbox() {
             .map((r) => (
               <p key={r.id}>
                 <SkipForward className="mr-1 inline size-3.5 align-[-2px] text-warning" aria-hidden />
-                <span className="text-foreground">{r.name}</span>: 1 evaluation skipped: {gapSpan(r.skipped)}. It fires on the next gap-free reading.
+                <span className="text-foreground">{r.name}</span>: 1 evaluation skipped: {gapSpan(r.skipped)}.{" "}
+                {r.type === "velocity_spike" ? "It’s read again once both weeks are gap-free." : "It fires on the next gap-free reading."}
               </p>
             ))}
         </div>

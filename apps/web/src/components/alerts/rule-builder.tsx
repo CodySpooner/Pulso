@@ -112,7 +112,8 @@ function Form({ product, rule, close, onSaved }: Omit<Props, "open" | "onOpenCha
       onChange={(e) => set({ [name]: e.target.value })}
       aria-invalid={!!error || undefined}
       aria-describedby={error ? `rule-${name}-error` : undefined}
-      className={cn(field, "w-20 text-right tabular-nums max-sm:w-24")}
+      // Saturation's line stands alone, so on a phone it stretches like the selects above it.
+      className={cn(field, "w-20 text-right tabular-nums", name === "threshold" ? "max-sm:w-full" : "max-sm:w-24")}
     />
   );
   const done = { onSuccess: (saved: Rule) => (onSaved?.(saved), close()) };
@@ -173,10 +174,10 @@ function Form({ product, rule, close, onSaved }: Omit<Props, "open" | "onOpenCha
         {draft.type === "velocity_spike" && (
           <>
             <span className="flex items-center gap-1.5">
-              {number("pct", "Rise, %", errors.pct)}% on the week before, at
+              {number("pct", "Rise, %", errors.pct)}% over the prior week, with at least
             </span>
             <span className="flex items-center gap-1.5">
-              {number("minVolume", "Units in 7 days, at least", errors.min_volume)}+ units /7d
+              {number("minVolume", "Units in 7 days, at least", errors.min_volume)}units /7d
             </span>
           </>
         )}

@@ -28,6 +28,25 @@ export const alerts = (): Stored[] => [
   alert(1, "freight_change", 120, { old: usd(700, 300), new: usd(790, 121, "cj"), threshold: { pct: 10 } }, true),
 ];
 
+/** p4-34 (DEC-353): a velocity spike and a Saturation cross on the lamp, newer than the fixture's six. */
+export const scoreAlerts = (): Stored[] =>
+  [
+    alert(8, "velocity_spike", 1, {
+      old: { value: 22, as_of: at(178) },
+      new: { value: 34, as_of: at(14), source: "cj", model_version: "000-life" },
+      threshold: { pct: 50, window_days: 7, min_volume: 10 },
+      link: `/products/${PRODUCT_ID}/trends`,
+      product: "Sunset projection lamp",
+    }),
+    alert(7, "saturation_cross", 1.5, {
+      old: { value: 61.2, as_of: at(38) },
+      new: { value: 66.4, as_of: at(14), source: "shopify_stores", model_version: "000-sat" },
+      threshold: { threshold: 65, direction: "above" },
+      link: `/products/${PRODUCT_ID}`,
+      product: "Sunset projection lamp",
+    }),
+  ].map((a) => ({ ...a, entity_type: "product", entity_id: PRODUCT_ID }));
+
 /** `extra` more read price alerts, a day apart, older than the fixture's six. */
 export const older = (extra: number): Stored[] =>
   Array.from({ length: extra }, (_, i) => alert(-i - 1, "supplier_price_change", 130 + 24 * i, { old: usd(1000, 900), new: usd(1100 + i, 131 + 24 * i, "cj") }, true));
