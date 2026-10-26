@@ -491,7 +491,7 @@ function MoveMenu({ label, lists, onMove, sub, inline }: { label: string; lists:
   if (inline)
     return (
       <DropdownMenu.Group aria-labelledby={labelId}>
-        <DropdownMenu.Label id={labelId} className="px-2 pt-1.5 pb-1 text-micro font-medium text-subtle-foreground uppercase">{label}</DropdownMenu.Label>
+        <DropdownMenu.Label id={labelId} className="px-2 pt-1 pb-1.5 text-micro font-medium text-subtle-foreground uppercase">{label}</DropdownMenu.Label>
         {options}
       </DropdownMenu.Group>
     );
