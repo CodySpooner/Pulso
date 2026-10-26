@@ -128,7 +128,8 @@ export function AlertsInbox() {
             .map((r) => (
               <p key={r.id}>
                 <SkipForward className="mr-1 inline size-3.5 align-[-2px] text-warning" aria-hidden />
-                <span className="text-foreground">{r.name}</span>: 1 evaluation skipped: {gapSpan(r.skipped)}. It fires on the next gap-free reading.
+                <span className="text-foreground">{r.name}</span>: 1 evaluation skipped: {gapSpan(r.skipped)}.{" "}
+                {r.type === "velocity_spike" ? "It’s read again once both weeks are gap-free." : "It fires on the next gap-free reading."}
               </p>
             ))}
         </div>
@@ -282,7 +283,7 @@ function Row({
       </th>
       <td className={cn(cell, "max-md:col-start-2 max-md:row-start-2")} title={d.asOf ? `${d.meta} · as of ${formatUtc(d.asOf)}` : undefined}>
         <span className="flex items-center gap-2 tabular-nums">
-          {d.pct !== null && <DeltaBadge value={d.pct} goodDirection="down" unit="%" />}
+          {d.pct !== null && <DeltaBadge value={d.pct} goodDirection={d.good} unit="%" />}
           <span className="text-muted-foreground">{d.change ?? "—"}</span>
         </span>
       </td>

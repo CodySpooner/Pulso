@@ -12,7 +12,7 @@ import { $api } from "@/lib/api/client";
 import { cn } from "@/lib/utils";
 
 import { useRuleWrites } from "./api";
-import { autoName, createBody, draftOf, fieldErrors, hasPct, patchBody, targetOf, VERBS, type Draft, type Rule, type RuleType } from "./model";
+import { autoName, createBody, defaultPct, DRAFT, draftOf, fieldErrors, hasPct, isScore, patchBody, targetOf, VERBS, type Draft, type Rule, type RuleType } from "./model";
 
 const field =
   "h-(--button-h-md) min-w-0 rounded-md border border-border bg-secondary px-2.5 text-data text-foreground transition-colors duration-(--duration-fast) hover:border-border-strong aria-invalid:border-negative max-sm:w-full";
@@ -85,19 +85,37 @@ export function RuleBuilder({ product, rule, open, onOpenChange, onSaved }: Prop
 }
 
 function Form({ product, rule, close, onSaved }: Omit<Props, "open" | "onOpenChange"> & { close: () => void }) {
-  const [draft, setDraft] = useState<Draft>(() => (rule ? draftOf(rule) : { target: "product", type: "supplier_price_change", pct: "5", name: "" }));
+  const [draft, setDraft] = useState<Draft>(() => (rule ? draftOf(rule) : { ...DRAFT, target: "product", name: "" }));
   const set = (change: Partial<Draft>) => setDraft((d) => ({ ...d, ...change }));
   const writes = useRuleWrites();
   const save = rule ? writes.patch : writes.create;
   const errors = save.isError ? fieldErrors(save.error) : {};
+  const ready = useApiReady() && !!product;
   const suppliers = $api.useInfiniteQuery(
     "get",
     "/v1/products/{product_id}/suppliers",
     { params: { path: { product_id: product?.id ?? "" }, query: { country: "US" } } },
     // The Suppliers tab's own query, so its cache answers when it's been open.
-    { enabled: useApiReady() && !!product, pageParamName: "cursor", initialPageParam: null, getNextPageParam: (page) => page.next_cursor },
+    { enabled: ready, pageParamName: "cursor", initialPageParam: null, getNextPageParam: (page) => page.next_cursor },
   );
   const offers = suppliers.data?.pages[0].rows ?? [];
+  const lists = $api.useQuery("get", "/v1/watchlists", {}, { enabled: ready }).data ?? []; // the star's own query
+  const score = isScore(draft.type);
+  const choose = (type: RuleType) =>
+    // A score rule watches the product or a watchlist, a supplier rule its suppliers; each type starts at its own %.
+    set({ type, ...(isScore(type) !== score && { target: "product" }), ...(defaultPct(type) !== defaultPct(draft.type) && { pct: defaultPct(type) }) });
+  const number = (name: "pct" | "minVolume" | "threshold", label: string, error?: string) => (
+    <input
+      aria-label={label}
+      inputMode="decimal"
+      value={draft[name]}
+      onChange={(e) => set({ [name]: e.target.value })}
+      aria-invalid={!!error || undefined}
+      aria-describedby={error ? `rule-${name}-error` : undefined}
+      // Saturation's line stands alone, so on a phone it stretches like the selects above it.
+      className={cn(field, "w-20 text-right tabular-nums", name === "threshold" ? "max-sm:w-full" : "max-sm:w-24")}
+    />
+  );
   const done = { onSuccess: (saved: Rule) => (onSaved?.(saved), close()) };
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -122,19 +140,25 @@ function Form({ product, rule, close, onSaved }: Omit<Props, "open" | "onOpenCha
           </span>
         ) : (
           <select aria-label="Watch" className={field} value={draft.target} onChange={(e) => set({ target: e.target.value })}>
-            <option value="product">any supplier</option>
-            {offers.map((o) => (
-              <option key={o.listing_id} value={String(o.listing_id)}>
-                {o.supplier_name}
-                {o.unit_cost_minor !== null && ` · ${money(o.unit_cost_minor, o.currency ?? "USD")}`}
-              </option>
-            ))}
+            <option value="product">{score ? "this product" : "any supplier"}</option>
+            {score
+              ? lists.map((l) => (
+                  <option key={l.id} value={`watchlist:${l.id}`}>
+                    any product on {l.name}
+                  </option>
+                ))
+              : offers.map((o) => (
+                  <option key={o.listing_id} value={String(o.listing_id)}>
+                    {o.supplier_name}
+                    {o.unit_cost_minor !== null && ` · ${money(o.unit_cost_minor, o.currency ?? "USD")}`}
+                  </option>
+                ))}
           </select>
         )}
         {rule ? (
           <span className={fixed}>{VERBS[draft.type]}</span>
         ) : (
-          <select aria-label="Event" className={field} value={draft.type} onChange={(e) => set({ type: e.target.value as RuleType })}>
+          <select aria-label="Event" className={field} value={draft.type} onChange={(e) => choose(e.target.value as RuleType)}>
             {Object.entries(VERBS).map(([type, verb]) => (
               <option key={type} value={type}>
                 {verb}
@@ -144,23 +168,45 @@ function Form({ product, rule, close, onSaved }: Omit<Props, "open" | "onOpenCha
         )}
         {hasPct(draft.type) && (
           <span className="flex items-center gap-1.5">
-            <input
-              aria-label="Change, %"
-              inputMode="decimal"
-              value={draft.pct}
-              onChange={(e) => set({ pct: e.target.value })}
-              aria-invalid={!!errors.pct || undefined}
-              aria-describedby={errors.pct ? "rule-pct-error" : undefined}
-              className={cn(field, "w-20 text-right tabular-nums max-sm:w-24")}
-            />
-            %
+            {number("pct", "Change, %", errors.pct)}%
           </span>
         )}
+        {draft.type === "velocity_spike" && (
+          <>
+            <span className="flex items-center gap-1.5">
+              {number("pct", "Rise, %", errors.pct)}% over the prior week, with at least
+            </span>
+            <span className="flex items-center gap-1.5">
+              {number("minVolume", "Units in 7 days, at least", errors.min_volume)}units /7d
+            </span>
+          </>
+        )}
+        {draft.type === "saturation_cross" && (
+          <>
+            <select aria-label="Direction" className={field} value={draft.direction} onChange={(e) => set({ direction: e.target.value as Draft["direction"] })}>
+              <option value="above">above</option>
+              <option value="below">below</option>
+            </select>
+            {number("threshold", "Saturation, 0–100", errors.threshold)}
+          </>
+        )}
       </fieldset>
-      {errors.pct && (
-        <p id="rule-pct-error" role="alert" className="-mt-2 text-label text-negative">
-          {errors.pct}
-        </p>
+      {(
+        [
+          ["pct", errors.pct],
+          ["minVolume", errors.min_volume],
+          ["threshold", errors.threshold ?? errors.direction],
+        ] as const
+      ).map(
+        ([name, error]) =>
+          error && (
+            <p key={name} id={`rule-${name}-error`} role="alert" className="-mt-2 text-label text-negative">
+              {error}
+            </p>
+          ),
+      )}
+      {draft.type === "velocity_spike" && (
+        <p className="-mt-2 text-label text-muted-foreground">Reads the nightly 7-day velocity. A night with a data gap in either week is skipped, so a catch-up never reads as a spike.</p>
       )}
       <div className="flex flex-wrap items-center gap-2 text-body text-muted-foreground">
         <span>Notify</span>

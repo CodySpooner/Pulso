@@ -12,7 +12,16 @@ from sqlalchemy.orm import Session
 
 from pulso_api.auth import Principal, current_principal
 from pulso_api.dependencies import get_db
-from pulso_core.models import Alert, AlertRule, Listing, Product, Supplier, User, Workspace
+from pulso_core.models import (
+    Alert,
+    AlertRule,
+    Listing,
+    Product,
+    Supplier,
+    User,
+    Watchlist,
+    Workspace,
+)
 
 # Alerts (WF-4 part a, DEC-324): the inbox and the rules endpoints.
 
@@ -166,7 +175,9 @@ def test_rules_crud_validation_and_isolation(
         ({"target_type": "supplier_offer", "target_id": str(2**63)}, 404),
         ({"target_id": "lamp"}, 422),
         ({"target_type": "test", "target_id": "1"}, 422),  # Testing rules are the defaults
-        ({"type": "velocity_spike", "target_id": str(ids["product"])}, 422),
+        ({"type": "price_drop", "target_id": str(ids["product"])}, 422),  # Shopify (DEC-261)
+        ({"target_type": "watchlist", "target_id": str(uuid4())}, 422),  # a score rule's target
+        ({"target_id": str(ids["product"]), "params": {"threshold": 50}}, 422),  # not its param
         ({"target_id": str(ids["product"]), "params": {"pct": 0}}, 422),
     ]
     for wrong, status in wrongs:
@@ -215,3 +226,64 @@ def test_rules_crud_validation_and_isolation(
     assert (deleted.status_code, deleted.json()["id"]) == (200, rule["id"])
     assert client.patch(f"/v1/alert-rules/{rule['id']}", json={"name": "x"}).status_code == 404
     assert isinstance(UUID(stock["id"]), UUID)
+
+
+@pytest.mark.db
+def test_score_rules_take_their_own_params_and_a_product_or_watchlist(
+    setup: tuple[As, dict[str, object]], db_engine: Engine
+) -> None:
+    as_, ids = setup
+    with Session(db_engine) as session:
+        lists = {key: Watchlist(workspace_id=ids[f"workspace_{key}"], name="Pets") for key in "ab"}
+        session.add_all(lists.values())
+        session.commit()
+        pets, theirs = (str(lists[key].id) for key in "ab")
+    client = as_("a")
+    lamp = {"target_type": "product", "target_id": str(ids["product"])}
+    spike = {"name": "Lamp velocity", "type": "velocity_spike"} | lamp
+    made = client.post("/v1/alert-rules", json=spike)
+    assert made.status_code == 201, made.text
+    rule = made.json()
+    assert rule["params"] == {"pct": 50, "window_days": 7, "min_volume": 10}
+    assert (rule["product_name"], rule["watchlist_name"]) == ("Sunset lamp", None)
+    cross = {"name": "Pets crowded", "type": "saturation_cross", "target_type": "watchlist"}
+    line = {"threshold": 65, "direction": "above"}
+    listed = client.post("/v1/alert-rules", json=cross | {"target_id": pets, "params": line})
+    assert listed.status_code == 201, listed.text
+    shown = listed.json()
+    assert (shown["target_id"], shown["params"]) == (pets, line)
+    assert (shown["product_id"], shown["watchlist_name"]) == (None, "Pets")
+    assert client.get("/v1/alert-rules").json()["items"][0]["watchlist_name"] == "Pets"
+    wrongs: list[tuple[dict[str, Any], int, list[str] | None]] = [
+        (spike | {"params": {"pct": 0}}, 422, ["pct"]),
+        (spike | {"params": {"window_days": 14}}, 422, ["window_days"]),
+        (spike | {"params": {"min_volume": -1}}, 422, ["min_volume"]),
+        (spike | {"params": {"threshold": 50}}, 422, ["threshold"]),  # saturation's
+        (cross | {"target_id": pets}, 422, ["threshold", "direction"]),  # both required
+        (cross | {"target_id": pets, "params": line | {"threshold": 101}}, 422, ["threshold"]),
+        (cross | {"target_id": pets, "params": line | {"direction": "up"}}, 422, ["direction"]),
+        (cross | {"target_id": pets, "params": line | {"pct": 5}}, 422, ["pct"]),
+        (spike | {"target_type": "supplier_offer", "target_id": str(ids["offer"])}, 422, None),
+        (cross | {"target_id": theirs, "params": line}, 404, None),  # B's list
+        (cross | {"target_id": str(uuid4()), "params": line}, 404, None),
+        (cross | {"target_id": "pets", "params": line}, 422, None),
+    ]
+    for body, status, fields in wrongs:
+        response = client.post("/v1/alert-rules", json=body)
+        assert response.status_code == status, body
+        if fields:
+            assert [e["loc"][-1] for e in response.json()["errors"]] == fields, body
+    patched = client.patch(
+        f"/v1/alert-rules/{rule['id']}", json={"params": {"pct": 80, "min_volume": 5}}
+    )
+    assert patched.json()["params"] == {"pct": 80, "window_days": 7, "min_volume": 5}
+    down = {"threshold": 30, "direction": "below"}
+    patched = client.patch(f"/v1/alert-rules/{shown['id']}", json={"params": down})
+    assert patched.json()["params"] == down
+    bad = client.patch(f"/v1/alert-rules/{shown['id']}", json={"params": {"threshold": 30}})
+    assert bad.status_code == 422
+    assert bad.json()["errors"][0]["loc"] == ["body", "params", "direction"]
+    assert (
+        client.patch(f"/v1/alert-rules/{rule['id']}", json={"params": {"pct": 0}}).status_code
+        == 422
+    )
