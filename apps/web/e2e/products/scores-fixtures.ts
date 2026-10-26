@@ -110,3 +110,27 @@ export const scoresStale = page(
   },
   opportunity,
 );
+
+// p4-35's lamp with its search slope 24 days old (weekly cadence, stale after 21 days): missing but keeping its as_of,
+// so Trend renormalises over velocity, 71.4, with confidence 0.6 and the stale_input caution (DEC-354, Trend revision 1).
+const TREND_1 = "001-300dc06245a2";
+/** One stale input (the search slope) beside a no-source one (ads), on the Trend card. */
+export const scoresStaleInput = page(
+  {
+    trend: {
+      ...trend, value: 71.4, model_version: TREND_1,
+      explanation: {
+        ...trend.explanation, model_version: TREND_1, coverage: 0.6, confidence: 0.6, cautions: ["stale_input"], missing: ["gt_slope", "ads_growth"],
+        components: [
+          present("shp_inv_g7", "shp_inv", "shopify_stores", 0.4, 0.6, 1.956, 0.368),
+          present("shp_inv_acc", "shp_inv", "shopify_stores", 0.2, 0.6, 1.205, 0.268),
+          input("gt_slope", "gt_interest", "google_trends", 0.25, { raw: 0.384, as_of: "2026-09-28T09:00:00Z", stale: true }),
+          input("ads_growth", "ads", null, 0.15),
+        ],
+      },
+    },
+    saturation,
+    lifecycle,
+  },
+  opportunity,
+);

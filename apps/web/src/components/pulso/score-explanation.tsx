@@ -1,10 +1,13 @@
 "use client";
 
+import Link from "next/link";
+
 import { TapTooltip } from "@/components/data-health/atoms";
 import { formatDelta, formatUtc } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 import { certainty, missingInputs, penaltySteps, sourceLabel, topReasons, type Explanation, type ScoreKind } from "./score-model";
+import { StatusDot } from "./status-dot";
 
 /** BetaBadge (vault Design/Component Inventory): a heuristic v0 score, until a forecast model is promoted. */
 export function BetaPill() {
@@ -17,9 +20,10 @@ export function BetaPill() {
 
 const eyebrow = "text-micro font-medium text-subtle-foreground";
 
-/** A score's why (imp-460): its confidence (or coverage until freshness is built), the top 3 reasons in points with
- *  ▲/▼ and a ContributionBar (HTML, vault Design/Charts & Data Viz), each penalty as its own step, and what is missing.
- *  Reasons are neutral, since a sign is a direction, not a verdict; only a penalty, points taken off, reads negative. */
+/** A score's why (imp-460): its confidence (coverage on a row stored before freshness), linked to how it's computed
+ *  (imp-414), the top 3 reasons in points with ▲/▼ and a ContributionBar (HTML, vault Design/Charts & Data Viz), each
+ *  penalty as its own step, and what is missing. Reasons are neutral, since a sign is a direction, not a verdict; only a
+ *  penalty, points taken off, reads negative. */
 export function ScoreExplanation({ kind, explanation }: { kind: ScoreKind; explanation: Explanation }) {
   const sure = certainty(explanation);
   const reasons = topReasons(explanation, kind);
@@ -28,7 +32,13 @@ export function ScoreExplanation({ kind, explanation }: { kind: ScoreKind; expla
   return (
     <div className="flex flex-col gap-3">
       <p className="flex items-center gap-2 text-label">
-        <span className="text-muted-foreground">{sure.label}</span>
+        <Link
+          href="/methodology#confidence"
+          aria-label={`${sure.label}: how it's computed`}
+          className="relative hit-area rounded-sm text-muted-foreground underline decoration-border-strong underline-offset-2 hover:text-foreground hover:decoration-current"
+        >
+          {sure.label}
+        </Link>
         <span aria-hidden className="h-1.5 min-w-12 flex-1 overflow-hidden rounded-full bg-secondary">
           <span className="block h-full rounded-full bg-muted-foreground" style={{ width: `${sure.value * 100}%` }} />
         </span>
@@ -55,13 +65,19 @@ export function ScoreExplanation({ kind, explanation }: { kind: ScoreKind; expla
           </ul>
         </div>
       )}
-      {missingInputs(explanation).map(({ word, labels }) => (
-        <p key={word} className="text-label text-subtle-foreground">
-          {word}: {labels.join(", ")}
-        </p>
-      ))}
+      <MissingInputs explanation={explanation} />
     </div>
   );
+}
+
+/** What is missing, by wording; a stale input's line leads with the amber dot (Score Definitions §7). */
+export function MissingInputs({ explanation }: { explanation: Explanation }) {
+  return missingInputs(explanation).map(({ word, labels, stale }) => (
+    <p key={word} className="text-label text-subtle-foreground">
+      {stale && <StatusDot state="warning" className="mr-1.5 size-1.5 align-middle" />}
+      {word}: {labels.join(", ")}
+    </p>
+  ));
 }
 
 /** One waterfall step: glyph, input (its source on hover, focus or tap), bar and signed points; never colour alone. */

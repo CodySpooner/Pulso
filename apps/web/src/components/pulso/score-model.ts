@@ -50,8 +50,12 @@ export function inputLabel(name: string): string {
   return family && INPUTS[rest] ? `${INPUTS[rest]} (${FAMILIES[family]})` : name;
 }
 
-/** Missing with no source reads "no source yet"; missing with one, "insufficient signal" (Score Definitions §7). */
-export const missingWord = (source: string | null) => (source === null ? "No source yet" : "Insufficient signal");
+const lastSeen = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
+
+/** Missing with no source reads "no source yet"; past 3 cadences, "stale, last seen" its last capture (DEC-354); else
+ *  "insufficient signal" (Score Definitions §7). A penalty has no `stale`. */
+export const missingWord = (c: { source: string | null; stale?: boolean; as_of?: string | null }) =>
+  c.source === null ? "No source yet" : c.stale ? `Stale${c.as_of ? `, last seen ${lastSeen.format(new Date(c.as_of))}` : ""}` : "Insufficient signal";
 
 export interface Reason {
   name: string;
@@ -77,21 +81,22 @@ export const penaltySteps = (e: Explanation) =>
     name: p.name,
     label: PENALTIES[p.name] ?? p.name,
     points: p.missing || p.points == null ? null : -p.points,
-    missing: p.missing ? missingWord(p.source) : null,
+    missing: p.missing ? missingWord(p) : null,
     source: p.source,
   }));
 
-/** Missing inputs by wording, in the explanation's order. */
-export function missingInputs(e: Explanation): { word: string; labels: string[] }[] {
-  const groups = new Map<string, string[]>();
+/** Missing inputs by wording, in the explanation's order; a stale group gets the amber dot. */
+export function missingInputs(e: Explanation): { word: string; labels: string[]; stale: boolean }[] {
+  const groups = new Map<string, { word: string; labels: string[]; stale: boolean }>();
   for (const c of e.components.filter((c) => c.missing)) {
-    const word = missingWord(c.source);
-    groups.set(word, [...(groups.get(word) ?? []), inputLabel(c.name)]);
+    const word = missingWord(c);
+    const group = groups.get(word) ?? { word, labels: [], stale: c.source !== null && c.stale };
+    groups.set(word, { ...group, labels: [...group.labels, inputLabel(c.name)] });
   }
-  return [...groups].map(([word, labels]) => ({ word, labels }));
+  return [...groups.values()];
 }
 
-/** Confidence once the score has one (Opportunity, DEC-331 d); until freshness is built, the others show coverage. */
+/** Confidence whenever the row has one (DEC-354); a row stored before freshness was built shows its coverage. */
 export function certainty(e: Explanation): { label: "Confidence" | "Coverage"; value: number; grade: string } {
   const value = e.confidence ?? e.coverage;
   // Grades from vault Features/Methodology & Confidence (thresholds a guess).
@@ -99,9 +104,10 @@ export function certainty(e: Explanation): { label: "Confidence" | "Coverage"; v
   return { label: e.confidence == null ? "Coverage" : "Confidence", value, grade };
 }
 
-/** The chips a score raises: duty not set (amber, from `cautions`) and the margin floor (from `reason`). */
+/** The chips a score raises: a stale input and duty not set (amber, from `cautions`), and the margin floor (from `reason`). */
 export function chips(e: Explanation): string[] {
   return [
+    ...(e.cautions.includes("stale_input") ? ["Stale input"] : []),
     ...(e.cautions.includes("duty_not_set") ? ["Duty not set"] : []),
     ...(e.reason === "margin below your floor" && e.penalties.some((p) => p.name === "margin_floor") ? ["Margin below your floor"] : []),
   ];

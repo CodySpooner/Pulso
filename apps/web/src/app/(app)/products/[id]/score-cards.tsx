@@ -8,8 +8,8 @@ import { StagePill } from "@/app/(app)/(pulse)/cards";
 import { isBuilt, methodology } from "@/app/(app)/methodology/model";
 import { useApiReady } from "@/components/data-health/api";
 import { PanelError, StaleLine, TapTooltip } from "@/components/data-health/atoms";
-import { BetaPill, ScoreExplanation } from "@/components/pulso/score-explanation";
-import { chips, missingInputs, unscored, unscoredOpportunity, type ScoreKind } from "@/components/pulso/score-model";
+import { BetaPill, MissingInputs, ScoreExplanation } from "@/components/pulso/score-explanation";
+import { chips, unscored, unscoredOpportunity, type Explanation, type ScoreKind } from "@/components/pulso/score-model";
 import { Skeleton } from "@/components/ui/skeleton";
 import { $api, isProblem } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
@@ -87,28 +87,7 @@ export function ScoreCards({ id }: { id: string }) {
             value={opportunity.value}
             note={o.components.every((c) => c.source === null) ? "Needs a Trend Score, a landed margin or a Saturation score." : undefined}
           />
-          {chips(o).length > 0 && (
-            <p className="flex flex-wrap gap-1.5">
-              {chips(o).map((text) => {
-                const body = (
-                  <>
-                    <TriangleAlert className="size-3" aria-hidden />
-                    {text}
-                  </>
-                );
-                // Duty's fix is one click away, as the landed margin's "Set duty" (imp-368).
-                return text === "Duty not set" ? (
-                  <Link key={text} href="/settings#duty" aria-label="Duty not set: set it in Settings" className={cn(chip, "relative hit-area border-warning/40 bg-warning-muted hover:underline")}>
-                    {body}
-                  </Link>
-                ) : (
-                  <span key={text} className={cn(chip, "border-negative/40 bg-negative-muted")}>
-                    {body}
-                  </span>
-                );
-              })}
-            </p>
-          )}
+          <Chips explanation={o} />
           {opportunity.value != null && <ScoreExplanation kind="opportunity" explanation={o} />}
         </Card>
         <Numeric kind="saturation" title="Saturation" anchor="saturation" latest={latest.saturation} now={now} />
@@ -143,6 +122,41 @@ function Card({ kind, title, beta, anchor, asOf, children }: { kind: string; tit
         </Link>
       </footer>
     </article>
+  );
+}
+
+// The amber chips are one click from what fixes or explains them: duty from the landed margin's "Set duty" (imp-368),
+// a stale input from the freshness rule and its cadences (imp-589).
+const CAUTION: Record<string, { href: string; label: string }> = {
+  "Duty not set": { href: "/settings#duty", label: "Duty not set: set it in Settings" },
+  "Stale input": { href: "/methodology#confidence", label: "Stale input: how freshness counts" },
+};
+
+/** A score's chips (amber cautions, the red margin floor), with a glyph and words, never colour alone. */
+function Chips({ explanation }: { explanation: Explanation }) {
+  const list = chips(explanation);
+  if (list.length === 0) return null;
+  return (
+    <p className="flex flex-wrap gap-1.5">
+      {list.map((text) => {
+        const body = (
+          <>
+            <TriangleAlert className="size-3" aria-hidden />
+            {text}
+          </>
+        );
+        const caution = CAUTION[text];
+        return caution ? (
+          <Link key={text} href={caution.href} aria-label={caution.label} className={cn(chip, "relative hit-area border-warning/40 bg-warning-muted hover:underline")}>
+            {body}
+          </Link>
+        ) : (
+          <span key={text} className={cn(chip, "border-negative/40 bg-negative-muted")}>
+            {body}
+          </span>
+        );
+      })}
+    </p>
   );
 }
 
@@ -187,6 +201,7 @@ function Numeric({ kind, title, anchor, latest, now }: { kind: ScoreKind; title:
   return (
     <Card kind={kind} title={title} beta anchor={anchor} asOf={row && rowAsOf(row, now)}>
       <Value missing={missing} value={row?.value} detail={kind === "saturation" && row?.value != null ? crowding(row.value) : undefined} note={row ? undefined : NOT_SCORED} />
+      {row && <Chips explanation={row.explanation} />}
       {row && !missing && <ScoreExplanation kind={kind} explanation={row.explanation} />}
     </Card>
   );
@@ -206,11 +221,7 @@ function Lifecycle({ latest, now }: { latest: Latest; now: number }) {
           <div className="flex flex-col gap-1 text-data text-muted-foreground">
             {row.explanation.reason && <p>Rule: {row.explanation.reason}</p>}
             {row.explanation.pending && <p>Pending: {row.explanation.pending}, shown once a second night agrees.</p>}
-            {missingInputs(row.explanation).map(({ word, labels }) => (
-              <p key={word} className="text-label text-subtle-foreground">
-                {word}: {labels.join(", ")}
-              </p>
-            ))}
+            <MissingInputs explanation={row.explanation} />
           </div>
         </>
       ) : (
