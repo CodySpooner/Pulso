@@ -85,7 +85,8 @@ export function ScoreCards({ id }: { id: string }) {
           anchor="opportunity"
           asOf={
             opportunity.as_of && (
-              <AsOf at={opportunity.as_of} now={now} hint={`Computed for your workspace when the page loaded, from inputs as of ${formatUtc(opportunity.as_of)}. Never stored.`} />
+              // Not a stored row, so no scored day: the time of its oldest input.
+              <AsOf at={opportunity.as_of} now={now} text={`As of ${formatUtc(opportunity.as_of)}`} hint="Computed for your workspace when the page loaded, from its oldest input's time. Never stored." />
             )
           }
         >
@@ -147,20 +148,21 @@ function Value({ missing, value, detail }: { missing: string | null; value?: num
   );
 }
 
-/** A row's "as of" is its scored day; its hover names the inputs' cutoff and the model version. */
-function AsOf({ at, now, hint, day }: { at: string; now: number; hint: string; day?: string }) {
+/** An "as of", amber past 3 nights; its hover says what it dates. */
+function AsOf({ at, now, text, hint }: { at: string; now: number; text: string; hint: string }) {
   const stale = now - Date.parse(at) > STALE_MS;
   return (
     <TapTooltip hint={hint} type="button" className={cn("relative hit-area cursor-help rounded-sm text-left", stale && "text-warning")}>
       {stale && <TriangleAlert className="mr-1 inline size-3 align-[-2px]" aria-hidden />}
-      As of {date(day ?? at)}
+      {text}
       {stale && " · stale"}
     </TapTooltip>
   );
 }
 
 const rowAsOf = (row: Stored, now: number) => (
-  <AsOf at={row.as_of} day={row.day} now={now} hint={`Scored for ${date(row.day)} (UTC) from data captured before ${formatUtc(row.as_of)}. Model ${row.model_version}.`} />
+  // A row's "as of" is its scored day; its hover names the inputs' cutoff and the model version.
+  <AsOf at={row.as_of} now={now} text={`As of ${date(row.day)}`} hint={`Scored for ${date(row.day)} (UTC) from data captured before ${formatUtc(row.as_of)}. Model ${row.model_version}.`} />
 );
 
 function Numeric({ kind, title, anchor, latest, now }: { kind: ScoreKind; title: string; anchor: string; latest: Latest; now: number }) {

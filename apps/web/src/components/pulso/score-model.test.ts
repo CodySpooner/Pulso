@@ -10,7 +10,7 @@ import { certainty, chips, inputLabel, missingInputs, penaltySteps, sourceLabel,
 
 type Input = components["schemas"]["Component"];
 const input = (name: string, source: string | null, contribution: number | null, more: Partial<Input> = {}): Input => ({
-  name, family: "f", source, weight: 0.25, contribution, missing: contribution === null, ...more,
+  name, family: "f", source, weight: 0.25, contribution, weight_eff: 0, missing: contribution === null, gap: false, ai_derived: false, ...more,
 });
 const explanation = (more: Partial<Explanation> = {}): Explanation => ({
   model_version: "000-8236875f835c", config_digest: "f".repeat(64), components: [], missing: [], coverage: 0.85, penalties: [], cautions: [], ...more,
