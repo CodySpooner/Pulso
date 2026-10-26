@@ -20,6 +20,7 @@ import { formatAgo, formatUtc } from "@/lib/format";
 import { duration, spring } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 
+import { AddToBoard, AddToBoardHost } from "../../boards/add-to-board";
 import { StartTest } from "../../testing/start-test";
 import { WatchControl } from "../../watchlists/star";
 
@@ -99,6 +100,7 @@ export function ProductPage({ id }: { id: string }) {
         {data && (
           <div className="col-span-2 flex flex-wrap items-start gap-2 sm:col-span-1 sm:justify-end">
             <WatchControl product={data} />
+            <AddToBoard product={data} labelled />
             <CreateAlert product={{ id: data.id, name: data.title }} />
             <StartTest productId={data.id} />
           </div>
@@ -130,6 +132,7 @@ export function ProductPage({ id }: { id: string }) {
       ) : (
         <BodySkeleton />
       )}
+      <AddToBoardHost page />
     </div>
   );
 }

@@ -19,6 +19,7 @@ import { formatUtc } from "@/lib/format";
 import { duration, spring } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 
+import { AddToBoard, AddToBoardHost } from "../boards/add-to-board";
 import { ExportCsv, useCsvExport } from "./export-csv";
 import { StarButton } from "../watchlists/star";
 import { CardSkeletons, feedColumns, GRID, ProductCard, ProductTable, TableSkeleton, type Item, type Paused } from "./feed-views";
@@ -164,7 +165,12 @@ export function Discover() {
         ) : view === "grid" ? (
           <Grid items={items} now={now} paused={paused} loadingMore={isFetchingNextPage} onNearEnd={more} />
         ) : (
-          <ProductTable items={items} columns={feedColumns(now, paused)} lead={(item) => <StarButton product={item} className="-ml-1.5" />} loadingMore={isFetchingNextPage} onNearEnd={more} />
+          <ProductTable items={items} columns={feedColumns(now, paused)} lead={(item) => (
+              <>
+                <StarButton product={item} className="-ml-1.5" />
+                <AddToBoard product={item} className="-ml-1.5" />
+              </>
+            )} loadingMore={isFetchingNextPage} onNearEnd={more} />
         )}
       </m.div>
       {isFetchNextPageError && (
@@ -172,6 +178,7 @@ export function Discover() {
           <PanelError headingLevel="h2" title="Couldn't load more products" error={error} retry={() => void fetchNextPage()} />
         </section>
       )}
+      <AddToBoardHost />
     </div>
   );
 }

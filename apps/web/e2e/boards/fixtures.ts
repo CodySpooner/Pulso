@@ -187,7 +187,7 @@ export async function mockBoardsApi(page: Page, options: BoardsMock = {}) {
       const ids = body!.product_ids as string[];
       const added = ids.filter((p) => !cards.some((c) => c.product_id === p));
       let next = Math.max(-1, ...cards.map((c) => c.position)) + 1;
-      for (const p of added) cards.push(card(Number(p.slice(-12)), next++, { added_at: NOW.toISOString() }));
+      for (const p of added) cards.push(card(Number(p.slice(-12)) || 0, next++, { product_id: p, added_at: NOW.toISOString() }));
       items[id] = cards;
       bump(board);
       return json({ added, skipped: ids.filter((p) => !added.includes(p)) });
