@@ -1,3 +1,4 @@
+import re
 from collections.abc import Iterator
 from datetime import UTC, date, datetime, time, timedelta
 from decimal import Decimal
@@ -435,6 +436,68 @@ def test_the_dated_view_at_a_late_cutoff_is_the_live_view(db_engine: Engine) -> 
         assert before[product_id]["goods_minor"] == 740 and live["goods_minor"] == 690
         assert live["freight_minor"] == 9999  # the live view reads the late quote...
         assert before[product_id]["freight_minor"] == 410  # ...the dated one doesn't
+
+
+@pytest.mark.db
+def test_the_dated_view_is_the_live_view_text_but_for_the_cutoff_rewrites(
+    db_engine: Engine,
+) -> None:
+    """XR-67: a view migration Pulse misses fails here, ORDER BY (the pick) first."""
+    dated = pulse.dated_economics()
+    for table in ("listing_snapshots", "shipping_options"):
+        dated = dated.replace(f"(SELECT * FROM {table} WHERE captured_at < :cutoff)", table)
+    dated = re.sub(r"\((\w+)\.delisted_at IS NULL OR \1\.delisted_at >= :cutoff\)",
+                   r"\1.delisted_at IS NULL", dated)  # fmt: skip
+    dated = dated.replace(" AND s.workspace_id = :workspace_id AND p.id IN :ids", "")
+    assert not re.search(r":(cutoff|workspace_id|ids)\b", dated)  # every rewrite undone
+    with db_engine.begin() as connection:
+        connection.execute(text(f"CREATE TEMP VIEW dated AS {dated}"))
+        live, undone = (
+            connection.scalar(text("SELECT pg_get_viewdef(CAST(:view AS regclass), true)"),
+                              {"view": view})
+            for view in ("workspace_product_economics", "dated")
+        )  # fmt: skip
+    assert re.findall(r"ORDER BY .*", undone) == re.findall(r"ORDER BY .*", live)
+    assert undone == live
+
+
+@pytest.mark.db
+def test_with_duty_unset_the_margin_costs_the_live_views_cheapest_listing(
+    api: TestClient, db_engine: Engine
+) -> None:
+    """XR-67's probe: $29.99 in a store and two CJ listings with $4.10 freight, $20.00 (created
+    first, the lower id) and $5.00, one of which goes up $1 on D. Duty unset, every listing is
+    incomplete and both views cost the cheapest (DEC-341), not the lowest id."""
+    with Session(db_engine) as session:
+        workspace_id = workspace(session, **FEES)  # duty not set
+        cheap_moves, dear_moves = product(session, "Cheap one moves"), product(session, "Dear")
+        cheap: dict[UUID, int] = {}
+        for product_id, moving in ((cheap_moves, 500), (dear_moves, 2000)):
+            snap(session, offer(session, product_id, SHOPIFY), at(Y, 6), price_min_minor=2999)
+            for unit in (2000, 500):
+                cheap[product_id] = cj = offer(session, product_id)
+                snap(session, cj, at(Y, 6), price_min_minor=unit)
+                if unit == moving:
+                    snap(session, cj, at(D, 6), price_min_minor=unit + 100)
+                observe(
+                    session, ShippingOption, CJ, at(Y, 6), listing_id=cj,
+                    destination_country="US", quantity=1, method="CJPacket", cost_minor=410,
+                    currency="USD",
+                )  # fmt: skip
+        session.commit()
+        view = workspace_product_economics.c
+        live = session.execute(
+            select(view.product_id, view.supplier_listing_id).where(
+                view.workspace_id == workspace_id
+            )
+        ).tuples()  # fmt: skip
+        assert dict(live.all()) == cheap
+
+    margins = get(api, workspace_id, date=D.isoformat())["sections"]["margins"]
+    [moved] = margins["items"]  # the dear listing's move is not the margin's
+    assert moved["product"]["id"] == str(cheap_moves)
+    assert (moved["old_bps"], moved["new_bps"]) == (6075, 5742)
+    assert (moved["supplier_listing_id"], moved["duty_not_set"]) == (cheap[cheap_moves], True)
 
 
 @pytest.mark.db

@@ -4302,3 +4302,26 @@ Superseded review defaults, not given entries: default #0 (move the repo) is don
   - Every export starts with the BOM, and timestamps end in `Z`.
   - `e2e/testing/export-csv.spec.ts` (5): Tab from the title reaches Export CSV with a solid focus ring, one press downloads, and the request is `?format=csv`. `E` on a card exports, while `E` in a card's menu, in the drawer or in Notes doesn't (removing the grid guard fails this test). It also covers the locked state with no tests, Retry with focus returned, and no horizontal scroll at 375px. The Discover export spec still passes (6).
 - **Not here:** Screener UI (WF-1b), the Testing Board's table view and its date filter (imp-444), and the other tables' exports; listed in `docs/reports/p4-30.md`.
+
+### DEC-349 · Daily Pulse's dated economics view is the head view revision's text with only the cutoff rewrites: `dated_economics()` finds that revision through Alembic's revision graph, and a test holds the result to the live view (XR-67)
+**2026-10-26 · proposed (imp-550)** · backlog imp-550 (XR-67 from P4-31, `docs/reports/p4-31.md`; vault Agents/Reviews/2026-10-26 Claude - p4-24 p4-28 imp-520 cross-review); DEC-031, DEC-265, DEC-291, DEC-337, DEC-341, DEC-348; vault Features/Daily Pulse; `docs/reports/imp-550.md`; `routers/pulse.py` `dated_economics()` only; no migration, endpoint, schema, flag, dependency or UI change
+- **Decision:**
+  - **(a) The live view's text, found on its own.**
+    - `dated_economics()` walks Alembic's revision graph from the head, `ScriptDirectory(pulso_core/migrations).walk_revisions()`, and takes the first revision that defines `previous_view()`. Every view revision has one: 0014, 0023, and imp-545's 0024.
+    - Its text is the one statement that revision's `upgrade()` executes. `upgrade()` runs against a stand-in `op` that records the SQL, on Alembic's private copy of the module. Anything else in `upgrade()` (a second statement, another `op` call) fails loudly.
+    - Today that is 0023's `cheapest_fallback()`, so with duty unset Pulse re-costs the cheapest listing at duty 0, as the live view and Opportunity do (DEC-341). A new view revision needs no `pulse.py` edit.
+    - The rewrites are unchanged, with their count asserts: captures before `:cutoff` (`listing_snapshots snap` ×3, `shipping_options so` ×2), live until delisted (×3), and the workspace and product filter.
+  - **(b) A guard that compares Postgres's own text.** `test_the_dated_view_is_the_live_view_text_but_for_the_cutoff_rewrites` undoes the rewrites, creates a temp view from the result, and compares its `pg_get_viewdef(…, true)` with the live view's: the ORDER BY clauses first (the pick), then the whole text. Postgres normalises both sides, so the test needs no whitespace or cast handling. It fails if the finder picks the wrong revision, on any view change Pulse doesn't follow (not only the pick), and on any new rewrite it doesn't undo.
+  - **(c) The convention it relies on:** a view revision defines `previous_view()` and executes only the new view in `upgrade()`. A view revision written another way fails (b) rather than going unnoticed.
+- **Alternatives:**
+  - **Name the file in `dated_economics()`** (the first cut on this branch): every view revision has to edit `pulse.py`, and imp-545 already had to.
+  - **Pick the file by name** (the newest `versions/*.py` containing `def previous_view(`): a text search instead of the revision graph.
+  - **Call the view function by name:** the revisions share none (`in_stock_first()`, `cheapest_fallback()`, `listing_stock()`).
+  - **An ORDER BY-only guard:** it misses a view change outside the pick. imp-545's 0024 is one such change: it edits two laterals and leaves the ORDER BYs alone.
+  - **Read the live view's text at request time:** `pg_get_viewdef` rewrites the SQL, so the cutoff rewrites would match a different text, and every Pulse read would run one more query.
+- **Why:** XR-67's probe (duty unset; 2.9% + 30¢, returns 5%; $29.99 store price; CJ $20.00 created first and $5.00, $4.10 freight each):
+  - **Before:** when the $5.00 listing moved to $6.00 on D, Pulse showed nothing. When the $20.00 one moved to $21.00, it showed 1074 → 740 bps and named the $20.00 listing (2 of 2 products wrong).
+  - **After:** 6075 → 5742 bps on the $5.00 listing, and nothing for the $20.00 move (`test_with_duty_unset_the_margin_costs_the_live_views_cheapest_listing`).
+  - **The guard catches a wrong pick:** forced onto 0014, the guard fails at the pick's ORDER BY, where the dated text lacks `(cost.goods_minor::numeric + cost.freight_minor::numeric)`.
+  - **The finder follows a new revision:** with imp-545's 0024 copied in (head 0024), a file named in the code fails the guard on 0024's lateral; the finder passes all 10 Pulse tests.
+- **Not here:** XR-68 (exact ties between complete margins, imp-381); FX by date alone in the dated view (the `ponytail:` note in `dated_economics()`).
