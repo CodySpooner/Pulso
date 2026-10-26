@@ -4387,3 +4387,57 @@ Superseded review defaults, not given entries: default #0 (move the repo) is don
 
   p95 on a synthetic dev-sized schema in the same container (3,000 products, 2 families × 120 days = 720k feature rows, 100 watched, in-process TestClient, 100 runs): **214 ms with `spark=velocity`** (p50 95) against the 300 ms target, and 58 ms without it. Vitest `components/pulso/sparkline.test.ts` (3) and `watchlists/model.test.ts` (2 new) pass, and the Pulse card test still finds its `<polyline>`. Playwright `e2e/watchlists/watchlists.spec.ts` (9) covers the column, the hover and focus card with named gaps, three polylines for a three-run line, "No source yet", and phone cards with no horizontal scroll at 375px. Screenshots are in `docs/screenshots/imp-419/`.
 - **Not here:** a sparkline metric chosen per list (vault open question), the "since added" deltas (imp-420), Momentum (imp-495), and a compact Merged chip in the table (backlog row in the report).
+
+### DEC-351 · Score surfaces (SC-5 / WF-1, imp-460 + imp-477's Discover and Product Page parts): four score cards on the Overview behind ff_scores from `GET /v1/products/{id}/scores`, one shared reasons/confidence component, and Discover's Trend cell from a `trend` field on each Discover item, read in one batch per page
+**2026-10-25 · proposed (imp-460)** · backlog imp-460, imp-477 (Discover and Product Page parts); Phase 4 SC-5, WF-1, MT-1; SPEC §6.2, §6.4, §7; DEC-040, DEC-238, DEC-313, DEC-323, DEC-326 (b, c), DEC-331, DEC-341, DEC-347 (e, f, i); vault Features/Product Page - Overview, Features/Discover, Intelligence/Trend Score, Intelligence/Opportunity Score, Intelligence/Score Definitions §6–7, Features/Methodology & Confidence; `docs/reports/imp-460.md`; API change additive (`DiscoverItem.trend`, schema `LatestTrend`; operation ids unchanged); no migration, new endpoint, dependency or Beat entry
+- **Decision:**
+  - **(a) Product Page cards.** Above the key stats, behind ff_scores: Trend Score, Opportunity, Saturation and Lifecycle, from `GET /v1/products/{id}/scores?range=7d&limit=1` (only `latest` and `opportunity` are read). The cards have their own query, so their skeleton, error with Retry and stale line never hold up the key stats.
+    - Each numeric card shows the value (`/ 100`; Saturation adds its band, Low/Medium/High, from `low_below`/`high_above` in the /methodology export) and a Beta pill. Opportunity's pill shows while its momentum component is `trend` (DEC-331 a).
+    - Under the value: the confidence bar, the top 3 reasons, each penalty as its own step, and the missing inputs.
+    - Lifecycle shows its stage in Daily Pulse's `StagePill` (as the Screener does), the rule that fired (`explanation.reason`) and a pending stage ("Pending: peaking, shown once a second night agrees").
+    - Each card's footer has its as-of and a "How {score} works" link to its /methodology anchor (MT-1).
+  - **(b) Points.** The top 3 are the three largest |contribution| among the present inputs. Trend and Saturation are 50 + 50 × Σ/3, so a reason's points are 50/3 × contribution. Opportunity's inputs hold their 0–100 values (DEC-331 a), so its contribution is already in points. A penalty is points off: Trend's `saturation` and Opportunity's `margin_floor`. A missing penalty takes nothing off and reads by its source.
+  - **(c) Confidence, or coverage.** The bar shows `explanation.confidence` when the score has one (Opportunity: coverage − 0.2 while duty isn't set, DEC-331 d). Otherwise it shows `coverage`, labelled **Coverage**. /methodology says no score shows a confidence until freshness is built, and this keeps that true for Trend and Saturation. Grades: High ≥ 0.75, Medium ≥ 0.5, Low below (vault Methodology & Confidence).
+  - **(d) Wording** (vault Score Definitions §7):
+    - No row: "No source yet", plus "Scores run nightly; none has scored this product yet."
+    - A NULL row: "Insufficient signal · {explanation.reason}", with the row's day still as its as-of.
+    - Opportunity with no value: "No source yet" when no input has a source, else "Insufficient signal · {reason}".
+    - A missing input with `source: null` (always `ads_growth` and `ads_active`): "No source yet: …"; one with a source: "Insufficient signal: …".
+    - "Duty not set" is an amber chip, from `cautions`. "Margin below your floor" is a chip when `reason` says so and a `margin_floor` penalty exists.
+    - Sources map to words: `sources.key`, the score kinds `trend` and `saturation`, and `workspace_product_economics` ("Your landed margin"). A reason's source and as-of open on hover, focus or tap.
+  - **(e) As of.** A stored row's as-of is its `day` ("As of Oct 21"). Its hover names the inputs' cutoff (`as_of`) and the `model_version`. Opportunity has no row, so its as-of is its own `as_of` time, the oldest input. Past 3 × the nightly cadence (now − `as_of` > 3 days) the as-of turns amber, with an icon and "stale".
+  - **(f) Colour marks the minority (as DEC-347 i).** Reasons are neutral: their sign and ▲/▼ give a direction, not a verdict. Only points taken off (a penalty) read negative. The chips are the cards' only other colour.
+  - **(g) ff_scores.** A code constant, like `TAB_FLAGS`, and on: SC-2 to SC-6 are built.
+    - Under the E2E auth bypass only, `?ff_scores=off` turns it off, so one Playwright run tests both states. `authBypass` is inlined `false` in a production build, so that branch compiles away.
+    - Off, the Overview makes no scores request and renders exactly as before.
+  - **(h) Discover.** `DiscoverItem.trend: LatestTrend | NoSource`, where `LatestTrend` is `value`, `day`, `as_of` and `reason`. It is read by `opportunity.latest_rows(session, "trend", ids)`: one query per page, and per watchlist read (`discover_items`). The CSV export reads none (it has no trend column). A NULL row keeps its reason, and no row is `NO_ROW`, the scores endpoint's wording.
+    - `latest_trend()` imports `NO_ROW` inside the function: `product_scores.py` imports `products.py`.
+    - The cell shows the value with β, or the wording's first words. The full wording and the as-of are in its `title` and `aria-label`.
+    - The cell links to `/products/{id}#score-trend`. Once the cards render, the Overview scrolls that card into view and focuses it (the browser looked the hash up before the card existed).
+    - The table's Trend header links to `/methodology#trend-score` through an optional `Column.definition` (DEC-347 e's column list). The Screener's columns don't set it, so its table is unchanged.
+  - **(i) One shared component.** `components/pulso/score-explanation.tsx` (`ScoreExplanation`, `BetaPill`) holds the reasons and confidence block, and `score-model.ts` holds the pure rules. The Screener (DEC-347) can adopt it for its score cards.
+- **Alternatives:**
+  - **A new batched endpoint for Discover's trend:** a second request and a second loading state per page for one cell. The page's own read already knows its ids.
+  - **The scores endpoint per Discover row:** N+1.
+  - **The full `StoredScore` with its explanation on each Discover row:** about 1–2 KB × 48 per page, for a cell that links to the card that shows it.
+  - **Reusing the Screener's `LatestScore`:** `products.py` can't import `screener.py` (it imports `products.py`). Moving it means editing p4-32's router.
+  - **Coverage labelled "Confidence" on Trend and Saturation:** /methodology says no confidence is shown until freshness is built.
+  - **Green and red reason bars:** every row would be coloured, all red on Saturation.
+  - **`NEXT_PUBLIC_FF_SCORES`:** it is inlined when the dev server starts, so one Playwright run can't test both states.
+  - **Moving `NO_ROW` into `products.py`:** `screener.py`, `boards.py` and their tests import it from `product_scores.py`, and mypy strict forbids the implicit re-export.
+  - **A header link keyed on the column name "Trend":** the Screener shares the table and has its own Trend column, so its header would change too.
+- **Why:**
+  - `apps/api/tests/test_products.py::test_feed_items_read_the_latest_trend_row` (Postgres, `pgvector/pgvector:0.8.7-pg18-trixie`): the newest row wins over an older one; a NULL row keeps "no velocity growth" over an older value; no row reads `NO_ROW`; the as-of is at most the day's cutoff. `test_products.py`, `test_watchlists.py`, `test_csv_export.py` and `test_provenance_contract.py` pass.
+  - `src/components/pulso/score-model.test.ts` (12):
+    - The top 3 pick the largest |contribution|, a negative one included, with points = 50/3 × contribution; Opportunity's are as given.
+    - A penalty renders as its own step, after the reasons; a missing one reads "Insufficient signal" with no number.
+    - The floor cut is a step, and its chip needs both `reason` and the penalty.
+    - `ads_growth` reads "No source yet", and a missing input with a source "Insufficient signal". A NULL row reads "Insufficient signal · {reason}" (the Product Page's and Discover's shapes); no row reads "No source yet".
+    - "Duty not set" comes from `cautions`. The bar shows confidence or coverage, and reasons are never coloured.
+  - `e2e/products/scores.spec.ts` (5):
+    - Flag on: the four cards with as of, Beta, reasons in points, the penalty step and the chips. A reason's source and a row's cutoff open on focus, and Tab reaches "How Trend Score works" with a solid focus ring, where Enter opens `/methodology#trend-score`.
+    - Flag off: no scores request and the five key stats unchanged.
+    - NULL rows, no rows and the floor cap; loading, error with Retry while the key stats render, and stale.
+    - A Discover row's Trend cell opens `/products/{id}#score-trend` with the card focused and in view: one click.
+  - The product, Discover and Screener e2e suites pass after the rebase on p4-32.
+- **Not here:** the "Show all" list and a waterfall chart, the `S` shortcut and the forecast card (Phase 6). Also not here: Opportunity, Saturation and Lifecycle on Discover, sorting or filtering Discover by Trend, freshness in confidence (MT-1's next part), and the Screener adopting the shared component. All are listed in `docs/reports/imp-460.md`.
