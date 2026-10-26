@@ -451,8 +451,12 @@ def test_items_spark_velocity_reads_the_page_in_one_batch(
         "reason": "No velocity in the last 30 days.",
     }
 
-    week = a.get(url, params={"spark": "velocity", "days": 7, "limit": 1}).json()["items"][0]
-    assert len(week["spark"]["points"]) == 7
+    # Every row with points, by product: p1, p2 and p3 share an added_at, so which comes first
+    # depends on their random ids, and p3 has no points (imp-569).
+    week = a.get(url, params={"spark": "velocity", "days": 7, "limit": 100}).json()["items"]
+    lines = {row["product_id"]: row["spark"]["points"] for row in week if "points" in row["spark"]}
+    assert len(lines) == 99 and {len(points) for points in lines.values()} == {7}  # all but p3
+    assert [point["day"] for point in lines[str(ids["p1"])]] == days[-7:]
     for bad in ({"days": 0}, {"days": 91}, {"spark": "price"}):
         assert a.get(url, params={"spark": "velocity"} | bad).status_code == 422
     assert as_("b").get(url, params={"spark": "velocity"}).status_code == 404
