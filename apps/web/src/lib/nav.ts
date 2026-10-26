@@ -76,7 +76,7 @@ export const navGroups: NavGroup[] = [
       { label: "Discover", href: "/discover", icon: Compass, phase: 2, built: true, summary: "Trending products with lifecycle stage, trend score, margin and freshness on every row." },
       { label: "Google popular", href: "/google-popular", icon: ListOrdered, phase: 2, built: true, summary: "Google's weekly ranking of what US shoppers buy, from your Merchant Center report, big brands hidden." },
       { label: "Amazon ranks", href: "/amazon", icon: Trophy, phase: 3, built: true, summary: "Amazon Best Sellers and Movers & Shakers ranks from the CSV files you import, each list on its own." },
-      { label: "Screener", href: "/screener", icon: SlidersHorizontal, phase: 4, summary: "Filter every tracked product by any metric and save the screens you reuse." },
+      { label: "Screener", href: "/screener", icon: SlidersHorizontal, phase: 4, built: true, summary: "Filter every tracked product by any metric and save the screens you reuse." },
       { label: "Compare", href: "/compare", icon: Columns3, phase: 8, summary: "Up to four products side by side: demand, suppliers, margin and risk." },
       { label: "Niches", href: "/niches", icon: LayoutGrid, phase: 8, summary: "Categories ranked by growth, saturation and margin." },
       { label: "Seasonality", href: "/calendar", icon: CalendarDays, phase: 8, summary: "Upcoming retail events with the products that rose before them last year." },

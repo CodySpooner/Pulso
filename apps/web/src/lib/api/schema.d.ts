@@ -3971,26 +3971,18 @@ export interface components {
         };
         /**
          * ScreenPatch
-         * @description The fields to change: each given one replaces the stored one, `filters` as a whole.
+         * @description The fields to change: each one given replaces the stored one, `filters` as a whole.
          */
         ScreenPatch: {
             /** Columns */
             columns?: ("trend" | "opportunity" | "margin_bps" | "velocity" | "acceleration" | "saturation" | "price" | "supplier_rating" | "ship_days_us" | "lifecycle")[] | null;
-            filters?: components["schemas"]["Filters"];
+            filters?: components["schemas"]["Filters"] | null;
             /** Name */
             name?: string | null;
-            /**
-             * Order
-             * @default desc
-             * @enum {string}
-             */
-            order: "desc" | "asc";
-            /**
-             * Sort
-             * @default trend
-             * @enum {string}
-             */
-            sort: "trend" | "opportunity" | "margin_bps" | "velocity" | "acceleration" | "saturation" | "price" | "supplier_rating" | "ship_days_us";
+            /** Order */
+            order?: ("desc" | "asc") | null;
+            /** Sort */
+            sort?: ("trend" | "opportunity" | "margin_bps" | "velocity" | "acceleration" | "saturation" | "price" | "supplier_rating" | "ship_days_us") | null;
         };
         /** ScreenerPage */
         ScreenerPage: {

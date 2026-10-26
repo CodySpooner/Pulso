@@ -8171,7 +8171,7 @@
       },
       "ScreenPatch": {
         "additionalProperties": false,
-        "description": "The fields to change: each given one replaces the stored one, `filters` as a whole.",
+        "description": "The fields to change: each one given replaces the stored one, `filters` as a whole.",
         "properties": {
           "columns": {
             "anyOf": [
@@ -8202,7 +8202,14 @@
             "title": "Columns"
           },
           "filters": {
-            "$ref": "#/components/schemas/Filters"
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Filters"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "name": {
             "anyOf": [
@@ -8219,29 +8226,41 @@
             "title": "Name"
           },
           "order": {
-            "default": "desc",
-            "enum": [
-              "desc",
-              "asc"
+            "anyOf": [
+              {
+                "enum": [
+                  "desc",
+                  "asc"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
             ],
-            "title": "Order",
-            "type": "string"
+            "title": "Order"
           },
           "sort": {
-            "default": "trend",
-            "enum": [
-              "trend",
-              "opportunity",
-              "margin_bps",
-              "velocity",
-              "acceleration",
-              "saturation",
-              "price",
-              "supplier_rating",
-              "ship_days_us"
+            "anyOf": [
+              {
+                "enum": [
+                  "trend",
+                  "opportunity",
+                  "margin_bps",
+                  "velocity",
+                  "acceleration",
+                  "saturation",
+                  "price",
+                  "supplier_rating",
+                  "ship_days_us"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
             ],
-            "title": "Sort",
-            "type": "string"
+            "title": "Sort"
           }
         },
         "title": "ScreenPatch",

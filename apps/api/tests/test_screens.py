@@ -143,6 +143,7 @@ def test_a_patch_renames_and_replaces_the_given_parts(as_: As, db_engine: Engine
             "filters": {"price_max": 5000}, "sort": "price", "order": "asc", "columns": ["price"],
         }  # fmt: skip
     assert a.patch(url, json={}).json() == both
+    assert a.patch(url, json={"columns": None}).json() == {**both, "columns": None}  # the default
 
 
 @pytest.mark.db
@@ -152,7 +153,8 @@ def test_a_patch_is_scoped_unique_and_validated(as_: As) -> None:
     a.post("/v1/screens", json={"name": "Taken"})
     url = f"/v1/screens/{screen['id']}"
     assert a.patch(url, json={"name": "Taken"}).status_code == 409
-    for body in ({"name": ""}, {"filters": {"margin_min": 1}}, {"sort": "risk"}, {"alert": 1}):
+    bad = ({"name": ""}, {"filters": {"margin_min": 1}}, {"sort": "risk"}, {"alert": 1})
+    for body in (*bad, {"sort": None}, {"filters": None}):
         assert a.patch(url, json=body).status_code == 422, body
     assert a.get(url).json() == screen  # nothing changed
     b = as_("b")

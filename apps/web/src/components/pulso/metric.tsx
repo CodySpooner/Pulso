@@ -48,6 +48,9 @@ export function ProvenanceCard({ stat, label, now, missing = "No source yet" }: 
   );
 }
 
+/** The look of a number that opens a card on hover, focus and tap. */
+export const metricTrigger = "relative hit-area cursor-help rounded-sm text-left tabular-nums decoration-border-strong decoration-dotted underline-offset-4 hover:underline";
+
 /** A number in tabular numerals that opens its provenance card on hover, keyboard focus and tap (the Data Health
  *  TapTooltip, DEC-232/235). A stat nothing backs reads "No source yet", never 0 (DEC-040); its card says why. The
  *  card can be hovered, so its raw payload id can be selected. */
@@ -77,11 +80,7 @@ export function Metric({
       contentClassName="pointer-events-auto max-w-72 px-3 py-2"
       type="button"
       aria-label={`${label}: ${text}`}
-      className={cn(
-        "relative hit-area cursor-help rounded-sm text-left tabular-nums decoration-border-strong decoration-dotted underline-offset-4 hover:underline",
-        "reason" in stat && "text-muted-foreground",
-        className,
-      )}
+      className={cn(metricTrigger, "reason" in stat && "text-muted-foreground", className)}
     >
       {text}
     </TapTooltip>

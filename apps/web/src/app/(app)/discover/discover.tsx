@@ -20,7 +20,8 @@ import { duration, spring } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 
 import { ExportCsv, useCsvExport } from "./export-csv";
-import { CardSkeletons, GRID, ProductCard, ProductTable, TableSkeleton, type Item, type Paused } from "./feed-views";
+import { StarButton } from "../watchlists/star";
+import { CardSkeletons, feedColumns, GRID, ProductCard, ProductTable, TableSkeleton, type Item, type Paused } from "./feed-views";
 import {
   activeFilters,
   apiQuery,
@@ -163,7 +164,7 @@ export function Discover() {
         ) : view === "grid" ? (
           <Grid items={items} now={now} paused={paused} loadingMore={isFetchingNextPage} onNearEnd={more} />
         ) : (
-          <ProductTable items={items} now={now} paused={paused} loadingMore={isFetchingNextPage} onNearEnd={more} />
+          <ProductTable items={items} columns={feedColumns(now, paused)} lead={(item) => <StarButton product={item} className="-ml-1.5" />} loadingMore={isFetchingNextPage} onNearEnd={more} />
         )}
       </m.div>
       {isFetchNextPageError && (
