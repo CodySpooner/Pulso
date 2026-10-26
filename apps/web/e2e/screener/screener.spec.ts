@@ -185,7 +185,7 @@ test("no matches offers to remove each condition; an error keeps the screen and 
   await expect(page.getByRole("heading", { name: "No products collected yet" })).toBeVisible();
 });
 
-test("keyset Load more appends the next page; 375px shows two-line rows with no horizontal scroll", async ({ page }) => {
+test("keyset Load more appends the next page; 375px shows compact rows with no horizontal scroll", async ({ page }) => {
   const api = await mockScreenerApi(page, { items: rows(60) });
   await page.goto("/screener");
   await expect(table(page).locator("table")).toHaveAttribute("aria-rowcount", "51");
