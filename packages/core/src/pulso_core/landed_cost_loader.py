@@ -10,7 +10,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import Row, func, select
+from sqlalchemy import Row, func, or_, select
 from sqlalchemy.orm import Session
 
 from pulso_core.landed_cost import (
@@ -44,6 +44,16 @@ SETTINGS = {  # landed_cost() input: its settings column
     "returns_bps": "returns_bps",
     "ad_cost_minor": "default_cpa_minor",
 }
+# CJ's stock captures write listing rows that carry stock and never a price (DEC-348); every other
+# capture is a price row. pulso_core doesn't import pulso_sources, whose CJ writers use these.
+STOCK_ENDPOINT = "/product/stock/getInventoryByPid"
+STOCK_CAPTURE = RawPayload.request["endpoint"].as_string() == STOCK_ENDPOINT
+PRICE_CAPTURE = RawPayload.request["endpoint"].as_string().is_distinct_from(STOCK_ENDPOINT)
+# The rows a stock read takes (joined to RawPayload): ones with stock fields, or a stock
+# capture's, whose unknown total supersedes an older level as DEC-120 has it.
+STOCK_READ = or_(
+    ListingSnapshot.available.is_not(None), ListingSnapshot.stock.is_not(None), STOCK_CAPTURE
+)
 
 
 @dataclass(frozen=True)
@@ -95,10 +105,12 @@ def in_stock(available: bool | None, stock: int | None) -> bool:
 
 
 def stocked(session: Session, listing_id: int) -> bool:
-    """in_stock() on the listing's latest snapshot, as the Suppliers tab reads it (DEC-264 b)."""
+    """in_stock() on the listing's newest stock reading, as the Suppliers tab reads it
+    (DEC-264 b, DEC-348)."""
     row = session.execute(
         select(ListingSnapshot.available, ListingSnapshot.stock)
-        .where(ListingSnapshot.listing_id == listing_id)
+        .join(RawPayload, RawPayload.id == ListingSnapshot.raw_payload_id)
+        .where(ListingSnapshot.listing_id == listing_id, STOCK_READ)
         .order_by(ListingSnapshot.captured_at.desc(), ListingSnapshot.id.desc())
         .limit(1)
     ).first()
@@ -106,7 +118,8 @@ def stocked(session: Session, listing_id: int) -> bool:
 
 
 def unit_cost(session: Session, listing_id: int, variant_id: int | None) -> Row[Any] | None:
-    """The latest supplier price: the variant's when one is chosen, else the listing's."""
+    """The latest supplier price: the variant's when one is chosen, else the listing's. A stock
+    capture's row is never a price row (DEC-348)."""
     snap: type[VariantSnapshot] | type[ListingSnapshot] = ListingSnapshot
     price, where = ListingSnapshot.price_min_minor, ListingSnapshot.listing_id == listing_id
     if variant_id is not None:
@@ -121,7 +134,7 @@ def unit_cost(session: Session, listing_id: int, variant_id: int | None) -> Row[
         )
         .join(RawPayload, RawPayload.id == snap.raw_payload_id)
         .join(Source, Source.id == RawPayload.source_id)
-        .where(where)
+        .where(where, PRICE_CAPTURE)
         .order_by(snap.captured_at.desc(), snap.id.desc())
         .limit(1)
     ).first()

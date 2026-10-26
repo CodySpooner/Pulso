@@ -11,7 +11,15 @@ from pydantic import BaseModel, Field, StrictInt, TypeAdapter
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from pulso_core.models import Listing, ListingVariant, RawPayload, ShippingOption, VariantSnapshot
+from pulso_core.landed_cost_loader import STOCK_CAPTURE
+from pulso_core.models import (
+    Listing,
+    ListingSnapshot,
+    ListingVariant,
+    RawPayload,
+    ShippingOption,
+    VariantSnapshot,
+)
 from pulso_core.money import to_minor
 from pulso_sources.cj import CJAdapter, Identifier, Record
 from pulso_sources.cj.errors import classify_error
@@ -30,11 +38,10 @@ from pulso_sources.framework import (
 DETAIL_WRITER = Writer(
     RawPayload.request["endpoint"].as_string() == "/product/query", ("price_minor",)
 )
-STOCK_WRITER = Writer(
-    RawPayload.request["endpoint"].as_string() == "/product/stock/getInventoryByPid",
-    ("inventory_quantity",),
-)
+STOCK_WRITER = Writer(STOCK_CAPTURE, ("inventory_quantity",))
 VARIANT_WRITERS = (DETAIL_WRITER, STOCK_WRITER)
+# DEC-348: the stock capture's listing row owns stock; CJAdapter's PRICE_WRITER owns the rest.
+LISTING_STOCK_WRITER = Writer(STOCK_CAPTURE, ("stock",))
 
 Count = Annotated[StrictInt, Field(ge=0, le=2**63 - 1)]
 Money = Annotated[Decimal, Field(ge=0, allow_inf_nan=False)]
@@ -218,6 +225,7 @@ class TrackedAdapter:
                 )
             ).one()
             variants = record.variants if isinstance(record, Detail) else record.variantInventories
+            totals: list[int | None] = []
             for value in variants:
                 variant = session.scalar(
                     select(ListingVariant).filter_by(listing_id=listing.id, external_id=value.vid)
@@ -249,6 +257,7 @@ class TrackedAdapter:
                     )
                     if total is not None and total >= 2**63:
                         raise ValueError("CJ stock exceeds BIGINT range")
+                    totals.append(total)
                     values = {"inventory_quantity": total}
                 added = append_observation(
                     session,
@@ -262,6 +271,27 @@ class TrackedAdapter:
                         ).hexdigest(),
                     ),
                     writer=DETAIL_WRITER if isinstance(value, Variant) else STOCK_WRITER,
+                )
+                inserted += added
+                unchanged += not added
+            if isinstance(record, Stock):  # the listing's total: known only if every variant's is
+                known = [total for total in totals if total is not None]
+                stock = sum(known) if known and len(known) == len(totals) else None
+                if stock is not None and stock >= 2**63:
+                    raise ValueError("CJ stock exceeds BIGINT range")
+                values = {"stock": stock}
+                added = append_observation(
+                    session,
+                    ListingSnapshot(
+                        listing_id=listing.id,
+                        currency="USD",
+                        **evidence,
+                        **values,
+                        values_hash=hashlib.sha256(
+                            json.dumps(values, sort_keys=True).encode()
+                        ).hexdigest(),
+                    ),
+                    writer=LISTING_STOCK_WRITER,
                 )
                 inserted += added
                 unchanged += not added
