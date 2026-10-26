@@ -4367,7 +4367,7 @@ Superseded review defaults, not given entries: default #0 (move the repo) is don
   - **`spark: null` on every item without the parameter:** this changes the response the brief says stays unchanged.
   - **A delta beside the sparkline:** the Velocity column already shows V7, and a 30-day change would be a new number with its own rules. Left for imp-420 ("since added").
   - **The Momentum column (imp-495):** it doesn't fit without horizontal scroll at 1440px with this column, so it stays out.
-- **Why:** `apps/api/tests/test_watchlists.py` ran on a throwaway `pgvector/pgvector:0.8.7-pg18-trixie` (8 passed):
+- **Why:** `apps/api/tests/test_watchlists.py` ran on a throwaway `pgvector/pgvector:0.8.7-pg18-trixie` (8 passed; the full suite run was stopped for low memory, see the report):
   - A 100-item page returns 30 dated points per sparkline row. Missing days and a gap V7 are null, never 0 and never bridged. The newest feature version wins. CJ rows never enter a `shp_inv` line. Trailing gaps age `value` and `as_of`, and a window of gaps only is `NoSource`.
   - `days` outside 1–90 and `spark=price` are 422s. Workspace B gets a 404. Without `spark`, the page equals the spark page minus the key.
   - Statements: 100 rows = 1 row = the plain page + 2.
