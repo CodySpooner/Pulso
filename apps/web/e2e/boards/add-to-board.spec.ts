@@ -143,7 +143,9 @@ test.describe("375px", () => {
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     await page.keyboard.press("Escape");
     await page.getByRole("button", { name: "Table", exact: true }).tap();
-    await page.getByRole("region", { name: "Products" }).locator("tbody tr").first().getByRole("button", { name: /to a board$/ }).tap();
+    const row = page.getByRole("region", { name: "Products" }).locator("tbody tr").first();
+    expect((await row.locator("th > span").boundingBox())!.width).toBe(192); // w-48 for the second icon; the Screener's stays w-40
+    await row.getByRole("button", { name: /to a board$/ }).tap();
     await expect(picker(page)).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   });
