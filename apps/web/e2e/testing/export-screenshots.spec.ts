@@ -33,7 +33,7 @@ for (const theme of ["dark", "light"] as const) {
         await mockTestingApi(page);
         await mockExport(page, ["file"], TESTS);
         await page.goto("/testing");
-        await expect(page.getByRole("article", { name: "Sunset projection lamp" })).toBeVisible();
+        await expect(page.getByRole("article", { name: "LED strip lights" })).toBeVisible(); // in Testing, a phone's first column
         await page.getByRole("heading", { level: 1, name: "Testing" }).focus();
         await page.keyboard.press("Tab");
         await expect(exportButton(page)).toBeFocused();
