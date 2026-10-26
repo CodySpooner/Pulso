@@ -75,7 +75,7 @@ test("keyboard only: the builder opens with Enter, shows the API's 422 by its fi
   await page.keyboard.press("Control+A");
   await page.keyboard.type("0");
   await page.keyboard.press("Enter");
-  await expect(dialog.getByRole("alert")).toHaveText("Input should be greater than 0");
+  await expect(dialog.getByRole("alert")).toHaveText("Enter a % above 0, up to 1,000."); // imp-585: never Pydantic's text
   await expect(pct).toHaveAttribute("aria-invalid", "true");
   await page.keyboard.press("Escape");
   await expect(dialog).toBeHidden();
@@ -145,7 +145,8 @@ test("states: no rules, and an error with Retry", async ({ page }) => {
   await mockAlertsApi(page, { rules: [] });
   await page.goto("/alerts?view=rules");
   await expect(page.getByRole("heading", { name: "No rules yet" })).toBeVisible();
-  await expect(page.getByRole("link", { name: "Find a product in Discover" })).toHaveAttribute("href", "/discover");
+  await expect(page.getByRole("main")).toContainText("Choose New rule, then a product or a watchlist.");
+  await expect(page.getByRole("button", { name: "New rule" })).toBeVisible();
 
   await page.unrouteAll({ behavior: "ignoreErrors" });
   await mockAlertsApi(page, { rulesStatus: 503 });
