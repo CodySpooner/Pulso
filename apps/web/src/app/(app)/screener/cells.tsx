@@ -123,7 +123,8 @@ function Cell({ row, column, now }: { row: Row; column: Column; now: number }) {
     case "lifecycle":
       return (
         <ScoreCell label="Lifecycle" score={row.lifecycle} now={now}>
-          {(s) => <StagePill stage={s.stage!} />}
+          {/* Colour marks the minority worth a look, emerging; every other stage is neutral (design review). */}
+          {(s) => <StagePill stage={s.stage!} neutral={s.stage !== "emerging"} />}
         </ScoreCell>
       );
     case "trend":
@@ -153,29 +154,30 @@ function Cell({ row, column, now }: { row: Row; column: Column; now: number }) {
 export const tableColumns = (columns: Column[], now: number): TableColumn<Row>[] =>
   columns.map((key) => ({ name: COLUMNS[key], cell: (row) => <Cell row={row} column={key} now={now} />, className: key === "lifecycle" ? "text-right" : undefined }));
 
-/** Below md, a two-line row (vault UX spec, Responsive): the product, then its first three chosen metrics. The title
- *  link stretches over the row; each metric sits above it and opens its own card. */
+/** Below md, a compact row (vault UX spec, Responsive): the product, then its first three chosen metrics side by side,
+ *  each in its own column so touch targets never overlap. The title link stretches over the row; each metric sits above
+ *  it and opens its own card. */
 export function RowCard({ row, columns, now }: { row: Row; columns: Column[]; now: number }) {
   return (
-    <article className="relative flex items-center gap-3 rounded-lg border border-border bg-card p-3 shadow-card has-[a:focus-visible]:outline-2 has-[a:focus-visible]:outline-offset-2 has-[a:focus-visible]:outline-ring">
-      <Thumb url={row.image_url} className="size-10 shrink-0 rounded-md" />
-      <div className="flex min-w-0 flex-1 flex-col gap-1">
+    <article className="relative flex flex-col gap-2 rounded-lg border border-border bg-card p-3 shadow-card has-[a:focus-visible]:outline-2 has-[a:focus-visible]:outline-offset-2 has-[a:focus-visible]:outline-ring">
+      <div className="flex min-w-0 items-center gap-2.5">
+        <Thumb url={row.image_url} className="size-7 shrink-0 rounded-sm" />
         <h2 className="truncate font-medium text-foreground">
           <Link href={`/products/${row.id}`} className="outline-none after:absolute after:inset-0">
             {row.title}
           </Link>
         </h2>
-        <dl className="relative z-10 flex flex-wrap gap-x-4 gap-y-1 text-label pointer-coarse:gap-y-6">
-          {columns.slice(0, 3).map((key) => (
-            <div key={key} className="flex items-center gap-1.5">
-              <dt className="text-subtle-foreground">{COLUMNS[key]}</dt>
-              <dd>
-                <Cell row={row} column={key} now={now} />
-              </dd>
-            </div>
-          ))}
-        </dl>
       </div>
+      <dl className="relative z-10 grid grid-cols-3 gap-x-4 text-label">
+        {columns.slice(0, 3).map((key) => (
+          <div key={key} className="flex min-w-0 flex-col items-start gap-0.5">
+            <dt className="text-micro text-subtle-foreground">{COLUMNS[key]}</dt>
+            <dd className="max-w-full">
+              <Cell row={row} column={key} now={now} />
+            </dd>
+          </div>
+        ))}
+      </dl>
     </article>
   );
 }

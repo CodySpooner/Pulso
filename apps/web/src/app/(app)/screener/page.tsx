@@ -12,7 +12,7 @@ export const metadata: Metadata = { title: "Screener" };
 export default function ScreenerPage() {
   return (
     <div className="flex w-full flex-col gap-5">
-      <PageHeader title="Screener" description="Filter every product on any metric and save the screens you reuse. A product missing a metric never passes its condition." />
+      <PageHeader title="Screener" description="Filter every product on any metric and save the screens you reuse." />
       <Suspense>
         <Screener />
       </Suspense>

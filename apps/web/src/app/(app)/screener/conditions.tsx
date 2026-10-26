@@ -4,7 +4,7 @@ import { useRef, useState } from "react";
 import { AnimatePresence, useReducedMotion } from "motion/react";
 import * as m from "motion/react-m";
 import { DropdownMenu } from "radix-ui";
-import { Plus, X } from "lucide-react";
+import { Check, Plus, X } from "lucide-react";
 
 import { useApiReady } from "@/components/data-health/api";
 import { Button } from "@/components/ui/button";
@@ -212,8 +212,10 @@ function Stages({ filters, set }: { filters: Filters; set: SetFilters }) {
               return { ...f, lifecycle: next.length ? next : null };
             });
           }}
-          className="relative hit-area h-(--button-h-sm) rounded-md border border-border px-2 text-label text-muted-foreground transition-colors duration-(--duration-fast) hover:text-foreground aria-pressed:border-brand/50 aria-pressed:bg-brand-muted aria-pressed:font-medium aria-pressed:text-foreground"
+          // Pressed is neutral with a check, so it never reads as a stage's status colour (design review).
+          className="relative hit-area flex h-(--button-h-sm) items-center gap-1 rounded-md border border-border px-2 text-label text-muted-foreground transition-colors duration-(--duration-fast) hover:text-foreground aria-pressed:border-border-strong aria-pressed:bg-accent aria-pressed:font-medium aria-pressed:text-foreground"
         >
+          {on.includes(stage) && <Check className="size-3" aria-hidden />}
           {cap(stage)}
         </button>
       ))}
