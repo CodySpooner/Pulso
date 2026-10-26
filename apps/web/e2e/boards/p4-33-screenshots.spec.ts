@@ -35,7 +35,7 @@ for (const theme of ["dark", "light"] as const) {
         await page.goto(`/discover${view}`);
       };
       const openOnCard = async (page: Page) => {
-        await cards(page).first().getByRole("link").focus();
+        await cards(page).first().getByRole("link").first().focus(); // the title link; the Trend link follows it (imp-460)
         await page.keyboard.press("b");
         await expect(picker(page)).toBeVisible();
         await expect(picker(page).getByRole("combobox")).toBeFocused();
