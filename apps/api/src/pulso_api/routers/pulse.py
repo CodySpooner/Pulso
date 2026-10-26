@@ -510,17 +510,21 @@ def watchlists(
 def dated_economics() -> str:
     """The economics view (DEC-265, DEC-291) as of `:cutoff` for `:workspace_id` and `:ids`.
 
-    Built from migration 0014's frozen text, as 0010 plans a dated reader: every observation
-    table reads only captures before the cutoff (DEC-031), and a listing is live until its
-    delisting time. ponytail: usd_rate() still picks FX by date alone, so a backfilled rate
-    captured after the cutoff can price a non-USD line; every CJ price is USD.
+    Built from the head view revision's frozen text, 0023's (DEC-341: with duty unset, the
+    cheapest listing), as 0010 plans a dated reader: every observation table reads only
+    captures before the cutoff (DEC-031), and a listing is live until its delisting time. A new
+    view revision must be named here: a test holds this text, less those rewrites, to the live
+    view (XR-67, DEC-349). ponytail: usd_rate() still picks FX by date alone, so a backfilled
+    rate captured after the cutoff can price a non-USD line; every CJ price is USD.
     """
-    path = Path(pulso_core.__file__).parent / "migrations/versions/0014_economics_in_stock_first.py"
-    spec = importlib.util.spec_from_file_location("revision_0014", path)
+    path = (
+        Path(pulso_core.__file__).parent / "migrations/versions/0023_economics_cheapest_fallback.py"
+    )
+    spec = importlib.util.spec_from_file_location("revision_0023", path)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
-    view: str = module.in_stock_first().split(" AS\n", 1)[1]
+    view: str = module.cheapest_fallback().split(" AS\n", 1)[1]
     for table, alias, count in (("listing_snapshots", "snap", 3), ("shipping_options", "so", 2)):
         old = f"{table} {alias}"
         assert view.count(old) == count, old
