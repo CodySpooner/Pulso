@@ -47,6 +47,11 @@ describe("topReasons", () => {
     ]);
   });
 
+  test("an aging input (freshness 0.5, DEC-354) still ranks, flagged for its hover, so a Stale input chip has a cause", () => {
+    const o = explanation({ components: [input("trend", "trend", 30.49, { freshness: 0.5 }), input("margin", "workspace_product_economics", 29.3, { freshness: null })], cautions: ["stale_input"] });
+    expect(topReasons(o, "opportunity").map((r) => [r.name, r.aging])).toEqual([["trend", true], ["margin", false]]);
+  });
+
   test("render signed, with a glyph, never colour alone", () => {
     const html = render("trend", trend);
     expect(text(html)).toContain("▲ Velocity growth (Shopify inventory) +15.3 points");

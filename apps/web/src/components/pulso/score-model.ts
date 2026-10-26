@@ -64,6 +64,8 @@ export interface Reason {
   source: string;
   asOf: string | null;
   gap: boolean;
+  /** Past 1.5 cadences: it counts half in confidence and raises `stale_input` (DEC-354). */
+  aging: boolean;
 }
 
 /** The three largest |contribution| among present inputs, in points (vault Trend Score, "top 3 reasons"). */
@@ -72,7 +74,7 @@ export function topReasons(e: Explanation, kind: ScoreKind, n = 3): Reason[] {
     .filter((c): c is Input & { contribution: number; source: string } => c.contribution != null && c.source !== null)
     .sort((a, b) => Math.abs(b.contribution) - Math.abs(a.contribution))
     .slice(0, n)
-    .map((c) => ({ name: c.name, label: inputLabel(c.name), points: POINTS[kind] * c.contribution, source: c.source, asOf: c.as_of ?? null, gap: c.gap ?? false }));
+    .map((c) => ({ name: c.name, label: inputLabel(c.name), points: POINTS[kind] * c.contribution, source: c.source, asOf: c.as_of ?? null, gap: c.gap ?? false, aging: c.freshness === 0.5 }));
 }
 
 /** Each penalty as its own waterfall step: points off (negative), or its missing wording. */

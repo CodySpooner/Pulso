@@ -50,7 +50,7 @@ export function ScoreExplanation({ kind, explanation }: { kind: ScoreKind; expla
           <p className={eyebrow}>Top reasons</p>
           <ul className="flex flex-col">
             {reasons.map((r) => (
-              <Step key={r.name} label={r.label} points={r.points} widest={widest} hint={<Provenance source={r.source} asOf={r.asOf} gap={r.gap} />} />
+              <Step key={r.name} label={r.label} points={r.points} widest={widest} hint={<Provenance source={r.source} asOf={r.asOf} gap={r.gap} aging={r.aging} />} />
             ))}
           </ul>
         </div>
@@ -117,11 +117,12 @@ function Step({ label, points, missing, penalty, widest, hint }: { label: string
   );
 }
 
-function Provenance({ source, asOf, gap }: { source: string; asOf: string | null; gap: boolean }) {
+function Provenance({ source, asOf, gap, aging }: { source: string; asOf: string | null; gap: boolean; aging?: boolean }) {
   return (
     <span className="flex flex-col gap-0.5">
       <span>Source: {sourceLabel(source)}</span>
       {asOf && <span>As of {formatUtc(asOf)}</span>}
+      {aging && <span className="text-warning">Aging, so it counts half in Confidence</span>}
       {gap && <span className="text-warning">Its window overlaps a collection gap</span>}
     </span>
   );
