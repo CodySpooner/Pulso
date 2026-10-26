@@ -36,6 +36,26 @@ export const CATALOG = Array.from({ length: 20 }, (_, i) => discoverItem(i));
 const byId = new Map(CATALOG.map((p) => [p.id, p]));
 const survivor = (id: string) => (id === MERGED_FROM ? CATALOG[12].id : id);
 
+const DAY = 86_400_000;
+const END = new Date(NOW.getTime() - DAY).toISOString().slice(0, 10); // yesterday: the newest closed UTC day
+/** A row's 30-day velocity sparkline (imp-419). Product 5 has none (no source yet), 3 breaks for three days and once more,
+ *  8 stops 3 days ago (stale) and 13 starts 9 days ago; the rest rise and dip on a wave. */
+export function sparkOf(id: string): S["Spark"] | S["NoSource"] {
+  const i = CATALOG.findIndex((p) => p.id === id);
+  if (i === 5) return { value: null, reason: "No velocity in the last 30 days." };
+  const missing = (back: number) => (i === 3 && ([17, 18, 19, 6].includes(back))) || (i === 8 && back < 3) || (i === 13 && back > 8);
+  const points = Array.from({ length: 30 }, (_, n) => {
+    const back = 29 - n;
+    const day = new Date(Date.parse(END) - back * DAY).toISOString().slice(0, 10);
+    return { day, value: missing(back) ? null : Math.round(20 + i * 3 + n * (1 + (i % 3)) + 9 * Math.sin((n + i) / 3)) };
+  });
+  const last = points.findLast((p) => p.value !== null)!;
+  return {
+    value: last.value!, source: "shopify_stores", source_name: "Shopify stores", as_of: new Date(Date.parse(last.day) + DAY).toISOString(),
+    raw_payload_id: null, method: "Shopify updated_at bumps, a lower bound", stale: i === 8, family: "shp_bump", points,
+  };
+}
+
 /** Main with products 0, 3, 5 (5 has no store yet: no source yet) and the merged one; Pet niche with 7; Q4 empty. */
 export const watchStore = (): WatchStore => ({
   lists: [
@@ -112,7 +132,7 @@ export async function mockWatchlistsApi(page: Page, options: WatchMock = {}) {
       const rows = store.items
         .filter((i) => i.list === id)
         .sort((a, b) => b.added_at.localeCompare(a.added_at))
-        .map((i) => ({ product_id: i.product_id, name: i.name, added_at: i.added_at, image_url: null, product: { ...byId.get(survivor(i.product_id))!, ...watch(survivor(i.product_id)) } }));
+        .map((i) => ({ product_id: i.product_id, name: i.name, added_at: i.added_at, image_url: null, product: { ...byId.get(survivor(i.product_id))!, ...watch(survivor(i.product_id)) }, ...(url.searchParams.get("spark") === "velocity" && { spark: sparkOf(survivor(i.product_id)) }) }));
       return reply(route, { items: rows, next_cursor: null });
     }
     const ids = (body?.product_ids as string[] | undefined) ?? [];

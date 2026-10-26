@@ -4407,6 +4407,46 @@ export interface components {
             value: number;
         };
         /**
+         * Spark
+         * @description One demand family's V7 on each UTC day to yesterday, the newest day whose cutoff has
+         *     passed, oldest first (imp-419): the row's velocity family, else the best-graded family with
+         *     a value in the window; families are never mixed. Stored rows only, never filled in (DEC-040).
+         *     value and as_of are the newest point with a value, so trailing gaps age it.
+         */
+        Spark: {
+            /**
+             * As Of
+             * Format: date-time
+             */
+            as_of: string;
+            /** Family */
+            family: string;
+            /** Method */
+            method?: string | null;
+            /** Points */
+            points: components["schemas"]["SparkPoint"][];
+            /** Raw Payload Id */
+            raw_payload_id: number | null;
+            /** Source */
+            source: string;
+            /** Source Name */
+            source_name: string;
+            /** Stale */
+            stale: boolean;
+            /** Value */
+            value: number;
+        };
+        /** SparkPoint */
+        SparkPoint: {
+            /**
+             * Day
+             * Format: date
+             */
+            day: string;
+            /** Value */
+            value: number | null;
+        };
+        /**
          * Spread
          * @description Current USD retail over active, trackable sellers: one price (the lowest) per store.
          */
@@ -4837,6 +4877,8 @@ export interface components {
              * Format: uuid
              */
             product_id: string;
+            /** Spark */
+            spark?: components["schemas"]["Spark"] | components["schemas"]["NoSource"] | null;
         };
         /** WatchlistItemPage */
         WatchlistItemPage: {
@@ -23486,6 +23528,9 @@ export interface operations {
             query?: {
                 cursor?: string | null;
                 limit?: number;
+                /** @description velocity adds each row's V7 sparkline over `days` UTC days. */
+                spark?: "velocity" | null;
+                days?: number;
             };
             header?: never;
             path: {

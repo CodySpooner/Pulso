@@ -1,5 +1,5 @@
 // Pure helpers for Watchlists (WF-2b, DEC-322): one patch that keeps the ★ the same in every cached product read, the
-// 5-second undo window for removals, and the "merged" note.
+// 5-second undo window for removals, the "merged" note and the velocity sparkline's words (imp-419).
 
 import type { QueryClient } from "@tanstack/react-query";
 
@@ -8,8 +8,10 @@ import type { components } from "@/lib/api/schema";
 import type { Item } from "../discover/feed-views";
 
 export type List = components["schemas"]["Watchlist"];
-/** A list item as a response carries it: its product typed like a Discover row (openapi-fetch drops null-only keys). */
-export type Row = Omit<components["schemas"]["WatchlistItem"], "product"> & { product: Item };
+export type Spark = components["schemas"]["Spark"];
+/** A list item as a response carries it: its product typed like a Discover row, and its sparkline or why there's none
+ *  (openapi-fetch drops null-only keys). */
+export type Row = Omit<components["schemas"]["WatchlistItem"], "product" | "spark"> & { product: Item; spark?: Spark | { reason: string; value?: null } | null };
 export interface Watch {
   watched: boolean;
   watchlist_ids: string[];
@@ -92,4 +94,28 @@ export function undoWindow(commit: (removal: Removal) => void, onChange: (pendin
     undo: () => settle(false),
     flush: () => settle(true),
   };
+}
+
+const shortDay = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
+const short = (day: string) => shortDay.format(new Date(day));
+
+/** The days a sparkline breaks, e.g. ["Oct 3 → Oct 5", "Oct 20"]: runs without a value after its first value. Days
+ *  before that are before tracking began, not gaps. */
+export function sparkGaps(points: Spark["points"]): string[] {
+  const runs: [string, string][] = [];
+  let seen = false;
+  points.forEach((p, i) => {
+    if (p.value !== null) seen = true;
+    else if (seen && points[i - 1].value === null) runs.at(-1)![1] = p.day;
+    else if (seen) runs.push([p.day, p.day]);
+  });
+  return runs.map(([from, to]) => (from === to ? short(from) : `${short(from)} → ${short(to)}`));
+}
+
+/** The sparkline's text alternative: its first and last values, and where it breaks. */
+export function sparkLabel(spark: Spark): string {
+  const values = spark.points.flatMap((p) => (p.value === null ? [] : [Math.round(p.value).toLocaleString("en-US")]));
+  const range = values.length > 1 ? `${values[0]}/7d to ${values.at(-1)}/7d` : `${values[0]}/7d`;
+  const gaps = sparkGaps(spark.points);
+  return `Velocity, last ${spark.points.length} days: ${range}${gaps.length ? `, no data ${gaps.join(", ")}` : ""}`;
 }

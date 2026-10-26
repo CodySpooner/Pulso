@@ -1,10 +1,12 @@
 """Watchlists (WF-2 part a, DEC-314): the workspace's named product lists. A star (the ★ toggle
 and `W`) adds to the list named "Main", created by the first star. Rows show the product as
-Discover reads it and the first added_at; sparklines, "since added" deltas and the summary
-come later."""
+Discover reads it and the first added_at, and on request a velocity sparkline (imp-419); "since
+added" deltas and the summary come later."""
 
 import json
-from typing import Annotated
+from collections import defaultdict
+from datetime import UTC, date, datetime, timedelta
+from typing import Annotated, Any, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query
@@ -17,7 +19,7 @@ from pydantic import (
     TypeAdapter,
     ValidationError,
 )
-from sqlalchemy import ScalarSelect, delete, func, select, tuple_
+from sqlalchemy import Row, ScalarSelect, delete, func, select, tuple_
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
@@ -25,16 +27,21 @@ from pulso_api.auth import current_principal
 from pulso_api.errors import APIError
 from pulso_api.routers.products import (
     DB,
+    FAMILIES,
     MAIN,
     CurrentPrincipal,
     DiscoverItem,
+    Velocity,
     discover_items,
+    is_stale,
     with_merged,
 )
+from pulso_api.schemas.provenance import NoSource, Sourced
 from pulso_api.schemas.text import NoNulStr
-from pulso_core.models import Image, Product
+from pulso_core.models import Image, Product, ProductDailyFeature, Source
 from pulso_core.models import Watchlist as ListRow
 from pulso_core.models import WatchlistItem as ItemRow
+from pulso_ml.features.daily import cutoff
 
 router = APIRouter(prefix="/v1/watchlists", dependencies=[Depends(current_principal)])
 products_router = APIRouter(prefix="/v1/products", dependencies=[Depends(current_principal)])
@@ -71,6 +78,21 @@ class ItemsMove(ItemsIn):
     to: UUID  # the list they move to
 
 
+class SparkPoint(BaseModel):
+    day: date  # a UTC day
+    value: float | None  # V7, units/7d; null without a row or with a gap V7: the line breaks
+
+
+class Spark(Sourced):
+    """One demand family's V7 on each UTC day to yesterday, the newest day whose cutoff has
+    passed, oldest first (imp-419): the row's velocity family, else the best-graded family with
+    a value in the window; families are never mixed. Stored rows only, never filled in (DEC-040).
+    value and as_of are the newest point with a value, so trailing gaps age it."""
+
+    family: str  # product_daily_features.family, e.g. "shp_inv"
+    points: list[SparkPoint]  # one per day, `days` of them
+
+
 class WatchlistItem(BaseModel):
     product_id: UUID
     name: str
@@ -79,6 +101,8 @@ class WatchlistItem(BaseModel):
     # The product now, as Discover reads it. One merged after the add reads as its survivor,
     # so product.id differs from product_id: the UI's "merged" note (DEC-314 d, DEC-322).
     product: DiscoverItem
+    # Only with `?spark=`; no row in any family over the window is no source yet.
+    spark: Spark | NoSource | None = Field(default=None, exclude_if=lambda spark: spark is None)
 
 
 class WatchlistItemPage(BaseModel):
@@ -151,6 +175,59 @@ def survivors(session: Session, product_ids: list[UUID]) -> list[UUID]:
     return list(dict.fromkeys(resolve(session, product_ids).values()))
 
 
+def sparks(
+    session: Session, products: dict[UUID, DiscoverItem], days: int
+) -> dict[UUID, Spark | NoSource]:
+    """Each product's V7 sparkline from one read of the page's feature rows (no query per row):
+    the newest feature version per family and day, as Discover's velocity reads it."""
+    end = datetime.now(UTC).date() - timedelta(days=1)
+    span = [end - timedelta(days=back) for back in range(days - 1, -1, -1)]
+    pdf = ProductDailyFeature
+    found: defaultdict[tuple[UUID, str], dict[date, Row[Any]]] = defaultdict(dict)
+    for r in session.execute(
+        select(pdf.product_id, pdf.family, pdf.feature_date, pdf.velocity_7d, pdf.computed_at)
+        .where(
+            pdf.product_id.in_(products),
+            pdf.family.in_(FAMILIES),
+            pdf.feature_date.between(span[0], end),
+        )
+        .order_by(pdf.product_id, pdf.family, pdf.feature_date, pdf.feature_version.desc())
+        .distinct(pdf.product_id, pdf.family, pdf.feature_date)
+    ):
+        found[r.product_id, r.family][r.feature_date] = r
+    sources = {source.key: source for source in session.scalars(select(Source))}
+    now = datetime.now(UTC)
+
+    def spark(product: DiscoverItem) -> Spark | NoSource:
+        own = [product.velocity.family] if isinstance(product.velocity, Velocity) else []
+        valued = {
+            f: [d for d, r in found[product.id, f].items() if r.velocity_7d is not None]
+            for f in FAMILIES
+        }
+        family = next((f for f in [*own, *FAMILIES] if valued[f]), None)
+        if family is None:
+            return NoSource(value=None, reason=f"No velocity in the last {days} days.")
+        rows = found[product.id, family]
+        last = rows[max(valued[family])]
+        as_of = min(cutoff(last.feature_date), last.computed_at)
+        _, key, method = FAMILIES[family]
+        return Spark(
+            value=round(last.velocity_7d),
+            source=key,
+            source_name=sources[key].name,
+            as_of=as_of,
+            raw_payload_id=None,
+            method=method,
+            stale=is_stale(sources[key].config, as_of, now),
+            family=family,
+            points=[
+                SparkPoint(day=d, value=rows[d].velocity_7d if d in rows else None) for d in span
+            ],
+        )
+
+    return {product_id: spark(product) for product_id, product in products.items()}
+
+
 @router.get("", response_model=list[Watchlist])
 def list_watchlists(principal: CurrentPrincipal, session: DB) -> list[Watchlist]:
     """Every list, by position then oldest first. Not paged: the sub-nav shows them all."""
@@ -211,6 +288,11 @@ def list_watchlist_items(
     session: DB,
     cursor: str | None = None,
     limit: Annotated[int, Query(ge=1, le=100)] = 50,
+    spark: Annotated[
+        Literal["velocity"] | None,
+        Query(description="velocity adds each row's V7 sparkline over `days` UTC days."),
+    ] = None,
+    days: Annotated[int, Query(ge=1, le=90)] = 30,
 ) -> WatchlistItemPage:
     owned(session, principal.workspace_id, watchlist_id)
     query = (
@@ -231,9 +313,14 @@ def list_watchlist_items(
     last = rows[limit - 1] if len(rows) > limit else None
     into = resolve(session, [row.product_id for row in rows[:limit]])
     products = discover_items(session, principal.workspace_id, list(set(into.values())))
+    lines = sparks(session, products, days) if spark else {}
     return WatchlistItemPage(
         items=[
-            WatchlistItem(**row._mapping, product=products[into[row.product_id]])
+            WatchlistItem(
+                **row._mapping,
+                product=products[into[row.product_id]],
+                spark=lines.get(into[row.product_id]),
+            )
             for row in rows[:limit]
         ],
         next_cursor=json.dumps([last.added_at.isoformat(), str(last.product_id)]) if last else None,

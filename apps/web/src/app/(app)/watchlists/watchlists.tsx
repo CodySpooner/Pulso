@@ -10,10 +10,11 @@ import { GitMerge, ListPlus, MoreHorizontal, Plus, Star } from "lucide-react";
 import { DropdownMenu } from "radix-ui";
 
 import { useApiReady } from "@/components/data-health/api";
-import { PanelError, Pill, StaleLine } from "@/components/data-health/atoms";
+import { PanelError, Pill, StaleLine, TapTooltip } from "@/components/data-health/atoms";
 import { LoadMore } from "@/components/data-health/load-more";
 import { EmptyState } from "@/components/pulso/empty-state";
-import { Metric } from "@/components/pulso/metric";
+import { Metric, ProvenanceCard } from "@/components/pulso/metric";
+import { Sparkline } from "@/components/pulso/sparkline";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -23,7 +24,7 @@ import { duration, ease, spring } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 
 import { BestMargin, count, day, Freshness, Price, Thumb, Velocity } from "../discover/feed-views";
-import { isMerged, pickList, refreshWatchlists, undoWindow, type List, type Removal, type Row } from "./model";
+import { isMerged, pickList, refreshWatchlists, sparkGaps, sparkLabel, undoWindow, type List, type Removal, type Row } from "./model";
 
 interface Note {
   text: string;
@@ -36,8 +37,7 @@ const menu =
   "z-50 max-h-80 min-w-48 overflow-y-auto rounded-lg border border-border bg-popover p-1 text-popover-foreground shadow-popover data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-96 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 duration-(--duration-fast)";
 const menuItem = "flex h-8 cursor-pointer items-center gap-2 rounded-md px-2 text-data outline-none select-none pointer-coarse:h-(--hit-target) data-highlighted:bg-accent";
 const cell = "border-b border-border-subtle px-3 whitespace-nowrap";
-// imp-419 adds the 30-day sparkline after Velocity; nothing stands in for it until then.
-const COLUMNS = ["Product", "Price", "Velocity", "Best margin", "Stores", "Added", "Last seen"];
+const COLUMNS = ["Product", "Price", "Velocity", "30 days", "Best margin", "Stores", "Added", "Last seen"];
 // Selected: brand over the card, opaque like --table-row-hover, so the sticky product cell matches its row.
 const PICKED = "bg-[color-mix(in_oklab,var(--brand)_10%,var(--card))]";
 
@@ -88,7 +88,7 @@ export function Watchlists() {
       </section>
     );
   return (
-    <div className="grid items-start gap-4 md:grid-cols-[12rem_minmax(0,1fr)]">
+    <div className="grid items-start gap-4 md:grid-cols-[9rem_minmax(0,1fr)]">
       {lists.isRefetchError && <StaleLine boxed className="md:col-span-2" what="Couldn't refresh your lists" error={lists.error} asOf={lists.dataUpdatedAt} retry={() => void lists.refetch()} />}
       <nav aria-label="Watchlists" className="max-md:hidden">
         <ul className="flex flex-col gap-0.5">
@@ -144,7 +144,7 @@ function ListPanel({ list, lists, onSettings }: { list: List; lists: List[]; onS
   const items = $api.useInfiniteQuery(
     "get",
     "/v1/watchlists/{watchlist_id}/items",
-    { params: { path: { watchlist_id: list.id }, query: { limit: 100 } } },
+    { params: { path: { watchlist_id: list.id }, query: { limit: 100, spark: "velocity" } } },
     { pageParamName: "cursor", initialPageParam: null, getNextPageParam: (page) => page.next_cursor },
   );
   const [gone, setGone] = useState<ReadonlySet<string>>(new Set()); // removed or moved, until the list refetches
@@ -303,7 +303,7 @@ function ListPanel({ list, lists, onSettings }: { list: List; lists: List[]; onS
               <thead className="sticky top-0 z-20 bg-card">
                 <tr className="row-h text-label text-muted-foreground">
                   {COLUMNS.map((name, i) => (
-                    <th key={name} scope="col" className={cn(cell, "border-border bg-card font-medium", i === 0 ? "sticky left-0 z-10 text-left" : "text-right")}>
+                    <th key={name} scope="col" className={cn(cell, "border-border bg-card font-medium", i === 0 ? "sticky left-0 z-10 text-left" : name === "30 days" ? "text-left" : "text-right")}>
                       {i === 0 ? (
                         <span className="flex items-center gap-3">
                           <input type="checkbox" aria-label="Select all" checked={all} ref={(el) => void (el && (el.indeterminate = pick.length > 0 && !all))} onChange={() => setSelected(new Set(all ? [] : rows.map((r) => r.product_id)))} className="size-4 accent-brand" />
@@ -314,7 +314,7 @@ function ListPanel({ list, lists, onSettings }: { list: List; lists: List[]; onS
                       )}
                     </th>
                   ))}
-                  <th scope="col" className={cn(cell, "border-border bg-card")}>
+                  <th scope="col" className={cn(cell, "border-border bg-card pl-0")}>
                     <span className="sr-only">Actions</span>
                   </th>
                 </tr>
@@ -326,7 +326,7 @@ function ListPanel({ list, lists, onSettings }: { list: List; lists: List[]; onS
                     const on = selected.has(row.product_id);
                     return (
                       <m.tr key={row.product_id} data-row={row.product_id} exit={{ opacity: 0, transition: { duration: duration.fast } }} className={cn("group row-h hover:bg-(--table-row-hover)", on && PICKED)}>
-                        <th scope="row" className={cn(cell, "sticky left-0 z-10 max-w-60 bg-card text-left font-normal group-hover:bg-(--table-row-hover)", on && PICKED)}>
+                        <th scope="row" className={cn(cell, "sticky left-0 z-10 max-w-50 bg-card text-left font-normal group-hover:bg-(--table-row-hover)", on && PICKED)}>
                           <span className="flex items-center gap-3">
                             <input type="checkbox" aria-label={`Select ${p.title}`} checked={on} onChange={() => setSelected((s) => new Set(on ? [...s].filter((id) => id !== row.product_id) : [...s, row.product_id]))} className="size-4 shrink-0 accent-brand" />
                             <Thumb url={p.image_url} className="size-6 shrink-0 rounded-sm" />
@@ -342,6 +342,9 @@ function ListPanel({ list, lists, onSettings }: { list: List; lists: List[]; onS
                         <td className={cn(cell, "num")}>
                           <Velocity item={p} now={now} />
                         </td>
+                        <td className={cn(cell, "w-0")}>
+                          <Trend row={row} now={now} />
+                        </td>
                         <td className={cn(cell, "num")}>
                           <BestMargin item={p} now={now} />
                         </td>
@@ -354,7 +357,7 @@ function ListPanel({ list, lists, onSettings }: { list: List; lists: List[]; onS
                         <td className={cn(cell, "text-right text-label")}>
                           <Freshness item={p} now={now} paused={NO_PAUSE} />
                         </td>
-                        <td className={cn(cell, "w-0 pr-2 text-right")}>
+                        <td className={cn(cell, "w-0 pr-2 pl-0 text-right")}>
                           <RowMenu row={row} {...actions} />
                         </td>
                       </m.tr>
@@ -397,7 +400,10 @@ function ListPanel({ list, lists, onSettings }: { list: List; lists: List[]; onS
                           Added <Added row={row} /> · <Freshness item={p} now={now} paused={NO_PAUSE} />
                         </p>
                       </div>
-                      <RowMenu row={row} {...actions} className="relative z-10 -mt-1 -mr-1" />
+                      <div className="relative z-10 -mt-1 -mr-1 flex shrink-0 flex-col items-end gap-1.5">
+                        <RowMenu row={row} {...actions} />
+                        <Trend row={row} now={now} />
+                      </div>
                     </article>
                   </m.li>
                 );
@@ -419,6 +425,32 @@ function ListPanel({ list, lists, onSettings }: { list: List; lists: List[]; onS
       )}
       <Toast note={note} />
     </section>
+  );
+}
+
+/** The row's 30-day velocity sparkline (imp-419): one demand family's V7, broken where a day has no value. Its source,
+ *  as of and the days without data open on hover, keyboard focus and tap; no series at all reads "No source yet". */
+function Trend({ row, now }: { row: Row; now: number }) {
+  const s = row.spark;
+  const label = "Velocity, last 30 days";
+  if (!s || "reason" in s) return <Metric stat={s ?? { reason: "No velocity in the last 30 days." }} label={label} format={String} now={now} className="text-label" />;
+  const gaps = sparkGaps(s.points);
+  return (
+    <TapTooltip
+      hint={
+        <>
+          <ProvenanceCard stat={s} label={label} now={now} />
+          {gaps.length > 0 && <p className="pb-0.5 text-muted-foreground">No data {gaps.join(", ")}</p>}
+        </>
+      }
+      side="bottom"
+      contentClassName="pointer-events-auto max-w-72 px-3 py-2"
+      type="button"
+      aria-label={sparkLabel(s)}
+      className="relative hit-area inline-flex cursor-help rounded-sm align-middle"
+    >
+      <Sparkline values={s.points.map((p) => p.value)} />
+    </TapTooltip>
   );
 }
 
@@ -638,6 +670,7 @@ function TableSkeleton() {
           <Skeleton className="h-3.5 w-56 max-w-1/2" />
           <Skeleton className="ml-auto h-3.5 w-14 max-md:hidden" />
           <Skeleton className="h-3.5 w-14 max-md:hidden" />
+          <Skeleton className="h-0.5 w-16 rounded-full" />
           <Skeleton className="h-3.5 w-14" />
         </div>
       ))}
@@ -647,7 +680,7 @@ function TableSkeleton() {
 
 function PageSkeleton() {
   return (
-    <div className="grid items-start gap-4 md:grid-cols-[12rem_minmax(0,1fr)]">
+    <div className="grid items-start gap-4 md:grid-cols-[9rem_minmax(0,1fr)]">
       <div className="flex flex-col gap-1.5 max-md:hidden" aria-hidden>
         {[0, 1, 2].map((i) => (
           <Skeleton key={i} className="h-8 rounded-md" />
