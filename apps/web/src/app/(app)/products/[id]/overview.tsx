@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { Box, ChevronRight, Megaphone, Store } from "lucide-react";
 
 import { useApiReady } from "@/components/data-health/api";
@@ -10,10 +11,12 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { $api, isProblem } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
+import { authBypass } from "@/lib/auth";
 import { formatDelta, formatUtc } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 import { marginFix } from "./overview-model";
+import { ScoreCards } from "./score-cards";
 import { card, newest, StatCard } from "./stat-card";
 import { TABS, type Tab } from "./tabs";
 
@@ -32,10 +35,25 @@ const chip = "rounded-sm border px-1 font-sans text-micro font-normal";
 // Card spans keep both grids full: phone 2 + 2 + 2 (price on its own row), desktop 3 + 2 (velocity wide).
 const SKELETON_SPANS = ["col-span-2 md:col-span-1", "", "", "", "md:col-span-2 3xl:col-span-1"];
 
-// UX-4 (vault Features/Product Page - Overview): the Phase 2 key stats and where the product appears. Trend Score,
-// Saturation and Lifecycle arrive with Phase 4 scores behind ff_scores; until then the grid holds the five cards
-// below, not empty score cards. States: skeleton, panel error, stale line, per-card stale and no source yet.
+/** ff_scores (AGENTS.md §3): the score cards. ponytail: flipped in code, like TAB_FLAGS. Under the E2E auth bypass
+ *  `?ff_scores=off` turns it off for the flag-off test; a production build compiles that branch away (DEC-351). */
+const FF_SCORES = true;
+
+// UX-4 (vault Features/Product Page - Overview): the score cards behind ff_scores (imp-460), then the Phase 2 key
+// stats and where the product appears.
 export function Overview({ id, goTo }: { id: string; goTo: (tab: Tab) => void }) {
+  const off = useSearchParams().get("ff_scores") === "off";
+  if (!FF_SCORES || (authBypass && off)) return <Stats id={id} goTo={goTo} />;
+  return (
+    <div className="flex flex-col gap-4">
+      <ScoreCards id={id} />
+      <Stats id={id} goTo={goTo} />
+    </div>
+  );
+}
+
+// The key stats. States: skeleton, panel error, stale line, per-card stale and no source yet.
+function Stats({ id, goTo }: { id: string; goTo: (tab: Tab) => void }) {
   const overview = $api.useQuery(
     "get",
     "/v1/products/{product_id}/overview",

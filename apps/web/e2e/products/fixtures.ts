@@ -3,6 +3,7 @@ import type { Page } from "@playwright/test";
 import type { components } from "../../src/lib/api/schema";
 import { healthySources, mockAdminApi, NOW, problem } from "../data-health/fixtures";
 import { decided } from "./keywords-fixtures";
+import { scores } from "./scores-fixtures";
 import { trendsSeries } from "./trends-fixtures";
 
 // Fixture GET /v1/products/{id} responses for the product page e2e tests and screenshots, never a database restore.
@@ -130,6 +131,10 @@ export interface ProductMock {
   overview?: S["ProductOverview"];
   overviewStatus?: number;
   holdOverview?: boolean;
+  /** GET /v1/products/{id}/scores (imp-460): its body, a problem status, or never answered. */
+  scores?: S["ProductScores"];
+  scoresStatus?: number;
+  holdScores?: boolean;
   notes?: S["Note"][];
   tags?: string[];
   /** Answer the rail's GETs with a 503, or never answer them. */
@@ -165,6 +170,11 @@ export async function mockProductApi(page: Page, options: ProductMock = {}) {
       if (options.holdOverview) return;
       if (options.overviewStatus) return route.fulfill(fail(options.overviewStatus, `e2e-overview-${options.overviewStatus}`));
       return route.fulfill({ json: options.overview ?? overview });
+    }
+    if (part === "scores") {
+      if (options.holdScores) return;
+      if (options.scoresStatus) return route.fulfill(fail(options.scoresStatus, `e2e-scores-${options.scoresStatus}`));
+      return route.fulfill({ json: options.scores ?? scores });
     }
     if (part === "notes" || part === "tags") {
       const write = request.method() !== "GET";
@@ -241,11 +251,20 @@ export function discoverItem(i: number): S["DiscoverItem"] {
     price_max_minor: noStores ? none("No USD retail price observed yet.") : shop(low + 1500 + (i % 3) * 1000, 906000 + i),
     velocity,
     best_margin_minor: margin(i, noStores, low),
+    trend: trend(i),
     as_of: noStores ? at(9) : at(staleShop ? 74 : 9),
     stale: staleShop && !noStores,
     watched: false,
     watchlist_ids: [],
   };
+}
+
+/** Trend of product `i` (imp-460): no row without a demand family, a NULL row now and then, else yesterday's value. */
+function trend(i: number): S["DiscoverItem"]["trend"] {
+  if (i % 5 === 4) return none("No source yet: nothing has scored this product.");
+  const row = { day: "2026-10-21", as_of: "2026-10-22T00:00:00Z" };
+  if (i % 7 === 5) return { ...row, value: null, reason: "no velocity growth" };
+  return { ...row, value: 10 + ((i * 37) % 85) + (i % 10) / 10, reason: null };
 }
 
 /** Best margin of product `i` (DEC-265): no market price without stores, then duty not set, freight not quoted, or a

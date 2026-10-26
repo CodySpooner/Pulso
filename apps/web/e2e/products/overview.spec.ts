@@ -2,6 +2,7 @@ import { expect, test, type Page } from "@playwright/test";
 
 import { firstRun, mockSettingsApi } from "../settings/fixtures";
 import { mockProductApi, overviewNoDuty, overviewNoPrice, overviewNoSettings, overviewStale, overviewUnmatched, PRODUCT_ID } from "./fixtures";
+import { scoresNone } from "./scores-fixtures";
 
 // UX-4: the Overview tab and the context rail, against fixture responses (the E2E auth bypass, never a database restore).
 const URL = `/products/${PRODUCT_ID}`;
@@ -9,11 +10,11 @@ const grid = (page: Page) => page.locator('section[aria-labelledby="key-stats"] 
 const appears = (page: Page) => page.getByRole("region", { name: "Where it appears" });
 const openCard = (page: Page) => page.locator('[role="tooltip"]');
 
-test("the five Phase 2 stats show, each traced; the score cards stay hidden", async ({ page }) => {
+test("the five Phase 2 stats show, each traced; the score cards sit in their own section (imp-460)", async ({ page }) => {
   await mockProductApi(page);
   await page.goto(URL);
   await expect(grid(page).locator("dt")).toHaveText(["Price range", "Best supplier cost", "Landed margin", "First seen", "Velocity 7d"]);
-  await expect(page.getByRole("tabpanel")).not.toContainText(/Trend Score|Saturation|Lifecycle/);
+  await expect(grid(page)).not.toContainText(/Trend Score|Saturation|Lifecycle/);
   const text = grid(page);
   await expect(text).toContainText("$24.00–$39.99");
   await expect(text).toContainText("Median $29.99");
@@ -128,7 +129,7 @@ test("where it appears counts per source and opens the Suppliers and Sellers tab
 });
 
 test("a product with no source says so, never 0", async ({ page }) => {
-  await mockProductApi(page, { overview: overviewUnmatched });
+  await mockProductApi(page, { overview: overviewUnmatched, scores: scoresNone });
   await page.goto(URL);
   await expect(grid(page).getByRole("button", { name: /: No source yet$/ })).toHaveCount(4);
   await expect(grid(page).getByRole("button", { name: "Velocity 7d: Insufficient signal" })).toBeVisible();

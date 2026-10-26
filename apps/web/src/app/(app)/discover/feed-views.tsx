@@ -7,6 +7,7 @@ import { Package } from "lucide-react";
 
 import { DeltaBadge } from "@/components/pulso/delta-badge";
 import { Metric, type Stat } from "@/components/pulso/metric";
+import { unscored } from "@/components/pulso/score-model";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { components } from "@/lib/api/schema";
 import { formatAgo, formatDelta, formatUtc } from "@/lib/format";
@@ -91,6 +92,26 @@ export function Momentum({ item, now }: { item: Item; now: number }) {
   return <Metric stat={{ ...v, value: v.growth }} label="Momentum, 7-day log growth" format={() => `${delta.glyph ?? ""} ${delta.text}`.trim()} now={now} className={tone} />;
 }
 
+/** The latest Trend row (imp-460, DEC-351): its value marked Beta, or why there is none; the scored day on hover. It
+ *  opens the product's Trend card, where its reasons are. */
+export function Trend({ item }: { item: Item }) {
+  const t = item.trend;
+  const missing = unscored(t); // the full wording goes on hover; the cell keeps its first words
+  const text = missing?.split(" · ")[0] ?? t.value?.toFixed(1);
+  const why = "day" in t ? `${missing ?? "Trend Score"} · as of ${day.format(new Date(t.day))}, from data before ${formatUtc(t.as_of)}` : t.reason;
+  return (
+    <Link
+      href={`${href(item)}#score-trend`}
+      title={why}
+      aria-label={`Trend Score: ${text}${missing ? "" : ", Beta"}. ${why}`}
+      className={cn("rounded-sm tabular-nums underline-offset-4 hover:underline", missing ? "text-muted-foreground" : "text-foreground")}
+    >
+      {text}
+      {!missing && <span className="ml-0.5 text-micro text-subtle-foreground">β</span>}
+    </Link>
+  );
+}
+
 /** The oldest family feeding the item. The dot is amber when stale, red when a feeding source is down; the words say which,
  *  in neutral text, since a blocked source would otherwise paint every card red. */
 export function Freshness({ item, now, paused }: { item: Item; now: number; paused: Paused }) {
@@ -162,6 +183,10 @@ export function ProductCard({ item, now, paused }: { item: Item; now: number; pa
           <dd>
             <Momentum item={item} now={now} />
           </dd>
+          <dt>Trend</dt>
+          <dd>
+            <Trend item={item} />
+          </dd>
           <dt className="max-md:hidden">Stores</dt>
           <dd className="max-md:hidden">
             <Metric stat={item.store_count} label="Stores selling it" format={count} now={now} />
@@ -213,6 +238,8 @@ export interface Column<T> {
   name: string;
   cell: (item: T) => React.ReactNode;
   className?: string;
+  /** A score's /methodology anchor, which its header links to (MT-1). */
+  definition?: string;
 }
 
 /** What every product table row shows in its pinned first column. */
@@ -223,6 +250,7 @@ export const feedColumns = (now: number, paused: Paused): Column<Item>[] => [
   { name: "Price", cell: (item) => <Price item={item} now={now} /> },
   { name: "Velocity", cell: (item) => <Velocity item={item} now={now} /> },
   { name: "Momentum", cell: (item) => <Momentum item={item} now={now} /> },
+  { name: "Trend", cell: (item) => <Trend item={item} />, definition: "/methodology#trend-score" },
   { name: "Stores", cell: (item) => <Metric stat={item.store_count} label="Stores selling it" format={count} now={now} /> },
   { name: "Suppliers", cell: (item) => <Metric stat={item.supplier_count} label="Matched suppliers" format={count} now={now} /> },
   { name: "Best margin", cell: (item) => <BestMargin item={item} now={now} /> },
@@ -237,7 +265,7 @@ export const feedColumns = (now: number, paused: Paused): Column<Item>[] => [
   },
   { name: "Freshness", className: "text-right text-label", cell: (item) => <Freshness item={item} now={now} paused={paused} /> },
 ];
-const FEED_HEADERS = ["Price", "Velocity", "Momentum", "Stores", "Suppliers", "Best margin", "First seen", "Freshness"];
+const FEED_HEADERS = ["Price", "Velocity", "Momentum", "Trend", "Stores", "Suppliers", "Best margin", "First seen", "Freshness"];
 
 /** Rows [start, end) of a fixed-height table that the scroller shows, plus overscan, and the row height. */
 function useRowWindow(scroller: React.RefObject<HTMLDivElement | null>, rows: number) {
@@ -299,9 +327,15 @@ export function ProductTable<T extends Row>({
       <table aria-rowcount={items.length + 1} className="w-full min-w-240 border-separate border-spacing-0 zone-data">
         <thead className="sticky top-0 z-20 bg-card">
           <tr className="row-h text-label text-muted-foreground" aria-rowindex={1}>
-            {["Product", ...columns.map((c) => c.name)].map((name, i) => (
+            {[{ name: "Product", definition: undefined }, ...columns].map(({ name, definition }, i) => (
               <th key={name} scope="col" className={cn(cell, "border-border bg-card font-medium", i === 0 ? "sticky left-0 z-10 text-left" : "text-right")}>
-                {name}
+                {definition ? (
+                  <Link href={definition} title={`How ${name} works`} className="rounded-sm underline decoration-border-strong decoration-dotted underline-offset-4 hover:text-foreground">
+                    {name}
+                  </Link>
+                ) : (
+                  name
+                )}
               </th>
             ))}
           </tr>
