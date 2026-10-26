@@ -13,6 +13,7 @@ import { cn } from "@/lib/utils";
 
 import { useRuleWrites } from "./api";
 import { autoName, createBody, defaultPct, DRAFT, draftOf, fieldErrors, hasPct, isScore, patchBody, targetOf, VERBS, type Draft, type Rule, type RuleType } from "./model";
+import { ProductPicker } from "./product-picker";
 
 const field =
   "h-(--button-h-md) min-w-0 rounded-md border border-border bg-secondary px-2.5 text-data text-foreground transition-colors duration-(--duration-fast) hover:border-border-strong aria-invalid:border-negative max-sm:w-full";
@@ -20,7 +21,8 @@ const fixed = "rounded-md border border-border-subtle bg-background/40 px-2.5 py
 const chip = "inline-flex h-6 items-center gap-1 rounded-sm border px-2 text-label";
 
 interface Props {
-  /** A new rule on this product (the Product Page's Create alert). */
+  /** A new rule on this product (the Product Page's Create alert). With neither this nor a rule, the Rules tab's New
+   *  rule: a product or watchlist step comes first (imp-527). */
   product?: { id: string; name: string };
   /** Or an edit of this rule: its type and target are fixed (the API's PATCH takes neither). */
   rule?: Rule;
@@ -84,22 +86,29 @@ export function RuleBuilder({ product, rule, open, onOpenChange, onSaved }: Prop
   );
 }
 
-function Form({ product, rule, close, onSaved }: Omit<Props, "open" | "onOpenChange"> & { close: () => void }) {
-  const [draft, setDraft] = useState<Draft>(() => (rule ? draftOf(rule) : { ...DRAFT, target: "product", name: "" }));
+const START: Draft = { ...DRAFT, target: "product", name: "" };
+
+function Form({ product: given, rule, close, onSaved }: Omit<Props, "open" | "onOpenChange"> & { close: () => void }) {
+  const [product, setProduct] = useState(given);
+  const [draft, setDraft] = useState<Draft>(() => (rule ? draftOf(rule) : START));
+  const [back, setBack] = useState(false); // the picker again, after Change
   const set = (change: Partial<Draft>) => setDraft((d) => ({ ...d, ...change }));
   const writes = useRuleWrites();
   const save = rule ? writes.patch : writes.create;
   const errors = save.isError ? fieldErrors(save.error) : {};
-  const ready = useApiReady() && !!product;
+  const apiReady = useApiReady();
   const suppliers = $api.useInfiniteQuery(
     "get",
     "/v1/products/{product_id}/suppliers",
     { params: { path: { product_id: product?.id ?? "" }, query: { country: "US" } } },
     // The Suppliers tab's own query, so its cache answers when it's been open.
-    { enabled: ready, pageParamName: "cursor", initialPageParam: null, getNextPageParam: (page) => page.next_cursor },
+    { enabled: apiReady && !!product, pageParamName: "cursor", initialPageParam: null, getNextPageParam: (page) => page.next_cursor },
   );
   const offers = suppliers.data?.pages[0].rows ?? [];
-  const lists = $api.useQuery("get", "/v1/watchlists", {}, { enabled: ready }).data ?? []; // the star's own query
+  const lists = $api.useQuery("get", "/v1/watchlists", {}, { enabled: apiReady && !rule }).data ?? []; // the star's own query
+  // A watchlist picked in the first step stands in for the product: it names the rule and the dialog.
+  const listed = lists.find((l) => draft.target === `watchlist:${l.id}`);
+  const subject = product ?? (listed && { id: listed.id, name: listed.name });
   const score = isScore(draft.type);
   const choose = (type: RuleType) =>
     // A score rule watches the product or a watchlist, a supplier rule its suppliers; each type starts at its own %.
@@ -121,14 +130,57 @@ function Form({ product, rule, close, onSaved }: Omit<Props, "open" | "onOpenCha
     e.preventDefault();
     if (save.isPending) return;
     if (rule) writes.patch.mutate({ params: { path: { rule_id: rule.id } }, body: patchBody(draft, rule) }, done);
-    else if (product) writes.create.mutate({ body: createBody(draft, product) }, done);
+    else if (subject) writes.create.mutate({ body: createBody(draft, subject) }, done);
   };
   const target = rule && targetOf(rule);
+
+  if (!rule && !subject)
+    return (
+      <div className="flex min-h-0 flex-1 flex-col gap-4">
+        <div className="flex flex-col gap-1">
+          <DialogTitle>New alert rule</DialogTitle>
+          <DialogDescription>Choose the product it watches, or a watchlist for any product on it.</DialogDescription>
+        </div>
+        <ProductPicker
+          lists={lists}
+          autoFocus={back}
+          onProduct={setProduct}
+          // A watchlist takes the score rules (DEC-353), so its sentence starts at the first of them.
+          onList={(id) => set({ target: `watchlist:${id}`, type: "velocity_spike", pct: defaultPct("velocity_spike") })}
+        />
+        <div className="flex justify-end max-sm:pb-[env(safe-area-inset-bottom)]">
+          <DialogClose asChild>
+            <Button type="button" variant="ghost">
+              Cancel
+            </Button>
+          </DialogClose>
+        </div>
+      </div>
+    );
 
   return (
     <form onSubmit={submit} noValidate className="flex min-h-0 flex-1 flex-col gap-4">
       <div className="flex flex-col gap-1">
-        <DialogTitle className="truncate">{rule ? "Edit alert rule" : `New alert rule on ${product?.name}`}</DialogTitle>
+        <div className="flex min-w-0 items-center gap-2">
+          <DialogTitle className="truncate">{rule ? "Edit alert rule" : `New alert rule on ${subject?.name}`}</DialogTitle>
+          {!rule && !given && (
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              aria-label="Change product or watchlist"
+              className="-my-1 ml-auto"
+              onClick={() => {
+                setProduct(undefined);
+                setDraft(START);
+                setBack(true);
+                save.reset();
+              }}
+            >
+              Change
+            </Button>
+          )}
+        </div>
         <DialogDescription>Fires once each time it crosses, then waits until the change falls back.</DialogDescription>
       </div>
       <fieldset className="flex flex-wrap items-center gap-2 text-body text-muted-foreground max-sm:flex-col max-sm:items-stretch">
@@ -139,8 +191,9 @@ function Form({ product, rule, close, onSaved }: Omit<Props, "open" | "onOpenCha
             {target.label} <span className="font-normal text-muted-foreground">· {target.detail}</span>
           </span>
         ) : (
-          <select aria-label="Watch" className={field} value={draft.target} onChange={(e) => set({ target: e.target.value })}>
-            <option value="product">{score ? "this product" : "any supplier"}</option>
+          // Focused when it follows the picker; on opening, the dialog focuses it itself.
+          <select aria-label="Watch" autoFocus={!given} className={field} value={draft.target} onChange={(e) => set({ target: e.target.value })}>
+            {product && <option value="product">{score ? "this product" : "any supplier"}</option>}
             {score
               ? lists.map((l) => (
                   <option key={l.id} value={`watchlist:${l.id}`}>
@@ -159,7 +212,8 @@ function Form({ product, rule, close, onSaved }: Omit<Props, "open" | "onOpenCha
           <span className={fixed}>{VERBS[draft.type]}</span>
         ) : (
           <select aria-label="Event" className={field} value={draft.type} onChange={(e) => choose(e.target.value as RuleType)}>
-            {Object.entries(VERBS).map(([type, verb]) => (
+            {/* A watchlist takes only the score verbs. */}
+            {Object.entries(VERBS).filter(([type]) => product || isScore(type)).map(([type, verb]) => (
               <option key={type} value={type}>
                 {verb}
               </option>
@@ -225,7 +279,7 @@ function Form({ product, rule, close, onSaved }: Omit<Props, "open" | "onOpenCha
         <input
           value={draft.name}
           onChange={(e) => set({ name: e.target.value })}
-          placeholder={product ? autoName(draft, product.name) : undefined}
+          placeholder={subject ? autoName(draft, subject.name) : undefined}
           maxLength={120}
           aria-invalid={!!errors.name || undefined}
           aria-describedby={errors.name ? "rule-name-error" : undefined}
