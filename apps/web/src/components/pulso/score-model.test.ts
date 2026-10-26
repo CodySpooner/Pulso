@@ -47,6 +47,11 @@ describe("topReasons", () => {
     ]);
   });
 
+  test("an aging input (freshness 0.5, DEC-354) still ranks, flagged for its hover, so a Stale input chip has a cause", () => {
+    const o = explanation({ components: [input("trend", "trend", 30.49, { freshness: 0.5 }), input("margin", "workspace_product_economics", 29.3, { freshness: null })], cautions: ["stale_input"] });
+    expect(topReasons(o, "opportunity").map((r) => [r.name, r.aging])).toEqual([["trend", true], ["margin", false]]);
+  });
+
   test("render signed, with a glyph, never colour alone", () => {
     const html = render("trend", trend);
     expect(text(html)).toContain("▲ Velocity growth (Shopify inventory) +15.3 points");
@@ -86,10 +91,28 @@ describe("what reads instead of a number", () => {
   test("ads_growth, with no source, is no source yet; a missing input with one is insufficient signal", () => {
     const e = explanation({ components: [input("ads_growth", null, null), input("cj_stock_acc", "cj", null)], missing: ["ads_growth", "cj_stock_acc"] });
     expect(missingInputs(e)).toEqual([
-      { word: "No source yet", labels: ["Ad-count growth"] },
-      { word: "Insufficient signal", labels: ["Acceleration (CJ stock)"] },
+      { word: "No source yet", labels: ["Ad-count growth"], stale: false },
+      { word: "Insufficient signal", labels: ["Acceleration (CJ stock)"], stale: false },
     ]);
     expect(text(render("trend", e))).toContain("No source yet: Ad-count growth");
+  });
+
+  test("a stale input reads stale, last seen its last capture, with the amber dot (imp-589)", () => {
+    // DEC-354: past 3 cadences an input is missing and stale, and keeps its as_of; one input of each kind.
+    const slope = input("gt_slope", "google_trends", null, { missing: true, stale: true, as_of: "2026-09-28T09:00:00Z" });
+    const e = explanation({
+      components: [slope, input("ads_growth", null, null), input("cj_stock_acc", "cj", null)],
+      missing: ["gt_slope", "ads_growth", "cj_stock_acc"],
+      cautions: ["stale_input"],
+    });
+    expect(missingInputs(e)).toEqual([
+      { word: "Stale, last seen Sep 28", labels: ["Search-interest slope"], stale: true },
+      { word: "No source yet", labels: ["Ad-count growth"], stale: false },
+      { word: "Insufficient signal", labels: ["Acceleration (CJ stock)"], stale: false },
+    ]);
+    const html = render("trend", e);
+    expect(html).toMatch(/bg-warning[^>]*><\/span>Stale, last seen Sep 28: Search-interest slope/);
+    expect(html.match(/bg-warning/g)).toHaveLength(1); // only the stale line has a dot
   });
 
   test("a NULL row is insufficient signal with its reason; no row is no source yet", () => {
@@ -113,6 +136,11 @@ describe("what reads instead of a number", () => {
   test("duty not set is an amber caution, from cautions", () => {
     expect(chips(explanation({ cautions: ["duty_not_set"] }))).toEqual(["Duty not set"]);
   });
+
+  test("stale_input raises a Stale input chip, in the cautions' order", () => {
+    expect(chips(explanation({ cautions: ["stale_input"] }))).toEqual(["Stale input"]);
+    expect(chips(explanation({ cautions: ["stale_input", "duty_not_set"] }))).toEqual(["Stale input", "Duty not set"]);
+  });
 });
 
 describe("labels and certainty", () => {
@@ -120,6 +148,14 @@ describe("labels and certainty", () => {
     expect(certainty(explanation({ confidence: 0.7 }))).toEqual({ label: "Confidence", value: 0.7, grade: "Medium" });
     expect(certainty(explanation())).toEqual({ label: "Coverage", value: 0.85, grade: "High" });
     expect(text(render("trend", trend))).toContain("Coverage 85% High");
+  });
+
+  test("the bar's label links to how confidence is computed (imp-414)", () => {
+    const html = render("trend", explanation({ confidence: 0.6 }));
+    const link = html.match(/<a [^>]*>Confidence<\/a>/)?.[0];
+    expect(link).toContain('href="/methodology#confidence"');
+    expect(link).toContain('aria-label="Confidence: how it&#x27;s computed"');
+    expect(text(html)).toContain("Confidence 60% Medium");
   });
 
   test("sources and inputs read as words; an unknown one keeps its key", () => {

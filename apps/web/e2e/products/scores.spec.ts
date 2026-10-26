@@ -1,7 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 
 import { feedItems, mockFeedApi, mockProductApi, PRODUCT_ID, product } from "./fixtures";
-import { scoresNone, scoresStale, scoresUnscored } from "./scores-fixtures";
+import { scoresNone, scoresStale, scoresStaleInput, scoresUnscored } from "./scores-fixtures";
 
 // imp-460 (SC-5 / WF-1): the Overview's score cards and Discover's Trend cell, against fixture responses (the E2E auth
 // bypass, never a database restore).
@@ -85,6 +85,34 @@ test("NULL rows read insufficient signal with their reason; no rows read no sour
     await expect(card(page, kind)).toContainText("No source yet");
     await expect(card(page, kind)).not.toContainText(/\d+\.\d|As of/); // never 0, and nothing to date
   }
+});
+
+test("imp-589: a stale input reads stale, last seen, with the amber dot and chip; the bar opens #confidence by keyboard", async ({ page }) => {
+  await mockProductApi(page, { scores: scoresStaleInput });
+  await page.goto(URL);
+  const trend = card(page, "trend");
+  await expect(trend).toContainText("71.4/ 100");
+  // The stale slope never ranks as a reason; it reads stale with its last capture, never 0 or insufficient signal.
+  await expect(trend.getByRole("listitem")).toHaveText(["▲Velocity growth (Shopify inventory)+21.7 points", "▲Acceleration (Shopify inventory)+6.7 points", "▼Saturation penalty−7.0 points"]);
+  const stale = trend.locator("p", { hasText: "Stale, last seen Sep 28" });
+  await expect(stale).toHaveText("Stale, last seen Sep 28: Search-interest slope");
+  await expect(stale.locator(".bg-warning")).toBeVisible();
+  await expect(trend).toContainText("No source yet: Ad-count growth");
+  await expect(trend).not.toContainText("Insufficient signal");
+  const chip = trend.getByRole("link", { name: "Stale input: how freshness counts" });
+  await expect(chip).toHaveClass(/bg-warning-muted/);
+  await expect(chip).toHaveAttribute("href", "/methodology#confidence");
+  await expect(trend).toContainText("Confidence60%Medium");
+  await expect(card(page, "opportunity").getByRole("link", { name: "Confidence: how it's computed" })).toHaveAttribute("href", "/methodology#confidence");
+
+  // Tab from the chip reaches the bar's link, with a visible focus ring; Enter opens the definition.
+  await chip.focus();
+  await page.keyboard.press("Tab");
+  const bar = trend.getByRole("link", { name: "Confidence: how it's computed" });
+  await expect(bar).toBeFocused();
+  await expect(bar).toHaveCSS("outline-style", "solid");
+  await page.keyboard.press("Enter");
+  await expect(page).toHaveURL("/methodology#confidence");
 });
 
 test("loading, a failed load with Retry while the key stats render, and a stale row", async ({ page }) => {
