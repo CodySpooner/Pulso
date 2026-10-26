@@ -3,7 +3,6 @@ one UTC day. Every number reads only what was captured before the day's cutoff, 
 (DEC-031), so a past day replays as the data stood; a section nothing feeds says no_source and
 its reason, never zeros (DEC-040). Read only. The page is WF-6b."""
 
-import importlib.util
 import math
 import re
 from collections import defaultdict
@@ -11,9 +10,11 @@ from collections.abc import Iterable, Sequence
 from datetime import UTC, date, datetime, timedelta
 from functools import cache
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Annotated, Any, Literal, Protocol
 from uuid import UUID
 
+from alembic.script import ScriptDirectory
 from fastapi import APIRouter, Depends, Query
 from pydantic import AwareDatetime, BaseModel
 from sqlalchemy import Row, Select, bindparam, exists, func, or_, select, text, true
@@ -510,21 +511,21 @@ def watchlists(
 def dated_economics() -> str:
     """The economics view (DEC-265, DEC-291) as of `:cutoff` for `:workspace_id` and `:ids`.
 
-    Built from the head view revision's frozen text, 0023's (DEC-341: with duty unset, the
-    cheapest listing), as 0010 plans a dated reader: every observation table reads only
-    captures before the cutoff (DEC-031), and a listing is live until its delisting time. A new
-    view revision must be named here: a test holds this text, less those rewrites, to the live
-    view (XR-67, DEC-349). ponytail: usd_rate() still picks FX by date alone, so a backfilled
-    rate captured after the cutoff can price a non-USD line; every CJ price is USD.
+    Built from the live view's frozen text, as 0010 plans a dated reader: every observation table
+    reads only captures before the cutoff (DEC-031), and a listing is live until its delisting
+    time. That text is what the newest view revision (0014, 0023, ...: each edits its
+    previous_view()) executes in upgrade(), so a new one is picked up on its own; a test holds
+    this text, less those rewrites, to the live view (XR-67, DEC-349). ponytail: usd_rate()
+    still picks FX by date alone, so a backfilled rate captured after the cutoff can price a
+    non-USD line; every CJ price is USD.
     """
-    path = (
-        Path(pulso_core.__file__).parent / "migrations/versions/0023_economics_cheapest_fallback.py"
-    )
-    spec = importlib.util.spec_from_file_location("revision_0023", path)
-    assert spec is not None and spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    view: str = module.cheapest_fallback().split(" AS\n", 1)[1]
+    migrations = ScriptDirectory(str(Path(pulso_core.__file__).parent / "migrations"))
+    head = next(s.module for s in migrations.walk_revisions() if hasattr(s.module, "previous_view"))
+    executed: list[str] = []
+    head.__dict__["op"] = SimpleNamespace(execute=executed.append)  # Alembic's private copy
+    head.upgrade()
+    [created] = executed  # the view, and nothing else
+    view = created.split(" AS\n", 1)[1]
     for table, alias, count in (("listing_snapshots", "snap", 3), ("shipping_options", "so", 2)):
         old = f"{table} {alias}"
         assert view.count(old) == count, old
