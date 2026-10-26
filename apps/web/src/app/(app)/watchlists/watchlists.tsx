@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -23,7 +23,7 @@ import { formatUtc } from "@/lib/format";
 import { duration, ease, spring } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 
-import { BestMargin, count, day, Freshness, Price, Thumb, Velocity } from "../discover/feed-views";
+import { BestMargin, count, day, Freshness, money, Price, Thumb, Velocity } from "../discover/feed-views";
 import { isMerged, pickList, refreshWatchlists, sparkGaps, sparkLabel, undoWindow, type List, type Removal, type Row } from "./model";
 
 interface Note {
@@ -121,7 +121,7 @@ export function Watchlists() {
           aria-label="Watchlist"
           value={current.id}
           onChange={(e) => select(e.target.value)}
-          className="h-(--button-h-md) min-w-0 flex-1 rounded-md border border-border bg-secondary px-2.5 text-data text-foreground"
+          className="h-(--input-h) min-w-0 flex-1 rounded-md border border-border bg-secondary px-2.5 text-data text-foreground"
         >
           {lists.data.map((l) => (
             <option key={l.id} value={l.id}>
@@ -129,7 +129,7 @@ export function Watchlists() {
             </option>
           ))}
         </select>
-        <Button aria-label="New list" size="icon" className="size-(--button-h-md)" onClick={() => setDialog("create")}>
+        <Button aria-label="New list" size="icon" className="size-(--input-h)" onClick={() => setDialog("create")}>
           <Plus aria-hidden />
         </Button>
       </div>
@@ -373,37 +373,38 @@ function ListPanel({ list, lists, onSettings }: { list: List; lists: List[]; onS
                 const p = row.product;
                 return (
                   <m.li key={row.product_id} data-row={row.product_id} layout exit={{ opacity: 0, transition: { duration: duration.fast } }} transition={spring.smooth}>
-                    <article className={cn(card, "relative flex items-start gap-3 p-3 zone-data has-[a:focus-visible]:outline-2 has-[a:focus-visible]:outline-offset-2 has-[a:focus-visible]:outline-ring")}>
-                      <Thumb url={p.image_url} className="size-12 shrink-0 rounded-md" />
-                      <div className="flex min-w-0 flex-1 flex-col gap-1">
-                        <h3 className="line-clamp-2 font-medium text-foreground">
-                          <Link href={`/products/${p.id}`} className="outline-none after:absolute after:inset-0">
-                            {p.title}
-                          </Link>
-                        </h3>
-                        <Merged row={row} />
-                        <dl className="relative z-10 flex flex-wrap gap-x-4 gap-y-1 text-label [&_dt]:text-subtle-foreground">
-                          <div className="flex gap-1.5">
-                            <dt>Price</dt>
-                            <dd>
-                              <Price item={p} now={now} />
-                            </dd>
-                          </div>
-                          <div className="flex gap-1.5">
-                            <dt>Margin</dt>
-                            <dd>
-                              <BestMargin item={p} now={now} />
-                            </dd>
-                          </div>
-                        </dl>
-                        <p className="text-micro text-subtle-foreground">
-                          Added <Added row={row} /> · <Freshness item={p} now={now} paused={NO_PAUSE} />
-                        </p>
+                    <article className={cn(card, "relative flex flex-col gap-2.5 p-3.5 zone-data has-[a:focus-visible]:outline-2 has-[a:focus-visible]:outline-offset-2 has-[a:focus-visible]:outline-ring")}>
+                      <div className="flex items-start gap-3">
+                        <Thumb url={p.image_url} className="size-12 shrink-0 rounded-md" />
+                        <div className="flex min-w-0 flex-1 flex-col gap-1">
+                          <h3 className="line-clamp-2 font-medium text-foreground">
+                            <Link href={`/products/${p.id}`} className="outline-none after:absolute after:inset-0">
+                              {p.title}
+                            </Link>
+                          </h3>
+                          <p className="text-micro text-subtle-foreground">
+                            Added <Added row={row} /> · <Freshness item={p} now={now} paused={NO_PAUSE} />
+                          </p>
+                          <Merged row={row} />
+                        </div>
+                        <RowMenu row={row} {...actions} inline className="relative z-10 -mt-1 -mr-1" />
                       </div>
-                      <div className="relative z-10 -mt-1 -mr-1 flex shrink-0 flex-col items-end gap-1.5">
-                        <RowMenu row={row} {...actions} />
-                        <Trend row={row} now={now} />
-                      </div>
+                      {/* Each number in its own column, so touch targets never overlap (WF-8); a tap between them still opens
+                          the product. The phone shows the lowest price, as imp-420's Price cell does. */}
+                      <dl className="pointer-events-none relative z-10 grid grid-cols-3 gap-x-3 text-label [&_button]:pointer-events-auto">
+                        {(
+                          [
+                            ["Price", <Metric key="price" stat={p.price_min_minor} label="Lowest retail price" format={money} now={now} />],
+                            ["Margin", <BestMargin key="margin" item={p} now={now} />],
+                            ["30 days", <Trend key="spark" row={row} now={now} />],
+                          ] as const
+                        ).map(([name, value]) => (
+                          <div key={name} className="flex min-w-0 flex-col items-start gap-0.5 last:items-end">
+                            <dt className="text-micro text-subtle-foreground">{name}</dt>
+                            <dd className="max-w-full">{value}</dd>
+                          </div>
+                        ))}
+                      </dl>
                     </article>
                   </m.li>
                 );
@@ -475,7 +476,8 @@ function Merged({ row }: { row: Row }) {
   );
 }
 
-function MoveMenu({ label, lists, onMove, sub }: { label: string; lists: List[]; onMove: (to: List) => void; sub?: boolean }) {
+function MoveMenu({ label, lists, onMove, sub, inline }: { label: string; lists: List[]; onMove: (to: List) => void; sub?: boolean; inline?: boolean }) {
+  const labelId = useId();
   const options = lists.length ? (
     lists.map((l) => (
       <DropdownMenu.Item key={l.id} className={menuItem} onSelect={() => onMove(l)}>
@@ -485,6 +487,14 @@ function MoveMenu({ label, lists, onMove, sub }: { label: string; lists: List[];
   ) : (
     <p className="px-2 py-1.5 text-label text-muted-foreground">No other list. Make one with New list.</p>
   );
+  // A phone's row menu sits at the right edge with no room for a submenu beside it, so its lists are listed inline (WF-8).
+  if (inline)
+    return (
+      <DropdownMenu.Group aria-labelledby={labelId}>
+        <DropdownMenu.Label id={labelId} className="px-2 pt-1 pb-1.5 text-micro font-medium text-subtle-foreground uppercase">{label}</DropdownMenu.Label>
+        {options}
+      </DropdownMenu.Group>
+    );
   if (sub)
     return (
       <DropdownMenu.Sub>
@@ -510,7 +520,7 @@ function MoveMenu({ label, lists, onMove, sub }: { label: string; lists: List[];
   );
 }
 
-function RowMenu({ row, lists, move, remove, className }: { row: Row; lists: List[]; move: (ids: string[], to: List) => void; remove: (ids: string[], title: string) => void; className?: string }) {
+function RowMenu({ row, lists, move, remove, inline, className }: { row: Row; lists: List[]; move: (ids: string[], to: List) => void; remove: (ids: string[], title: string) => void; inline?: boolean; className?: string }) {
   const acted = useRef(false); // a move or remove sends focus to the next row, not back to this gone button
   return (
     <DropdownMenu.Root onOpenChange={(open) => open && (acted.current = false)}>
@@ -524,7 +534,7 @@ function RowMenu({ row, lists, move, remove, className }: { row: Row; lists: Lis
           <DropdownMenu.Item asChild className={menuItem}>
             <Link href={`/products/${row.product.id}`}>Open product</Link>
           </DropdownMenu.Item>
-          <MoveMenu sub label="Move to" lists={lists} onMove={(to) => ((acted.current = true), move([row.product_id], to))} />
+          <MoveMenu sub={!inline} inline={inline} label="Move to" lists={lists} onMove={(to) => ((acted.current = true), move([row.product_id], to))} />
           <DropdownMenu.Separator className="my-1 h-px bg-border" />
           <DropdownMenu.Item className={cn(menuItem, "text-negative")} onSelect={() => ((acted.current = true), remove([row.product_id], row.product.title))}>
             Remove
@@ -637,7 +647,7 @@ function DeleteDialog({ list, onClose }: { list?: List; onClose: () => void }) {
 /** A result, with Undo while it can; polite, so it never takes focus (vault Design/UI States, Success / undo). */
 function Toast({ note }: { note: Note | null }) {
   return (
-    <div role="status" aria-live="polite" className="pointer-events-none fixed inset-x-4 bottom-20 z-40 flex justify-center lg:bottom-6">
+    <div role="status" aria-live="polite" className="pointer-events-none fixed inset-x-4 bottom-[calc(5rem+env(safe-area-inset-bottom))] z-40 flex justify-center lg:bottom-6">
       <AnimatePresence>
         {note && (
           <m.div

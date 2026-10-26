@@ -17,7 +17,7 @@ import { money, parseMinor, toInput } from "../products/[id]/profit/model";
 import { breakEven, describeChange, KILL_REASONS, listKey, reasonOf, stageLabel, type Test } from "./model";
 
 const field = "h-(--input-h) w-full min-w-0 rounded-md border border-input bg-background px-2.5 text-body text-foreground aria-invalid:border-negative";
-const link = "link-inline rounded-sm underline decoration-border-strong underline-offset-2 hover:decoration-current";
+const link = "link-inline relative hit-area rounded-sm underline decoration-border-strong underline-offset-2 hover:decoration-current";
 const day = new Intl.DateTimeFormat("en-US", { dateStyle: "medium", timeZone: "UTC" });
 
 /** The test drawer (click or Enter on a card): metrics, dates and notes, and the economics it started with (R-21). */

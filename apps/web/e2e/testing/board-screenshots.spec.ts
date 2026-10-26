@@ -9,6 +9,10 @@ import { mockTestingApi } from "./fixtures";
 // output: docs/screenshots/p4-08/.
 const OUT = "../../docs/screenshots/p4-08";
 const card = (page: Page, title: string) => page.getByRole("article", { name: title });
+// Since p4-38 (WF-8) a phone shows one column, Testing first; the Idea card needs its column picked.
+const idea = async (page: Page) => {
+  if (page.viewportSize()!.width < 768) await page.getByRole("group", { name: "Column" }).getByRole("button", { name: /^Idea/ }).click();
+};
 
 for (const theme of ["dark", "light"] as const) {
   for (const [width, height] of [
@@ -32,7 +36,7 @@ for (const theme of ["dark", "light"] as const) {
       test("board", async ({ page }) => {
         await mockTestingApi(page);
         await page.goto("/testing");
-        await expect(card(page, "Sunset projection lamp")).toBeVisible();
+        await expect(card(page, "LED strip lights")).toBeVisible();
         await shot(page, "board");
       });
 
@@ -62,6 +66,7 @@ for (const theme of ["dark", "light"] as const) {
       test("move menu", async ({ page }) => {
         await mockTestingApi(page);
         await page.goto("/testing");
+        await idea(page);
         await card(page, "Sunset projection lamp").getByRole("button", { name: /^Move/ }).click();
         await expect(page.getByRole("menuitem", { name: "Researching" })).toBeVisible();
         await shot(page, "move-menu", false);
@@ -92,6 +97,7 @@ for (const theme of ["dark", "light"] as const) {
       test("stale", async ({ page }) => {
         const api = await mockTestingApi(page);
         await page.goto("/testing");
+        await idea(page);
         await expect(card(page, "Sunset projection lamp")).toBeVisible();
         api.failLists();
         await card(page, "Sunset projection lamp").getByRole("button", { name: /^Move/ }).click();

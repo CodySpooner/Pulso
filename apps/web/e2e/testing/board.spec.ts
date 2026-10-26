@@ -178,15 +178,7 @@ test("a failed refresh keeps the board and says how old it is", async ({ page })
   await expect(card(page, "Researching", "Sunset projection lamp")).toBeVisible();
 });
 
-test("375px: moves through the menu, no horizontal scroll", async ({ page }) => {
-  await page.setViewportSize({ width: 375, height: 812 });
-  await mockTestingApi(page);
-  await page.goto("/testing");
-  await card(page, "Idea", "Sunset projection lamp").getByRole("button", { name: /^Move/ }).click();
-  await page.getByRole("menuitem", { name: "Testing" }).click();
-  await expect(card(page, "Testing", "Sunset projection lamp")).toBeVisible();
-  expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0);
-});
+// The phone board (375 px): e2e/testing/phone.spec.ts.
 
 test("Start a test on the Product Page adds an Idea test and links to it; a second says it's already there", async ({ page }) => {
   await mockProductApi(page);

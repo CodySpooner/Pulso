@@ -1,7 +1,7 @@
 import { MutationObserver, QueryClient } from "@tanstack/react-query";
 import { describe, expect, test, vi } from "vitest";
 
-import { breakEven, describeChange, moved, moveOptions, spendBar, staleMetrics, testDay, type Page, type Test } from "./model";
+import { breakEven, describeChange, firstColumn, moved, moveOptions, spendBar, staleMetrics, testDay, type Page, type Test } from "./model";
 
 const NOW = Date.parse("2026-10-25T12:00:00Z");
 const test_ = (id: number, over: Partial<Test> = {}): Test => ({
@@ -153,5 +153,16 @@ describe("describeChange", () => {
     expect(describeChange({ input: "freight_quote_id", old: 12, new: 15 })).toEqual({ label: "Freight quote", old: "#12", new: "#15", delta: null });
     expect(describeChange({ input: "freight_minor", old: 400, new: null })).toEqual({ label: "Freight", old: "$4.00", new: null, delta: null });
     expect(describeChange({ input: "price_minor", old: null, new: 3999 })).toMatchObject({ old: null, new: "$39.99", delta: null });
+  });
+});
+
+describe("firstColumn", () => {
+  const board = [test_(1, { stage: "idea" }), test_(2, { stage: "winner" }), test_(3, { stage: "testing" })];
+
+  test("a phone opens on the linked test's column, else Testing, else the first column with cards", () => {
+    expect(firstColumn(board, 2)).toBe("winner");
+    expect(firstColumn(board, null)).toBe("testing");
+    expect(firstColumn(board, 99)).toBe("testing"); // a link to a test not on the board
+    expect(firstColumn([test_(4, { stage: "killed" }), test_(5, { stage: "researching" })], null)).toBe("researching");
   });
 });

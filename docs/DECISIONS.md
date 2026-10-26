@@ -4661,3 +4661,19 @@ Superseded review defaults, not given entries: default #0 (move the repo) is don
   - **(c) Freshness in the table** says "blocked" or "paused" where the card says "source blocked" or "source paused", with the full phrase on hover. The banner above the table names the source.
 - **Alternatives:** hiding First seen below 1536px (saves 78px of the 115px overflow, so not enough alone, and it hides a column); Price as the design note's `money-range` (`$19.31–44.31`), which also changes the card and drops the currency from the second value's accessible name; 6px padding (12px between right-aligned numbers is too tight to scan); letting the product column take whatever width is left (the Screener's product column would shrink when its own columns overflow).
 - **Why:** at 1440px the ten columns needed 1255px in a 1140px box, so Freshness scrolled inside the table (imp-575). They now take at most 1140px with fixture rows, including with a source blocked, and fit at 1536px and 1920px too (`e2e/imp-491/fade-fit.spec.ts`).
+
+### DEC-363 · Phone layouts for Watchlists and the Testing Board, and the PWA's safe areas (p4-38, WF-8 part a)
+**2026-10-26 · proposed (p4-38)** · Phase 4 WF-8; DEC-027, DEC-315, DEC-322, DEC-352, DEC-355; vault Features/Testing Board, Features/Watchlists, Features/PWA & Mobile, Design/Accessibility; `docs/reports/p4-38.md`; no migration, endpoint, flag or dependency
+- **Decision:**
+  - **(a) Testing Board below md: one column at a time.** A "Column" control (five `aria-pressed` buttons with the label and the count, 44 px tall, sized to their labels) picks it and sticks under the top bar. The first column is the deep-linked test's (`?test=`), else Testing, where the daily update happens, else the first column with cards. A card moved with "Move to…" takes the view with it, so focus follows the card as it does on desktop; a failed move switches back. Moving needs no drag.
+  - **(b) The test drawer stays the right sheet**, which is already full width and full height on a phone. Left and right sheets now pad the top inset (right sheets the bottom one too) and drop their close button below the notch.
+  - **(c) The top bar adds the top inset to its 56 px**, as the tab bar does with the bottom one. Its `h-14` held the inset inside, so a notched phone in standalone mode squeezed its row to 9 px. The offline banner sticks under it.
+  - **(d) Watchlists phone card:** a top row (thumbnail, name, added and last seen, Merged, the row menu), then one row of numbers (Price as the lowest price, Margin, the 30-day sparkline), each label over its value. The row lets taps through to the product except on its buttons, as imp-420's card does. A phone row menu lists the other lists inline under "Move to", since the submenu opened off-screen at 375 px. A phone has no bulk selection: the vault's responsive spec puts the actions in each card's menu.
+  - **(e) Manifest shortcuts** to Daily Pulse, Watchlists and Testing, each with the 192 px icon. Still no service worker (DEC-027).
+- **Alternatives:**
+  - **A horizontally snapped strip of full-width columns:** it hides the other columns' counts, and focus after a move would need the strip's scroll state.
+  - **Staying on the source column after a move:** focus would land on a hidden card.
+  - **A bottom sheet for the drawer:** the right sheet is already full screen on a phone.
+  - **The price range on the phone card:** its two prices sit too close for two 44 px hit areas.
+  - **Keeping the submenu with collision padding:** a Radix submenu can only flip sideways, and neither side has room at 375 px.
+- **Why:** `e2e/testing/phone.spec.ts` and `e2e/watchlists/phone.spec.ts` at 375 px cover the 44 px hit-area probe of e2e/touch-targets.spec.ts on both pages, their menus, the drawer and the toast; touch and keyboard moves with no drag; and the notch and home-indicator insets through CDP.

@@ -33,6 +33,13 @@ export const STAGES: { value: Stage; label: string }[] = [
 ];
 export const stageLabel = (stage: Stage) => STAGES.find((s) => s.value === stage)!.label;
 
+/** The column a phone shows first (below md the board shows one, DEC-363): the linked test's (?test=), else Testing,
+ *  where the daily update happens, else the first column with cards. */
+export function firstColumn(tests: Test[], open: number | null): Stage {
+  const order: Stage[] = ["testing", ...STAGES.map((s) => s.value)];
+  return tests.find((t) => t.id === open)?.stage ?? order.find((s) => tests.some((t) => t.stage === s)) ?? "testing";
+}
+
 export const KILL_REASONS: Record<KillReason, string> = {
   no_sales_over_stop_loss: "No sales over stop-loss",
   cpa_above_break_even: "CPA above break-even",

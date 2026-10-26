@@ -23,7 +23,7 @@ import { cn } from "@/lib/utils";
 
 import { ExportCsv, useCsvDownload } from "../discover/export-csv";
 import { money } from "../products/[id]/profit/model";
-import { KILL_REASONS, LIST, listKey, moveOptions, reasonOf, SIGNALS, spendBar, STAGES, stageLabel, staleMetrics, testDay, TRACK, type KillReason, type Move, type Stage, type Test } from "./model";
+import { firstColumn, KILL_REASONS, LIST, listKey, moveOptions, reasonOf, SIGNALS, spendBar, STAGES, stageLabel, staleMetrics, testDay, TRACK, type KillReason, type Move, type Stage, type Test } from "./model";
 import { TestDrawer, Thumb } from "./test-drawer";
 
 interface Note {
@@ -39,7 +39,8 @@ async function send({ id, stage, kill_reason }: Move) {
 }
 
 // WF-5b (DEC-315): five columns from GET /v1/tests. A card moves by its "Move to…" menu (keyboard and phone) or by
-// pointer drag; Killed asks for a reason first. Moves are optimistic and roll back on error (model.ts).
+// pointer drag; Killed asks for a reason first. Moves are optimistic and roll back on error (model.ts). Below md a
+// picker shows one column at a time, and a moved card takes the view with it (WF-8, DEC-363).
 export function TestingBoard() {
   const client = useQueryClient();
   const list = $api.useQuery("get", "/v1/tests", LIST, { enabled: useApiReady() });
@@ -49,6 +50,7 @@ export function TestingBoard() {
   const [dragging, setDragging] = useState<Test | null>(null);
   const [dropped, setDropped] = useState<number | null>(null);
   const [note, setNote] = useState<Note | null>(null);
+  const [column, setColumn] = useState<Stage | null>(null); // the one a phone shows
   const focusAfter = useRef<number | null>(null);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
   // The board has no filters, so the export is every test, past the newest 100 it shows (DEC-345).
@@ -69,6 +71,7 @@ export function TestingBoard() {
 
   const move = (test: Test, stage: Stage, kill_reason?: KillReason, undoable = true) => {
     focusAfter.current = test.id;
+    setColumn(stage);
     const after: Test = { ...test, stage, kill_reason: stage === "killed" ? (kill_reason ?? null) : null };
     mutation.mutateAsync({ id: test.id, stage, kill_reason }).then(
       () =>
@@ -77,7 +80,10 @@ export function TestingBoard() {
           text: `Moved ${test.product_title} to ${stageLabel(stage)}.`,
           undo: undoable ? () => move(after, test.stage, test.kill_reason ?? undefined, false) : undefined,
         }),
-      (error) => setNote({ tone: "error", text: `Couldn't move ${test.product_title} to ${stageLabel(stage)}: ${reasonOf(error)} It's back in ${stageLabel(test.stage)}.` }),
+      (error) => {
+        setColumn(test.stage);
+        setNote({ tone: "error", text: `Couldn't move ${test.product_title} to ${stageLabel(stage)}: ${reasonOf(error)} It's back in ${stageLabel(test.stage)}.` });
+      },
     );
   };
   const request = (test: Test, stage: Stage) => (stage === "killed" ? setKilling(test) : move(test, stage));
@@ -92,6 +98,8 @@ export function TestingBoard() {
     );
   const { items: tests, kill_reasons, next_cursor } = list.data;
   const now = list.dataUpdatedAt;
+  if (column == null && tests.length) setColumn(firstColumn(tests, open)); // once, when the tests first arrive
+  const shown = column ?? "testing";
 
   return (
     <div className="flex flex-col gap-4">
@@ -129,6 +137,7 @@ export function TestingBoard() {
             request(dragging, over.id as Stage);
           }}
         >
+          <ColumnPicker value={shown} counts={STAGES.map(({ value }) => tests.filter((t) => t.stage === value).length)} onChange={setColumn} />
           <LayoutGroup>
             <div
               className="grid items-start gap-3 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5"
@@ -143,7 +152,7 @@ export function TestingBoard() {
               {STAGES.map(({ value, label }) => {
                 const cards = tests.filter((t) => t.stage === value);
                 return (
-                  <Column key={value} stage={value} label={label} count={cards.length} spend={value === "testing" ? cards.reduce((sum, t) => sum + t.ad_spend_minor, 0) : null} reasons={value === "killed" ? kill_reasons : null}>
+                  <Column key={value} stage={value} label={label} hidden={value !== shown} count={cards.length} spend={value === "testing" ? cards.reduce((sum, t) => sum + t.ad_spend_minor, 0) : null} reasons={value === "killed" ? kill_reasons : null}>
                     {cards.map((test) => (
                       <Card
                         key={test.id}
@@ -185,7 +194,35 @@ export function TestingBoard() {
   );
 }
 
-function Column({ stage, label, count, spend, reasons, children }: { stage: Stage; label: string; count: number; spend: number | null; reasons: Partial<Record<KillReason, number>> | null; children: React.ReactNode }) {
+/** Below md the board shows one column; this picks it (vault Features/Testing Board, Responsive). It sticks under the
+ *  top bar, so a long column never needs a scroll back up to switch. */
+function ColumnPicker({ value, counts, onChange }: { value: Stage; counts: number[]; onChange: (stage: Stage) => void }) {
+  return (
+    <div className="sticky top-[calc(3.5rem+env(safe-area-inset-top))] z-20 -mx-4 -my-2 bg-background px-4 py-2 md:hidden">
+      <div role="group" aria-label="Column" className="flex rounded-md border border-border bg-secondary p-0.5">
+        {STAGES.map(({ value: v, label }, i) => (
+          <button
+            key={v}
+            type="button"
+            aria-pressed={value === v}
+            aria-label={`${label}, ${counts[i]} ${counts[i] === 1 ? "test" : "tests"}`}
+            onClick={() => onChange(v)}
+            className={cn(
+              "relative flex h-(--hit-target) min-w-0 flex-auto flex-col items-center justify-center rounded-sm px-1 text-micro font-medium transition-colors duration-(--duration-fast)",
+              value === v ? "text-foreground" : "text-muted-foreground hover:text-foreground",
+            )}
+          >
+            {value === v && <m.span layoutId="testing-column" transition={spring.snappy} className="absolute inset-0 rounded-sm segment-thumb" />}
+            <span className="relative max-w-full truncate">{label}</span>
+            <span className="relative font-mono tabular-nums">{counts[i]}</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function Column({ stage, label, hidden, count, spend, reasons, children }: { stage: Stage; label: string; hidden: boolean; count: number; spend: number | null; reasons: Partial<Record<KillReason, number>> | null; children: React.ReactNode }) {
   const { setNodeRef, isOver } = useDroppable({ id: stage });
   const id = `column-${stage}`;
   const why = Object.entries(reasons ?? {}).sort((a, b) => b[1] - a[1]) as [KillReason, number][];
@@ -193,7 +230,7 @@ function Column({ stage, label, count, spend, reasons, children }: { stage: Stag
     <section
       ref={setNodeRef}
       aria-labelledby={id}
-      className={cn("flex min-w-0 flex-col rounded-xl border border-border-subtle bg-muted/60 transition-colors duration-(--duration-fast)", isOver && "border-brand/60 bg-brand-muted")}
+      className={cn("flex min-w-0 flex-col rounded-xl border border-border-subtle bg-muted/60 transition-colors duration-(--duration-fast)", isOver && "border-brand/60 bg-brand-muted", hidden && "max-md:hidden")}
     >
       <header className="flex flex-col gap-1.5 px-3 pt-3 pb-2">
         <h2 id={id} className="flex items-baseline justify-between gap-2 text-label font-semibold tracking-wide text-muted-foreground uppercase">
@@ -242,7 +279,7 @@ function CardBody({ test, now, onOpen, menu, className }: { test: Test; now: num
           type="button"
           onClick={onOpen}
           // The whole card opens the drawer; its ring is drawn around the card.
-          className="min-w-0 flex-1 text-left text-data font-medium text-foreground outline-none after:absolute after:inset-0 after:rounded-lg focus-visible:after:outline-2 focus-visible:after:outline-offset-2 focus-visible:after:outline-ring"
+          className="flex min-w-0 flex-1 items-start text-left text-data font-medium text-foreground outline-none pointer-coarse:min-h-(--hit-target) after:absolute after:inset-0 after:rounded-lg focus-visible:after:outline-2 focus-visible:after:outline-offset-2 focus-visible:after:outline-ring"
         >
           <span className="line-clamp-2 break-words">{test.product_title}</span>
         </button>
@@ -391,7 +428,7 @@ function KillDialog({ test, onClose, onKill }: { test: Test | null; onClose: () 
 /** A move's result, with Undo; polite, so it never takes focus (vault Design/UI States, Success / undo). */
 function Toast({ note }: { note: Note | null }) {
   return (
-    <div role="status" aria-live="polite" className="pointer-events-none fixed inset-x-4 bottom-20 z-40 flex justify-center lg:bottom-6">
+    <div role="status" aria-live="polite" className="pointer-events-none fixed inset-x-4 bottom-[calc(5rem+env(safe-area-inset-bottom))] z-40 flex justify-center lg:bottom-6">
       <AnimatePresence>
         {note && (
           <m.div
@@ -418,8 +455,9 @@ function Toast({ note }: { note: Note | null }) {
 export function BoardSkeleton() {
   return (
     <div role="status" aria-label="Loading your tests" className="grid items-start gap-3 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
-      {STAGES.map(({ value }) => (
-        <div key={value} className="flex flex-col gap-2 rounded-xl border border-border-subtle bg-muted/60 p-2">
+      <Skeleton className="h-12 rounded-md md:hidden" />
+      {STAGES.map(({ value }, i) => (
+        <div key={value} className={cn("flex flex-col gap-2 rounded-xl border border-border-subtle bg-muted/60 p-2", i > 0 && "max-md:hidden")}>
           <Skeleton className="m-1 h-4 w-24" />
           {[0, 1, 2].map((i) => (
             <div key={i} className="flex flex-col gap-2.5 rounded-lg border border-border bg-card p-2.5">

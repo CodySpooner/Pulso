@@ -26,7 +26,7 @@ export function OfflineBanner() {
   const fetched = online ? [] : queryClient.getQueryCache().findAll({ type: "active" }).map((q) => q.state.dataUpdatedAt).filter(Boolean);
   const asOf = fetched.length > 0 ? new Date(Math.min(...fetched)).toISOString() : null;
   return (
-    <p role="status" className="border-b border-warning/30 bg-background bg-[linear-gradient(var(--warning-muted),var(--warning-muted))] px-4 py-2.5 text-data text-foreground empty:hidden max-lg:sticky max-lg:top-14 max-lg:z-20 md:px-6">
+    <p role="status" className="border-b border-warning/30 bg-background bg-[linear-gradient(var(--warning-muted),var(--warning-muted))] px-4 py-2.5 text-data text-foreground empty:hidden max-lg:sticky max-lg:top-[calc(3.5rem+env(safe-area-inset-top))] max-lg:z-20 md:px-6">
       {!online && (
         <>
           <WifiOff className="mr-1.5 inline size-3.5 align-[-2px] text-warning" aria-hidden />
