@@ -83,7 +83,8 @@ export function ProductPicker({
       <p role="status" aria-live="polite" className="sr-only">
         {status.kind === "hint" ? "" : status.text}
       </p>
-      <Command.List aria-busy={!!status.busy} className="max-h-72 min-h-0 flex-1 scroll-py-1 overflow-y-auto overscroll-contain max-sm:max-h-none">
+      {/* A fixed height, so the centred dialog doesn't move as results come and go; a phone's sheet gives it the rest. */}
+      <Command.List aria-busy={!!status.busy} className="min-h-0 flex-1 scroll-py-1 overflow-y-auto overscroll-contain sm:h-72 sm:flex-none">
         {products.length > 0 && (
           <Command.Group heading="Products" className={group}>
             {products.map((p) => (
