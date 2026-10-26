@@ -13,6 +13,7 @@ import { cn } from "@/lib/utils";
 
 import { Thumb } from "../../admin/matching/compare";
 import { autosave, type Item, type SaveState } from "../model";
+import { Freshness, Lifecycle, Margin, Merged, Price, ScoreValue, StatList } from "./stats";
 
 export interface CardProps {
   item: Item;
@@ -35,7 +36,7 @@ function useCard(item: Item) {
   return { setNodeRef, isDragging, style: { transform: translate(transform), transition }, handle: { attributes, listeners, setActivatorNodeRef } };
 }
 
-/** A grid card: image, product link, note, added date. Select and reorder sit on the image, shown on hover, focus,
+/** A grid card: image, product link, stats with their freshness, note, added date. Select and reorder sit on the image, shown on hover, focus,
  *  selection and touch; every move is also in the … menu, so a drag is never required (vault Features/Boards). */
 export function Card(props: CardProps) {
   const { item, now, selected, onSelect } = props;
@@ -60,6 +61,8 @@ export function Card(props: CardProps) {
         </div>
         <div className="flex min-w-0 flex-1 flex-col gap-2 p-3">
           <ProductLink item={item} className="line-clamp-2 text-body" />
+          <Merged item={item} />
+          <StatList item={item} now={now} />
           <NoteBox item={item} note={note} />
           <footer className="mt-auto flex min-h-7 items-center justify-between gap-2 text-micro text-subtle-foreground">
             <NoteStatus note={note} fallback={<>Added <Ago iso={item.added_at} now={now} source="When it was added to this board" /></>} />
@@ -71,7 +74,8 @@ export function Card(props: CardProps) {
   );
 }
 
-/** A table row: the same fields and actions as a card, one product a line (vault Design/Tables & Data Density). */
+/** A table row: the same fields and actions as a card, one product a line, numbers right-aligned (vault Design/Tables &
+ *  Data Density). */
 export function Row(props: CardProps) {
   const { item, index, now, selected, onSelect } = props;
   const { setNodeRef, style, isDragging, handle } = useCard(item);
@@ -91,9 +95,28 @@ export function Row(props: CardProps) {
           <ProductLink item={item} className="line-clamp-2 text-data" />
         </div>
       </th>
-      <td className="min-w-64 py-1.5 pr-4">
+      <td className="py-2 pr-3 text-right">
+        <Price item={item} now={now} />
+      </td>
+      <td className="py-2 pr-3 text-right">
+        <Margin item={item} now={now} />
+      </td>
+      <td className="py-2 pr-3 text-right">
+        <ScoreValue score={item.trend} label="Trend Score" now={now} />
+      </td>
+      <td className="py-2 pr-3">
+        <Lifecycle item={item} now={now} />
+      </td>
+      <td className="py-2 pr-3 text-right">
+        <ScoreValue score={item.saturation} label="Saturation" now={now} />
+      </td>
+      <td className="min-w-40 py-1.5 pr-4">
+        <Merged item={item} />
         <NoteBox item={item} note={note} rows={1} />
         <NoteStatus note={note} className="px-2 text-micro" />
+      </td>
+      <td className="py-2 pr-3 text-label">
+        <Freshness item={item} now={now} />
       </td>
       <td className="py-2 pr-2 text-right text-label whitespace-nowrap text-subtle-foreground">
         <Ago iso={item.added_at} now={now} source="When it was added to this board" />

@@ -533,7 +533,7 @@ export interface paths {
         };
         /**
          * List Board Items
-         * @description The cards in board order, `product_id` breaking ties.
+         * @description The cards in board order, `product_id` breaking ties, each with its stats.
          */
         get: operations["list_board_items"];
         put?: never;
@@ -1606,19 +1606,38 @@ export interface components {
              * Format: date-time
              */
             added_at: string;
+            /** Best Margin Minor */
+            best_margin_minor: components["schemas"]["Margin"] | components["schemas"]["Incomplete"];
+            /**
+             * Currency
+             * @constant
+             */
+            currency: "USD";
             /** Image Url */
             image_url: string | null;
+            /** Lifecycle */
+            lifecycle: components["schemas"]["LatestScore"] | components["schemas"]["NoSource"];
+            /** Merged Into Id */
+            merged_into_id: string | null;
             /** Name */
             name: string;
             /** Note */
             note: string | null;
             /** Position */
             position: number;
+            /** Price Max Minor */
+            price_max_minor: components["schemas"]["Sourced"] | components["schemas"]["NoSource"];
+            /** Price Min Minor */
+            price_min_minor: components["schemas"]["Sourced"] | components["schemas"]["NoSource"];
             /**
              * Product Id
              * Format: uuid
              */
             product_id: string;
+            /** Saturation */
+            saturation: components["schemas"]["LatestScore"] | components["schemas"]["NoSource"];
+            /** Trend */
+            trend: components["schemas"]["LatestScore"] | components["schemas"]["NoSource"];
         };
         /** BoardItemPage */
         BoardItemPage: {

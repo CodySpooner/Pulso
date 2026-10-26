@@ -1,30 +1,47 @@
 from collections.abc import Callable, Iterator
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
+from functools import partial
+from typing import Any
 from uuid import UUID, uuid4
 
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from sqlalchemy import func, select
+from sqlalchemy import event, func, select
 from sqlalchemy.engine import Engine
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from pulso_api.auth import Principal, current_principal
 from pulso_api.dependencies import get_db
+from pulso_api.routers.product_scores import NO_ROW
+from pulso_api.routers.products import NO_PRICE, NO_SETTINGS
 from pulso_core.models import (
     BoardItem,
+    CollectorRun,
     Image,
     Listing,
+    ListingSnapshot,
     Product,
     ProductTest,
+    RawPayload,
+    ShippingOption,
+    Store,
+    Supplier,
     User,
     Workspace,
+    WorkspaceSettings,
 )
+from pulso_core.scores import Explanation, ScoreRow, write
 
 # Boards (WF-3 part a, DEC-319): workspace boards of global products, ordered and noted.
+# Card stats (imp-454): each card's price range, best margin and scores, a page in a fixed
+# number of queries.
 
 As = Callable[[str], TestClient]
+DAY = datetime.now(UTC).date() - timedelta(days=1)  # scored yesterday
+AT = datetime.combine(DAY, datetime.min.time(), UTC) + timedelta(hours=6)
+FEES = {"payment_fee_bps": 290, "payment_fee_fixed_minor": 30, "returns_bps": 500}
 
 
 @pytest.fixture
@@ -161,6 +178,15 @@ def test_cards_append_move_take_notes_and_go(
         "position": 0,
         "note": None,
         "added_at": page["items"][0]["added_at"],
+        # imp-454: nothing backs p1's stats, so each is null with its reason, never 0 (DEC-040).
+        "merged_into_id": None,
+        "currency": "USD",
+        "price_min_minor": {"value": None, "reason": NO_PRICE},
+        "price_max_minor": {"value": None, "reason": NO_PRICE},
+        "best_margin_minor": {"value": None, "reason": NO_SETTINGS, "missing": []},
+        "trend": {"value": None, "reason": NO_ROW},
+        "saturation": {"value": None, "reason": NO_ROW},
+        "lifecycle": {"value": None, "reason": NO_ROW},
     }
 
     # A note round-trips, survives a move, and null clears it.
@@ -312,3 +338,175 @@ def test_workspace_b_never_sees_or_edits_a(
         )
         with pytest.raises(IntegrityError):
             session.commit()
+
+
+def observe(session: Session, model: type[Any], source_id: int, **values: Any) -> None:
+    run = CollectorRun(source_id=source_id, trigger="manual", status="success")
+    session.add(run)
+    session.flush()
+    payload = RawPayload(
+        source_id=source_id, run_id=run.id, captured_at=AT, request={}, bytes=1,
+        sha256=uuid4().hex * 2,
+    )  # fmt: skip
+    session.add(payload)
+    session.flush()
+    session.add(model(captured_at=AT, raw_payload_id=payload.id, observed_for=DAY, **values))
+    session.flush()
+
+
+def stocked(session: Session, name: str) -> UUID:
+    """A product with every card stat: a $29.99–$34.99 store listing, a $7.40 CJ offer with a
+    $4.10 US quote, and yesterday's Trend 70, Saturation 40 and Rising."""
+    product = Product(name=name)
+    store = Store(domain=f"{uuid4().hex}.example.test", platform="shopify")
+    supplier = Supplier(platform="cj", external_id=uuid4().hex, name="CJ supplier")
+    session.add_all([product, store, supplier])
+    session.flush()
+    shelf, offer = (
+        Listing(
+            source_id=source,
+            external_id=uuid4().hex,
+            url="https://example.test/p",
+            title=name,
+            product_id=product.id,
+            **owner,
+        )  # fmt: skip
+        for source, owner in ((1, {"store_id": store.id}), (2, {"supplier_id": supplier.id}))
+    )
+    session.add_all([shelf, offer])
+    session.flush()
+    observe(
+        session, ListingSnapshot, 1, values_hash="h", currency="USD", price_min_minor=2999,
+        price_max_minor=3499, listing_id=shelf.id,
+    )  # fmt: skip
+    observe(
+        session, ListingSnapshot, 2, values_hash="h", currency="USD", price_min_minor=740,
+        listing_id=offer.id,
+    )  # fmt: skip
+    observe(
+        session, ShippingOption, 2, listing_id=offer.id, destination_country="US", quantity=1,
+        method="CJPacket", cost_minor=410, currency="USD", min_days=1, max_days=8,
+    )  # fmt: skip
+    explanation = Explanation(
+        model_version="000-fixture00000", config_digest="f" * 64, components=(), missing=(),
+        coverage=0.0,
+    )  # fmt: skip
+    rows = [
+        ScoreRow(product.id, DAY, "trend", 70.0, explanation),
+        ScoreRow(product.id, DAY, "saturation", 40.0, explanation),
+        ScoreRow(product.id, DAY, "lifecycle", None, explanation, "rising"),
+    ]
+    assert write(session, rows) == 3
+    return product.id
+
+
+@pytest.fixture
+def stats(boards: tuple[As, dict[str, UUID]], db_engine: Engine) -> tuple[TestClient, str, UUID]:
+    """Workspace A's board holding "Lamp", which has every stat; A has settings (duty 0)."""
+    as_, ids = boards
+    with Session(db_engine) as session:
+        session.add(WorkspaceSettings(workspace_id=ids["workspace_a"], duty_default_bps=0, **FEES))
+        lamp = stocked(session, "Lamp")
+        session.commit()
+    client = as_("a")
+    board = client.post("/v1/boards", json={"name": "Stats"}).json()["id"]
+    assert client.post(f"/v1/boards/{board}/items", json={"product_ids": [str(lamp)]}).is_success
+    return client, board, lamp
+
+
+def card_of(client: TestClient, board: str, product_id: UUID) -> Any:
+    items = client.get(f"/v1/boards/{board}/items").json()["items"]
+    return next(item for item in items if item["product_id"] == str(product_id))
+
+
+@pytest.mark.db
+def test_a_card_carries_its_stats_each_traced(stats: tuple[TestClient, str, UUID]) -> None:
+    client, board, lamp = stats
+    card = card_of(client, board, lamp)
+    at = AT.isoformat().replace("+00:00", "Z")
+    low, high = card["price_min_minor"], card["price_max_minor"]
+    assert (low["value"], high["value"], card["currency"]) == (2999, 3499, "USD")
+    assert (low["source"], low["as_of"], low["raw_payload_id"] is not None) == (
+        "shopify_stores",
+        at,
+        True,
+    )
+    margin = card["best_margin_minor"]
+    assert (margin["value"] > 0, margin["margin_bps"] > 0, margin["as_of"]) == (True, True, at)
+    assert (card["trend"]["value"], card["saturation"]["value"]) == (70.0, 40.0)
+    assert (card["lifecycle"]["stage"], card["lifecycle"]["value"]) == ("rising", None)
+    assert card["trend"]["model_version"] == "000-fixture00000" and card["trend"]["as_of"]
+    assert card["merged_into_id"] is None
+    # A note's PATCH answers the same card, stats and all.
+    noted = client.patch(f"/v1/boards/{board}/items/{lamp}", json={"note": "x"}).json()
+    assert noted == card | {"note": "x"}
+
+
+@pytest.mark.db
+def test_a_merged_card_names_its_survivor_and_shows_its_stats(
+    boards: tuple[As, dict[str, UUID]], stats: tuple[TestClient, str, UUID], db_engine: Engine
+) -> None:
+    """Cards aren't rewritten when a merge lands after the add (DEC-319 e): the card keeps its
+    product and carries the survivor, through any chain of merges, whose stats it shows."""
+    _, ids = boards
+    client, board, lamp = stats
+    add(client, board, ids, "p2")
+    with Session(db_engine) as session:
+        session.get_one(Product, ids["p0"]).merged_into_id = lamp
+        session.get_one(Product, ids["p2"]).merged_into_id = ids["merged"]  # merged → middle → p0
+        session.commit()
+    card = card_of(client, board, ids["p2"])
+    assert (card["name"], card["merged_into_id"]) == ("Product 2", str(lamp))
+    assert card["trend"] == card_of(client, board, lamp)["trend"]
+    assert card["price_min_minor"]["value"] == 2999
+    assert card_of(client, board, lamp)["merged_into_id"] is None
+
+
+@pytest.mark.db
+def test_a_fee_change_moves_best_margin_on_the_next_read(
+    boards: tuple[As, dict[str, UUID]], stats: tuple[TestClient, str, UUID], db_engine: Engine
+) -> None:
+    _, ids = boards
+    client, board, lamp = stats
+    before = card_of(client, board, lamp)["best_margin_minor"]
+    with Session(db_engine) as session:
+        session.get_one(WorkspaceSettings, ids["workspace_a"]).payment_fee_bps = 1290
+        session.commit()
+    after = card_of(client, board, lamp)["best_margin_minor"]
+    # 10 % more of the $29.99 price goes to fees: $3.00 less margin.
+    assert before["value"] - after["value"] == 300
+    assert after["margin_bps"] < before["margin_bps"]
+
+
+def statements(db_engine: Engine, request: Callable[[], object]) -> int:
+    count = 0
+
+    def capture(*_: object) -> None:
+        nonlocal count
+        count += 1
+
+    event.listen(db_engine, "before_cursor_execute", capture)
+    try:
+        request()
+    finally:
+        event.remove(db_engine, "before_cursor_execute", capture)
+    return count
+
+
+@pytest.mark.db
+def test_a_page_of_50_cards_runs_as_many_queries_as_a_page_of_1(
+    stats: tuple[TestClient, str, UUID], db_engine: Engine
+) -> None:
+    client, board, _ = stats
+    with Session(db_engine) as session:
+        filler = [stocked(session, f"Filler {i}") for i in range(50)]
+        session.commit()
+    body = {"product_ids": [str(product) for product in filler]}
+    assert client.post(f"/v1/boards/{board}/items", json=body).is_success
+    url = f"/v1/boards/{board}/items"
+    one, fifty = (
+        statements(db_engine, partial(client.get, url, params={"limit": limit}))
+        for limit in (1, 50)
+    )
+    assert one == fifty
+    print(f"query count, a page of cards: {fifty}")  # reported in docs/reports/imp-454.md

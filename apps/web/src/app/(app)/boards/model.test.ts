@@ -1,9 +1,25 @@
 import { MutationObserver, QueryClient } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
-import { autosave, moved, moveOptions, type Item, type ItemPage, type SaveState } from "./model";
+import { autosave, freshness, marginText, moved, moveOptions, scoreText, type Item, type ItemPage, type SaveState, type Stage } from "./model";
 
-const item = (product_id: string, position: number): Item => ({ product_id, position, name: product_id, image_url: null, note: null, added_at: "2026-10-20T00:00:00Z" });
+const none = { value: null, reason: "No source yet: nothing has scored this product." } as const;
+const item = (product_id: string, position: number): Item => ({
+  product_id,
+  position,
+  name: product_id,
+  image_url: null,
+  note: null,
+  added_at: "2026-10-20T00:00:00Z",
+  merged_into_id: null,
+  currency: "USD",
+  price_min_minor: { value: null, reason: "No USD retail price observed yet." },
+  price_max_minor: { value: null, reason: "No USD retail price observed yet." },
+  best_margin_minor: { value: null, reason: "No workspace settings yet.", missing: [] },
+  trend: none,
+  saturation: none,
+  lifecycle: none,
+});
 const ids = (items: Item[]) => items.map((i) => `${i.product_id}${i.position}`).join(" ");
 
 describe("moved", () => {
@@ -142,5 +158,41 @@ describe("autosave", () => {
     expect(sent).toEqual(["old", "new"]);
     await answer();
     expect(states.at(-1)).toBe("saved");
+  });
+});
+
+describe("card stats (imp-454)", () => {
+  const traced = (value: number, as_of: string, stale = false) => ({ value, source: "shopify_stores", source_name: "Shopify stores", as_of, raw_payload_id: 7, stale });
+  const scored = (value: number | null, stage: Stage | null = null, reason: string | null = null) => ({
+    value,
+    stage,
+    day: "2026-10-24",
+    model_version: "001-trend",
+    as_of: "2026-10-25T00:00:00Z",
+    reason,
+  });
+
+  test("a score reads its rounded value, its stage, Insufficient signal or No source yet, never 0", () => {
+    expect(scoreText(scored(70.4))).toBe("70");
+    expect(scoreText(scored(0))).toBe("0"); // a real 0 is a value
+    expect(scoreText(scored(null, "rising"))).toBe("Rising");
+    expect(scoreText(scored(null, null, "no rule matched"))).toBe("Insufficient signal");
+    expect(scoreText(none)).toBe("No source yet");
+  });
+
+  test("the best margin reads $ and %, a loss with U+2212, Duty not set, or No source yet", () => {
+    const margin = (value: number, margin_bps: number) => ({ ...traced(value, "2026-10-24T06:00:00Z"), margin_bps, supplier_listing_id: 3 });
+    expect(marginText(margin(1582, 5275))).toBe("$15.82 · 52.8%");
+    expect(marginText(margin(-339, -1130))).toBe("−$3.39 · −11.3%");
+    expect(marginText({ value: null, reason: "Needs a duty rate.", missing: ["duty_not_set"] })).toBe("Duty not set");
+    expect(marginText({ value: null, reason: "Needs a supplier price.", missing: ["supplier_cost_missing"] })).toBe("No source yet");
+    expect(marginText(item("a", 0).best_margin_minor)).toBe("No source yet");
+  });
+
+  test("freshness is the oldest stat's as-of, stale when any traced stat is; nothing traced is null", () => {
+    expect(freshness(item("a", 0))).toEqual({ as_of: null, stale: false });
+    const priced = { ...item("a", 0), price_min_minor: traced(2999, "2026-10-24T06:00:00Z"), price_max_minor: traced(3499, "2026-10-23T06:00:00Z", true), trend: scored(70) };
+    expect(freshness(priced)).toEqual({ as_of: "2026-10-23T06:00:00Z", stale: true });
+    expect(freshness({ ...item("a", 0), trend: scored(70) })).toEqual({ as_of: "2026-10-25T00:00:00Z", stale: false });
   });
 });

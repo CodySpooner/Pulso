@@ -20,6 +20,48 @@ export const PRODUCT = (n: number) => `5e7a0c11-0000-4000-8000-${String(n).padSt
 export const OPEN_TEST = PRODUCT(3);
 
 const NAMES = ["", "Sunset projection lamp", "Magnetic car phone mount", "Posture corrector brace", "Galaxy star projector", "Mini waffle maker", "Cloud pillow slides", "Pet hair remover roller", "Self-cleaning slicker brush", "Collapsible dog bowl", "LED bottle cap light"];
+/** The survivor product 6 was merged into after it was added: its card shows the merged note (DEC-319 e). */
+export const SURVIVOR = PRODUCT(60);
+
+// Card stats (imp-454): every state a stat can be in. 3 and 10 have nothing yet; 2's margin waits for a duty rate;
+// 5 sells at a loss on a stale price; 6 was merged and has too little signal to score; 8 has no supplier price.
+const DAY = at(30).slice(0, 10);
+const NO_PRICE = { value: null, reason: "No USD retail price observed yet." };
+const NO_ROW = { value: null, reason: "No source yet: nothing has scored this product." };
+const traced = (value: number, hours: number, stale = false) => ({ value, source: "shopify_stores", source_name: "Shopify stores", as_of: at(hours), raw_payload_id: 41_000 + value, stale });
+const margin = (value: number, margin_bps: number) => ({
+  ...traced(value, 9),
+  source: "cj",
+  source_name: "CJdropshipping",
+  method: "Landed cost, default scenario: price - landed cost - fees - returns, before ads",
+  margin_bps,
+  supplier_listing_id: 900 + value,
+});
+const needs = (reason: string, ...missing: string[]) => ({ value: null, reason, missing });
+const score = (value: number | null, stage: S["LatestScore"]["stage"] = null, reason: string | null = null) => ({ value, stage, day: DAY, model_version: "001-scores-2a1c9e", as_of: at(30), reason });
+const stats = (low: number | null, high: number | null, best: Item["best_margin_minor"], trend: Item["trend"], stage: Item["lifecycle"], saturation: Item["saturation"], stale = false) => ({
+  merged_into_id: null as string | null,
+  currency: "USD" as const,
+  price_min_minor: low === null ? NO_PRICE : traced(low, 6, stale),
+  price_max_minor: low === null ? NO_PRICE : traced(high ?? low, 6, stale),
+  best_margin_minor: best,
+  trend,
+  lifecycle: stage,
+  saturation,
+});
+const nothing = stats(null, null, needs("Needs a market price, a supplier price and a freight quote.", "price_missing", "supplier_cost_missing", "freight_missing"), NO_ROW, NO_ROW, NO_ROW);
+const STATS: Record<number, ReturnType<typeof stats>> = {
+  1: stats(2499, 3499, margin(1182, 4730), score(78.2), score(null, "rising"), score(34)),
+  2: stats(1999, null, needs("Needs a duty rate.", "duty_not_set"), score(52), score(null, "peaking"), score(71)),
+  3: nothing,
+  4: stats(3999, 5499, margin(1611, 4028), score(64.6), score(null, "emerging"), score(22)),
+  5: stats(2299, null, margin(-339, -1474), score(41), score(null, "declining"), score(88), true),
+  6: { ...stats(1899, 2499, margin(702, 3696), score(null, null, "every input missing"), score(null, null, "no rule matched"), score(45)), merged_into_id: SURVIVOR },
+  7: stats(1599, null, margin(822, 5141), score(69), score(null, "rising"), score(40)),
+  8: stats(2199, 2899, needs("Needs a supplier price.", "supplier_cost_missing"), score(58), score(null, "peaking"), score(63)),
+  9: stats(1299, null, margin(512, 3941), score(33), score(null, "dead"), score(92)),
+  10: nothing,
+};
 const card = (n: number, position: number, over: Partial<Item> = {}): Item => ({
   product_id: PRODUCT(n),
   name: NAMES[n],
@@ -27,6 +69,7 @@ const card = (n: number, position: number, over: Partial<Item> = {}): Item => ({
   position,
   note: null,
   added_at: at(30 + n * 5),
+  ...(STATS[n] ?? nothing),
   ...over,
 });
 
@@ -65,6 +108,8 @@ export interface BoardsMock {
   status?: number;
   /** GET …/items answers with this problem status. */
   itemsStatus?: number;
+  /** GET …/items never answers: the card skeletons stay. */
+  holdItems?: boolean;
   /** A note PATCH answers 503. */
   failNotes?: boolean;
   /** A move PATCH answers 503. */
@@ -129,6 +174,7 @@ export async function mockBoardsApi(page: Page, options: BoardsMock = {}) {
     if (rest !== "items") return fail(404, "not_found", "Not found.");
     const cards = sorted(id);
     if (!pid && method === "GET") {
+      if (options.holdItems) return;
       if (options.itemsStatus) return fail(options.itemsStatus, "unavailable", "The API is restarting. Try again.");
       const limit = Number(url.searchParams.get("limit") ?? 50);
       const cursor = url.searchParams.get("cursor");

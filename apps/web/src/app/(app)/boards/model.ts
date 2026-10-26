@@ -1,5 +1,5 @@
 // Pure helpers for Boards (WF-3b, DEC-329): the API reads, a card move as update_board_item renumbers it (DEC-319 b)
-// with its optimistic update and rollback, and a card note's autosave.
+// with its optimistic update and rollback, a card note's autosave, and the words of a card's stats (imp-454).
 
 import type { QueryClient, QueryKey, UseMutationOptions } from "@tanstack/react-query";
 
@@ -7,8 +7,12 @@ import { $api } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
 
 export type Board = components["schemas"]["Board"];
-export type Item = components["schemas"]["BoardItem"];
-export type ItemPage = components["schemas"]["BoardItemPage"];
+// openapi-fetch drops a key typed only `null` from responses, so each NoSource arrives as `{reason}` (DEC-238 g).
+type Loose<T> = T extends { reason: string } ? Omit<T, "value"> & { value?: null } : T;
+export type Item = { [K in keyof components["schemas"]["BoardItem"]]: Loose<components["schemas"]["BoardItem"][K]> };
+export type ItemPage = Omit<components["schemas"]["BoardItemPage"], "items"> & { items: Item[] };
+export type Score = Item["trend"];
+export type Stage = NonNullable<components["schemas"]["LatestScore"]["stage"]>;
 export interface Move {
   product_id: string;
   position: number;
@@ -80,5 +84,36 @@ export function autosave(save: (text: string) => Promise<unknown>, onState: (sta
       timer = setTimeout(flush, delay);
     },
     flush,
+  };
+}
+
+const usd = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", trailingZeroDisplay: "stripIfInteger" });
+export const money = (minor: number) => usd.format(minor / 100);
+const pct = (bps: number) => `${(bps / 100).toFixed(1)}%`;
+export const STAGES: Record<Stage, string> = { emerging: "Emerging", rising: "Rising", peaking: "Peaking", declining: "Declining", dead: "Dead" };
+
+/** A score's words: its rounded value or its stage; "Insufficient signal" for a stored row without one; "No source
+ *  yet" when nothing has scored the product. Never 0 (DEC-040). */
+export function scoreText(score: Score): string {
+  if (!("model_version" in score)) return "No source yet";
+  if (score.stage) return STAGES[score.stage];
+  return score.value == null ? "Insufficient signal" : String(Math.round(score.value));
+}
+
+/** The best landed margin's words, $ and % with a loss in U+2212 as on the Profit tab. R-16 withholds an incomplete
+ *  one: "Duty not set" names the one gap Settings closes, anything else is "No source yet" (Discover's BestMargin). */
+export function marginText(margin: Item["best_margin_minor"]): string {
+  if ("reason" in margin) return margin.missing.includes("duty_not_set") ? "Duty not set" : "No source yet";
+  return `${money(margin.value)} · ${pct(margin.margin_bps)}`.replaceAll("-", "−");
+}
+
+/** The card's freshness dot: the oldest as-of among its stats, stale when a traced one is (vault Features/Boards). */
+export function freshness(item: Item): { as_of: string | null; stale: boolean } {
+  const traced = [item.price_min_minor, item.price_max_minor, item.best_margin_minor].filter((s) => "source" in s);
+  const scores = [item.trend, item.saturation, item.lifecycle].filter((s) => "model_version" in s);
+  const times = [...traced, ...scores].map((s) => s.as_of);
+  return {
+    as_of: times.length ? times.reduce((a, b) => (Date.parse(b) < Date.parse(a) ? b : a)) : null,
+    stale: traced.some((s) => s.stale),
   };
 }

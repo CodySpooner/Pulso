@@ -4238,3 +4238,32 @@ Superseded review defaults, not given entries: default #0 (move the repo) is don
   - R-22's shortlist card;
   - Opportunity (imp-489);
   - swipe between days on a phone.
+
+### DEC-344 · Board card stats (WF-3b, imp-454): each `BoardItem` carries the price range, the best landed margin, Trend, Lifecycle and Saturation from the reads Discover and the Screener already use, one query per part for the whole page; a card whose product was merged after the add keeps it and carries the survivor's id and stats
+**2026-10-25 · proposed (imp-454)** · Phase 4 task WF-3 part b (imp-454; `docs/reports/p4-12.md` row 2, `docs/reports/p4-18.md` row 1); SPEC §6.10; DEC-040, DEC-238, DEC-265, DEC-319 (e), DEC-322, DEC-329, DEC-331, DEC-336; DEC-342; vault Features/Boards, Intelligence/Lifecycle Stage; `docs/reports/imp-454.md`; API change additive (eight fields on `BoardItem`, so on the items page and the item PATCH); no migration, flag, dependency or new endpoint
+- **Decision:**
+  - **(a) One batched read.** `with_stats()` in `routers/boards.py` builds every card of a page, and the item PATCH answer, from:
+    - `latest_snapshots` + `listing_stats` (Discover's): `price_min_minor` and `price_max_minor` over the live USD store listings, `Sourced | NoSource`, with `currency: "USD"`;
+    - `best_margins` + `margin_stat` (Discover's, the `workspace_product_economics` view): `best_margin_minor`, `Margin | Incomplete`. The margin is never re-derived here, so imp-520's change to which listing the view picks flows through unchanged;
+    - `op.latest_rows` + the Screener's `score_value`: `trend`, `saturation`, `lifecycle` as `LatestScore | NoSource`.
+
+    A page runs 9 queries for 1 card or 50 (the board check, the cards, one `resolve` round per merge depth, snapshots, margins, three score kinds, sources).
+  - **(b) Merged products.** The card keeps its stored product (name, image, and the id PATCH and DELETE take, DEC-319 e). `merged_into_id` is the survivor through any chain of merges (the watchlists' `resolve`), null otherwise, and the stats are the survivor's, as the vault's "card follows `merged_into_id`" asks. The note "Merged into another product; its stats show here. Open it" links to `/products/{merged_into_id}`. It shows while the card points at the merged product: "one-time" is read as one note per card, with no dismiss state (that would need a column or browser storage). It sits under the title on a grid card, and in the Note cell of a table row, so the row header stays the product's name.
+  - **(c) Scores keep the Screener's shape, not `Sourced`.** A score is Pulso's own computation with no single raw payload. Its provenance is `model_version`, the UTC `day` scored and `as_of` (DEC-331, DEC-336), shown on hover, focus and tap as "Pulso score · {model_version}". A score carries no `stale` flag (nightly rows).
+  - **(d) The words of a stat** (pure helpers in `boards/model.ts`, Vitest per state): a value; "No source yet" when nothing backs it; "Insufficient signal" for a stored score with no value or stage; "Duty not set" for a margin missing only the duty rate (Discover's wording); a loss with U+2212. Never 0 (DEC-040).
+  - **(e) Cards and table.** The grid card lists Price, Best margin, Trend, Lifecycle, Saturation and "Data as of" (the oldest stat's age, amber "· stale" when a traced stat is stale), labels left and tabular numbers right. The table adds the same columns, numbers right-aligned, and fits at 1440px with its row menu. To make it fit, the stat columns take `pr-3`, the note column `min-w-40`, and only "Insufficient signal" may wrap. The Lifecycle chip matches the Daily Pulse's LifecyclePill (DEC-342) icon for icon and tone for tone: Emerging filled `--positive`; Rising, Peaking and Declining outlined with `--positive`, `--warning` and `--negative` text; Dead muted. Each has its label, so the stage never rests on colour alone. Only Emerging is filled, so colour doesn't sit on nearly every card. No new motion, so nothing animates in the rows.
+- **Alternatives:**
+  - **Embedding Discover's whole item (`product: DiscoverItem`), as watchlist rows do:** it adds velocity, store and supplier counts and a watch-state query that a card doesn't show, and nests the stats under a second id.
+  - **`Sourced` for scores:** a score has no source key or raw payload of its own; a fake one would break the provenance contract.
+  - **Rewriting merged cards to the survivor:** DEC-319 e keeps the stored id; a rewrite is a data change and could collide with the survivor's own card.
+  - **The survivor's name in the note:** one more query for a rare case; the link opens it.
+  - **A dismissible note:** per-viewer state for a notice that's true as long as the card exists.
+- **Why:** `apps/api/tests/test_boards.py` on a throwaway `pgvector/pgvector:0.8.7-pg18-trixie` (9 passed):
+  - a card with every stat traced (prices with source, `as_of` and payload; margin as of its oldest input; scores with model and `as_of`), and the PATCH answering the same card;
+  - a product with no data and no settings reads `NoSource` for price, Trend, Saturation and Lifecycle and `Incomplete` for margin;
+  - a product merged into one merged into the stocked product reads that survivor's id and stats;
+  - a payment fee raised 10 points takes $3.00 off the $29.99 card's margin on the next read;
+  - a page of 50 runs as many queries as a page of 1 (9).
+
+  Two one-line mutations each fail a test: stats read from the stored product instead of its survivor, and a score query per card. Vitest `boards/model.test.ts` (12), Playwright `e2e/boards/card-stats.spec.ts` (8) with `boards.spec.ts` (10, its AA-contrast checks now covering the stats), screenshots `docs/screenshots/imp-454/` (24). Full pytest 2548 passed.
+- **Not here:** one shared LifecyclePill component (the chip is a copy of the Pulse's for now); the board validation summary (needs these stats; Added — pending approval); sorting the table by a stat; a score staleness flag; the Add-to-board popover (imp-455) and the CSV exports (imp-456, imp-457).
