@@ -16,6 +16,8 @@ import { cn } from "@/lib/utils";
 import { conditionsOf, RANGES, STAGES, type Filters, type Range } from "./definition";
 
 export type Key = Range | "lifecycle" | "category";
+/** Changes the filters from the latest ones, so two quick edits both land. */
+export type SetFilters = (update: (f: Filters) => Filters) => void;
 const ORDER: Key[] = ["margin_bps", "lifecycle", "velocity", "acceleration", "saturation", "ship_days_us", "supplier_rating", "price", "category"];
 const label = (key: Key) => (key === "lifecycle" ? "Lifecycle" : key === "category" ? "Category" : RANGES[key].label);
 const cap = (s: string) => s[0].toUpperCase() + s.slice(1);
@@ -55,7 +57,7 @@ const EXAMPLES: [string, Filters][] = [
 
 // The filter builder: one row per condition, all combined with AND (DEC-336 b). Rows reflow with the layout pattern
 // (Motion System pattern 5), opacity only under reduced motion. A typed bound applies on Enter or leaving the box.
-export function Conditions({ filters, set, open, onOpenChange }: { filters: Filters; set: (f: Filters) => void; open: boolean; onOpenChange: (open: boolean) => void }) {
+export function Conditions({ filters, set, open, onOpenChange }: { filters: Filters; set: SetFilters; open: boolean; onOpenChange: (open: boolean) => void }) {
   const [added, setAdded] = useState<Key[]>([]);
   const adding = useRef<Key | null>(null);
   const addButton = useRef<HTMLButtonElement>(null);
@@ -64,7 +66,7 @@ export function Conditions({ filters, set, open, onOpenChange }: { filters: Filt
   const gone = useReducedMotion() ? { opacity: 0 } : { opacity: 0, scale: 0.9 };
   const remove = (key: Key) => {
     setAdded((a) => a.filter((k) => k !== key));
-    set(without(filters, key));
+    set((f) => without(f, key));
     addButton.current?.focus();
   };
   return (
@@ -74,7 +76,7 @@ export function Conditions({ filters, set, open, onOpenChange }: { filters: Filt
           <p className="text-data text-muted-foreground">Add your first filter, or start from one of these:</p>
           <div className="flex flex-wrap gap-1.5">
             {EXAMPLES.map(([text, example]) => (
-              <Button key={text} size="sm" variant="secondary" onClick={() => set({ ...filters, ...example })}>
+              <Button key={text} size="sm" variant="secondary" onClick={() => set((f) => ({ ...f, ...example }))}>
                 {text}
               </Button>
             ))}
@@ -146,7 +148,7 @@ export function Conditions({ filters, set, open, onOpenChange }: { filters: Filt
   );
 }
 
-function Bounds({ metric, filters, set }: { metric: Range; filters: Filters; set: (f: Filters) => void }) {
+function Bounds({ metric, filters, set }: { metric: Range; filters: Filters; set: SetFilters }) {
   const { label: name, unit } = RANGES[metric];
   return (
     <div className="flex items-center gap-1.5">
@@ -162,7 +164,7 @@ function Bounds({ metric, filters, set }: { metric: Range; filters: Filters; set
 
 /** One bound, typed in the metric's display unit and stored in the API's. It keeps its draft while focused, so
  *  applying it never moves focus. */
-function Bound({ metric, bound, filters, set, label: name }: { metric: Range; bound: "min" | "max"; filters: Filters; set: (f: Filters) => void; label: string }) {
+function Bound({ metric, bound, filters, set, label: name }: { metric: Range; bound: "min" | "max"; filters: Filters; set: SetFilters; label: string }) {
   const key = `${metric}_${bound}` as const;
   const { scale, int } = RANGES[metric];
   const stored = filters[key] ?? null;
@@ -177,7 +179,7 @@ function Bound({ metric, bound, filters, set, label: name }: { metric: Range; bo
     const typed = draft.trim() === "" ? null : Number(draft);
     if (typed !== null && !Number.isFinite(typed)) return setDraft(shown);
     const value = typed === null ? null : int ? Math.round(typed * scale) : typed * scale;
-    if (value !== stored) set({ ...filters, [key]: value });
+    if (value !== stored) set((f) => ({ ...f, [key]: value }));
   };
   return (
     <input
@@ -195,7 +197,7 @@ function Bound({ metric, bound, filters, set, label: name }: { metric: Range; bo
   );
 }
 
-function Stages({ filters, set }: { filters: Filters; set: (f: Filters) => void }) {
+function Stages({ filters, set }: { filters: Filters; set: SetFilters }) {
   const on = filters.lifecycle ?? [];
   return (
     <div role="group" aria-label="Lifecycle is any of" className="flex flex-wrap gap-1.5">
@@ -205,8 +207,10 @@ function Stages({ filters, set }: { filters: Filters; set: (f: Filters) => void 
           type="button"
           aria-pressed={on.includes(stage)}
           onClick={() => {
-            const next = STAGES.filter((s) => (s === stage) !== on.includes(s));
-            set({ ...filters, lifecycle: next.length ? next : null });
+            set((f) => {
+              const next = STAGES.filter((s) => (s === stage) !== (f.lifecycle ?? []).includes(s));
+              return { ...f, lifecycle: next.length ? next : null };
+            });
           }}
           className="relative hit-area h-(--button-h-sm) rounded-md border border-border px-2 text-label text-muted-foreground transition-colors duration-(--duration-fast) hover:text-foreground aria-pressed:border-brand/50 aria-pressed:bg-brand-muted aria-pressed:font-medium aria-pressed:text-foreground"
         >
@@ -217,13 +221,13 @@ function Stages({ filters, set }: { filters: Filters; set: (f: Filters) => void 
   );
 }
 
-function CategoryPick({ filters, set }: { filters: Filters; set: (f: Filters) => void }) {
+function CategoryPick({ filters, set }: { filters: Filters; set: SetFilters }) {
   const categories = $api.useQuery("get", "/v1/categories", {}, { enabled: useApiReady(), staleTime: 5 * 60_000 });
   return (
     <select
       aria-label="Category is"
       value={String(filters.category ?? "")}
-      onChange={(e) => set({ ...filters, category: e.target.value ? Number(e.target.value) : null })}
+      onChange={(e) => set((f) => ({ ...f, category: e.target.value ? Number(e.target.value) : null }))}
       className={cn(input, "bg-secondary")}
     >
       <option value="">Choose a category</option>

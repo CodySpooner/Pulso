@@ -30,7 +30,7 @@ const control =
   "h-(--button-h-md) min-w-0 rounded-md border border-border bg-secondary px-2.5 text-data text-foreground transition-colors duration-(--duration-fast) hover:border-border-strong";
 const box = "rounded-xl border border-border bg-card shadow-card";
 const dayOf = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
-type Edit = (next: Partial<Definition>) => void;
+type Edit = (next: Partial<Definition> | ((d: Definition) => Partial<Definition>)) => void;
 
 // WF-1b (vault Features/Product Screener, DEC-347): a condition builder over GET /v1/screener's filters, a sort, the
 // shared product table and saved screens. The URL holds the screen: `?screen=` a saved one and `?q=` the definition
@@ -54,8 +54,10 @@ export function Screener() {
     const search = screenSearch(screen, next);
     window.history[push ? "pushState" : "replaceState"](null, "", search ? `?${search}` : window.location.pathname);
   }, []);
+  // From the URL at call time, not this render's definition, so quick edits build on each other (as Discover's set).
   const edit: Edit = (next) => {
-    const d = { ...definition, ...next };
+    const current = decode(new URLSearchParams(window.location.search).get("q")) ?? stored ?? DEFAULT;
+    const d = { ...current, ...(typeof next === "function" ? next(current) : next) };
     go(screenId, same(d, stored ?? DEFAULT) ? null : d);
   };
 
@@ -89,21 +91,11 @@ export function Screener() {
   const columns = definition.columns ?? DEFAULT_COLUMNS;
   const given = conditionsOf(definition.filters);
   const newest = rows.reduce<string | null>((max, r) => ("day" in r.trend && (!max || r.trend.day > max) ? r.trend.day : max), null);
-  const conditions = <Conditions key={screenId} filters={definition.filters} set={(filters) => edit({ filters })} open={adding} onOpenChange={setAdding} />;
+  const conditions = <Conditions key={screenId} filters={definition.filters} set={(update) => edit((d) => ({ filters: update(d.filters) }))} open={adding} onOpenChange={setAdding} />;
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-center gap-2">
-        <ScreensBar screenId={screenId} stored={saved.data} definition={definition} dirty={dirty} go={go} setNote={setNote} />
-        <div className="flex flex-wrap items-center gap-2 md:ml-auto">
-          <Button className="md:hidden" onClick={() => setSheet(true)}>
-            <SlidersHorizontal aria-hidden />
-            Filters{given.length > 0 && ` (${given.length})`}
-          </Button>
-          <SortPicker definition={definition} edit={edit} />
-          <ColumnPicker columns={columns} edit={edit} />
-        </div>
-      </div>
+      <ScreensBar screenId={screenId} stored={saved.data} definition={definition} dirty={dirty} go={go} setNote={setNote} />
       {waiting && saved.isError ? (
         <section className={box}>
           <PanelError headingLevel="h2" size="md" title="Couldn't open this saved screen" error={saved.error} retry={() => void saved.refetch()} />
@@ -114,6 +106,15 @@ export function Screener() {
             {waiting ? <span className="text-label text-subtle-foreground">Opening the screen…</span> : conditions}
           </section>
           <div className="flex min-w-0 flex-col gap-3">
+            {/* After the conditions in the tab order: build, then sort, then the rows. */}
+            <div className="flex flex-wrap items-center gap-2">
+              <Button className="md:hidden" onClick={() => setSheet(true)}>
+                <SlidersHorizontal aria-hidden />
+                Filters{given.length > 0 && ` (${given.length})`}
+              </Button>
+              <SortPicker definition={definition} edit={edit} />
+              <ColumnPicker columns={columns} edit={edit} />
+            </div>
             <p className="text-label text-subtle-foreground" aria-live="polite">
               {first ? (
                 <>
@@ -213,7 +214,7 @@ function SortPicker({ definition, edit }: { definition: Definition; edit: Edit }
         variant="secondary"
         aria-label={desc ? "Order: highest first" : "Order: lowest first"}
         title={`${desc ? "Highest" : "Lowest"} first; missing values always last`}
-        onClick={() => edit({ order: desc ? "asc" : "desc" })}
+        onClick={() => edit((d) => ({ order: d.order === "desc" ? "asc" : "desc" }))}
       >
         {desc ? <ArrowDownWideNarrow aria-hidden /> : <ArrowUpNarrowWide aria-hidden />}
       </Button>
@@ -286,7 +287,7 @@ function Empty({ definition, edit }: { definition: Definition; edit: Edit }) {
         headingLevel="h2"
         title="No products match"
         action={given.map((key) => (
-          <Button key={key} size="sm" onClick={() => edit({ filters: without(definition.filters, key) })}>
+          <Button key={key} size="sm" onClick={() => edit((d) => ({ filters: without(d.filters, key) }))}>
             <X aria-hidden />
             Remove “{describe(key, definition.filters)}”
           </Button>

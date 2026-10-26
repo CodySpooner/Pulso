@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { DropdownMenu } from "radix-ui";
 import { Check, ChevronDown, Ellipsis } from "lucide-react";
@@ -31,6 +31,13 @@ export function ScreensBar({ screenId, stored, definition, dirty, go, setNote }:
   const client = useQueryClient();
   const screens = $api.useQuery("get", "/v1/screens", { params: { query: { limit: 100 } } }, { enabled: useApiReady() });
   const [naming, setNaming] = useState<"create" | "rename" | null>(null);
+  const more = useRef<HTMLButtonElement>(null);
+  const opener = useRef<Element | null>(null);
+  // Focus goes back where it was (Ctrl+S), or to ⋯ when one of its items, gone by then, opened the dialog.
+  const ask = (mode: "create" | "rename") => {
+    opener.current = document.activeElement?.closest('[role="menu"]') ? more.current : document.activeElement;
+    setNaming(mode);
+  };
   const done = (screen: Saved) => {
     client.setQueryData($api.queryOptions("get", "/v1/screens/{screen_id}", { params: { path: { screen_id: screen.id } } }).queryKey, screen);
     void client.invalidateQueries({ queryKey: ["get", "/v1/screens"] });
@@ -43,7 +50,7 @@ export function ScreensBar({ screenId, stored, definition, dirty, go, setNote }:
   const saveAs = (name: string) =>
     create.mutate({ body: { name, ...body(definition) } }, { onSuccess: (s) => (setNaming(null), go(s.id, null, true), setNote({ text: `Saved “${s.name}”`, tone: "done" })) });
   const save = () => {
-    if (!stored) return setNaming("create");
+    if (!stored) return ask("create");
     if (!dirty) return;
     patch.mutate({ params: { path: { screen_id: stored.id } }, body: body(definition) }, { onSuccess: (s) => (go(s.id, null), setNote({ text: `Saved “${s.name}”`, tone: "done" })), onError: failed(stored.name) });
   };
@@ -131,16 +138,16 @@ export function ScreensBar({ screenId, stored, definition, dirty, go, setNote }:
       </Button>
       <DropdownMenu.Root>
         <DropdownMenu.Trigger asChild>
-          <Button size="icon" variant="ghost" aria-label="More screen actions">
+          <Button ref={more} size="icon" variant="ghost" aria-label="More screen actions">
             <Ellipsis aria-hidden />
           </Button>
         </DropdownMenu.Trigger>
         <DropdownMenu.Portal>
           <DropdownMenu.Content align="start" sideOffset={4} className={menu}>
-            <DropdownMenu.Item className={menuItem} onSelect={() => setNaming("create")}>
+            <DropdownMenu.Item className={menuItem} onSelect={() => ask("create")}>
               Save as new…
             </DropdownMenu.Item>
-            <DropdownMenu.Item className={menuItem} disabled={!stored} onSelect={() => setNaming("rename")}>
+            <DropdownMenu.Item className={menuItem} disabled={!stored} onSelect={() => ask("rename")}>
               Rename…
             </DropdownMenu.Item>
             <DropdownMenu.Item className={menuItem} disabled={!stored} onSelect={duplicate}>
@@ -165,18 +172,24 @@ export function ScreensBar({ screenId, stored, definition, dirty, go, setNote }:
           error={naming === "rename" ? patch.error : create.error}
           onSubmit={naming === "rename" ? rename : saveAs}
           onClose={() => (setNaming(null), create.reset(), patch.reset())}
+          opener={opener}
         />
       )}
     </div>
   );
 }
 
-function NameDialog({ rename, initial, pending, error, onSubmit, onClose }: { rename: boolean; initial: string; pending: boolean; error: unknown; onSubmit: (name: string) => void; onClose: () => void }) {
+function NameDialog({ rename, initial, pending, error, onSubmit, onClose, opener }: { rename: boolean; initial: string; pending: boolean; error: unknown; onSubmit: (name: string) => void; onClose: () => void; opener: React.RefObject<Element | null> }) {
   const [name, setName] = useState(initial);
   const problem = error ? why(error, name.trim()) : null;
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent>
+      <DialogContent
+        onCloseAutoFocus={(e) => {
+          e.preventDefault();
+          if (opener.current instanceof HTMLElement) opener.current.focus();
+        }}
+      >
         <DialogTitle>{rename ? "Rename screen" : "Save screen"}</DialogTitle>
         <DialogDescription>{rename ? "Names are unique in your workspace." : "Its conditions, sort and columns, under a name you can reopen from Screens."}</DialogDescription>
         <form
