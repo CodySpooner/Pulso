@@ -31,6 +31,7 @@ router = APIRouter(prefix="/v1/screens", dependencies=[Depends(current_principal
 VERSION = 1
 CURSOR = TypeAdapter(str)  # the last name: names are unique per workspace
 Name = Annotated[NoNulStr, StringConstraints(strip_whitespace=True, min_length=1, max_length=80)]
+Column = Literal[SortKey, "lifecycle"]  # a Screener row's metric
 
 
 class Definition(BaseModel):
@@ -40,10 +41,18 @@ class Definition(BaseModel):
     filters: Filters = Field(default_factory=Filters)
     sort: SortKey = "trend"
     order: Literal["desc", "asc"] = "desc"
+    # The results table's metric columns in order (WF-1b, DEC-347); null is the page's default.
+    columns: Annotated[list[Column], Field(min_length=1, max_length=20)] | None = None
 
 
 class ScreenIn(Definition):
     name: Name
+
+
+class ScreenPatch(Definition):
+    """The fields to change: each given one replaces the stored one, `filters` as a whole."""
+
+    name: Name | None = None
 
 
 class SavedScreen(Definition):
@@ -114,6 +123,23 @@ def create_screen(body: ScreenIn, principal: CurrentPrincipal, session: DB) -> S
 @router.get("/{screen_id}", response_model=SavedScreen)
 def get_screen(screen_id: UUID, principal: CurrentPrincipal, session: DB) -> SavedScreen:
     return read(owned(session, principal.workspace_id, screen_id))
+
+
+@router.patch("/{screen_id}", response_model=SavedScreen)
+def update_screen(
+    screen_id: UUID, body: ScreenPatch, principal: CurrentPrincipal, session: DB
+) -> SavedScreen:
+    """Rename a screen, replace its definition, or both (imp-525). A used name is a 409."""
+    row = owned(session, principal.workspace_id, screen_id)
+    if body.name is not None:
+        row.name = body.name
+    given = body.model_dump(mode="json", include=body.model_fields_set - {"name"})
+    if given:
+        merged = Definition.model_validate({**row.definition, **given})
+        row.definition = merged.model_dump(mode="json", exclude_none=True)
+        row.version = VERSION
+    session.commit()
+    return read(row)
 
 
 @router.delete("/{screen_id}", response_model=SavedScreen)
