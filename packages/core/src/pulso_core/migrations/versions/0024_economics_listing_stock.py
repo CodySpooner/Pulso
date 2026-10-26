@@ -23,8 +23,8 @@ EDITS = (
     (
         "    LEFT JOIN LATERAL (  -- the latest supplier snapshot, if it has a price:"
         " never an older one\n",
-        "    LEFT JOIN LATERAL (  -- the latest supplier snapshot, if it has a price: never an older"
-        " one;\n    -- a CJ stock capture's row carries no price and is skipped (DEC-348)\n",
+        "    LEFT JOIN LATERAL (  -- the latest supplier snapshot, if it has a price: never an"
+        " older one;\n    -- a CJ stock capture's row carries no price and is skipped (DEC-348)\n",
     ),
     (
         "            WHERE snap.listing_id = l.id\n",
@@ -39,7 +39,7 @@ EDITS = (
         "        FROM listing_snapshots snap\n"
         "        WHERE snap.listing_id = l.id\n",
         "    LEFT JOIN LATERAL (  -- the newest stock reading: is the listing known out of stock?\n"
-        "        -- A row with stock fields, or a CJ stock capture's: its unknown total supersedes\n"
+        "        -- A row with stock fields, or a CJ stock capture's: an unknown total supersedes\n"
         "        SELECT snap.available IS FALSE OR snap.stock <= 0 AS sold_out\n"
         "        FROM listing_snapshots snap\n"
         "        JOIN raw_payloads payload ON payload.id = snap.raw_payload_id\n"
@@ -82,8 +82,7 @@ def downgrade() -> None:
                 JOIN raw_payloads payload ON payload.id = snap.raw_payload_id
                 WHERE {STOCK_CAPTURE}
             ) THEN
-                RAISE EXCEPTION
-                    'listing_snapshots holds CJ stock rows 0023 misreads; refusing a lossy downgrade';
+                RAISE EXCEPTION 'CJ stock rows 0023 misreads exist; refusing a lossy downgrade';
             END IF;
         END
         $$
