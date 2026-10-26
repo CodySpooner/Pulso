@@ -4395,14 +4395,78 @@
       },
       "Params": {
         "additionalProperties": false,
+        "description": "Each rule type takes its own; another type's is a 422, and a missing one its default.",
         "properties": {
+          "direction": {
+            "anyOf": [
+              {
+                "enum": [
+                  "above",
+                  "below"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "saturation_cross, required: the side of the line that fires.",
+            "title": "Direction"
+          },
+          "min_volume": {
+            "anyOf": [
+              {
+                "maximum": 1000000.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "velocity_spike: the units over 7 days it needs to fire (default 10).",
+            "title": "Min Volume"
+          },
           "pct": {
-            "default": 5,
-            "description": "The \u00b1 % change from the reference that fires a price or freight rule.",
-            "exclusiveMinimum": 0.0,
-            "maximum": 1000.0,
-            "title": "Pct",
-            "type": "number"
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "maximum": 1000.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Price and freight: the \u00b1 % change from the reference (default 5). velocity_spike: the % rise of 7-day velocity over the prior 7 days (default 50).",
+            "title": "Pct"
+          },
+          "threshold": {
+            "anyOf": [
+              {
+                "maximum": 100.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "saturation_cross, required: the Saturation Score line, 0-100.",
+            "title": "Threshold"
+          },
+          "window_days": {
+            "anyOf": [
+              {
+                "const": 7,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "velocity_spike: 7, the 7 days against the 7 before (default).",
+            "title": "Window Days"
           }
         },
         "title": "Params",
@@ -7230,20 +7294,20 @@
           },
           "params": {
             "$ref": "#/components/schemas/Params",
-            "default": {
-              "pct": 5.0
-            }
+            "default": {}
           },
           "target_id": {
-            "description": "The product's id or the listing's id.",
+            "description": "The product's, listing's or watchlist's id.",
             "maxLength": 40,
             "title": "Target Id",
             "type": "string"
           },
           "target_type": {
+            "description": "Supplier rules: product or supplier_offer. Score rules: product or watchlist.",
             "enum": [
               "product",
-              "supplier_offer"
+              "supplier_offer",
+              "watchlist"
             ],
             "title": "Target Type",
             "type": "string"
@@ -7253,7 +7317,9 @@
               "supplier_price_change",
               "freight_change",
               "supplier_stock_out",
-              "back_in_stock"
+              "back_in_stock",
+              "velocity_spike",
+              "saturation_cross"
             ],
             "title": "Type",
             "type": "string"
@@ -7344,7 +7410,7 @@
                 "type": "null"
               }
             ],
-            "description": "The product the target is or belongs to; null for the Testing defaults.",
+            "description": "The product the target is or belongs to; null for the Testing defaults and watchlists.",
             "title": "Product Id"
           },
           "product_name": {
@@ -7406,6 +7472,18 @@
           "type": {
             "title": "Type",
             "type": "string"
+          },
+          "watchlist_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "A watchlist target's name.",
+            "title": "Watchlist Name"
           }
         },
         "required": [
@@ -7424,6 +7502,7 @@
           "created_at",
           "product_id",
           "product_name",
+          "watchlist_name",
           "last_fired_at"
         ],
         "title": "RuleOut",

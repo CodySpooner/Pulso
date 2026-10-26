@@ -2751,14 +2751,36 @@ export interface components {
             /** Reason */
             reason?: string | null;
         };
-        /** Params */
+        /**
+         * Params
+         * @description Each rule type takes its own; another type's is a 422, and a missing one its default.
+         */
         Params: {
             /**
-             * Pct
-             * @description The ± % change from the reference that fires a price or freight rule.
-             * @default 5
+             * Direction
+             * @description saturation_cross, required: the side of the line that fires.
              */
-            pct: number;
+            direction?: ("above" | "below") | null;
+            /**
+             * Min Volume
+             * @description velocity_spike: the units over 7 days it needs to fire (default 10).
+             */
+            min_volume?: number | null;
+            /**
+             * Pct
+             * @description Price and freight: the ± % change from the reference (default 5). velocity_spike: the % rise of 7-day velocity over the prior 7 days (default 50).
+             */
+            pct?: number | null;
+            /**
+             * Threshold
+             * @description saturation_cross, required: the Saturation Score line, 0-100.
+             */
+            threshold?: number | null;
+            /**
+             * Window Days
+             * @description velocity_spike: 7, the 7 days against the 7 before (default).
+             */
+            window_days?: 7 | null;
         };
         /**
          * Penalty
@@ -3653,27 +3675,24 @@ export interface components {
             muted_until?: string | null;
             /** Name */
             name: string;
-            /**
-             * @default {
-             *       "pct": 5
-             *     }
-             */
+            /** @default {} */
             params: components["schemas"]["Params"];
             /**
              * Target Id
-             * @description The product's id or the listing's id.
+             * @description The product's, listing's or watchlist's id.
              */
             target_id: string;
             /**
              * Target Type
+             * @description Supplier rules: product or supplier_offer. Score rules: product or watchlist.
              * @enum {string}
              */
-            target_type: "product" | "supplier_offer";
+            target_type: "product" | "supplier_offer" | "watchlist";
             /**
              * Type
              * @enum {string}
              */
-            type: "supplier_price_change" | "freight_change" | "supplier_stock_out" | "back_in_stock";
+            type: "supplier_price_change" | "freight_change" | "supplier_stock_out" | "back_in_stock" | "velocity_spike" | "saturation_cross";
         };
         /** RuleOut */
         RuleOut: {
@@ -3708,7 +3727,7 @@ export interface components {
             };
             /**
              * Product Id
-             * @description The product the target is or belongs to; null for the Testing defaults.
+             * @description The product the target is or belongs to; null for the Testing defaults and watchlists.
              */
             product_id: string | null;
             /** Product Name */
@@ -3731,6 +3750,11 @@ export interface components {
             target_type: string;
             /** Type */
             type: string;
+            /**
+             * Watchlist Name
+             * @description A watchlist target's name.
+             */
+            watchlist_name: string | null;
         };
         /** RulePage */
         RulePage: {
