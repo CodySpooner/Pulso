@@ -1970,6 +1970,8 @@ export interface components {
             supplier_count: components["schemas"]["Sourced"] | components["schemas"]["NoSource"];
             /** Title */
             title: string;
+            /** Trend */
+            trend: components["schemas"]["LatestTrend"] | components["schemas"]["NoSource"];
             /** Velocity */
             velocity: components["schemas"]["Velocity"] | components["schemas"]["NoSource"];
             /** Watched */
@@ -2367,6 +2369,26 @@ export interface components {
             saturation: components["schemas"]["StoredScore"] | components["schemas"]["NoSource"];
             /** Trend */
             trend: components["schemas"]["StoredScore"] | components["schemas"]["NoSource"];
+        };
+        /**
+         * LatestTrend
+         * @description The product's newest Trend row (DEC-351). Its explanation is on the scores endpoint.
+         */
+        LatestTrend: {
+            /**
+             * As Of
+             * Format: date-time
+             */
+            as_of: string;
+            /**
+             * Day
+             * Format: date
+             */
+            day: string;
+            /** Reason */
+            reason: string | null;
+            /** Value */
+            value: number | null;
         };
         /** Launch */
         Launch: {

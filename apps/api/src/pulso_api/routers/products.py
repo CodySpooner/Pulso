@@ -5,7 +5,7 @@ workspace's."""
 import json
 from collections import defaultdict
 from collections.abc import Callable, Iterator, Sequence
-from datetime import UTC, datetime, time, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from decimal import Decimal
 from typing import Annotated, Any, Literal
 from uuid import UUID
@@ -59,6 +59,7 @@ from pulso_core.models import (
     ProductNote,
     ProductTag,
     RawPayload,
+    Score,
     Source,
     Store,
     Supplier,
@@ -66,6 +67,8 @@ from pulso_core.models import (
     WatchlistItem,
     workspace_product_economics,
 )
+from pulso_core.scores import Explanation
+from pulso_ml.scores import opportunity as op
 
 router = APIRouter(prefix="/v1/products", dependencies=[Depends(current_principal)])
 categories_router = APIRouter(prefix="/v1/categories", dependencies=[Depends(current_principal)])
@@ -131,9 +134,19 @@ class Incomplete(NoSource):
     missing: list[str]  # landed_cost.MISSING codes; empty when the workspace has no settings
 
 
+class LatestTrend(BaseModel):
+    """The product's newest Trend row (DEC-351). Its explanation is on the scores endpoint."""
+
+    value: float | None  # 0–100; null with `reason`
+    day: date  # the UTC day scored: the cell's "as of"
+    as_of: AwareDatetime  # its inputs were captured before this
+    reason: str | None  # why the value is null: insufficient signal
+
+
 class DiscoverItem(ProductHeader):
     velocity: Velocity | NoSource
     best_margin_minor: Margin | Incomplete
+    trend: LatestTrend | NoSource
     as_of: AwareDatetime | None  # the oldest family feeding the card; null when nothing does
     stale: bool  # some family feeding the card is past twice its source's interval
 
@@ -581,6 +594,7 @@ def list_products(
     snapshots = latest_snapshots(session, [row.id for row in page])
     margins = best_margins(session, principal.workspace_id, [row.id for row in page])
     watches = watch_states(session, principal.workspace_id, [row.id for row in page])
+    trends = op.latest_rows(session, "trend", [row.id for row in page])
     feeding = [row for row in sources if row.feeding]
     degraded = []
     for row in feeding:
@@ -610,7 +624,15 @@ def list_products(
     supplier_row = session.get(Supplier, supplier) if supplier is not None else None
     return DiscoverPage(
         items=[
-            item(row, snapshots[row.id], margins.get(row.id), watches[row.id], by_key, now)
+            item(
+                row,
+                snapshots[row.id],
+                margins.get(row.id),
+                trends.get(row.id),
+                watches[row.id],
+                by_key,
+                now,
+            )
             for row in page
         ],
         next_cursor=next_cursor,
@@ -621,10 +643,23 @@ def list_products(
     )
 
 
+def latest_trend(row: Score | None) -> LatestTrend | NoSource:
+    """A Trend row as GET /v1/products/{id}/scores reads it: a NULL one keeps its reason."""
+    from pulso_api.routers.product_scores import NO_ROW  # that module imports this one
+
+    if row is None:
+        return NoSource(value=None, reason=NO_ROW)
+    read = op.stored(row)
+    assert read is not None
+    reason = None if read.value is not None else Explanation.model_validate(row.explanation).reason
+    return LatestTrend(value=read.value, day=row.date, as_of=read.as_of, reason=reason)
+
+
 def item(
     row: Row[Any],
     snapshots: list[Row[Any]],
     economics: RowMapping | None,
+    trend: Score | None,
     lists: dict[UUID, str],
     sources: dict[str, Source],
     now: datetime,
@@ -649,6 +684,7 @@ def item(
         **stats,
         velocity=velocity,
         best_margin_minor=margin,
+        trend=latest_trend(trend),
         as_of=min((s.as_of for s in fed), default=None),
         stale=any(s.stale for s in fed),
         **watch(lists),
@@ -667,8 +703,8 @@ def csv_rows(
     snapshots = latest_snapshots(session, ids)
     margins = best_margins(session, workspace_id, ids)
     for row in chunk:
-        # The export has no watch columns, so no list holds anything here.
-        each = item(row, snapshots[row.id], margins.get(row.id), {}, sources, now)
+        # The export has no watch or trend columns, so nothing is read for them here.
+        each = item(row, snapshots[row.id], margins.get(row.id), None, {}, sources, now)
         velocity = each.velocity if isinstance(each.velocity, Velocity) else None
         margin = each.best_margin_minor if isinstance(each.best_margin_minor, Margin) else None
         yield [
@@ -716,10 +752,19 @@ def discover_items(
     snapshots = latest_snapshots(session, product_ids)
     margins = best_margins(session, workspace_id, product_ids)
     watches = watch_states(session, workspace_id, product_ids)
+    trends = op.latest_rows(session, "trend", product_ids)
     sources = {source.key: source for source in session.scalars(select(Source))}
     now = datetime.now(UTC)
     return {
-        row.id: item(row, snapshots[row.id], margins.get(row.id), watches[row.id], sources, now)
+        row.id: item(
+            row,
+            snapshots[row.id],
+            margins.get(row.id),
+            trends.get(row.id),
+            watches[row.id],
+            sources,
+            now,
+        )
         for row in rows
     }
 

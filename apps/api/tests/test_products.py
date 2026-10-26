@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 
 from pulso_api.auth import Principal, current_principal
 from pulso_api.dependencies import get_db
+from pulso_api.routers.product_scores import NO_ROW
 from pulso_api.routers.products import DISCOVER_CSV, NO_SETTINGS, NO_SIGNAL
 from pulso_core.models import (
     Category,
@@ -30,6 +31,7 @@ from pulso_core.models import (
     Store,
     Supplier,
 )
+from pulso_core.scores import Explanation, ScoreRow, write
 
 STATS = ("store_count", "supplier_count", "price_min_minor", "price_max_minor")
 NOW = datetime.now(UTC)
@@ -583,6 +585,53 @@ def test_feed_items_trace_every_number(api: TestClient, feed: dict[str, str]) ->
     ]
     # The newest raw payload: seeded seconds ago on Postgres's clock, not NOW (imp-304).
     assert datetime.fromisoformat(body["as_of"]) > datetime.now(UTC) - timedelta(minutes=5)
+
+
+@pytest.mark.db
+def test_feed_items_read_the_latest_trend_row(
+    api: TestClient, db_engine: Engine, feed: dict[str, str]
+) -> None:
+    """DEC-351: each item's newest Trend row, as the scores endpoint reads it; a NULL row keeps
+    its reason over an older value, and no row is no source yet."""
+    yesterday = (NOW - timedelta(days=1)).date()
+
+    def trend(product: str, day: date, value: float | None, reason: str | None = None) -> ScoreRow:
+        explanation = Explanation(
+            model_version="000-fixture00000",
+            config_digest="f" * 64,
+            components=(),
+            missing=(),
+            coverage=0.0,
+            reason=reason,
+        )
+        return ScoreRow(UUID(feed[product]), day, "trend", value, explanation)
+
+    with Session(db_engine) as session:
+        rows = [
+            trend("steady", yesterday - timedelta(days=1), 41.0),
+            trend("steady", yesterday, 68.6),
+            trend("supplier_only", yesterday - timedelta(days=1), 55.0),
+            trend("supplier_only", yesterday, None, "no velocity growth"),
+        ]
+        assert write(session, rows) == 4
+        session.commit()
+    items = {item["id"]: item for item in walk(api, limit=2)}
+    cutoff = datetime.combine(yesterday + timedelta(days=1), time(), UTC)
+    steady = items[feed["steady"]]["trend"]
+    assert steady | {"as_of": None} == {
+        "value": 68.6,
+        "day": yesterday.isoformat(),
+        "as_of": None,
+        "reason": None,
+    }
+    assert datetime.fromisoformat(steady["as_of"]) <= cutoff
+    assert items[feed["supplier_only"]]["trend"] | {"as_of": None} == {
+        "value": None,
+        "day": yesterday.isoformat(),
+        "as_of": None,
+        "reason": "no velocity growth",
+    }
+    assert items[feed["small_base"]]["trend"] == {"value": None, "reason": NO_ROW}
 
 
 @pytest.mark.db

@@ -2022,6 +2022,17 @@
             "title": "Title",
             "type": "string"
           },
+          "trend": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LatestTrend"
+              },
+              {
+                "$ref": "#/components/schemas/NoSource"
+              }
+            ],
+            "title": "Trend"
+          },
           "velocity": {
             "anyOf": [
               {
@@ -2061,6 +2072,7 @@
           "watchlist_ids",
           "velocity",
           "best_margin_minor",
+          "trend",
           "as_of",
           "stale"
         ],
@@ -3309,6 +3321,51 @@
           "lifecycle"
         ],
         "title": "LatestScores",
+        "type": "object"
+      },
+      "LatestTrend": {
+        "description": "The product's newest Trend row (DEC-351). Its explanation is on the scores endpoint.",
+        "properties": {
+          "as_of": {
+            "format": "date-time",
+            "title": "As Of",
+            "type": "string"
+          },
+          "day": {
+            "format": "date",
+            "title": "Day",
+            "type": "string"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          }
+        },
+        "required": [
+          "value",
+          "day",
+          "as_of",
+          "reason"
+        ],
+        "title": "LatestTrend",
         "type": "object"
       },
       "Launch": {
