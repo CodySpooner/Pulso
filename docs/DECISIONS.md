@@ -4375,7 +4375,7 @@ Superseded review defaults, not given entries: default #0 (move the repo) is don
     - **One host per page:** `AddToBoardHost` holds the one toast and the `B` key. `B` (Shift+B too, never with Ctrl, Cmd or Alt, never while typing) opens the picker of the product holding focus: the nearest `[data-product]` (a Discover card or row). On the Product Page (`page`) it opens the header's picker from anywhere.
     - **Focus:** Radix moves focus into the search on open and back to the trigger on close.
     - **Clicks inside the picker:** the content stops click propagation. It is portalled, but React bubbles its clicks to the Discover row, whose click opens the product.
-    - **Alignment:** an icon picker opens over its card (`align="start"`) rather than over the nav, and the header's opens to the left (`align="end"`). The phone table row's product cell widens from `w-40` to `w-48` for the second icon.
+    - **Alignment:** an icon picker opens over its card (`align="start"`) rather than over the nav, and the header's opens to the left (`align="end"`). Discover passes ★ and Add to board through the shared table's `lead` (DEC-347); a phone row's product cell widens from `w-40` to `w-48` only when it holds Add to board, so the Screener's rows keep `w-40`.
 - **Alternatives:**
   - **`GET /v1/boards/{id}/export.csv`** (vault Data & API, backlog wording): a second route and operation to keep in step with the items page; DEC-316 and DEC-345 chose `?format=csv`.
   - **The stored `position` in the CSV:** equal to the JSON, but gaps after a removal read as missing cards in a spreadsheet.
@@ -4400,5 +4400,6 @@ Superseded review defaults, not given entries: default #0 (move the repo) is don
       - loading, error with Retry, and no boards with the name field;
       - AA contrast of the picker, its error, the 409 and the toast in dark and light;
       - 375px with no horizontal scroll.
-    - The existing Discover, boards, watchlists, Product Page, touch-target and Testing export specs pass (97). The Product Page tab-order test now meets Add to board after Watch.
+      - at 375px the table row's product cell is 192px (dropping the `has-` width fails it, 160).
+    - The existing Discover, boards, Screener, watchlists, Product Page, touch-target and Testing export specs pass (108). The Product Page tab-order test now meets Add to board after Watch.
 - **Not here:** Add to board on the Screener (p4-32's page) and Store Spy; the selection bar's "move or copy to board" (imp-500); the Shopify product CSV (imp-457, pending approval); a CSV of the whole board list. Backlog rows are in the report.
