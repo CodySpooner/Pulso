@@ -1,7 +1,9 @@
 """Testing Board (WF-5 part a, DEC-312): the workspace's product tests. CPA and ROAS are
 computed on read, never stored; the start snapshot keeps the economics a test began with (R-21).
-The stop-loss signal and "changed since start" are computed on read too (DEC-340)."""
+The stop-loss signal and "changed since start" are computed on read too (DEC-340). The list's
+`?format=csv` exports every matching test through the JSON's own view (DEC-345)."""
 
+from collections.abc import Iterator, Sequence
 from datetime import UTC, date, datetime
 from fractions import Fraction
 from typing import Annotated, Any, Literal, get_args
@@ -9,10 +11,12 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, Path, Query
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, StringConstraints, model_validator
-from sqlalchemy import Select, func, select
+from sqlalchemy import Row, Select, func, select
 from sqlalchemy.orm import Session
+from starlette.responses import Response
 
 from pulso_api.auth import Principal, current_principal
+from pulso_api.csv_export import csv_response, major
 from pulso_api.dependencies import get_db
 from pulso_api.errors import APIError
 from pulso_api.routers.account import MinorUnits
@@ -173,6 +177,30 @@ COMPUTED = {"cpa_minor", "roas", "product_title", "product_image_url"} | {
 }
 
 
+# The board's fields in its order, money in dollars, CPA, ROAS and break-even as the JSON computes.
+TESTING_CSV = (
+    "id",
+    "product_id",
+    "product",
+    "stage",
+    "started_on",
+    "ended_on",
+    "currency",
+    "ad_spend",
+    "revenue",
+    "orders",
+    "cpa",
+    "roas",
+    "break_even_cpa",
+    "stop_loss",
+    "signal",
+    "kill_reason",
+    "notes",
+    "created_at",
+    "updated_at",
+)
+
+
 def with_card[Q: Select[Any]](query: Q) -> Q:
     return (
         query.select_from(ProductTest)
@@ -285,18 +313,61 @@ def apply(
         raise APIError(422, "date_order", "ended_on is before started_on.")
 
 
-@router.get("", response_model=ProductTestPage)
+def csv_rows(chunk: Sequence[Row[Any]]) -> Iterator[list[object]]:
+    """One export chunk as TESTING_CSV cells: the same view the JSON page builds."""
+    for row in chunk:
+        test = view(*row)
+        yield [
+            test.id,
+            test.product_id,
+            test.product_title,
+            test.stage,
+            test.started_on,
+            test.ended_on,
+            test.currency,
+            major(test.ad_spend_minor),
+            major(test.revenue_minor),
+            test.orders,
+            major(test.cpa_minor),
+            test.roas,
+            major(test.break_even_cpa_minor),
+            major(test.stop_loss_minor),
+            test.signal,
+            test.kill_reason,
+            test.notes,
+            test.created_at,
+            test.updated_at,
+        ]
+
+
+@router.get(
+    "",
+    response_model=ProductTestPage,
+    responses={
+        200: {
+            "content": {"text/csv": {"schema": {"type": "string"}}},
+            "description": "JSON, or with format=csv every matching test as a CSV download.",
+        },
+    },
+)
 def list_tests(
     principal: CurrentPrincipal,
     session: DB,
     stage: Stage | None = None,
     cursor: Annotated[int | None, Query(ge=1, le=2**63 - 1)] = None,
     limit: Annotated[int, Query(ge=1, le=100)] = 50,
-) -> ProductTestPage:
+    format: Annotated[
+        Literal["json", "csv"],
+        Query(description="csv: every matching test, newest first, no cursor or limit (DEC-345)"),
+    ] = "json",
+) -> ProductTestPage | Response:
     mine = ProductTest.workspace_id == principal.workspace_id
     query = with_card(select(ProductTest, *CARD)).where(mine)
     if stage is not None:
         query = query.where(ProductTest.stage == stage)
+    if format == "csv":
+        ordered = query.order_by(ProductTest.id.desc())
+        return csv_response(session, "testing", TESTING_CSV, ordered, csv_rows)
     if cursor is not None:
         query = query.where(ProductTest.id < cursor)
     rows = session.execute(query.order_by(ProductTest.id.desc()).limit(limit + 1)).tuples().all()

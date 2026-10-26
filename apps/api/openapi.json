@@ -39085,6 +39085,22 @@
             }
           },
           {
+            "description": "csv: every matching product in this sort, no cursor or limit (DEC-345)",
+            "in": "query",
+            "name": "format",
+            "required": false,
+            "schema": {
+              "default": "json",
+              "description": "csv: every matching product in this sort, no cursor or limit (DEC-345)",
+              "enum": [
+                "json",
+                "csv"
+              ],
+              "title": "Format",
+              "type": "string"
+            }
+          },
+          {
             "in": "cookie",
             "name": "__session",
             "required": false,
@@ -39108,9 +39124,14 @@
                 "schema": {
                   "$ref": "#/components/schemas/ScreenerPage"
                 }
+              },
+              "text/csv": {
+                "schema": {
+                  "type": "string"
+                }
               }
             },
-            "description": "Successful Response"
+            "description": "JSON, or with format=csv every matching product as a CSV download; an X-Unapplied header names the unapplied filters, as `unapplied` does."
           },
           "401": {
             "content": {
@@ -42526,6 +42547,22 @@
             }
           },
           {
+            "description": "csv: every matching test, newest first, no cursor or limit (DEC-345)",
+            "in": "query",
+            "name": "format",
+            "required": false,
+            "schema": {
+              "default": "json",
+              "description": "csv: every matching test, newest first, no cursor or limit (DEC-345)",
+              "enum": [
+                "json",
+                "csv"
+              ],
+              "title": "Format",
+              "type": "string"
+            }
+          },
+          {
             "in": "cookie",
             "name": "__session",
             "required": false,
@@ -42549,9 +42586,14 @@
                 "schema": {
                   "$ref": "#/components/schemas/ProductTestPage"
                 }
+              },
+              "text/csv": {
+                "schema": {
+                  "type": "string"
+                }
               }
             },
-            "description": "Successful Response"
+            "description": "JSON, or with format=csv every matching test as a CSV download."
           },
           "401": {
             "content": {

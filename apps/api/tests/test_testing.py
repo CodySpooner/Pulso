@@ -1,6 +1,8 @@
 """Testing Board API (WF-5 part a, R-21, R-24, DEC-312): workspace product tests with computed
 CPA and ROAS, a start snapshot taken once, and kill-reason counts."""
 
+import csv
+import io
 from collections.abc import Callable, Iterator
 from dataclasses import asdict
 from datetime import UTC, datetime, timedelta
@@ -17,8 +19,9 @@ from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import Session
 
 from pulso_api.auth import Principal, current_principal
+from pulso_api.csv_export import major
 from pulso_api.dependencies import get_db
-from pulso_api.routers.testing import NO_BREAK_EVEN, KillReason, Stage, stop_loss
+from pulso_api.routers.testing import NO_BREAK_EVEN, TESTING_CSV, KillReason, Stage, stop_loss
 from pulso_core.db import Base
 from pulso_core.landed_cost import Amount, Inputs, landed_cost
 from pulso_core.models import (
@@ -435,3 +438,102 @@ def test_two_workspace_isolation(board: tuple[As, dict[str, Any]]) -> None:
     assert [item["id"] for item in as_("a").get("/v1/tests").json()["items"]] == [mine["id"]]
     assert [item["id"] for item in as_("b").get("/v1/tests").json()["items"]] == [theirs["id"]]
     assert as_("a").get(url).json() == mine | {"since_start": None}
+
+
+def export(api: TestClient, **query: Any) -> list[dict[str, str]]:
+    """The Testing Board's CSV, checked for the format every export shares (DEC-316, DEC-345)."""
+    response = api.get("/v1/tests", params={**query, "format": "csv"})
+    assert response.status_code == 200, response.text
+    assert response.headers["content-type"] == "text/csv; charset=utf-8"
+    assert response.headers["content-disposition"] == (
+        f'attachment; filename="pulso_testing_{today()}.csv"'
+    )
+    assert response.content.startswith(b"\xef\xbb\xbf")  # the BOM, for Excel on Windows
+    text = response.content.decode("utf-8-sig")
+    assert text.splitlines()[0] == ",".join(TESTING_CSV)
+    rows = list(csv.DictReader(io.StringIO(text)))
+    assert response.headers["x-total-count"] == str(len(rows))
+    return rows
+
+
+@pytest.mark.db
+def test_the_csv_export_is_the_jsons_tests_with_money_in_dollars(
+    board: tuple[As, dict[str, Any]], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr("pulso_api.csv_export.CHUNK", 2)  # two fetches for three tests
+    as_, ids = board
+    api = as_("a")
+    scenario = {"supplier_listing_id": ids["listing"], "variant_id": ids["variant"],
+                "ad_cost_minor": 1800}  # fmt: skip
+    # Five orders at $22.53 against the $22.53 break-even: a winner candidate.
+    won = create(api, ids["p0"], stage="testing", scenario=scenario, ad_spend_minor=11265,
+                 revenue_minor=25999, orders=5, notes="=HYPERLINK(1) lamp")  # fmt: skip
+    idle = create(api, ids["p1"])  # no spend, no orders
+    create(api, ids["p2"], stage="killed", kill_reason="saturated", ad_spend_minor=4865, orders=2)
+    create(as_("b"), ids["p3"])  # another workspace's test never exports
+    api = as_("a")
+
+    page = api.get("/v1/tests").json()["items"]
+    rows = export(api)
+    assert [row["id"] for row in rows] == [str(test["id"]) for test in page]  # newest first
+    row, item = rows[-1], page[-1]
+    assert row == {
+        "id": str(won["id"]),
+        "product_id": ids["p0"],
+        "product": "Product 0",
+        "stage": "testing",
+        "started_on": today(),
+        "ended_on": "",
+        "currency": "USD",
+        "ad_spend": "112.65",
+        "revenue": "259.99",
+        "orders": "5",
+        "cpa": "22.53",
+        "roas": str(25999 / 11265),
+        "break_even_cpa": "22.53",
+        "stop_loss": "45.06",  # 2 x break-even
+        "signal": "winner_candidate",
+        "kill_reason": "",
+        "notes": "'=HYPERLINK(1) lamp",  # the owner's text, still never a formula
+        "created_at": item["created_at"],
+        "updated_at": item["updated_at"],
+    }
+    # The computed values are the JSON's, read through the same view, never re-derived.
+    assert (row["cpa"], row["roas"], row["break_even_cpa"], row["stop_loss"]) == (
+        str(major(item["cpa_minor"])), str(item["roas"]),
+        str(major(item["break_even_cpa_minor"])), str(major(item["stop_loss_minor"])),
+    )  # fmt: skip
+    assert row["created_at"].endswith("Z") and row["updated_at"].endswith("Z")
+    # No spend and no orders: CPA, ROAS and break-even are empty cells, never 0 (DEC-040).
+    blank = next(r for r in rows if r["id"] == str(idle["id"]))
+    assert pick(blank, "ad_spend", "orders", "cpa", "roas", "break_even_cpa", "signal") == (
+        "0.00", "0", "", "", "", ""
+    )  # fmt: skip
+
+    killed = export(api, stage="killed")  # the list's filter; a cursor and limit are the page's
+    assert [pick(r, "stage", "kill_reason", "cpa") for r in killed] == [
+        ("killed", "saturated", "24.32")  # $48.65 / 2, half-even as the card shows
+    ]
+    assert len(export(api, cursor=page[0]["id"], limit=1)) == 3
+    assert [r["product"] for r in export(as_("b"))] == ["Product 3"]
+
+
+@pytest.mark.db
+def test_the_csv_export_over_the_cap_is_a_422_and_no_file(
+    board: tuple[As, dict[str, Any]], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    as_, ids = board
+    api = as_("a")
+    for product in ("p1", "p2"):
+        create(api, ids[product])
+    create(api, ids["p3"], stage="killed", kill_reason="other")
+    monkeypatch.setattr("pulso_api.csv_export.MAX_ROWS", 2)
+    response = api.get("/v1/tests", params={"format": "csv"})
+    assert response.status_code == 422
+    assert response.headers["content-type"] == "application/problem+json"
+    assert (response.json()["code"], response.json()["detail"]) == (
+        "export_too_large",
+        "3 rows exceed the 2 export limit. Narrow your filters.",
+    )
+    assert len(export(api, stage="idea")) == 2  # narrowed under the cap, it exports
+    assert api.get("/v1/tests", params={"format": "xlsx"}).status_code == 422
