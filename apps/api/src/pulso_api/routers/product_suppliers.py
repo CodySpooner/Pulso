@@ -15,11 +15,11 @@ from starlette.responses import RedirectResponse, Response
 from pulso_api.auth import Principal, current_principal
 from pulso_api.errors import APIError
 from pulso_api.routers.account import workspace_settings
-from pulso_api.routers.products import DB, is_stale
+from pulso_api.routers.products import DB, is_stale, newest_snapshot
 from pulso_api.routers.profit import ProfitCalc, ProfitCalcRequest, calc_profit
 from pulso_api.schemas.provenance import NoSource, Sourced, Stat
 from pulso_core.landed_cost import LandedCost, best
-from pulso_core.landed_cost_loader import in_stock
+from pulso_core.landed_cost_loader import PRICE_CAPTURE, STOCK_READ, in_stock
 from pulso_core.models import Listing, ListingSnapshot, Product, Source, Supplier, SupplierOffer
 
 router = APIRouter(prefix="/v1/products")
@@ -72,8 +72,8 @@ class SupplierRow(BaseModel):
     last_seen: AwareDatetime
     stale: bool
     as_of: AwareDatetime | None = Field(
-        description="The latest listing snapshot (`unit_cost_minor`, stock, rating, orders); "
-        "every other number carries its own trace."
+        description="The latest price snapshot (`unit_cost_minor`, rating, orders); stock and "
+        "every other number carry their own trace."
     )
 
 
@@ -118,34 +118,36 @@ def get_product_suppliers(
             raise APIError(422, "invalid_cursor", "Invalid suppliers cursor.") from None
     now = datetime.now(UTC)
     workspace_settings(session, principal)  # a first read commits the new row before any load
-    snap = (
-        select(
-            ListingSnapshot.price_min_minor,
-            ListingSnapshot.currency,
-            ListingSnapshot.captured_at,
-            ListingSnapshot.raw_payload_id,
-            ListingSnapshot.available,
-            ListingSnapshot.stock,
-            ListingSnapshot.rating,
-            ListingSnapshot.review_count,
-            ListingSnapshot.sold_count,
-            ListingSnapshot.orders_window,
-            ListingSnapshot.window_days,
-        )
-        .where(ListingSnapshot.listing_id == Listing.id)
-        .order_by(ListingSnapshot.captured_at.desc(), ListingSnapshot.id.desc())
-        .limit(1)
-        .lateral()
+    # A CJ stock capture's row carries stock only, so price and stock are read apart (DEC-356).
+    snap = newest_snapshot(
+        PRICE_CAPTURE,
+        ListingSnapshot.price_min_minor,
+        ListingSnapshot.currency,
+        ListingSnapshot.captured_at,
+        ListingSnapshot.raw_payload_id,
+        ListingSnapshot.rating,
+        ListingSnapshot.review_count,
+        ListingSnapshot.sold_count,
+        ListingSnapshot.orders_window,
+        ListingSnapshot.window_days,
+    )
+    stock = newest_snapshot(
+        STOCK_READ,
+        ListingSnapshot.available,
+        ListingSnapshot.stock,
+        ListingSnapshot.captured_at.label("stock_at"),
+        ListingSnapshot.raw_payload_id.label("stock_payload"),
     )
     # The loader's own set: live supplier listings of the product (landed_cost_loader.calculate).
     # ponytail: the whole set loads per request, so the picks cover every row and keyset paging
     # runs in Python, as on Sellers (DEC-247); a product has a handful of supplier listings.
     listings = session.execute(
-        select(Listing, Supplier, SupplierOffer, Source, snap)
+        select(Listing, Supplier, SupplierOffer, Source, snap, stock)
         .join(Supplier, Supplier.id == Listing.supplier_id)
         .join(Source, Source.id == Listing.source_id)
         .outerjoin(SupplierOffer, SupplierOffer.listing_id == Listing.id)
         .outerjoin(snap, true())
+        .outerjoin(stock, true())
         .where(Listing.product_id == product.id, Listing.delisted_at.is_(None))
         .order_by(Listing.id)
     ).all()
@@ -233,7 +235,7 @@ def supplier_row(row: Row[Any], cost: ProfitCalc, now: datetime) -> SupplierRow:
         )
 
     def observed(value: int | None, reason: str) -> Stat:
-        """A number from the latest snapshot, with that snapshot's trace."""
+        """A number from the latest price snapshot, with that snapshot's trace."""
         return trace(value, row.captured_at, row.raw_payload_id, reason)
 
     def entity(value: int | None, reason: str) -> Stat:
@@ -270,7 +272,12 @@ def supplier_row(row: Row[Any], cost: ProfitCalc, now: datetime) -> SupplierRow:
         cost=cost,
         picks=[],
         in_stock=in_stock(row.available, row.stock),
-        stock=observed(row.stock, "The source reports no stock for this listing."),
+        stock=trace(
+            row.stock,
+            row.stock_at,
+            row.stock_payload,
+            "The source reports no stock for this listing.",
+        ),
         rating=rating,
         orders=orders,
         years_active=entity(supplier.years_active, "The source gives no years active."),

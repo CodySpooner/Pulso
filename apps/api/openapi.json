@@ -10328,7 +10328,7 @@
                 "type": "null"
               }
             ],
-            "description": "The latest listing snapshot (`unit_cost_minor`, stock, rating, orders); every other number carries its own trace.",
+            "description": "The latest price snapshot (`unit_cost_minor`, rating, orders); stock and every other number carry their own trace.",
             "title": "As Of"
           },
           "bulk_tiers": {

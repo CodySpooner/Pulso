@@ -40,6 +40,7 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.engine import RowMapping
 from sqlalchemy.orm import InstrumentedAttribute, Session
 from sqlalchemy.sql import ColumnElement
+from sqlalchemy.sql.selectable import LateralFromClause
 from starlette.responses import RedirectResponse, Response
 
 from pulso_api.auth import Principal, current_principal
@@ -48,7 +49,7 @@ from pulso_api.dependencies import get_db
 from pulso_api.errors import APIError
 from pulso_api.schemas.provenance import NoSource, Sourced, Stat
 from pulso_api.schemas.text import NoNulStr
-from pulso_core.landed_cost_loader import in_stock
+from pulso_core.landed_cost_loader import PRICE_CAPTURE, STOCK_READ, in_stock
 from pulso_core.models import (
     Category,
     Image,
@@ -201,33 +202,48 @@ def stat(
     )
 
 
+def newest_snapshot(read: ColumnElement[bool], *columns: Any) -> LateralFromClause:
+    """A listing's newest snapshot that `read` takes (PRICE_CAPTURE or STOCK_READ, DEC-348), as a
+    lateral on Listing."""
+    return (
+        select(*columns)
+        .join(RawPayload, RawPayload.id == ListingSnapshot.raw_payload_id)
+        .where(ListingSnapshot.listing_id == Listing.id, read)
+        .order_by(ListingSnapshot.captured_at.desc(), ListingSnapshot.id.desc())
+        .limit(1)
+        .lateral()
+    )
+
+
 def latest_snapshots(session: Session, product_ids: Sequence[UUID]) -> dict[UUID, list[Row[Any]]]:
-    """The latest snapshot of each live listing of these products: what every listing stat uses."""
+    """Each live listing of these products, as its latest price capture with the stock fields of
+    its latest stock reading (DEC-356): what every listing stat uses."""
+    price = newest_snapshot(
+        PRICE_CAPTURE,
+        ListingSnapshot.captured_at,
+        ListingSnapshot.raw_payload_id,
+        ListingSnapshot.price_min_minor,
+        ListingSnapshot.price_max_minor,
+        ListingSnapshot.currency,
+    )
+    stock = newest_snapshot(STOCK_READ, ListingSnapshot.available, ListingSnapshot.stock)
     rows = session.execute(
         select(
             Listing.product_id,
             Listing.store_id,
             Listing.supplier_id,
-            ListingSnapshot.captured_at,
-            ListingSnapshot.raw_payload_id,
-            ListingSnapshot.price_min_minor,
-            ListingSnapshot.price_max_minor,
-            ListingSnapshot.currency,
-            ListingSnapshot.available,
-            ListingSnapshot.stock,
+            *price.c,
+            *stock.c,
             Source.key,
             Source.name,
             Source.config,
         )
-        .join(Listing, Listing.id == ListingSnapshot.listing_id)
+        .select_from(Listing)
+        .join(price, true())
+        .outerjoin(stock, true())
         .join(Source, Source.id == Listing.source_id)
         .where(Listing.product_id.in_(product_ids), Listing.delisted_at.is_(None))
-        .order_by(
-            ListingSnapshot.listing_id,
-            ListingSnapshot.captured_at.desc(),
-            ListingSnapshot.id.desc(),
-        )
-        .distinct(ListingSnapshot.listing_id)
+        .order_by(Listing.id)  # as the DISTINCT ON it replaces, so min() keeps its tie-breaks
     ).all()
     grouped: dict[UUID, list[Row[Any]]] = defaultdict(list)
     for row in rows:

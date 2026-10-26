@@ -11,6 +11,7 @@ import pytest
 from sqlalchemy import Engine, func, select, text, update
 from sqlalchemy.orm import Session
 
+from pulso_core.landed_cost_loader import STOCK_ENDPOINT
 from pulso_core.models import (
     CollectorRun,
     FxRate,
@@ -1287,3 +1288,32 @@ def test_xr35_vendorless_listings_are_each_their_own_vendor(world: World) -> Non
     first, second = products(world.session, *pair)
     assert first is not None and first == second
     assert counts.gtin_linked == 1
+
+
+def test_a_newest_cj_stock_row_leaves_the_price_fact_on_the_price_capture(world: World) -> None:
+    """imp-565 (DEC-356): a stock capture's listing row has no price, so the fact skips it."""
+    cost = world.listing(world.supplier(), 0, price=1000)
+    run = CollectorRun(source_id=2, trigger="fixture", status="success")
+    world.session.add(run)
+    world.session.flush()
+    stocked = RawPayload(
+        source_id=2, run_id=run.id, request={"endpoint": STOCK_ENDPOINT}, bytes=1,
+        sha256="1" * 64,
+    )  # fmt: skip
+    world.session.add(stocked)
+    world.session.flush()
+    world.session.add(
+        ListingSnapshot(
+            listing_id=cost.id, captured_at=datetime.now(UTC) + timedelta(hours=1),
+            observed_for=DAY + timedelta(days=1), raw_payload_id=stocked.id, values_hash="s",
+            currency="USD", stock=0,
+        )
+    )  # fmt: skip
+    world.session.flush()
+    seen: list[tuple[int | None, str, date]] = []
+
+    def price(listing: Listing, minor: int | None, currency: str, day: date) -> None:
+        seen.append((minor, currency, day))
+
+    matcher.load_facts(world.session, [cost.id], price)
+    assert seen == [(1000, "USD", DAY)]

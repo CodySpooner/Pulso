@@ -13,6 +13,7 @@ from sqlalchemy import Select, case, exists, func, or_, select, text, true, upda
 from sqlalchemy.orm import Session, aliased
 
 from pulso_core.landed_cost import Amount, to_usd
+from pulso_core.landed_cost_loader import PRICE_CAPTURE
 from pulso_core.models import (
     FxRate,
     Image,
@@ -22,6 +23,7 @@ from pulso_core.models import (
     MatchCandidate,
     MatchDecision,
     Product,
+    RawPayload,
 )
 from pulso_ml.matching.gtin import gtin14
 from pulso_ml.matching.score import (
@@ -374,7 +376,8 @@ def load_facts(
         select(
             ListingSnapshot.price_min_minor, ListingSnapshot.currency, ListingSnapshot.observed_for
         )
-        .where(ListingSnapshot.listing_id == Listing.id)
+        .join(RawPayload, RawPayload.id == ListingSnapshot.raw_payload_id)
+        .where(ListingSnapshot.listing_id == Listing.id, PRICE_CAPTURE)  # not a stock row: DEC-356
         .order_by(ListingSnapshot.captured_at.desc(), ListingSnapshot.id.desc())
         .limit(1)
         .lateral()
