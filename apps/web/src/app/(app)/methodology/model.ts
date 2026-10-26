@@ -33,6 +33,14 @@ export interface PlannedScore {
 
 export type Score = BuiltScore | PlannedScore;
 
+export interface Cadence {
+  /** A sources.key, or a nightly score row Opportunity reads. */
+  source: string;
+  days: number;
+  /** True for a score row (trend, saturation) rather than a collector source. */
+  score: boolean;
+}
+
 export interface MethodologyDoc {
   scores: Score[];
   contract: {
@@ -42,7 +50,15 @@ export interface MethodologyDoc {
     missing_inputs: { text: string };
     renormalisation: Block[];
     versioning: Block[];
-    confidence: { formula: string; status: string };
+    confidence: {
+      code: string;
+      formula: string;
+      definition: Block[];
+      freshness: Block[];
+      fresh_within: number;
+      stale_after: number;
+      cadence: Cadence[];
+    };
   };
   limitations: string[];
 }
@@ -75,3 +91,9 @@ const number = new Intl.NumberFormat("en-US", { maximumFractionDigits: 4 });
 export function formatValue(value: number | string | boolean): string {
   return typeof value === "number" ? number.format(value).replace("-", "−") : String(value);
 }
+
+/** A cadence as people say it: daily, weekly, else every n days. */
+export const every = (days: number): string => (days === 1 ? "daily" : days === 7 ? "weekly" : `every ${number.format(days)} d`);
+
+/** An age given in days, in hours under 2 days: 1.5 → "36 h", 10.5 → "10.5 d". */
+export const span = (days: number): string => (days < 2 ? `${number.format(days * 24)} h` : `${number.format(days)} d`);

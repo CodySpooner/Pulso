@@ -1586,6 +1586,30 @@
             "title": "Family",
             "type": "string"
           },
+          "freshness": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Freshness"
+          },
+          "freshness_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Freshness Reason"
+          },
           "gap": {
             "default": false,
             "title": "Gap",
@@ -1642,6 +1666,11 @@
               }
             ],
             "title": "Source"
+          },
+          "stale": {
+            "default": false,
+            "title": "Stale",
+            "type": "boolean"
           },
           "weight": {
             "minimum": 0.0,

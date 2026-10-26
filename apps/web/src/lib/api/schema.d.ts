@@ -1828,6 +1828,10 @@ export interface components {
             contribution?: number | null;
             /** Family */
             family: string;
+            /** Freshness */
+            freshness?: number | null;
+            /** Freshness Reason */
+            freshness_reason?: string | null;
             /**
              * Gap
              * @default false
@@ -1847,6 +1851,11 @@ export interface components {
             raw?: number | null;
             /** Source */
             source: string | null;
+            /**
+             * Stale
+             * @default false
+             */
+            stale: boolean;
             /** Weight */
             weight: number;
             /**
