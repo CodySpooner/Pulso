@@ -52,12 +52,12 @@ test("keyboard only: build a two-condition screen, run it, sort it, save it and 
   expect([...api.screens.values()][0]).toMatchObject({ name: "Early", filters: { margin_bps_min: 4000, lifecycle: ["emerging", "rising"] }, sort: "opportunity" });
 
   await expect(page.getByLabel("Sort", { exact: true })).toBeFocused(); // focus came back from the dialog
-  await press("Tab", "Tab", "Tab", "Tab"); // order, Columns, the table, its first product
+  await press("Tab", "Tab", "Tab", "Tab", "Tab"); // order, Columns, Export CSV, the table, its first product
   await expect(links(page).first()).toBeFocused();
   await press("Enter");
   await expect(page).toHaveURL(`/products/${screenerRow(0).id}`);
   console.log(`p4-32 keyboard flow: ${keys} keys, 0 clicks`);
-  expect(keys).toBeLessThanOrEqual(30);
+  expect(keys).toBeLessThanOrEqual(31);
 });
 
 test("an unsaved screen round-trips through the URL: reload gives the same screen and request", async ({ page }) => {
@@ -217,3 +217,24 @@ for (const theme of ["dark", "light"] as const)
     expect(await page.evaluate(contrastMisses, "main")).toEqual([]);
     expect(await page.evaluate(contrastMisses, '[role="tooltip"]')).toEqual([]);
   });
+
+test("Export CSV and E download every matching row in the screen's filters and sort", async ({ page }) => {
+  const api = await mockScreenerApi(page);
+  const q = btoa(JSON.stringify({ filters: { margin_bps_min: 4000 }, sort: "price", order: "asc" })).replace(/=+$/, "");
+  await page.goto(`/screener?q=${q}`);
+  await expect(links(page).first()).toBeVisible();
+  const download = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Export CSV" }).click();
+  expect((await download).suggestedFilename()).toBe("pulso_screener_2026-10-22.csv");
+  const csv = api.calls.filter((u) => u.searchParams.get("format") === "csv");
+  expect(csv).toHaveLength(1);
+  expect(sent(csv)).toEqual({ filters: { margin_bps_min: 4000 }, sort: "price", order: "asc" });
+  expect(csv[0].searchParams.has("cursor")).toBe(false);
+
+  await links(page).first().focus();
+  const again = page.waitForEvent("download");
+  await page.keyboard.press("e"); // from the results
+  await again;
+  await page.getByLabel("Landed margin, at least (%)").press("e"); // typing never exports
+  expect(api.calls.filter((u) => u.searchParams.get("format") === "csv")).toHaveLength(2);
+});

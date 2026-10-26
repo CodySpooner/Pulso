@@ -12,10 +12,11 @@ import { LoadMore } from "@/components/data-health/load-more";
 import { EmptyState } from "@/components/pulso/empty-state";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet";
-import { $api, isProblem } from "@/lib/api/client";
+import { $api, fetchClient, isProblem } from "@/lib/api/client";
 import { cn } from "@/lib/utils";
 
 import { Toast, useNote } from "../boards/parts";
+import { ExportCsv, useCsvDownload } from "../discover/export-csv";
 import { count, ProductTable, TableSkeleton } from "../discover/feed-views";
 import { joinPages } from "../discover/url-state";
 import { RowCard, scoreStale, tableColumns, type Row } from "./cells";
@@ -73,10 +74,11 @@ export function Screener() {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
+  const query = { filters: JSON.stringify(definition.filters), sort: definition.sort, order: definition.order };
   const results = $api.useInfiniteQuery(
     "get",
     "/v1/screener",
-    { params: { query: { filters: JSON.stringify(definition.filters), sort: definition.sort, order: definition.order } } },
+    { params: { query } },
     {
       enabled: ready && !waiting,
       pageParamName: "cursor",
@@ -91,6 +93,9 @@ export function Screener() {
   const columns = definition.columns ?? DEFAULT_COLUMNS;
   const given = conditionsOf(definition.filters);
   const newest = rows.reduce<string | null>((max, r) => ("day" in r.trend && (!max || r.trend.day > max) ? r.trend.day : max), null);
+  // Every matching row in this sort, not the loaded pages (DEC-345); all of the API's columns.
+  const csv = useCsvDownload(JSON.stringify(query), (signal) => fetchClient.GET("/v1/screener", { params: { query: { ...query, format: "csv" } }, parseAs: "stream", signal }));
+  const empty = !!first && rows.length === 0;
   const conditions = <Conditions key={screenId} filters={definition.filters} set={(update) => edit((d) => ({ filters: update(d.filters) }))} open={adding} onOpenChange={setAdding} />;
 
   return (
@@ -114,6 +119,7 @@ export function Screener() {
               </Button>
               <SortPicker definition={definition} edit={edit} />
               <ColumnPicker columns={columns} edit={edit} />
+              <ExportCsv csv={csv} empty={empty} />
             </div>
             <p className="text-label text-subtle-foreground" aria-live="polite">
               {first ? (
@@ -153,7 +159,15 @@ export function Screener() {
             ) : rows.length === 0 ? (
               <Empty definition={definition} edit={edit} />
             ) : (
-              <>
+              // E exports while focus is in the results, table or rows (vault Features/CSV Export & Import).
+              <div
+                className="flex flex-col gap-3"
+                onKeyDown={(e) => {
+                  if (e.key.toLowerCase() !== "e" || e.ctrlKey || e.metaKey || e.altKey || isTyping(e.target)) return;
+                  e.preventDefault();
+                  void csv.run();
+                }}
+              >
                 <div className="max-md:hidden">
                   <ProductTable items={rows} columns={tableColumns(columns, now)} loadingMore={results.isFetchingNextPage} />
                 </div>
@@ -173,7 +187,7 @@ export function Screener() {
                   errorTitle="Couldn't load more products"
                   onLoad={() => void results.fetchNextPage()}
                 />
-              </>
+              </div>
             )}
           </div>
         </div>

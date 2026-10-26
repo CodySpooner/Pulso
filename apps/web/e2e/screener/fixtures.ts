@@ -76,6 +76,10 @@ export async function mockScreenerApi(page: Page, options: ScreenerMock = {}) {
     const url = new URL(route.request().url());
     calls.push(url);
     if (options.status) return route.fulfill({ status: options.status, contentType: "application/problem+json", json: problem(options.status, "e2e-screener") });
+    if (url.searchParams.get("format") === "csv") {
+      const body = ["id,product", ...items.map((r) => `${r.id},${r.title}`)].join("\n");
+      return route.fulfill({ contentType: "text/csv", body, headers: { "Content-Disposition": 'attachment; filename="pulso_screener_2026-10-22.csv"', "X-Total-Count": String(items.length) } });
+    }
     const offset = Number(url.searchParams.get("cursor") ?? 0);
     const list = options.empty ? [] : items;
     const body: S["ScreenerPage"] = { items: list.slice(offset, offset + pageSize), next_cursor: offset + pageSize < list.length ? String(offset + pageSize) : null, unapplied: {} };
