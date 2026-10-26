@@ -49,7 +49,7 @@ test("command palette 1440px dark", async ({ page }) => {
 test("coming-soon route 1440px dark", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.addInitScript(() => localStorage.setItem("theme", "dark"));
-  await page.goto("/screener"); // Discover was built in UX-2 (p2-03)
-  await expect(page.getByText("Screener arrives in Phase 4")).toBeVisible();
+  await page.goto("/ask"); // Discover was built in UX-2 (p2-03), the Screener in WF-1b (p4-32)
+  await expect(page.getByText("Ask Pulso arrives in Phase 5")).toBeVisible();
   await page.screenshot({ path: `${OUT}/coming-soon-1440-dark.png` });
 });

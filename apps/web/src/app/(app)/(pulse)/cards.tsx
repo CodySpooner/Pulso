@@ -303,7 +303,7 @@ function Delta({ value, good = "up", unit, missing }: { value: number | null | u
 }
 
 /** `neutral` where every row shares a stage (Top emerging), so colour marks only the rows that differ. */
-function StagePill({ stage, from, neutral, className }: { stage: Stage; from?: Stage | null; neutral?: boolean; className?: string }) {
+export function StagePill({ stage, from, neutral, className }: { stage: Stage; from?: Stage | null; neutral?: boolean; className?: string }) {
   const [Icon, label, tone] = STAGES[stage];
   return (
     <span

@@ -7953,6 +7953,34 @@
       "SavedScreen": {
         "additionalProperties": false,
         "properties": {
+          "columns": {
+            "anyOf": [
+              {
+                "items": {
+                  "enum": [
+                    "trend",
+                    "opportunity",
+                    "margin_bps",
+                    "velocity",
+                    "acceleration",
+                    "saturation",
+                    "price",
+                    "supplier_rating",
+                    "ship_days_us",
+                    "lifecycle"
+                  ],
+                  "type": "string"
+                },
+                "maxItems": 20,
+                "minItems": 1,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Columns"
+          },
           "created_at": {
             "format": "date-time",
             "title": "Created At",
@@ -8071,6 +8099,34 @@
       "ScreenIn": {
         "additionalProperties": false,
         "properties": {
+          "columns": {
+            "anyOf": [
+              {
+                "items": {
+                  "enum": [
+                    "trend",
+                    "opportunity",
+                    "margin_bps",
+                    "velocity",
+                    "acceleration",
+                    "saturation",
+                    "price",
+                    "supplier_rating",
+                    "ship_days_us",
+                    "lifecycle"
+                  ],
+                  "type": "string"
+                },
+                "maxItems": 20,
+                "minItems": 1,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Columns"
+          },
           "filters": {
             "$ref": "#/components/schemas/Filters"
           },
@@ -8111,6 +8167,103 @@
           "name"
         ],
         "title": "ScreenIn",
+        "type": "object"
+      },
+      "ScreenPatch": {
+        "additionalProperties": false,
+        "description": "The fields to change: each one given replaces the stored one, `filters` as a whole.",
+        "properties": {
+          "columns": {
+            "anyOf": [
+              {
+                "items": {
+                  "enum": [
+                    "trend",
+                    "opportunity",
+                    "margin_bps",
+                    "velocity",
+                    "acceleration",
+                    "saturation",
+                    "price",
+                    "supplier_rating",
+                    "ship_days_us",
+                    "lifecycle"
+                  ],
+                  "type": "string"
+                },
+                "maxItems": 20,
+                "minItems": 1,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Columns"
+          },
+          "filters": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Filters"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "name": {
+            "anyOf": [
+              {
+                "maxLength": 80,
+                "minLength": 1,
+                "pattern": "^[^\\x00]*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "order": {
+            "anyOf": [
+              {
+                "enum": [
+                  "desc",
+                  "asc"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Order"
+          },
+          "sort": {
+            "anyOf": [
+              {
+                "enum": [
+                  "trend",
+                  "opportunity",
+                  "margin_bps",
+                  "velocity",
+                  "acceleration",
+                  "saturation",
+                  "price",
+                  "supplier_rating",
+                  "ship_days_us"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sort"
+          }
+        },
+        "title": "ScreenPatch",
         "type": "object"
       },
       "ScreenerPage": {
@@ -41215,6 +41368,437 @@
           }
         ],
         "summary": "Get Screen"
+      },
+      "patch": {
+        "description": "Rename a screen, replace its definition, or both (imp-525). A used name is a 409.",
+        "operationId": "update_screen",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "screen_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Screen Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "__session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "  Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScreenPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SavedScreen"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "properties": {
+                    "code": {
+                      "title": "Code",
+                      "type": "string"
+                    },
+                    "detail": {
+                      "title": "Detail",
+                      "type": "string"
+                    },
+                    "errors": {
+                      "items": {
+                        "additionalProperties": true,
+                        "type": "object"
+                      },
+                      "title": "Errors",
+                      "type": "array"
+                    },
+                    "request_id": {
+                      "title": "Request Id",
+                      "type": "string"
+                    },
+                    "status": {
+                      "title": "Status",
+                      "type": "integer"
+                    },
+                    "title": {
+                      "title": "Title",
+                      "type": "string"
+                    },
+                    "type": {
+                      "default": "about:blank",
+                      "title": "Type",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "title",
+                    "status",
+                    "code",
+                    "detail",
+                    "request_id"
+                  ],
+                  "title": "Problem",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "properties": {
+                    "code": {
+                      "title": "Code",
+                      "type": "string"
+                    },
+                    "detail": {
+                      "title": "Detail",
+                      "type": "string"
+                    },
+                    "errors": {
+                      "items": {
+                        "additionalProperties": true,
+                        "type": "object"
+                      },
+                      "title": "Errors",
+                      "type": "array"
+                    },
+                    "request_id": {
+                      "title": "Request Id",
+                      "type": "string"
+                    },
+                    "status": {
+                      "title": "Status",
+                      "type": "integer"
+                    },
+                    "title": {
+                      "title": "Title",
+                      "type": "string"
+                    },
+                    "type": {
+                      "default": "about:blank",
+                      "title": "Type",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "title",
+                    "status",
+                    "code",
+                    "detail",
+                    "request_id"
+                  ],
+                  "title": "Problem",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "properties": {
+                    "code": {
+                      "title": "Code",
+                      "type": "string"
+                    },
+                    "detail": {
+                      "title": "Detail",
+                      "type": "string"
+                    },
+                    "errors": {
+                      "items": {
+                        "additionalProperties": true,
+                        "type": "object"
+                      },
+                      "title": "Errors",
+                      "type": "array"
+                    },
+                    "request_id": {
+                      "title": "Request Id",
+                      "type": "string"
+                    },
+                    "status": {
+                      "title": "Status",
+                      "type": "integer"
+                    },
+                    "title": {
+                      "title": "Title",
+                      "type": "string"
+                    },
+                    "type": {
+                      "default": "about:blank",
+                      "title": "Type",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "title",
+                    "status",
+                    "code",
+                    "detail",
+                    "request_id"
+                  ],
+                  "title": "Problem",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "properties": {
+                    "code": {
+                      "title": "Code",
+                      "type": "string"
+                    },
+                    "detail": {
+                      "title": "Detail",
+                      "type": "string"
+                    },
+                    "errors": {
+                      "items": {
+                        "additionalProperties": true,
+                        "type": "object"
+                      },
+                      "title": "Errors",
+                      "type": "array"
+                    },
+                    "request_id": {
+                      "title": "Request Id",
+                      "type": "string"
+                    },
+                    "status": {
+                      "title": "Status",
+                      "type": "integer"
+                    },
+                    "title": {
+                      "title": "Title",
+                      "type": "string"
+                    },
+                    "type": {
+                      "default": "about:blank",
+                      "title": "Type",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "title",
+                    "status",
+                    "code",
+                    "detail",
+                    "request_id"
+                  ],
+                  "title": "Problem",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "properties": {
+                    "code": {
+                      "title": "Code",
+                      "type": "string"
+                    },
+                    "detail": {
+                      "title": "Detail",
+                      "type": "string"
+                    },
+                    "errors": {
+                      "items": {
+                        "additionalProperties": true,
+                        "type": "object"
+                      },
+                      "title": "Errors",
+                      "type": "array"
+                    },
+                    "request_id": {
+                      "title": "Request Id",
+                      "type": "string"
+                    },
+                    "status": {
+                      "title": "Status",
+                      "type": "integer"
+                    },
+                    "title": {
+                      "title": "Title",
+                      "type": "string"
+                    },
+                    "type": {
+                      "default": "about:blank",
+                      "title": "Type",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "title",
+                    "status",
+                    "code",
+                    "detail",
+                    "request_id"
+                  ],
+                  "title": "Problem",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "properties": {
+                    "code": {
+                      "title": "Code",
+                      "type": "string"
+                    },
+                    "detail": {
+                      "title": "Detail",
+                      "type": "string"
+                    },
+                    "errors": {
+                      "items": {
+                        "additionalProperties": true,
+                        "type": "object"
+                      },
+                      "title": "Errors",
+                      "type": "array"
+                    },
+                    "request_id": {
+                      "title": "Request Id",
+                      "type": "string"
+                    },
+                    "status": {
+                      "title": "Status",
+                      "type": "integer"
+                    },
+                    "title": {
+                      "title": "Title",
+                      "type": "string"
+                    },
+                    "type": {
+                      "default": "about:blank",
+                      "title": "Type",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "title",
+                    "status",
+                    "code",
+                    "detail",
+                    "request_id"
+                  ],
+                  "title": "Problem",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "properties": {
+                    "code": {
+                      "title": "Code",
+                      "type": "string"
+                    },
+                    "detail": {
+                      "title": "Detail",
+                      "type": "string"
+                    },
+                    "errors": {
+                      "items": {
+                        "additionalProperties": true,
+                        "type": "object"
+                      },
+                      "title": "Errors",
+                      "type": "array"
+                    },
+                    "request_id": {
+                      "title": "Request Id",
+                      "type": "string"
+                    },
+                    "status": {
+                      "title": "Status",
+                      "type": "integer"
+                    },
+                    "title": {
+                      "title": "Title",
+                      "type": "string"
+                    },
+                    "type": {
+                      "default": "about:blank",
+                      "title": "Type",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "title",
+                    "status",
+                    "code",
+                    "detail",
+                    "request_id"
+                  ],
+                  "title": "Problem",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Update Screen"
       }
     },
     "/v1/search": {

@@ -11,23 +11,13 @@ const PRODUCT = `/products/${PRODUCT_ID}`;
 const utc = /[A-Z][a-z]{2} \d{1,2}, \d{2}:\d{2} UTC/;
 
 // Store Spy, the one Phase 3 page left unbuilt, has no source instead (DEC-261, DEC-302 a): e2e/p3-10/states.ts.
-// p3-12 moved the build to Phase 4, so a later page names it and every Phase 4 page is under way, never a 404.
+// p3-12 moved the build to Phase 4, so a later page names it. WF-1b (p4-32) built the last Phase 4 page, the Screener.
 test("the coming-soon page says Pulso is in Phase 4 (DEC-284)", async ({ page }) => {
   await page.goto("/ask");
   await expect(page.getByRole("heading", { name: "Ask Pulso arrives in Phase 5" })).toBeVisible();
   await expect(page.getByRole("main")).toContainText("Phase 5, AI layer, builds this page. Pulso is in Phase 4, Scores & workflow.");
   await expect(page.getByRole("main")).toContainText("Now: Phase 4 · Scores & workflowThis page: Phase 5 · AI layer");
 });
-
-for (const [path, label] of [
-  ["/screener", "Screener"],
-])
-  test(`${label}, a Phase 4 page, says Phase 4 is under way`, async ({ page }) => {
-    await page.goto(path);
-    await expect(page.getByRole("heading", { name: `${label} arrives in Phase 4` })).toBeVisible();
-    await expect(page.getByRole("main")).toContainText("Phase 4, Scores & workflow, is under way and builds this page.");
-    await expect(page.getByRole("main")).toContainText("Now: Phase 4 · Scores & workflow");
-  });
 
 for (const theme of ["dark", "light"] as const)
   test(`a note that is still saving keeps AA contrast (${theme})`, async ({ page }) => {

@@ -1051,7 +1051,11 @@ export interface paths {
         delete: operations["delete_screen"];
         options?: never;
         head?: never;
-        patch?: never;
+        /**
+         * Update Screen
+         * @description Rename a screen, replace its definition, or both (imp-525). A used name is a 409.
+         */
+        patch: operations["update_screen"];
         trace?: never;
     };
     "/v1/search": {
@@ -3888,6 +3892,8 @@ export interface components {
         };
         /** SavedScreen */
         SavedScreen: {
+            /** Columns */
+            columns?: ("trend" | "opportunity" | "margin_bps" | "velocity" | "acceleration" | "saturation" | "price" | "supplier_rating" | "ship_days_us" | "lifecycle")[] | null;
             /**
              * Created At
              * Format: date-time
@@ -3945,6 +3951,8 @@ export interface components {
         };
         /** ScreenIn */
         ScreenIn: {
+            /** Columns */
+            columns?: ("trend" | "opportunity" | "margin_bps" | "velocity" | "acceleration" | "saturation" | "price" | "supplier_rating" | "ship_days_us" | "lifecycle")[] | null;
             filters?: components["schemas"]["Filters"];
             /** Name */
             name: string;
@@ -3960,6 +3968,21 @@ export interface components {
              * @enum {string}
              */
             sort: "trend" | "opportunity" | "margin_bps" | "velocity" | "acceleration" | "saturation" | "price" | "supplier_rating" | "ship_days_us";
+        };
+        /**
+         * ScreenPatch
+         * @description The fields to change: each one given replaces the stored one, `filters` as a whole.
+         */
+        ScreenPatch: {
+            /** Columns */
+            columns?: ("trend" | "opportunity" | "margin_bps" | "velocity" | "acceleration" | "saturation" | "price" | "supplier_rating" | "ship_days_us" | "lifecycle")[] | null;
+            filters?: components["schemas"]["Filters"] | null;
+            /** Name */
+            name?: string | null;
+            /** Order */
+            order?: ("desc" | "asc") | null;
+            /** Sort */
+            sort?: ("trend" | "opportunity" | "margin_bps" | "velocity" | "acceleration" | "saturation" | "price" | "supplier_rating" | "ship_days_us") | null;
         };
         /** ScreenerPage */
         ScreenerPage: {
@@ -20497,6 +20520,237 @@ export interface operations {
             };
         };
         requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SavedScreen"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": {
+                        /** Code */
+                        code: string;
+                        /** Detail */
+                        detail: string;
+                        /** Errors */
+                        errors?: {
+                            [key: string]: unknown;
+                        }[];
+                        /** Request Id */
+                        request_id: string;
+                        /** Status */
+                        status: number;
+                        /** Title */
+                        title: string;
+                        /**
+                         * Type
+                         * @default about:blank
+                         */
+                        type: string;
+                    };
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": {
+                        /** Code */
+                        code: string;
+                        /** Detail */
+                        detail: string;
+                        /** Errors */
+                        errors?: {
+                            [key: string]: unknown;
+                        }[];
+                        /** Request Id */
+                        request_id: string;
+                        /** Status */
+                        status: number;
+                        /** Title */
+                        title: string;
+                        /**
+                         * Type
+                         * @default about:blank
+                         */
+                        type: string;
+                    };
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": {
+                        /** Code */
+                        code: string;
+                        /** Detail */
+                        detail: string;
+                        /** Errors */
+                        errors?: {
+                            [key: string]: unknown;
+                        }[];
+                        /** Request Id */
+                        request_id: string;
+                        /** Status */
+                        status: number;
+                        /** Title */
+                        title: string;
+                        /**
+                         * Type
+                         * @default about:blank
+                         */
+                        type: string;
+                    };
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": {
+                        /** Code */
+                        code: string;
+                        /** Detail */
+                        detail: string;
+                        /** Errors */
+                        errors?: {
+                            [key: string]: unknown;
+                        }[];
+                        /** Request Id */
+                        request_id: string;
+                        /** Status */
+                        status: number;
+                        /** Title */
+                        title: string;
+                        /**
+                         * Type
+                         * @default about:blank
+                         */
+                        type: string;
+                    };
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": {
+                        /** Code */
+                        code: string;
+                        /** Detail */
+                        detail: string;
+                        /** Errors */
+                        errors?: {
+                            [key: string]: unknown;
+                        }[];
+                        /** Request Id */
+                        request_id: string;
+                        /** Status */
+                        status: number;
+                        /** Title */
+                        title: string;
+                        /**
+                         * Type
+                         * @default about:blank
+                         */
+                        type: string;
+                    };
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": {
+                        /** Code */
+                        code: string;
+                        /** Detail */
+                        detail: string;
+                        /** Errors */
+                        errors?: {
+                            [key: string]: unknown;
+                        }[];
+                        /** Request Id */
+                        request_id: string;
+                        /** Status */
+                        status: number;
+                        /** Title */
+                        title: string;
+                        /**
+                         * Type
+                         * @default about:blank
+                         */
+                        type: string;
+                    };
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": {
+                        /** Code */
+                        code: string;
+                        /** Detail */
+                        detail: string;
+                        /** Errors */
+                        errors?: {
+                            [key: string]: unknown;
+                        }[];
+                        /** Request Id */
+                        request_id: string;
+                        /** Status */
+                        status: number;
+                        /** Title */
+                        title: string;
+                        /**
+                         * Type
+                         * @default about:blank
+                         */
+                        type: string;
+                    };
+                };
+            };
+        };
+    };
+    update_screen: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                screen_id: string;
+            };
+            cookie?: {
+                __session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ScreenPatch"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {

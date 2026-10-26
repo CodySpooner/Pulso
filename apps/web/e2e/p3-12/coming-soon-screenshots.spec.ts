@@ -6,7 +6,6 @@ import { expect, test } from "@playwright/test";
 const OUT = "../../docs/screenshots/p3-12";
 
 const PAGES = [
-  ["coming-soon-phase-4", "/screener", "Screener arrives in Phase 4"],
   ["coming-soon-later", "/ask", "Ask Pulso arrives in Phase 5"],
 ] as const;
 

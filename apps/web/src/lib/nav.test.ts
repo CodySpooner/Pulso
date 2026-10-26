@@ -25,10 +25,10 @@ describe("nav config", () => {
     for (const path of ["/nope", "/products", "/products/1/extra", "/admin"]) expect(resolveRoute(path)).toBeUndefined();
   });
 
-  test("hrefs are unique; Phase 1 builds Data Health on Phase 0, and UX-2, UX-1 and UX-10 ship Discover, Matching and Settings in Phase 2, P2-29 Google popular, AMZ-1b Amazon ranks, MT-1 Methodology, WF-5b Testing, WF-2b Watchlists, WF-3b Boards, WF-4b Alerts", () => {
+  test("hrefs are unique; Phase 1 builds Data Health on Phase 0, and UX-2, UX-1 and UX-10 ship Discover, Matching and Settings in Phase 2, P2-29 Google popular, AMZ-1b Amazon ranks, MT-1 Methodology, WF-5b Testing, WF-2b Watchlists, WF-3b Boards, WF-4b Alerts, WF-1b Screener", () => {
     const hrefs = allNavItems.map((i) => i.href);
     expect(new Set(hrefs).size).toBe(hrefs.length);
-    expect(allNavItems.filter(isBuilt).map((i) => i.href)).toEqual(["/", "/alerts", "/discover", "/google-popular", "/amazon", "/watchlists", "/boards", "/testing", "/methodology", "/admin/data-health", "/admin/matching", "/admin/ui", "/settings"]);
+    expect(allNavItems.filter(isBuilt).map((i) => i.href)).toEqual(["/", "/alerts", "/discover", "/google-popular", "/amazon", "/screener", "/watchlists", "/boards", "/testing", "/methodology", "/admin/data-health", "/admin/matching", "/admin/ui", "/settings"]);
     expect(resolveRoute("/admin/ui")).toMatchObject({ group: "Admin", item: { label: "UI gallery" } });
   });
 
@@ -37,12 +37,10 @@ describe("nav config", () => {
     expect(CURRENT_PHASE).toBe(4);
   });
 
-  // DEC-284: the running phase's routes stay coming-soon until a task ships them.
-  test("a route of the phase in progress is not built", () => {
-    for (const path of ["/screener"]) {
-      expect(resolveRoute(path)!.item.phase).toBe(CURRENT_PHASE);
-      expect(isBuilt(resolveRoute(path)!.item)).toBe(false);
-    }
+  // DEC-284: the running phase's routes stay coming-soon until a task ships them; WF-1b shipped the last, /screener.
+  test("a route of the phase in progress is not built until a task ships it", () => {
+    expect(isBuilt({ phase: CURRENT_PHASE })).toBe(false);
+    expect(resolveRoute("/screener")!.item).toMatchObject({ phase: CURRENT_PHASE, built: true });
     expect(isBuilt({ phase: CURRENT_PHASE - 1 })).toBe(true);
   });
 

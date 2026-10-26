@@ -107,9 +107,57 @@ def test_another_workspaces_screen_is_a_404(as_: As) -> None:
         {"name": "Typo", "filters": {"margin_min": 1}},  # unknown filter
         {"name": "Stage", "filters": {"lifecycle": ["booming"]}},
         {"name": "Sort", "sort": "risk"},
-        {"name": "Extra", "columns": []},
+        {"name": "Extra", "alert": True},
+        {"name": "Column", "columns": ["risk"]},
+        {"name": "Columns", "columns": []},
     ],
 )
 def test_a_definition_is_validated(as_: As, body: dict[str, object]) -> None:
     response = as_("a").post("/v1/screens", json=body)
     assert response.status_code == 422, response.text
+
+
+@pytest.mark.db
+def test_a_patch_renames_and_replaces_the_given_parts(as_: As, db_engine: Engine) -> None:
+    a = as_("a")
+    screen = a.post("/v1/screens", json={**EARLY, "columns": ["trend", "margin_bps"]}).json()
+    url = f"/v1/screens/{screen['id']}"
+    renamed = a.patch(url, json={"name": " Morning "})
+    assert renamed.status_code == 200, renamed.text
+    assert renamed.json() == {**screen, "name": "Morning"}
+    # `filters` is replaced whole; the parts not given stay as stored.
+    replaced = a.patch(url, json={"filters": {"price_max": 5000}, "order": "asc"}).json()
+    assert replaced == {
+        **screen, "name": "Morning", "filters": {**replaced["filters"], "price_max": 5000},
+        "order": "asc",
+    }  # fmt: skip
+    assert {k for k, v in replaced["filters"].items() if v is not None} == {"price_max"}
+    both = a.patch(url, json={"name": "Cheap", "sort": "price", "columns": ["price"]}).json()
+    assert (both["name"], both["sort"], both["order"], both["columns"]) == (
+        "Cheap", "price", "asc", ["price"],
+    )  # fmt: skip
+    assert a.get(url).json() == both
+    with Session(db_engine) as session:  # stored as POST stores it, unset filters left out
+        stored = session.scalars(select(SavedScreen.definition)).one()
+        assert stored == {
+            "filters": {"price_max": 5000}, "sort": "price", "order": "asc", "columns": ["price"],
+        }  # fmt: skip
+    assert a.patch(url, json={}).json() == both
+    assert a.patch(url, json={"columns": None}).json() == {**both, "columns": None}  # the default
+
+
+@pytest.mark.db
+def test_a_patch_is_scoped_unique_and_validated(as_: As) -> None:
+    a = as_("a")
+    screen = a.post("/v1/screens", json=EARLY).json()
+    a.post("/v1/screens", json={"name": "Taken"})
+    url = f"/v1/screens/{screen['id']}"
+    assert a.patch(url, json={"name": "Taken"}).status_code == 409
+    bad = ({"name": ""}, {"filters": {"margin_min": 1}}, {"sort": "risk"}, {"alert": 1})
+    for body in (*bad, {"sort": None}, {"filters": None}):
+        assert a.patch(url, json=body).status_code == 422, body
+    assert a.get(url).json() == screen  # nothing changed
+    b = as_("b")
+    assert b.patch(url, json={"name": "Mine"}).status_code == 404
+    assert b.patch(f"/v1/screens/{uuid4()}", json={"name": "Mine"}).status_code == 404
+    assert as_("a").get(url).json()["name"] == "Early & profitable"

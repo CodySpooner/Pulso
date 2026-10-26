@@ -15,13 +15,13 @@ import { cn } from "@/lib/utils";
 import { StarButton } from "../watchlists/star";
 
 // openapi-fetch drops a key typed only `null` from responses, so each NoSource arrives as `{reason}` (DEC-238 g).
-type Loose<T> = T extends { reason: string } ? Omit<T, "value"> & { value?: null } : T;
+export type Loose<T> = T extends { reason: string } ? Omit<T, "value"> & { value?: null } : T;
 export type Item = { [K in keyof components["schemas"]["DiscoverItem"]]: Loose<components["schemas"]["DiscoverItem"][K]> };
 /** Sources feeding the feed that are blocked or disabled, with the word the banner uses: a card they feed gets a red dot. */
 export type Paused = Map<string, string>;
 
 const usd = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", trailingZeroDisplay: "stripIfInteger" });
-const money = (minor: number) => usd.format(minor / 100);
+export const money = (minor: number) => usd.format(minor / 100);
 export const count = (n: number) => n.toLocaleString("en-US");
 const perWeek = (n: number) => `${count(n)}/7d`;
 const pct = (bps: number) => `${(bps / 100).toFixed(1)}%`;
@@ -40,7 +40,7 @@ export function Price({ item, now }: { item: Item; now: number }) {
   );
 }
 
-export function Velocity({ item, now }: { item: Item; now: number }) {
+export function Velocity({ item, now }: { item: Pick<Item, "velocity">; now: number }) {
   const v = item.velocity;
   if ("reason" in v) return <Metric stat={v} label="Velocity" missing="Insufficient signal" format={perWeek} now={now} />;
   return (
@@ -61,7 +61,7 @@ export function Velocity({ item, now }: { item: Item; now: number }) {
 
 /** The best complete supplier's landed margin, $ and % (DEC-265). R-16 withholds it otherwise; "Duty not set" names
  *  the one gap Settings can close, and its card lists every gap. */
-export function BestMargin({ item, now }: { item: Item; now: number }) {
+export function BestMargin({ item, now }: { item: Pick<Item, "best_margin_minor">; now: number }) {
   const m = item.best_margin_minor;
   if ("reason" in m) {
     const duty = m.missing.includes("duty_not_set");
@@ -123,7 +123,7 @@ export function Thumb({ url, className }: { url: string | null; className: strin
   return <img src={url} alt="" loading="lazy" decoding="async" onError={() => setBroken(true)} className={cn("bg-secondary object-cover", className)} />;
 }
 
-const href = (item: Item) => `/products/${item.id}`;
+const href = (item: { id: string }) => `/products/${item.id}`;
 
 // Image-first card (vault Features/Discover, card anatomy). The title link stretches over the card, so a click or
 // Enter anywhere opens the product; each number sits above it and opens its own provenance card. Cards never
@@ -200,9 +200,39 @@ export function CardSkeletons({ n }: { n: number }) {
   ));
 }
 
-const COLUMNS = ["Product", "Price", "Velocity", "Momentum", "Stores", "Suppliers", "Best margin", "First seen", "Freshness"];
 const OVERSCAN = 10;
 const cell = "border-b border-border-subtle px-3 whitespace-nowrap";
+
+/** A metric column of the product table: its header and cell, right-aligned tabular numbers unless `className` says. */
+export interface Column<T> {
+  name: string;
+  cell: (item: T) => React.ReactNode;
+  className?: string;
+}
+
+/** What every product table row shows in its pinned first column. */
+type Row = { id: string; title: string; image_url: string | null; category: string | null };
+
+/** Discover's columns, after the product. */
+export const feedColumns = (now: number, paused: Paused): Column<Item>[] => [
+  { name: "Price", cell: (item) => <Price item={item} now={now} /> },
+  { name: "Velocity", cell: (item) => <Velocity item={item} now={now} /> },
+  { name: "Momentum", cell: (item) => <Momentum item={item} now={now} /> },
+  { name: "Stores", cell: (item) => <Metric stat={item.store_count} label="Stores selling it" format={count} now={now} /> },
+  { name: "Suppliers", cell: (item) => <Metric stat={item.supplier_count} label="Matched suppliers" format={count} now={now} /> },
+  { name: "Best margin", cell: (item) => <BestMargin item={item} now={now} /> },
+  {
+    name: "First seen",
+    className: "num text-muted-foreground",
+    cell: (item) => (
+      <time dateTime={item.first_seen_at} title={formatUtc(item.first_seen_at)}>
+        {day.format(new Date(item.first_seen_at))}
+      </time>
+    ),
+  },
+  { name: "Freshness", className: "text-right text-label", cell: (item) => <Freshness item={item} now={now} paused={paused} /> },
+];
+const FEED_HEADERS = ["Price", "Velocity", "Momentum", "Stores", "Suppliers", "Best margin", "First seen", "Freshness"];
 
 /** Rows [start, end) of a fixed-height table that the scroller shows, plus overscan, and the row height. */
 function useRowWindow(scroller: React.RefObject<HTMLDivElement | null>, rows: number) {
@@ -231,26 +261,27 @@ function useRowWindow(scroller: React.RefObject<HTMLDivElement | null>, rows: nu
 
 // Dense table (vault Design/Tables & Data Density): sticky header, pinned product column, tabular right-aligned
 // numbers. Only the rows in view render (fixed row height, overscan 10); rows never animate (Motion System rule 2).
-// The name is a real link; a click anywhere else on the row opens it too.
-export function ProductTable({
+// The name is a real link; a click anywhere else on the row opens it too. Discover and the Screener share it.
+export function ProductTable<T extends Row>({
   items,
-  now,
-  paused,
+  columns,
+  lead,
   loadingMore,
   onNearEnd,
 }: {
-  items: Item[];
-  now: number;
-  paused: Paused;
+  items: T[];
+  columns: Column<T>[];
+  /** Before the thumbnail, e.g. Discover's star. */
+  lead?: (item: T) => React.ReactNode;
   loadingMore: boolean;
-  onNearEnd: () => void;
+  onNearEnd?: () => void;
 }) {
   const router = useRouter();
   const scroller = useRef<HTMLDivElement>(null);
   const { start, end, rowH } = useRowWindow(scroller, items.length);
   const near = end >= items.length - OVERSCAN;
   useLayoutEffect(() => {
-    if (near) onNearEnd();
+    if (near) onNearEnd?.();
   }, [near, items.length, onNearEnd]);
   return (
     <div
@@ -263,7 +294,7 @@ export function ProductTable({
       <table aria-rowcount={items.length + 1} className="w-full min-w-240 border-separate border-spacing-0 zone-data">
         <thead className="sticky top-0 z-20 bg-card">
           <tr className="row-h text-label text-muted-foreground" aria-rowindex={1}>
-            {COLUMNS.map((name, i) => (
+            {["Product", ...columns.map((c) => c.name)].map((name, i) => (
               <th key={name} scope="col" className={cn(cell, "border-border bg-card font-medium", i === 0 ? "sticky left-0 z-10 text-left" : "text-right")}>
                 {name}
               </th>
@@ -283,7 +314,7 @@ export function ProductTable({
             >
               <th scope="row" className={cn(cell, "sticky left-0 z-10 max-w-80 bg-card text-left font-normal group-hover:bg-(--table-row-hover)")}>
                 <span className="flex items-center gap-2 max-md:w-40">
-                  <StarButton product={item} className="-ml-1.5" />
+                  {lead?.(item)}
                   <Thumb url={item.image_url} className="size-6 shrink-0 rounded-sm" />
                   <span className="flex min-w-0 items-baseline gap-2">
                     <Link href={href(item)} title={item.title} className="truncate rounded-sm font-medium text-foreground hover:underline">
@@ -295,46 +326,25 @@ export function ProductTable({
                   </span>
                 </span>
               </th>
-              <td className={cn(cell, "num")}>
-                <Price item={item} now={now} />
-              </td>
-              <td className={cn(cell, "num")}>
-                <Velocity item={item} now={now} />
-              </td>
-              <td className={cn(cell, "num")}>
-                <Momentum item={item} now={now} />
-              </td>
-              <td className={cn(cell, "num")}>
-                <Metric stat={item.store_count} label="Stores selling it" format={count} now={now} />
-              </td>
-              <td className={cn(cell, "num")}>
-                <Metric stat={item.supplier_count} label="Matched suppliers" format={count} now={now} />
-              </td>
-              <td className={cn(cell, "num")}>
-                <BestMargin item={item} now={now} />
-              </td>
-              <td className={cn(cell, "num text-muted-foreground")}>
-                <time dateTime={item.first_seen_at} title={formatUtc(item.first_seen_at)}>
-                  {day.format(new Date(item.first_seen_at))}
-                </time>
-              </td>
-              <td className={cn(cell, "text-right text-label")}>
-                <Freshness item={item} now={now} paused={paused} />
-              </td>
+              {columns.map((c) => (
+                <td key={c.name} className={cn(cell, c.className ?? "num")}>
+                  {c.cell(item)}
+                </td>
+              ))}
             </tr>
           ))}
           {end < items.length && <tr aria-hidden style={{ height: (items.length - end) * rowH }} />}
-          {loadingMore && <SkeletonRows n={3} />}
+          {loadingMore && <SkeletonRows n={3} columns={columns.map((c) => c.name)} />}
         </tbody>
       </table>
     </div>
   );
 }
 
-export function SkeletonRows({ n }: { n: number }) {
+export function SkeletonRows({ n, columns = FEED_HEADERS }: { n: number; columns?: string[] }) {
   return Array.from({ length: n }, (_, i) => (
     <tr key={i} aria-hidden className="row-h">
-      {COLUMNS.map((name, c) => (
+      {["Product", ...columns].map((name, c) => (
         <td key={name} className={cn(cell, c === 0 && "sticky left-0 bg-card")}>
           <Skeleton className={cn("h-3.5", c === 0 ? "w-48" : "ml-auto w-14")} />
         </td>
@@ -343,13 +353,13 @@ export function SkeletonRows({ n }: { n: number }) {
   ));
 }
 
-export function TableSkeleton() {
+export function TableSkeleton({ columns = FEED_HEADERS }: { columns?: string[] }) {
   return (
     <div className="overflow-hidden rounded-xl border border-border bg-card shadow-card">
       <table className="w-full min-w-240 border-separate border-spacing-0 zone-data" aria-hidden>
         <thead>
           <tr className="row-h text-label text-muted-foreground">
-            {COLUMNS.map((name, i) => (
+            {["Product", ...columns].map((name, i) => (
               <th key={name} className={cn(cell, "border-border font-medium", i === 0 ? "text-left" : "text-right")}>
                 {name}
               </th>
@@ -357,7 +367,7 @@ export function TableSkeleton() {
           </tr>
         </thead>
         <tbody>
-          <SkeletonRows n={12} />
+          <SkeletonRows n={12} columns={columns} />
         </tbody>
       </table>
     </div>
