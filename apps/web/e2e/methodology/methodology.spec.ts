@@ -68,3 +68,17 @@ test("at 375px every table and code path wraps inside its card", async ({ page }
   expect(spills).toEqual([]);
   await expect(page.locator("section#saturation h3 + code", { hasText: "pulso_ml.scores.saturation.saturation_scores" })).toBeVisible();
 });
+
+// p4-35 (MT-1 part 2, DEC-354): #confidence states the formula, the freshness rule and each source's cadence.
+test("Confidence states the formula and each source's cadence, one click from the contents", async ({ page }) => {
+  await page.goto("/methodology");
+  await page.getByRole("navigation", { name: "On this page" }).getByRole("link", { name: "Confidence" }).click();
+  await expect(page).toHaveURL(/#confidence$/);
+  const section = page.locator("section#confidence");
+  await expect(section).toBeInViewport();
+  await expect(section).toContainText("confidence = Σ weight × freshness over the present inputs");
+  await expect(section).toContainText("stale: older, so it is missing");
+  const trends = section.getByRole("table", { name: "Source cadences" }).getByRole("row", { name: /google_trends/ });
+  await expect(trends).toContainText("weekly");
+  await expect(trends.getByRole("cell")).toHaveText(["10.5 d", "21 d"]);
+});

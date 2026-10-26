@@ -235,13 +235,13 @@ function Cadences({ confidence }: { confidence: MethodologyDoc["contract"]["conf
               <code className="text-foreground">{c.source}</code>
               <span className="block text-label text-muted-foreground">
                 {every(c.days)}
-                {c.score && " · score row Opportunity reads"}
+                {c.score && " · score row, read by Opportunity"}
               </span>
             </th>
-            <td className={cn(td, "num font-mono whitespace-nowrap text-foreground")} title={`${confidence.fresh_within} × ${every(c.days)}: counts 1`}>
+            <td className={cn(td, "num font-mono whitespace-nowrap text-foreground")} title={`Counts in full up to ${confidence.fresh_within} × its cadence`}>
               {span(c.days * confidence.fresh_within)}
             </td>
-            <td className={cn(td, "num font-mono whitespace-nowrap text-foreground")} title={`${confidence.stale_after} × ${every(c.days)}: missing, never 0`}>
+            <td className={cn(td, "num font-mono whitespace-nowrap text-foreground")} title={`Older than ${confidence.stale_after} × its cadence is stale: missing, never 0`}>
               {span(c.days * confidence.stale_after)}
             </td>
           </tr>
@@ -327,7 +327,7 @@ export function Methodology({ doc, description }: { doc: MethodologyDoc; descrip
             </Sub>
           </Section>
           <Section id="confidence" title="Confidence" aside={<code className="min-w-0 break-all text-label text-subtle-foreground">{contract.confidence.code}</code>}>
-            <p className="max-w-[68ch] rounded-lg border border-border-subtle bg-secondary px-3 py-2 font-mono text-data text-foreground">
+            <p className="w-fit max-w-full rounded-lg border border-border-subtle bg-secondary px-3 py-2 font-mono text-data text-foreground">
               {contract.confidence.formula.replace(/\.$/, "")}
             </p>
             <Doc blocks={contract.confidence.definition} />
