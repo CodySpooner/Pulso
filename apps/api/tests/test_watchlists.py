@@ -1,5 +1,6 @@
 from collections.abc import Callable, Iterator
-from datetime import datetime
+from datetime import UTC, datetime, time, timedelta
+from decimal import Decimal
 from uuid import UUID, uuid4
 
 import pytest
@@ -12,7 +13,15 @@ from sqlalchemy.orm import Session
 
 from pulso_api.auth import Principal, current_principal
 from pulso_api.dependencies import get_db
-from pulso_core.models import Image, Listing, Product, User, WatchlistItem, Workspace
+from pulso_core.models import (
+    Image,
+    Listing,
+    Product,
+    ProductDailyFeature,
+    User,
+    WatchlistItem,
+    Workspace,
+)
 
 # Watchlists (WF-2 part a, DEC-314): workspace-owned lists of global products.
 
@@ -354,3 +363,96 @@ def test_items_read_the_product_now_and_a_merged_one_as_its_survivor(
     one = statements(db_engine, lambda: a.get(url, params={"limit": 1}))
     fifty = statements(db_engine, lambda: a.get(url, params={"limit": 50}))
     assert fifty == one
+
+
+@pytest.mark.db
+def test_items_spark_velocity_reads_the_page_in_one_batch(
+    lists: tuple[As, dict[str, UUID]], db_engine: Engine
+) -> None:
+    """imp-419: `?spark=velocity` adds each row's V7 on the `days` UTC days to yesterday, one
+    point per day with its date. A day without a row, or with a gap V7, is null: never 0, never
+    bridged (DEC-040). One demand family per line, the row's own. A fixed number of statements,
+    whatever the page size."""
+    as_, ids = lists
+    end = datetime.now(UTC).date() - timedelta(days=1)
+
+    def feature(
+        product: UUID, back: int, v7: float | None, family: str = "shp_inv", version: str = "1"
+    ) -> ProductDailyFeature:
+        return ProductDailyFeature(
+            product_id=product,
+            feature_date=end - timedelta(days=back),
+            family=family,
+            feature_version=version,
+            velocity_7d=v7,
+            growth_7d=None if v7 is None else 0.1,
+            coverage=Decimal(1),
+            has_gap=v7 is None,
+        )
+
+    with Session(db_engine) as session:
+        fillers = [Product(name=f"Filler {i}") for i in range(97)]
+        session.add_all(fillers)
+        session.flush()
+        filler_ids = [str(product.id) for product in fillers]
+        session.add_all(feature(p.id, back, 5.0) for p in fillers for back in range(30))
+        # p1: no rows 3 and 4 days back, a gap V7 5 days back, a newer version yesterday, a row
+        # today (its cutoff hasn't passed) and one past the window; CJ's every day, never mixed.
+        session.add_all(feature(ids["p1"], back, 100.0 + back) for back in range(-1, 31))
+        session.query(ProductDailyFeature).filter_by(product_id=ids["p1"]).filter(
+            ProductDailyFeature.feature_date.in_([end - timedelta(days=b) for b in (3, 4, 5)])
+        ).delete()
+        session.add_all([feature(ids["p1"], 5, None), feature(ids["p1"], 0, 999.0, version="2")])
+        session.add_all(
+            feature(ids[p], back, 7.0, "cj_stock") for p in ("p1", "p2") for back in range(30)
+        )
+        session.commit()
+    a = as_("a")
+    pet = a.post("/v1/watchlists", json={"name": "Pet"}).json()["id"]
+    url = f"/v1/watchlists/{pet}/items"
+    a.post(url, json={"product_ids": filler_ids})
+    a.post(url, json={"product_ids": [str(ids[p]) for p in ("p1", "p2", "p3")]})
+
+    page = a.get(url, params={"spark": "velocity", "limit": 100}).json()
+    rows = {row["product_id"]: row for row in page["items"]}
+    assert len(rows) == 100
+    days = [(end - timedelta(days=back)).isoformat() for back in range(29, -1, -1)]
+    for row in page["items"]:
+        if "points" in row["spark"]:
+            assert [point["day"] for point in row["spark"]["points"]] == days
+    p1 = rows[str(ids["p1"])]["spark"]
+    by_day = {point["day"]: point["value"] for point in p1["points"]}
+    missing = {(end - timedelta(days=back)).isoformat() for back in (3, 4, 5)}
+    assert {day for day, value in by_day.items() if value is None} == missing
+    assert by_day[days[-1]] == 999.0  # the newest feature version
+    assert by_day[days[0]] == 129.0 and 7.0 not in by_day.values()  # shp_inv only
+    assert (p1["family"], p1["source_name"], p1["stale"]) == ("shp_inv", "Shopify stores", False)
+    assert p1["as_of"] == datetime.combine(
+        end + timedelta(days=1), time(), UTC
+    ).isoformat().replace("+00:00", "Z")
+    assert rows[str(ids["p2"])]["spark"]["family"] == "cj_stock"
+    assert rows[str(ids["p3"])]["spark"] == {
+        "value": None,
+        "reason": "No velocity in the last 30 days.",
+    }
+
+    week = a.get(url, params={"spark": "velocity", "days": 7, "limit": 1}).json()["items"][0]
+    assert len(week["spark"]["points"]) == 7
+    for bad in ({"days": 0}, {"days": 91}, {"spark": "price"}):
+        assert a.get(url, params={"spark": "velocity"} | bad).status_code == 422
+    assert as_("b").get(url, params={"spark": "velocity"}).status_code == 404
+    a = as_("a")
+
+    # Without spark the page is as before: no spark key, the same fields and cursor.
+    plain = a.get(url, params={"limit": 100}).json()
+    assert all("spark" not in row for row in plain["items"])
+    assert plain == {
+        "items": [{k: v for k, v in row.items() if k != "spark"} for row in page["items"]],
+        "next_cursor": page["next_cursor"],
+    }
+
+    # No query per item: 100 rows run as many statements as 1, the sparkline two more.
+    one = statements(db_engine, lambda: a.get(url, params={"spark": "velocity", "limit": 1}))
+    hundred = statements(db_engine, lambda: a.get(url, params={"spark": "velocity", "limit": 100}))
+    without = statements(db_engine, lambda: a.get(url, params={"limit": 100}))
+    assert hundred == one == without + 2

@@ -9665,6 +9665,75 @@
         "title": "Sourced",
         "type": "object"
       },
+      "Spark": {
+        "description": "One demand family's V7 on each UTC day to yesterday, the newest day whose cutoff has\npassed, oldest first (imp-419). The row's velocity family, else the best-graded family with\na row in the window; families are never mixed. Stored rows only, never filled in (DEC-040).",
+        "properties": {
+          "as_of": {
+            "format": "date-time",
+            "title": "As Of",
+            "type": "string"
+          },
+          "family": {
+            "title": "Family",
+            "type": "string"
+          },
+          "method": {
+            "title": "Method",
+            "type": "string"
+          },
+          "points": {
+            "items": {
+              "$ref": "#/components/schemas/SparkPoint"
+            },
+            "title": "Points",
+            "type": "array"
+          },
+          "source_name": {
+            "title": "Source Name",
+            "type": "string"
+          },
+          "stale": {
+            "title": "Stale",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "family",
+          "source_name",
+          "method",
+          "as_of",
+          "stale",
+          "points"
+        ],
+        "title": "Spark",
+        "type": "object"
+      },
+      "SparkPoint": {
+        "properties": {
+          "day": {
+            "format": "date",
+            "title": "Day",
+            "type": "string"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          }
+        },
+        "required": [
+          "day",
+          "value"
+        ],
+        "title": "SparkPoint",
+        "type": "object"
+      },
       "Spread": {
         "description": "Current USD retail over active, trackable sellers: one price (the lowest) per store.",
         "properties": {
@@ -10937,6 +11006,20 @@
             "format": "uuid",
             "title": "Product Id",
             "type": "string"
+          },
+          "spark": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Spark"
+              },
+              {
+                "$ref": "#/components/schemas/NoSource"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Spark"
           }
         },
         "required": [
@@ -46564,6 +46647,37 @@
               "maximum": 100,
               "minimum": 1,
               "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "velocity adds each row's V7 sparkline over `days` UTC days.",
+            "in": "query",
+            "name": "spark",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "const": "velocity",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "velocity adds each row's V7 sparkline over `days` UTC days.",
+              "title": "Spark"
+            }
+          },
+          {
+            "in": "query",
+            "name": "days",
+            "required": false,
+            "schema": {
+              "default": 30,
+              "maximum": 90,
+              "minimum": 1,
+              "title": "Days",
               "type": "integer"
             }
           },
