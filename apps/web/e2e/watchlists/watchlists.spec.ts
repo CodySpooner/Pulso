@@ -186,3 +186,40 @@ test("first visit, a failed load and a failed list each say what to do", async (
   await page.reload();
   await expect(page.getByRole("heading", { name: "Couldn't load this list" })).toBeVisible();
 });
+
+test("the 30-day sparkline column: source and as of on hover and focus, gaps named, no source yet; phone cards fit 375 px", async ({ page }) => {
+  await mockWatchlistsApi(page);
+  await page.goto("/watchlists");
+  const region = table(page, "Main");
+  await expect(region.getByRole("columnheader", { name: "30 days" })).toBeVisible();
+  expect(await region.evaluate((el) => el.scrollWidth - el.clientWidth)).toBe(0); // every column fits at 1440 px
+  const spark = (title: string) => row(page, "Main", title).getByRole("button", { name: /^Velocity, last 30 days/ });
+  const tip = page.locator('[role="tooltip"]:not([data-state="closed"])');
+
+  // Product 3 breaks on Oct 2–4 and Oct 15: three separate lines, never bridged, and the hint names the days.
+  await expect(spark(CATALOG[3].title)).toHaveAccessibleName(/^Velocity, last 30 days: \d+\/7d to \d+\/7d, no data Oct 2 → Oct 4, Oct 15$/);
+  await expect(spark(CATALOG[3].title).locator("polyline")).toHaveCount(3);
+  await spark(CATALOG[3].title).hover();
+  await expect(tip).toContainText("Shopify stores");
+  await expect(tip).toContainText("As of");
+  await expect(tip).toContainText("No data Oct 2 → Oct 4, Oct 15");
+  await page.mouse.move(0, 0);
+
+  // Keyboard focus opens it too.
+  await spark(CATALOG[0].title).focus();
+  await expect(tip).toContainText("Velocity, last 30 days");
+  await expect(tip).not.toContainText("No data");
+  // No series at all: "No source yet", never a flat line or 0.
+  const none = row(page, "Main", CATALOG[5].title).getByRole("button", { name: "Velocity, last 30 days: No source yet" });
+  await expect(none).toBeVisible();
+  await expect(row(page, "Main", CATALOG[5].title).locator("svg polyline")).toHaveCount(0);
+
+  await page.setViewportSize({ width: 375, height: 812 });
+  const card = (title: string) => page.getByRole("article").filter({ hasText: title });
+  await expect(card(CATALOG[0].title).getByRole("button", { name: /^Velocity, last 30 days: \d+/ })).toBeVisible();
+  await expect(card(CATALOG[5].title).getByRole("button", { name: "Velocity, last 30 days: No source yet" })).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBe(0);
+  await card(CATALOG[3].title).getByRole("button", { name: /^Velocity, last 30 days/ }).click(); // a tap opens it, not the product
+  await expect(tip).toContainText("No data Oct 2 → Oct 4, Oct 15");
+  await expect(page).toHaveURL("/watchlists");
+});

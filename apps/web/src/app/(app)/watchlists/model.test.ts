@@ -1,7 +1,7 @@
 import { QueryClient } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { applyWatch, isMerged, listed, patchWatch, pickList, undoWindow, type List, type Removal } from "./model";
+import { applyWatch, isMerged, listed, patchWatch, pickList, sparkGaps, sparkLabel, undoWindow, type List, type Removal, type Spark } from "./model";
 
 const product = (id: string, watched = false, watchlist_ids: string[] = []) => ({ id, title: id, watched, watchlist_ids });
 const list = (id: string, name: string): List => ({ id, name, position: 0, created_at: "2026-10-25T00:00:00Z", item_count: 0 });
@@ -105,5 +105,22 @@ describe("the merged note and the list shown", () => {
     expect(pickList([list("q4", "Q4")], null)?.id).toBe("q4");
     expect(pickList([], null)).toBeUndefined();
     expect(pickList(undefined, "q4")).toBeUndefined();
+  });
+});
+
+describe("sparkline words (imp-419)", () => {
+  const points = (values: (number | null)[]) => values.map((value, i) => ({ day: `2026-10-${String(i + 1).padStart(2, "0")}`, value }));
+  const spark = (values: (number | null)[]): Spark => ({
+    value: 1, source: "shopify_stores", source_name: "Shopify stores", as_of: "2026-10-22T00:00:00Z", raw_payload_id: null, method: null, stale: false, family: "shp_inv", points: points(values),
+  });
+
+  it("names each run of days without a value after the first value; days before it aren't gaps", () => {
+    expect(sparkGaps(points([null, null, 4, null, null, null, 5, null, 6, null]))).toEqual(["Oct 4 → Oct 6", "Oct 8", "Oct 10"]);
+    expect(sparkGaps(points([null, 3, 4]))).toEqual([]);
+  });
+
+  it("says the first and last values and where the line breaks", () => {
+    expect(sparkLabel(spark([12.4, null, 1033.6]))).toBe("Velocity, last 3 days: 12/7d to 1,034/7d, no data Oct 2");
+    expect(sparkLabel(spark([null, 7]))).toBe("Velocity, last 2 days: 7/7d");
   });
 });
