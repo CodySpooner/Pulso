@@ -4387,3 +4387,55 @@ Superseded review defaults, not given entries: default #0 (move the repo) is don
 
   p95 on a synthetic dev-sized schema in the same container (3,000 products, 2 families × 120 days = 720k feature rows, 100 watched, in-process TestClient, 100 runs): **214 ms with `spark=velocity`** (p50 95) against the 300 ms target, and 58 ms without it. Vitest `components/pulso/sparkline.test.ts` (3) and `watchlists/model.test.ts` (2 new) pass, and the Pulse card test still finds its `<polyline>`. Playwright `e2e/watchlists/watchlists.spec.ts` (9) covers the column, the hover and focus card with named gaps, three polylines for a three-run line, "No source yet", and phone cards with no horizontal scroll at 375px. Screenshots are in `docs/screenshots/imp-419/`.
 - **Not here:** a sparkline metric chosen per list (vault open question), the "since added" deltas (imp-420), Momentum (imp-495), and a compact Merged chip in the table (backlog row in the report).
+
+### DEC-350 · Board CSV and Add to board (WF-3c/d, imp-455, imp-456): `GET /v1/boards/{id}/items?format=csv` streams every card through the JSON's `with_stats()`, named after the board; Export CSV and `E` on `/boards/[id]`; one Add-to-board popover (board search, recent first, New board inline) on Discover cards and rows and the Product Page header, opened by `B`
+**2026-10-25 · proposed (p4-33)** · Phase 4 task WF-3 parts c and d (imp-455, imp-456; `docs/reports/p4-12.md` rows 3–4); SPEC §6.10, §6.18; DEC-040, DEC-316, DEC-319 (e, g), DEC-329, DEC-331, DEC-344, DEC-345; vault Features/Boards, Features/CSV Export & Import; `docs/reports/p4-33.md`; API change additive (a `format` query parameter and a documented `text/csv` 200 on `list_board_items`, operation id unchanged); no migration, flag, dependency or new endpoint
+- **Decision:**
+  - **(a) The board CSV is `GET /v1/boards/{id}/items?format=csv`,** the house convention (DEC-316 d, DEC-345), not the vault's `export.csv` path. It runs `owned()` first, so another workspace's board is a 404. It ignores `cursor` and `limit` and streams every card in board order (`position`, then `product_id`) through `csv_response`: count first, the 50k cap, 500 cards a fetch, the BOM, `Z` times, major units, the formula guard on text.
+  - **(b) Rows are the JSON's.** Each chunk goes through `with_stats()`, the function that builds the items page, so a card's price, margin and scores equal its JSON card's, merged cards included (the survivor's stats, DEC-344 b). A stat with nothing behind it is an empty cell, never 0 (DEC-040).
+  - **(c) Columns** follow the board table's order, plus the ids and an as-of per stat: `position, product_id, product, price_min, price_max, currency, best_margin, best_margin_pct, trend, lifecycle, saturation, note, merged_into_id, added_at, price_as_of, best_margin_as_of, trend_as_of, lifecycle_as_of, saturation_as_of, stale`.
+    - `position` is the card's 1-based place, as the table's `#` shows it, counted across chunks. The stored position can have gaps (DEC-319 b), which a spreadsheet would read as missing cards.
+    - `lifecycle` is the stage word (`rising`); `trend` and `saturation` are the stored values (`70.0`).
+    - A score's as-of is its `as_of` (the end of the day scored, DEC-331); prices and margin carry their capture time.
+    - `stale` is true when a traced stat (price or margin) is stale, as the card's "· stale" is.
+  - **(d) The file is named after the board:** `pulso_board_<slug>_<date>.csv`, where the slug is the name lowercased, with each run of other characters turned into `-`, trimmed and cut to 60 characters. So "Q4 gifts: <$40!" becomes `pulso_board_q4-gifts-40_…`. The header stays ASCII. A name with no ASCII letters or digits gives `pulso_board_<date>.csv`.
+  - **(e) Board UI.** Export CSV sits at the right end of the Grid/Table row, so its alerts (DEC-316 f) wrap under the full row. It reuses `useCsvDownload` and `ExportCsv` (DEC-345 d). `E` exports while focus is on the cards (a card, its handle, checkbox or link). It never fires from a note, from a card's `…` menu (a portal whose keys bubble through React) or with modifiers. An empty board shows its empty state rather than the row, so there is no button to lock. The empty state now says "Use Add to board, or press B on a product."
+  - **(f) Add to board** (`boards/add-to-board.tsx`) is a Radix Popover holding a `cmdk` list.
+    - **The list:** active boards in the API's order (newest activity first, and every add bumps it, so the last-used board is on top and highlighted), each with its card count, then New board. Archived boards aren't offered.
+    - **Search:** typing filters by name, a plain substring match: cmdk's fuzzy default would match a query's letters scattered through the board ids. A typed name that no active board has offers New board "name", so creating is one Enter. With no name, New board opens a name field.
+    - **Adding:** picking a board closes the popover and sends `add_board_items {product_ids: [id]}`. `{added, skipped}` reads "Added to <board>" or "Already on <board>" in a toast with Open board. A failure says why, with Retry. A taken name (409, archived boards count) keeps the name field and text with the board page's wording.
+    - **After an add:** the board lists refetch at once (`refetchType: "all"`), so the next open shows the new order.
+    - **States:** loading (three skeleton rows; New board waits for the list, so cmdk highlights the first board rather than it); error (`PanelError` with Retry, which hands focus back to the search); no boards ("No boards yet. Name your first one above."); stale (a warning-icon line over the cached list). "No source yet" doesn't apply: boards are the user's own data.
+  - **(g) Where it is, and `B`.**
+    - **Placement:** an icon button beside the ★ on each Discover card (over the image) and table row, and a labelled "Add to board" after Watch in the Product Page header.
+    - **One host per page:** `AddToBoardHost` holds the one toast and the `B` key. `B` (Shift+B too, never with Ctrl, Cmd or Alt, never while typing) opens the picker of the product holding focus: the nearest `[data-product]` (a Discover card or row). On the Product Page (`page`) it opens the header's picker from anywhere.
+    - **Focus:** Radix moves focus into the search on open and back to the trigger on close.
+    - **Clicks inside the picker:** the content stops click propagation. It is portalled, but React bubbles its clicks to the Discover row, whose click opens the product.
+    - **Alignment:** an icon picker opens over its card (`align="start"`) rather than over the nav, and the header's opens to the left (`align="end"`). Discover passes ★ and Add to board through the shared table's `lead` (DEC-347); a phone row's product cell widens from `w-40` to `w-48` only when it holds Add to board, so the Screener's rows keep `w-40`.
+- **Alternatives:**
+  - **`GET /v1/boards/{id}/export.csv`** (vault Data & API, backlog wording): a second route and operation to keep in step with the items page; DEC-316 and DEC-345 chose `?format=csv`.
+  - **The stored `position` in the CSV:** equal to the JSON, but gaps after a removal read as missing cards in a spreadsheet.
+  - **A toast per picker:** up to 48 live regions on a Discover page, and two toasts stacking after two quick adds. One host per page has one region, and a new note replaces the old.
+  - **A global `B` in the app shell:** works on every page at once, but the shell isn't this task's file, and Screener and Store Spy have no product focus to read yet. The host is one line per page.
+  - **cmdk's `forceMount` for New board:** forceMount items aren't registered, so with no boards nothing gets selected and Enter does nothing (a Playwright test caught it). The filter keeps New board instead.
+  - **Membership ticks per board (like the watch menu):** that needs every board's items, or a new endpoint. `{added, skipped}` says it after the pick.
+- **Why:**
+  - **API:** `apps/api/tests/test_boards.py` runs on a throwaway `pgvector/pgvector:0.8.7-pg18-trixie` (10 passed). With the chunk patched to 1 card, a board of three exports the BOM, the header and three rows in board order, named `pulso_board_q4-gifts-40_<date>.csv`; the `limit` is ignored.
+    - The stocked card's margin, margin %, Trend, Lifecycle, Saturation, prices and every as-of equal its JSON card's.
+    - A card merged after the add carries `merged_into_id` and the survivor's cells.
+    - A card with no data has empty stat and as-of cells, `currency` USD and `stale` false.
+    - A `=HYPERLINK(…)` note comes back as `'=HYPERLINK(…)`.
+    - Workspace B's CSV request on A's board is a 404.
+    - Two one-line mutations each fail the test: places restarting per chunk, and saturation written into the trend column.
+  - **Web:** Playwright on fixture data under the E2E auth bypass.
+    - `e2e/boards/export-csv.spec.ts` (2): the button and `E` download `pulso_board_q4-gift-ideas_…csv` with every card in order through one `?format=csv` request. `E` from a note or a card's menu sends none; removing the portal guard fails this.
+    - `e2e/boards/add-to-board.spec.ts` (7):
+      - B, ↓, Enter from a focused Discover card says "Added to Pet niche", with focus back on the trigger; then B, Enter says "Already on Pet niche" (Pet niche is now first);
+      - a name search, and a table row's button adds without opening the product;
+      - on the Product Page, `B` from anywhere, a taken archived name's 409, then New board creates "Gift guide" and adds the product;
+      - loading, error with Retry, and no boards with the name field;
+      - AA contrast of the picker, its error, the 409 and the toast in dark and light;
+      - 375px with no horizontal scroll.
+      - at 375px the table row's product cell is 192px (dropping the `has-` width fails it, 160).
+    - The existing Discover, boards, Screener, watchlists, Product Page, touch-target and Testing export specs pass (108). The Product Page tab-order test now meets Add to board after Watch.
+- **Not here:** Add to board on the Screener (p4-32's page) and Store Spy; the selection bar's "move or copy to board" (imp-500); the Shopify product CSV (imp-457, pending approval); a CSV of the whole board list. Backlog rows are in the report.

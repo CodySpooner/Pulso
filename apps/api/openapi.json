@@ -25162,6 +25162,22 @@
             }
           },
           {
+            "description": "csv: every card in board order, no cursor or limit (DEC-350)",
+            "in": "query",
+            "name": "format",
+            "required": false,
+            "schema": {
+              "default": "json",
+              "description": "csv: every card in board order, no cursor or limit (DEC-350)",
+              "enum": [
+                "json",
+                "csv"
+              ],
+              "title": "Format",
+              "type": "string"
+            }
+          },
+          {
             "in": "cookie",
             "name": "__session",
             "required": false,
@@ -25185,9 +25201,14 @@
                 "schema": {
                   "$ref": "#/components/schemas/BoardItemPage"
                 }
+              },
+              "text/csv": {
+                "schema": {
+                  "type": "string"
+                }
               }
             },
-            "description": "Successful Response"
+            "description": "JSON, or with format=csv every card as a CSV download."
           },
           "401": {
             "content": {

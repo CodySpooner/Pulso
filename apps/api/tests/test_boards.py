@@ -1,5 +1,8 @@
+import csv
+import io
 from collections.abc import Callable, Iterator
 from datetime import UTC, datetime, timedelta
+from decimal import Decimal
 from functools import partial
 from typing import Any
 from uuid import UUID, uuid4
@@ -13,7 +16,9 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from pulso_api.auth import Principal, current_principal
+from pulso_api.csv_export import major
 from pulso_api.dependencies import get_db
+from pulso_api.routers.boards import BOARD_CSV
 from pulso_api.routers.product_scores import NO_ROW
 from pulso_api.routers.products import NO_PRICE, NO_SETTINGS
 from pulso_core.models import (
@@ -36,7 +41,7 @@ from pulso_core.scores import Explanation, ScoreRow, write
 
 # Boards (WF-3 part a, DEC-319): workspace boards of global products, ordered and noted.
 # Card stats (imp-454): each card's price range, best margin and scores, a page in a fixed
-# number of queries.
+# number of queries. CSV (imp-456): the cards as the JSON builds them.
 
 As = Callable[[str], TestClient]
 DAY = datetime.now(UTC).date() - timedelta(days=1)  # scored yesterday
@@ -320,6 +325,7 @@ def test_workspace_b_never_sees_or_edits_a(
         b.post(f"/v1/boards/{a}/unarchive"),
         b.delete(f"/v1/boards/{a}"),
         b.get(f"/v1/boards/{a}/items"),
+        b.get(f"/v1/boards/{a}/items", params={"format": "csv"}),
         b.post(f"/v1/boards/{a}/items", json=one),
         b.patch(item, json={"note": "B's note", "position": 0}),
         b.delete(item),
@@ -510,3 +516,84 @@ def test_a_page_of_50_cards_runs_as_many_queries_as_a_page_of_1(
     )
     assert one == fifty
     print(f"query count, a page of cards: {fifty}")  # reported in docs/reports/imp-454.md
+
+
+def board_csv(client: TestClient, board: str, file: str) -> list[dict[str, str]]:
+    """A board's CSV, checked for the format every export shares (DEC-316)."""
+    response = client.get(f"/v1/boards/{board}/items", params={"format": "csv", "limit": 1})
+    assert response.status_code == 200, response.text
+    assert response.headers["content-type"] == "text/csv; charset=utf-8"
+    assert response.headers["content-disposition"] == (
+        f'attachment; filename="pulso_board_{file}_{datetime.now(UTC).date().isoformat()}.csv"'
+    )
+    assert response.content.startswith(b"\xef\xbb\xbf")  # the BOM, for Excel on Windows
+    text = response.content.decode("utf-8-sig")
+    assert text.splitlines()[0] == ",".join(BOARD_CSV)
+    rows = list(csv.DictReader(io.StringIO(text)))
+    assert response.headers["x-total-count"] == str(len(rows))
+    return rows
+
+
+@pytest.mark.db
+def test_a_board_exports_every_card_in_order_with_the_jsons_numbers(
+    boards: tuple[As, dict[str, UUID]],
+    stats: tuple[TestClient, str, UUID],
+    db_engine: Engine,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """One row per card in board order, the limit ignored, places running on across chunks;
+    each stat as the JSON card has it, a missing one an empty cell, never 0 (DEC-040)."""
+    _, ids = boards
+    client, board, lamp = stats
+    monkeypatch.setattr("pulso_api.csv_export.CHUNK", 1)
+    add(client, board, ids, "p2", "p3")
+    note = {"note": '=HYPERLINK("https://x.test")', "position": 0}
+    assert client.patch(f"/v1/boards/{board}/items/{ids['p2']}", json=note).is_success
+    assert client.patch("/v1/boards/" + board, json={"name": "Q4 gifts: <$40!"}).is_success
+    with Session(db_engine) as session:
+        session.get_one(Product, ids["p3"]).merged_into_id = lamp  # after the add
+        session.commit()
+    rows = board_csv(client, board, "q4-gifts-40")
+    order = [ids["p2"], lamp, ids["p3"]]
+    assert [(row["position"], row["product_id"]) for row in rows] == [
+        (str(place), str(product)) for place, product in enumerate(order, 1)
+    ]
+    empty, lamp_row, merged = rows
+    card = card_of(client, board, lamp)
+    margin, at = card["best_margin_minor"], AT.isoformat().replace("+00:00", "Z")
+    assert (lamp_row["product"], lamp_row["note"], lamp_row["merged_into_id"]) == ("Lamp", "", "")
+    assert (lamp_row["price_min"], lamp_row["price_max"], lamp_row["currency"]) == (
+        "29.99",
+        "34.99",
+        "USD",
+    )
+    assert lamp_row["best_margin"] == str(major(margin["value"]))
+    assert lamp_row["best_margin_pct"] == str(Decimal(margin["margin_bps"]).scaleb(-2))
+    assert lamp_row["trend"] == str(card["trend"]["value"]) == "70.0"
+    assert (lamp_row["lifecycle"], lamp_row["saturation"]) == ("rising", "40.0")
+    assert lamp_row["added_at"] == card["added_at"].replace("+00:00", "Z")
+    assert (lamp_row["price_as_of"], lamp_row["best_margin_as_of"]) == (at, at)
+    for kind in ("trend", "lifecycle", "saturation"):
+        assert lamp_row[f"{kind}_as_of"] == card[kind]["as_of"].replace("+00:00", "Z")
+    assert merged | {"position": "2", "product_id": str(lamp)} == lamp_row | {
+        "product": "Product 3",
+        "merged_into_id": str(lamp),
+        "added_at": merged["added_at"],
+    }
+    assert empty["note"] == '\'=HYPERLINK("https://x.test")'  # never run as a formula
+    assert {key for key, value in empty.items() if value == ""} == {
+        "price_min",
+        "price_max",
+        "best_margin",
+        "best_margin_pct",
+        "trend",
+        "lifecycle",
+        "saturation",
+        "merged_into_id",
+        "price_as_of",
+        "best_margin_as_of",
+        "trend_as_of",
+        "lifecycle_as_of",
+        "saturation_as_of",
+    }
+    assert (empty["currency"], empty["stale"]) == ("USD", "false")

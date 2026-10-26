@@ -56,9 +56,11 @@ test("every header number opens its provenance card by keyboard", async ({ page 
   const buttons = metrics(page);
   await expect(buttons).toHaveCount(4);
   await page.getByRole("heading", { level: 1 }).focus();
-  await page.keyboard.press("Tab"); // the header's Watch and its lists menu (p4-13), Create alert (p4-27), then Start a test (p4-08), come first
+  await page.keyboard.press("Tab"); // the header's Watch and its lists menu (p4-13), Add to board (p4-33), Create alert (p4-27), then Start a test (p4-08), come first
   await expect(page.getByRole("button", { name: "Watch", exact: true })).toBeFocused();
   await page.keyboard.press("Tab");
+  await page.keyboard.press("Tab");
+  await expect(page.getByRole("button", { name: "Add to board" })).toBeFocused();
   await page.keyboard.press("Tab");
   await expect(page.getByRole("button", { name: "Create alert" })).toBeFocused();
   await page.keyboard.press("Tab");

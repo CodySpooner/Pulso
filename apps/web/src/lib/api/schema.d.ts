@@ -12254,6 +12254,8 @@ export interface operations {
             query?: {
                 cursor?: string | null;
                 limit?: number;
+                /** @description csv: every card in board order, no cursor or limit (DEC-350) */
+                format?: "json" | "csv";
             };
             header?: never;
             path: {
@@ -12265,13 +12267,14 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Successful Response */
+            /** @description JSON, or with format=csv every card as a CSV download. */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
                     "application/json": components["schemas"]["BoardItemPage"];
+                    "text/csv": string;
                 };
             };
             /** @description Unauthorized */

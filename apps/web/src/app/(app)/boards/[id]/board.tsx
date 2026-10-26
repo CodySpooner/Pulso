@@ -20,6 +20,7 @@ import { $api, fetchClient, isProblem } from "@/lib/api/client";
 import { duration, ease } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 
+import { ExportCsv, useCsvDownload } from "../../discover/export-csv";
 import { reasonOf } from "../../testing/model";
 import { boardsInit, boardsKey, itemsInit, itemsKey, moveOptions, type Board, type Item, type ItemPage, type Move } from "../model";
 import { Segmented, Toast, useNote } from "../parts";
@@ -287,6 +288,8 @@ function Cards({ board, setNote, saved }: { board: Board; setNote: ReturnType<ty
   const anchor = useRef<string | null>(null);
   const lifted = useRef(false); // dnd-kit reports the card over itself on pick-up; that one isn't a move
   const move = useMutation(moveOptions(client, key, (m) => sendMove(m, id)));
+  // Every card, past the first 100 the page shows, named after the board by the API (DEC-350).
+  const csv = useCsvDownload(`board ${id}`, (signal) => fetchClient.GET("/v1/boards/{board_id}/items", { params: { path: { board_id: id }, query: { format: "csv" } }, parseAs: "stream", signal }));
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }), useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }));
 
   if (!items.data)
@@ -417,7 +420,11 @@ function Cards({ board, setNote, saved }: { board: Board; setNote: ReturnType<ty
       className="flex flex-col gap-3"
       onKeyDown={(e) => {
         if (isTyping(e.target) && !(e.target instanceof HTMLInputElement && e.target.type === "checkbox")) return;
-        if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "a") {
+        // E exports while focus is on the cards; a card's menu is a portal whose keys bubble here through React.
+        if (e.key.toLowerCase() === "e" && !e.ctrlKey && !e.metaKey && !e.altKey && cards.length && e.currentTarget.contains(e.target as Node)) {
+          e.preventDefault();
+          void csv.run();
+        } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "a") {
           e.preventDefault();
           setSelected(new Set(ids));
           // A lifted card's handle is aria-pressed: its Escape cancels the drag and keeps the selection.
@@ -437,7 +444,7 @@ function Cards({ board, setNote, saved }: { board: Board; setNote: ReturnType<ty
               </Button>
             }
           >
-            Products you add from Discover or a product page land here in the order you add them. The Add to board button comes in a later Phase 4 update.
+            Products you add from Discover or a product page land here in the order you add them. Use Add to board, or press B on a product.
           </EmptyState>
         </div>
       ) : (
@@ -453,7 +460,8 @@ function Cards({ board, setNote, saved }: { board: Board; setNote: ReturnType<ty
               ]}
               onChange={setView}
             />
-            <p className="text-label text-subtle-foreground max-md:hidden">Drag a product by its handle, or focus the handle and use Space and the arrow keys.</p>
+            <p className="min-w-0 flex-1 text-label text-subtle-foreground max-md:hidden">Drag a product by its handle, or focus the handle and use Space and the arrow keys.</p>
+            <ExportCsv csv={csv} empty={false} />
           </div>
           <DndContext
             sensors={sensors}

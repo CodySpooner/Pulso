@@ -19,6 +19,7 @@ import { formatUtc } from "@/lib/format";
 import { duration, spring } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 
+import { AddToBoard, AddToBoardHost } from "../boards/add-to-board";
 import { ExportCsv, useCsvExport } from "./export-csv";
 import { StarButton } from "../watchlists/star";
 import { CardSkeletons, feedColumns, GRID, ProductCard, ProductTable, TableSkeleton, type Item, type Paused } from "./feed-views";
@@ -40,6 +41,12 @@ import {
 } from "./url-state";
 
 const noSubscribe = () => () => {};
+const rowActions = (item: Item) => (
+  <>
+    <StarButton product={item} className="-ml-1.5" />
+    <AddToBoard product={item} className="-ml-1.5" />
+  </>
+);
 const isTyping = (t: EventTarget | null) => t instanceof HTMLElement && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName));
 const control =
   "h-(--button-h-md) min-w-0 rounded-md border border-border bg-secondary px-2.5 text-data text-foreground transition-colors duration-(--duration-fast) hover:border-border-strong";
@@ -164,7 +171,7 @@ export function Discover() {
         ) : view === "grid" ? (
           <Grid items={items} now={now} paused={paused} loadingMore={isFetchingNextPage} onNearEnd={more} />
         ) : (
-          <ProductTable items={items} columns={feedColumns(now, paused)} lead={(item) => <StarButton product={item} className="-ml-1.5" />} loadingMore={isFetchingNextPage} onNearEnd={more} />
+          <ProductTable items={items} columns={feedColumns(now, paused)} lead={rowActions} loadingMore={isFetchingNextPage} onNearEnd={more} />
         )}
       </m.div>
       {isFetchNextPageError && (
@@ -172,6 +179,7 @@ export function Discover() {
           <PanelError headingLevel="h2" title="Couldn't load more products" error={error} retry={() => void fetchNextPage()} />
         </section>
       )}
+      <AddToBoardHost />
     </div>
   );
 }

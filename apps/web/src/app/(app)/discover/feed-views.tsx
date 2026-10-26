@@ -12,6 +12,7 @@ import type { components } from "@/lib/api/schema";
 import { formatAgo, formatDelta, formatUtc } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
+import { AddToBoard } from "../boards/add-to-board";
 import { StarButton } from "../watchlists/star";
 
 // openapi-fetch drops a key typed only `null` from responses, so each NoSource arrives as `{reason}` (DEC-238 g).
@@ -124,13 +125,14 @@ export function Thumb({ url, className }: { url: string | null; className: strin
 }
 
 const href = (item: { id: string }) => `/products/${item.id}`;
+const OVER_IMAGE = "border-border bg-card/85 shadow-card backdrop-blur-sm hover:bg-card";
 
 // Image-first card (vault Features/Discover, card anatomy). The title link stretches over the card, so a click or
 // Enter anywhere opens the product; each number sits above it and opens its own provenance card. Cards never
 // animate in, so cards loaded by infinite scroll don't either (Motion System rule 2).
 export function ProductCard({ item, now, paused }: { item: Item; now: number; paused: Paused }) {
   return (
-    <article className="group relative flex min-w-0 flex-col overflow-hidden rounded-xl border border-border bg-card shadow-card transition-[border-color,scale] duration-(--duration-fast) ease-standard hover:border-border-strong has-[a:active]:scale-[0.99] has-[a:focus-visible]:outline-2 has-[a:focus-visible]:outline-offset-2 has-[a:focus-visible]:outline-ring">
+    <article data-product className="group relative flex min-w-0 flex-col overflow-hidden rounded-xl border border-border bg-card shadow-card transition-[border-color,scale] duration-(--duration-fast) ease-standard hover:border-border-strong has-[a:active]:scale-[0.99] has-[a:focus-visible]:outline-2 has-[a:focus-visible]:outline-offset-2 has-[a:focus-visible]:outline-ring">
       <div className="aspect-square overflow-hidden border-b border-border-subtle">
         <Thumb url={item.image_url} className="size-full transition-transform duration-(--duration-slow) ease-out group-hover:scale-[1.03]" />
       </div>
@@ -177,8 +179,11 @@ export function ProductCard({ item, now, paused }: { item: Item; now: number; pa
           <Freshness item={item} now={now} paused={paused} />
         </p>
       </div>
-      {/* After the card's link, so Tab reaches the product before its star. */}
-      <StarButton product={item} className="absolute top-2 right-2 z-10 border-border bg-card/85 shadow-card backdrop-blur-sm hover:bg-card" />
+      {/* After the card's link, so Tab reaches the product before its actions. */}
+      <div className="absolute top-2 right-2 z-10 flex gap-1">
+        <AddToBoard product={item} className={OVER_IMAGE} />
+        <StarButton product={item} className={OVER_IMAGE} />
+      </div>
     </article>
   );
 }
@@ -306,6 +311,7 @@ export function ProductTable<T extends Row>({
           {items.slice(start, end).map((item, i) => (
             <tr
               key={item.id}
+              data-product
               aria-rowindex={start + i + 2}
               className="group row-h cursor-pointer hover:bg-(--table-row-hover)"
               onClick={(e) => {
@@ -313,7 +319,8 @@ export function ProductTable<T extends Row>({
               }}
             >
               <th scope="row" className={cn(cell, "sticky left-0 z-10 max-w-80 bg-card text-left font-normal group-hover:bg-(--table-row-hover)")}>
-                <span className="flex items-center gap-2 max-md:w-40">
+                {/* A row with Add to board (Discover) has a second icon to fit on a phone. */}
+                <span className="flex items-center gap-2 max-md:w-40 max-md:has-[[data-add-to-board]]:w-48">
                   {lead?.(item)}
                   <Thumb url={item.image_url} className="size-6 shrink-0 rounded-sm" />
                   <span className="flex min-w-0 items-baseline gap-2">
