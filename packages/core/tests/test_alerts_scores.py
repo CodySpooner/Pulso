@@ -99,8 +99,8 @@ def test_a_velocity_spike_fires_once_and_again_only_after_falling_back(db_engine
         ws, product = setup(session)
         spike = rule(session, ws, "velocity_spike", ("product", product))
         nights = [(20, 20), (30, 20), (31, 21), (34, 21), (24, 20), (10, 24), (40, 24)]
-        # +0% the reference, exactly +50% fires, +47.6% inside the 47.5% band, +62% stays fired, +20%
-        # re-arms, -58% is a fall, not a spike, +67% fires again
+        # +0% the reference, exactly +50% fires, +47.6% inside the 47.5% band, +62% stays fired,
+        # +20% re-arms, -58% is a fall, not a spike, +67% fires again
         fired = []
         for n, (v7, prev) in enumerate(nights):
             velocity(session, product, n, v7, prev)
