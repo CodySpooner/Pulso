@@ -173,6 +173,15 @@ export async function mockBoardsApi(page: Page, options: BoardsMock = {}) {
     }
     if (rest !== "items") return fail(404, "not_found", "Not found.");
     const cards = sorted(id);
+    if (!pid && method === "GET" && url.searchParams.get("format") === "csv") {
+      // The API's file (DEC-350), cut to two columns: every card in board order, named after the board.
+      const slug = board.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+      const rows = cards.map((c, i) => `${i + 1},${c.name}\r\n`).join("");
+      return route.fulfill({
+        headers: { "Content-Type": "text/csv; charset=utf-8", "Content-Disposition": `attachment; filename="pulso_board_${slug}_2026-10-25.csv"`, "X-Total-Count": String(cards.length) },
+        body: `\ufeffposition,product\r\n${rows}`,
+      });
+    }
     if (!pid && method === "GET") {
       if (options.holdItems) return;
       if (options.itemsStatus) return fail(options.itemsStatus, "unavailable", "The API is restarting. Try again.");
