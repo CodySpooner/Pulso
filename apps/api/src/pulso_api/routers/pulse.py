@@ -26,7 +26,7 @@ from pulso_api.auth import current_principal
 from pulso_api.routers.alerts import AlertOut
 from pulso_api.routers.products import DB, NO_SETTINGS, CurrentPrincipal
 from pulso_api.routers.watchlists import lists, resolve
-from pulso_core.landed_cost_loader import in_stock
+from pulso_core.landed_cost_loader import STOCK_READ, in_stock
 from pulso_core.models import (
     Alert,
     Image,
@@ -34,6 +34,7 @@ from pulso_core.models import (
     ListingSnapshot,
     Product,
     ProductDailyFeature,
+    RawPayload,
     Score,
     ShippingOption,
     Source,
@@ -630,14 +631,13 @@ def suppliers(session: Session, start: datetime, end: datetime) -> SupplierSecti
     newest before the day: what the alert rules watch (DEC-324), for every offer."""
 
     def last(before: datetime, stock: bool) -> Any:
-        snap = aliased(ListingSnapshot)
-        reads = (
-            or_(snap.available.is_not(None), snap.stock.is_not(None))
-            if stock  # a snapshot without stock fields (CJ's catalog) says nothing about stock
-            else snap.price_min_minor.is_not(None)
-        )
+        snap = ListingSnapshot
+        # A snapshot without stock fields (CJ's catalog) says nothing about stock, and a CJ stock
+        # capture's unknown total supersedes an older level (DEC-348, DEC-356).
+        reads = STOCK_READ if stock else snap.price_min_minor.is_not(None)
         return (
             select(snap)
+            .join(RawPayload, RawPayload.id == snap.raw_payload_id)
             .where(snap.listing_id == Listing.id, snap.captured_at < before, reads)
             .order_by(snap.captured_at.desc(), snap.id.desc())
             .limit(1)

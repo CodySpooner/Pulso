@@ -21,6 +21,7 @@ from pulso_api.dependencies import get_db
 from pulso_api.errors import APIError
 from pulso_api.routers.products import with_merged
 from pulso_api.schemas.text import NoNulStr
+from pulso_core.landed_cost_loader import PRICE_CAPTURE
 from pulso_core.models import (
     Image,
     Listing,
@@ -31,6 +32,7 @@ from pulso_core.models import (
     Product,
     ProductNote,
     ProductTag,
+    RawPayload,
     Source,
     Store,
     Supplier,
@@ -392,9 +394,10 @@ def listing_detail(session: Session, listing_id: int) -> ListingDetail:
         .where(Listing.id == listing_id)
     ).one()
     listing: Listing = row.Listing
-    snapshot = session.scalars(
+    snapshot = session.scalars(  # the newest price, never a CJ stock capture's row (DEC-356)
         select(ListingSnapshot)
-        .where(ListingSnapshot.listing_id == listing_id)
+        .join(RawPayload, RawPayload.id == ListingSnapshot.raw_payload_id)
+        .where(ListingSnapshot.listing_id == listing_id, PRICE_CAPTURE)
         .order_by(ListingSnapshot.captured_at.desc(), ListingSnapshot.id.desc())
         .limit(1)
     ).first()
