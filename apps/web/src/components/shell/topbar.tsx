@@ -52,7 +52,7 @@ export function Topbar() {
   const { openPalette, openNav } = useShell();
 
   return (
-    <header className="sticky top-0 z-30 flex h-14 shrink-0 items-center gap-2 border-b border-border-subtle bg-background px-4 pt-[env(safe-area-inset-top)] md:px-6 lg:static lg:h-12 lg:pt-0">
+    <header className="sticky top-0 z-30 flex h-[calc(3.5rem+env(safe-area-inset-top))] shrink-0 items-center gap-2 border-b border-border-subtle bg-background px-4 pt-[env(safe-area-inset-top)] md:px-6 lg:static lg:h-12 lg:pt-0">
       <Tooltip>
         <TooltipTrigger asChild onFocus={keyboardFocusOnly}>
           <Button variant="ghost" size="icon" className="-ml-2 hidden md:inline-flex lg:hidden" onClick={openNav}>
