@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import * as m from "motion/react-m";
@@ -14,13 +14,17 @@ import { spring } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 
 import { applyWatch, listed, refreshWatchlists, type Watch } from "./model";
+import { starFor } from "./watch-key";
 
 interface Product extends Watch {
   id: string;
   title: string;
 }
 
-async function send({ id, on }: { id: string; on: boolean }): Promise<string | null> {
+// The mounted WatchKey's words: what a ★ did, said once its answer is back.
+let announce: (text: string) => void = () => {};
+
+async function send({ id, on }: { id: string; title: string; on: boolean }): Promise<string | null> {
   const path = { params: { path: { product_id: id } } };
   const { data, error } = on ? await fetchClient.PUT("/v1/products/{product_id}/watch", path) : await fetchClient.DELETE("/v1/products/{product_id}/watch", path);
   if (error !== undefined) throw error;
@@ -34,8 +38,14 @@ function useStar() {
   return useMutation({
     mutationFn: send,
     onMutate: ({ id, on }) => applyWatch(client, id, (w) => ({ ...w, watched: on })),
-    onError: (_error, { id, on }) => applyWatch(client, id, (w) => ({ ...w, watched: !on })),
-    onSuccess: (main, { id, on }) => applyWatch(client, id, (w) => (main ? listed(main, on, true)(w) : { ...w, watched: on })),
+    onError: (_error, { id, title, on }) => {
+      applyWatch(client, id, (w) => ({ ...w, watched: !on }));
+      announce(`Couldn't ${on ? `add ${title} to` : `remove ${title} from`} Main. Try again.`);
+    },
+    onSuccess: (main, { id, title, on }) => {
+      applyWatch(client, id, (w) => (main ? listed(main, on, true)(w) : { ...w, watched: on }));
+      announce(on ? `Added ${title} to Main` : `Removed ${title} from Main`);
+    },
     onSettled: () => refreshWatchlists(client),
   });
 }
@@ -56,16 +66,18 @@ export function StarButton({ product, className }: { product: Product; className
   const others = product.watchlist_ids.length - (product.watched ? 1 : 0);
   return (
     <Button
+      data-star
       size="icon-sm"
       variant="ghost"
       aria-pressed={product.watched}
       aria-label={`Watch ${product.title}`}
-      title={(product.watched ? "On Main. Press to remove" : "Add to Main") + (others > 0 ? ` · on ${others} other ${others === 1 ? "list" : "lists"}` : "")}
+      aria-keyshortcuts="W"
+      title={(product.watched ? "On Main. Press to remove" : "Add to Main") + (others > 0 ? ` · on ${others} other ${others === 1 ? "list" : "lists"}` : "") + " · W"}
       className={className}
       onClick={() => {
         if (star.isPending) return;
         setPressed(true);
-        star.mutate({ id: product.id, on: !product.watched });
+        star.mutate({ id: product.id, title: product.title, on: !product.watched });
       }}
     >
       <Glyph on={product.watched} pressed={pressed} />
@@ -96,12 +108,15 @@ export function WatchControl({ product }: { product: Product }) {
   return (
     <div className="flex" role="group" aria-label="Watchlists">
       <Button
+        data-star="page"
         aria-pressed={product.watched}
+        aria-keyshortcuts="W"
+        title={(product.watched ? "On Main. Press to remove" : "Add to Main") + " · W"}
         className={cn("rounded-r-none", product.watched && "border-brand/40 text-foreground")}
         onClick={() => {
           if (star.isPending) return;
           setPressed(true);
-          star.mutate({ id: product.id, on: !product.watched });
+          star.mutate({ id: product.id, title: product.title, on: !product.watched });
         }}
       >
         <Glyph on={product.watched} pressed={pressed} />
@@ -150,5 +165,31 @@ export function WatchControl({ product }: { product: Product }) {
         </DropdownMenu.Portal>
       </DropdownMenu.Root>
     </div>
+  );
+}
+
+/** W toggles the focused product's ★ on any page, or the Product Page's Watch from anywhere (mounted once, in the app
+ *  layout). Its polite status says what every ★ did, keyed or pressed, and when a change didn't stick. Not a
+ *  role=status, so a page's toast stays its only one. */
+export function WatchKey() {
+  const [text, setText] = useState("");
+  useEffect(() => {
+    announce = setText;
+    const onKey = (e: KeyboardEvent) => {
+      const star = starFor(e, document);
+      if (!star) return;
+      e.preventDefault();
+      star.click();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      announce = () => {};
+    };
+  }, []);
+  return (
+    <p aria-live="polite" className="sr-only">
+      {text}
+    </p>
   );
 }
