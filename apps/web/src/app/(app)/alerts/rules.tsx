@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useSyncExternalStore } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { BellOff, BellPlus, Pencil, SkipForward, Trash2, TriangleAlert } from "lucide-react";
+import { BellOff, BellPlus, Pencil, Plus, SkipForward, Trash2, TriangleAlert } from "lucide-react";
 import { DropdownMenu } from "radix-ui";
 
 import { useAlertRules, useRuleWrites } from "@/components/alerts/api";
@@ -11,6 +11,7 @@ import { MUTES, mutedLabel, muteUntil, statusLine, targetOf, threshold, TYPES, t
 import { RuleBuilder, useReturnFocus } from "@/components/alerts/rule-builder";
 import { Ago, PanelError, StaleLine } from "@/components/data-health/atoms";
 import { EmptyState } from "@/components/pulso/empty-state";
+import { isTyping } from "@/components/shell/app-shell";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { Switch } from "@/components/ui/switch";
@@ -38,26 +39,49 @@ export function Alerts() {
 }
 
 // WF-4c (DEC-339): the workspace's rules, each with its last evaluation. Enabling and muting show at once and roll back
-// if the API refuses; rules are made from a product (the Product Page's Create alert), so this tab edits them.
+// if the API refuses. New rule (imp-527) opens the builder on a product search or a watchlist; the Product Page's
+// Create alert opens it on that product.
 function RulesTab() {
   const hydrated = useSyncExternalStore(noSubscribe, () => true, () => false);
   const query = useAlertRules();
   const writes = useRuleWrites();
+  const [creating, setCreating] = useState(false);
+  const newRule = useRef<HTMLButtonElement>(null);
   const [edit, setEdit] = useState<{ rule: Rule; open: boolean } | null>(null);
   const [doomed, setDoomed] = useState<{ rule: Rule; open: boolean } | null>(null);
   const rules = query.data?.items;
   const now = query.dataUpdatedAt;
   const patch = (rule: Rule, body: { enabled?: boolean; muted_until?: string | null }) => writes.patch.mutate({ params: { path: { rule_id: rule.id } }, body });
 
+  // N is New rule from anywhere on the tab, unless focus is in a field, a dialog or a menu. Through the button, so
+  // the builder gives focus back to it.
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key.toLowerCase() !== "n" || e.ctrlKey || e.metaKey || e.altKey || isTyping(e.target)) return;
+      if (e.target instanceof Element && e.target.closest("[role=dialog], [role=menu]")) return;
+      e.preventDefault();
+      newRule.current?.focus();
+      newRule.current?.click();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
+
   if (!hydrated) return <Loading />;
   return (
     <div className="flex flex-col gap-4">
       <Views current="rules" />
-      {rules && rules.length > 0 && (
-        <div className="text-label text-subtle-foreground">
-          <EvaluationLine rules={rules} now={now} />
-        </div>
-      )}
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+        {rules && rules.length > 0 && (
+          <div className="min-w-0 flex-1 text-label text-subtle-foreground">
+            <EvaluationLine rules={rules} now={now} />
+          </div>
+        )}
+        <Button ref={newRule} size="sm" variant="primary" aria-keyshortcuts="N" title="New rule · N" className="ml-auto" onClick={() => setCreating(true)}>
+          <Plus aria-hidden />
+          New rule
+        </Button>
+      </div>
       {writes.patch.isError && (
         <p role="alert" className="text-label text-foreground">
           <TriangleAlert className="mr-1 inline size-3.5 align-[-2px] text-negative" aria-hidden />
@@ -75,18 +99,9 @@ function RulesTab() {
         )
       ) : rules.length === 0 ? (
         <section className={box}>
-          <EmptyState
-            icon={BellPlus}
-            headingLevel="h2"
-            title="No rules yet"
-            action={
-              <Button asChild>
-                <Link href="/discover">Find a product in Discover</Link>
-              </Button>
-            }
-          >
-            Rules start from a product: open one and choose Create alert. A 5% supplier price change is filled in, so it takes one more click.
-            Products you test get supplier cost, freight and stock-out rules on their own.
+          <EmptyState icon={BellPlus} headingLevel="h2" title="No rules yet">
+            Choose New rule, then a product or a watchlist. A 5% supplier price change is filled in, so a rule takes 3 clicks. Products you
+            test get supplier cost, freight and stock-out rules on their own.
           </EmptyState>
         </section>
       ) : (
@@ -131,6 +146,7 @@ function RulesTab() {
           </p>
         </>
       )}
+      <RuleBuilder open={creating} onOpenChange={setCreating} />
       {edit && <RuleBuilder rule={edit.rule} open={edit.open} onOpenChange={(open) => setEdit({ ...edit, open })} />}
       {doomed && <DeleteDialog rule={doomed.rule} open={doomed.open} onOpenChange={(open) => setDoomed({ ...doomed, open })} />}
     </div>

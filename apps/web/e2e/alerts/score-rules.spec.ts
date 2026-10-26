@@ -63,7 +63,7 @@ test("keyboard only: a Saturation cross on a watchlist, with the API's 422 besid
   await page.keyboard.press("Control+A");
   await page.keyboard.type("130");
   await page.keyboard.press("Enter");
-  await expect(dialog.getByRole("alert")).toHaveText("Input should be less than or equal to 100");
+  await expect(dialog.getByRole("alert")).toHaveText("Saturation runs from 0 to 100."); // imp-585: never Pydantic's text
   await expect(line).toHaveAttribute("aria-invalid", "true");
   await page.keyboard.press("Control+A");
   await page.keyboard.type("35");

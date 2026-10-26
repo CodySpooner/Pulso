@@ -2,7 +2,6 @@
 
 import { usePathname, useRouter } from "next/navigation";
 import { useState, type RefObject } from "react";
-import { keepPreviousData } from "@tanstack/react-query";
 import { Command, defaultFilter } from "cmdk";
 import { AnimatePresence, LayoutGroup } from "motion/react";
 import * as m from "motion/react-m";
@@ -28,9 +27,7 @@ import {
 } from "lucide-react";
 import { useTheme } from "next-themes";
 
-import { useApiReady } from "@/components/data-health/api";
 import { Kbd } from "@/components/ui/kbd";
-import { $api, isProblem } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
 import { authBypass } from "@/lib/auth";
 import { formatAgo, formatUtc } from "@/lib/format";
@@ -39,7 +36,7 @@ import { allNavItems, isBuilt } from "@/lib/nav";
 import { cn } from "@/lib/utils";
 
 import { useShell } from "./app-shell";
-import { announce, DEBOUNCE_MS, MAX_QUERY, MIN_QUERY, SEARCH_SCORE, SEARCH_VALUE, searchView, tooLong, useDebounced, type SearchView } from "./palette-search";
+import { announce, MAX_QUERY, SEARCH_SCORE, SEARCH_VALUE, useSearch, type SearchView } from "./palette-search";
 
 interface Run {
   close: () => void;
@@ -116,7 +113,7 @@ const paletteFilter = (value: string, search: string, keywords?: string[]) =>
   value.startsWith(SEARCH_VALUE) ? SEARCH_SCORE : defaultFilter(value, search, keywords);
 
 /** `text` with the first case-insensitive occurrence of `term` emphasised (a fuzzy match has none). */
-function Marked({ text, term }: { text: string; term: string }) {
+export function Marked({ text, term }: { text: string; term: string }) {
   const at = text.toLowerCase().indexOf(term.toLowerCase());
   if (at < 0) return text;
   return (
@@ -292,20 +289,7 @@ export function CommandPalette({
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState("");
   const term = query.trim();
-  const debounced = useDebounced(term, DEBOUNCE_MS);
-  const search = $api.useQuery(
-    "get",
-    "/v1/search",
-    { params: { query: { q: debounced } } },
-    {
-      enabled: useApiReady() && debounced.length >= MIN_QUERY && !tooLong(debounced),
-      placeholderData: keepPreviousData, // the last results stay while the next query loads
-      staleTime: 60_000,
-      // A 4xx won't change on a retry.
-      retry: (failures, error) => !(isProblem(error) && error.status < 500) && failures < 1,
-    },
-  );
-  const view = searchView(term, debounced, search);
+  const { search, view } = useSearch(term);
   // Kept results are timed from their own answer: a placeholder's dataUpdatedAt is 0 until the new query answers.
   const [asOf, setAsOf] = useState(0);
   if (search.dataUpdatedAt && search.dataUpdatedAt !== asOf) setAsOf(search.dataUpdatedAt);

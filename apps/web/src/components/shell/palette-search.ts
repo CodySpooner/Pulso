@@ -1,5 +1,8 @@
 import { useEffect, useState } from "react";
+import { keepPreviousData } from "@tanstack/react-query";
 
+import { useApiReady } from "@/components/data-health/api";
+import { $api, isProblem } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
 
 // Global search in the Ctrl+K palette (UX-9, DEC-252): the state logic, kept apart from the rows so it can be tested.
@@ -40,6 +43,25 @@ interface QueryState {
   isError: boolean;
   isFetching: boolean;
   isPlaceholderData: boolean;
+}
+
+/** GET /v1/search for the typed `term` once typing pauses, and what it shows: the palette's search, and the rule
+ *  builder's product picker (imp-527), which share its cache. */
+export function useSearch(term: string) {
+  const debounced = useDebounced(term, DEBOUNCE_MS);
+  const search = $api.useQuery(
+    "get",
+    "/v1/search",
+    { params: { query: { q: debounced } } },
+    {
+      enabled: useApiReady() && debounced.length >= MIN_QUERY && !tooLong(debounced),
+      placeholderData: keepPreviousData, // the last results stay while the next query loads
+      staleTime: 60_000,
+      // A 4xx won't change on a retry.
+      retry: (failures, error) => !(isProblem(error) && error.status < 500) && failures < 1,
+    },
+  );
+  return { search, view: searchView(term, debounced, search) };
 }
 
 /** What the search groups show for the typed `term`, given the query for its debounced value. */

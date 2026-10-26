@@ -130,7 +130,8 @@ export interface AlertsMock {
   rulesStatus?: number;
 }
 
-const unprocessable = (loc: string[], msg: string) => ({ status: 422, contentType: "application/problem+json", json: { ...problem(422, "e2e-rules-422"), code: "validation_error", detail: "Invalid request.", errors: [{ loc, msg, type: "e2e" }] } });
+// Pydantic's own `type`s, which the builder words per field (imp-585).
+const unprocessable = (loc: string[], msg: string, type: string) => ({ status: 422, contentType: "application/problem+json", json: { ...problem(422, "e2e-rules-422"), code: "validation_error", detail: "Invalid request.", errors: [{ loc, msg, type }] } });
 
 export async function mockAlertsApi(page: Page, options: AlertsMock = {}) {
   const rows = options.items ?? alerts();
@@ -156,10 +157,10 @@ export async function mockAlertsApi(page: Page, options: AlertsMock = {}) {
     }
     const body = (method === "DELETE" ? null : request.postDataJSON()) as (Partial<S["RuleIn"]> & { muted_until?: string | null }) | null;
     ruleWrites.push({ method, id, body });
-    if (body?.params && "pct" in body.params && !(Number(body.params.pct) > 0)) return route.fulfill(unprocessable(["body", "params", "pct"], "Input should be greater than 0"));
+    if (body?.params && "pct" in body.params && !(Number(body.params.pct) > 0)) return route.fulfill(unprocessable(["body", "params", "pct"], "Input should be greater than 0", "greater_than"));
     const line = Number(body?.params?.threshold ?? 0);
-    if (!(line >= 0 && line <= 100)) return route.fulfill(unprocessable(["body", "params", "threshold"], "Input should be less than or equal to 100"));
-    if (body?.name === "") return route.fulfill(unprocessable(["body", "name"], "String should have at least 1 character"));
+    if (!(line >= 0 && line <= 100)) return route.fulfill(unprocessable(["body", "params", "threshold"], "Input should be less than or equal to 100", "less_than_equal"));
+    if (body?.name === "") return route.fulfill(unprocessable(["body", "name"], "String should have at least 1 character", "string_too_short"));
     if (method === "POST") {
       const listed = body!.target_type === "watchlist" ? { product_id: null, product_name: null, watchlist_name: options.lists?.find((l) => l.id === body!.target_id)?.name ?? null } : lamp;
       const made = rule(9, body!.name!, body!.type!, { ...listed, target_type: body!.target_type!, target_id: body!.target_id!, params: body!.params!, status: null, last_evaluated_at: null, created_at: NOW.toISOString() });
