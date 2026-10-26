@@ -119,29 +119,32 @@ export function Screener() {
               </Button>
               <SortPicker definition={definition} edit={edit} />
               <ColumnPicker columns={columns} edit={edit} />
+            </div>
+            {/* Export CSV ends the count line, as on Discover. */}
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="min-w-0 flex-1 text-label text-subtle-foreground" aria-live="polite">
+                {first ? (
+                  <>
+                    {count(rows.length)} {rows.length === 1 ? "product" : "products"}
+                    {results.hasNextPage && " loaded, more below"}
+                    {newest && (
+                      <>
+                        {" · "}
+                        {scoreStale(newest, now) && <span aria-hidden className="mr-1 inline-block size-1.5 rounded-full bg-warning align-middle" />}
+                        <span className={cn(scoreStale(newest, now) && "text-foreground")}>
+                          {scoreStale(newest, now) ? "nothing scored since " : "scores as of "}
+                          <time dateTime={newest}>{dayOf.format(new Date(newest))}</time>
+                        </span>
+                      </>
+                    )}
+                    {Object.keys(first.unapplied).length > 0 && " · risk isn't applied until Phase 5"}
+                  </>
+                ) : (
+                  "…"
+                )}
+              </p>
               <ExportCsv csv={csv} empty={empty} />
             </div>
-            <p className="text-label text-subtle-foreground" aria-live="polite">
-              {first ? (
-                <>
-                  {count(rows.length)} {rows.length === 1 ? "product" : "products"}
-                  {results.hasNextPage && " loaded, more below"}
-                  {newest && (
-                    <>
-                      {" · "}
-                      {scoreStale(newest, now) && <span aria-hidden className="mr-1 inline-block size-1.5 rounded-full bg-warning align-middle" />}
-                      <span className={cn(scoreStale(newest, now) && "text-foreground")}>
-                        {scoreStale(newest, now) ? "nothing scored since " : "scores as of "}
-                        <time dateTime={newest}>{dayOf.format(new Date(newest))}</time>
-                      </span>
-                    </>
-                  )}
-                  {Object.keys(first.unapplied).length > 0 && " · risk isn't applied until Phase 5"}
-                </>
-              ) : (
-                "…"
-              )}
-            </p>
             {results.data && results.isRefetchError && <StaleLine boxed what="Couldn't refresh the results" error={results.error} asOf={now} retry={() => void results.refetch()} />}
             {!results.data ? (
               results.isError ? (
