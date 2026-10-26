@@ -9,12 +9,13 @@ import { scoresNone, scoresStale, scoresUnscored } from "./scores-fixtures";
 // Run with `pnpm --filter web e2e:screenshots e2e/products/scores-screenshots`; output: docs/screenshots/imp-460/.
 const OUT = "../../docs/screenshots/imp-460";
 const URL = `/products/${PRODUCT_ID}`;
-const STATES: [string, ProductMock][] = [
-  ["unscored", { scores: scoresUnscored }],
-  ["no-source", { scores: scoresNone }],
-  ["loading", { holdScores: true }],
-  ["error", { scoresStatus: 503 }],
-  ["stale", { scores: scoresStale }],
+// Each state, and the text that shows it has rendered (a 503 is retried once before its error shows).
+const STATES: [string, ProductMock, string][] = [
+  ["unscored", { scores: scoresUnscored }, "Insufficient signal · no velocity growth"],
+  ["no-source", { scores: scoresNone }, "No source yet"],
+  ["loading", { holdScores: true }, "Loading the scores…"],
+  ["error", { scoresStatus: 503 }, "Couldn't load the scores"],
+  ["stale", { scores: scoresStale }, "As of Oct 16 · stale"],
 ];
 
 for (const theme of ["dark", "light"] as const) {
@@ -48,12 +49,12 @@ for (const theme of ["dark", "light"] as const) {
         await shot(page, "loaded");
       });
 
-      for (const [name, mock] of STATES)
+      for (const [name, mock, shows] of STATES)
         test(name, async ({ page }) => {
           await mockProductApi(page, mock);
           await page.goto(URL);
-          await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
-          if (name !== "loading") await expect(page.getByRole("region", { name: "Where it appears" })).toBeVisible();
+          await expect(page.getByText(shows).first()).toBeAttached();
+          await expect(page.getByRole("region", { name: "Where it appears" })).toBeVisible();
           await shot(page, name, width === 375);
         });
 

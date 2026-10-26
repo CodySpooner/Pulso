@@ -90,7 +90,11 @@ export function ScoreCards({ id }: { id: string }) {
             )
           }
         >
-          <Value missing={unscoredOpportunity(opportunity.value ?? null, o)} value={opportunity.value} />
+          <Value
+            missing={unscoredOpportunity(opportunity.value ?? null, o)}
+            value={opportunity.value}
+            note={o.components.every((c) => c.source === null) ? "Needs a Trend Score, a landed margin or a Saturation score." : undefined}
+          />
           {chips(o).length > 0 && (
             <p className="flex flex-wrap gap-1.5">
               {chips(o).map((text) => (
@@ -138,8 +142,16 @@ function Card({ kind, title, beta, anchor, asOf, children }: { kind: string; tit
   );
 }
 
-function Value({ missing, value, detail }: { missing: string | null; value?: number | null; detail?: string }) {
-  if (missing) return <p className="text-body text-muted-foreground">{missing}</p>;
+const NOT_SCORED = "Scores run nightly; none has scored this product yet.";
+
+function Value({ missing, value, detail, note }: { missing: string | null; value?: number | null; detail?: string; note?: string }) {
+  if (missing)
+    return (
+      <div className="flex flex-col gap-1">
+        <p className="text-body text-muted-foreground">{missing}</p>
+        {note && <p className="text-label text-subtle-foreground">{note}</p>}
+      </div>
+    );
   return (
     <p className="flex items-baseline gap-1.5">
       <span className="font-mono text-stat-lg font-semibold text-foreground tabular-nums">{value?.toFixed(1)}</span>
@@ -170,7 +182,7 @@ function Numeric({ kind, title, anchor, latest, now }: { kind: ScoreKind; title:
   const missing = unscored(latest);
   return (
     <Card kind={kind} title={title} beta anchor={anchor} asOf={row && rowAsOf(row, now)}>
-      <Value missing={missing} value={row?.value} detail={kind === "saturation" && row?.value != null ? crowding(row.value) : undefined} />
+      <Value missing={missing} value={row?.value} detail={kind === "saturation" && row?.value != null ? crowding(row.value) : undefined} note={row ? undefined : NOT_SCORED} />
       {row && !missing && <ScoreExplanation kind={kind} explanation={row.explanation} />}
     </Card>
   );
@@ -200,7 +212,7 @@ function Lifecycle({ latest, now }: { latest: Latest; now: number }) {
           </div>
         </>
       ) : (
-        <Value missing={unscored(latest)} />
+        <Value missing={unscored(latest)} note={row ? undefined : NOT_SCORED} />
       )}
     </Card>
   );

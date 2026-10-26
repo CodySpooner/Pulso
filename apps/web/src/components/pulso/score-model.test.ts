@@ -51,8 +51,10 @@ describe("topReasons", () => {
     const html = render("trend", trend);
     expect(text(html)).toContain("▲ Velocity growth (Shopify inventory) +15.3 points");
     expect(text(html)).toContain("▼ Velocity growth (Shopify bumps) −7.5 points");
-    // Saturation is worse when higher, so a rising input reads negative.
-    expect(render("saturation", explanation({ components: [input("shp_sellers", "shopify_stores", 0.98)] }))).toMatch(/text-negative[^>]*>\+16\.3/);
+    // A reason's sign is a direction, not a verdict: neutral, whichever way is good; only a penalty reads negative.
+    expect(render("saturation", explanation({ components: [input("shp_sellers", "shopify_stores", 0.98)] }))).toMatch(/text-foreground[^>]*>\+16\.3/);
+    expect(render("trend", trend)).toMatch(/text-negative[^>]*>−7\.0/);
+    expect(render("trend", trend)).not.toMatch(/text-(positive|negative)[^>]*>[+▲]/);
   });
 });
 

@@ -15,15 +15,12 @@ export function BetaPill() {
   );
 }
 
-const TONE = { positive: "text-positive", negative: "text-negative", neutral: "text-muted-foreground" };
-const BAR = { positive: "bg-positive", negative: "bg-negative", neutral: "bg-border-strong" };
 const eyebrow = "text-micro font-medium text-subtle-foreground";
 
 /** A score's why (imp-460): its confidence (or coverage until freshness is built), the top 3 reasons in points with
  *  ▲/▼ and a ContributionBar (HTML, vault Design/Charts & Data Viz), each penalty as its own step, and what is missing.
- *  Higher Saturation is worse, so its rising inputs read negative. */
+ *  Reasons are neutral, since a sign is a direction, not a verdict; only a penalty, points taken off, reads negative. */
 export function ScoreExplanation({ kind, explanation }: { kind: ScoreKind; explanation: Explanation }) {
-  const good = kind === "saturation" ? "down" : "up";
   const sure = certainty(explanation);
   const reasons = topReasons(explanation, kind);
   const steps = penaltySteps(explanation);
@@ -43,7 +40,7 @@ export function ScoreExplanation({ kind, explanation }: { kind: ScoreKind; expla
           <p className={eyebrow}>Top reasons</p>
           <ul className="flex flex-col">
             {reasons.map((r) => (
-              <Step key={r.name} label={r.label} points={r.points} good={good} widest={widest} hint={<Provenance source={r.source} asOf={r.asOf} gap={r.gap} />} />
+              <Step key={r.name} label={r.label} points={r.points} widest={widest} hint={<Provenance source={r.source} asOf={r.asOf} gap={r.gap} />} />
             ))}
           </ul>
         </div>
@@ -53,7 +50,7 @@ export function ScoreExplanation({ kind, explanation }: { kind: ScoreKind; expla
           <p className={eyebrow}>Penalty</p>
           <ul className="flex flex-col">
             {steps.map((s) => (
-              <Step key={s.name} label={s.label} points={s.points} missing={s.missing} good={good} widest={widest} hint={s.source && <Provenance source={s.source} asOf={null} gap={false} />} />
+              <Step key={s.name} label={s.label} points={s.points} missing={s.missing} penalty widest={widest} hint={s.source && <Provenance source={s.source} asOf={null} gap={false} />} />
             ))}
           </ul>
         </div>
@@ -68,11 +65,12 @@ export function ScoreExplanation({ kind, explanation }: { kind: ScoreKind; expla
 }
 
 /** One waterfall step: glyph, input (its source on hover, focus or tap), bar and signed points; never colour alone. */
-function Step({ label, points, missing, good, widest, hint }: { label: string; points: number | null; missing?: string | null; good: "up" | "down"; widest: number; hint: React.ReactNode }) {
-  const delta = formatDelta(points, good, 1);
+function Step({ label, points, missing, penalty, widest, hint }: { label: string; points: number | null; missing?: string | null; penalty?: boolean; widest: number; hint: React.ReactNode }) {
+  const delta = formatDelta(points, "neutral", 1);
+  const off = penalty && !!points; // points taken off
   return (
     <li className="grid min-h-7 grid-cols-[0.75rem_minmax(0,1fr)_minmax(1.5rem,3rem)_3.25rem] items-center gap-x-2 text-data">
-      <span aria-hidden className={cn("text-micro", TONE[delta.tone])}>
+      <span aria-hidden className={cn("text-micro", off ? "text-negative" : "text-muted-foreground")}>
         {delta.glyph}
       </span>
       {hint ? (
@@ -91,9 +89,9 @@ function Step({ label, points, missing, good, widest, hint }: { label: string; p
       ) : (
         <>
           <span aria-hidden className="h-1.5 justify-self-stretch">
-            <span className={cn("ml-auto block h-full rounded-full", BAR[delta.tone])} style={{ width: `${(Math.abs(points ?? 0) / widest) * 100}%` }} />
+            <span className={cn("ml-auto block h-full rounded-full", off ? "bg-negative" : "bg-muted-foreground")} style={{ width: `${(Math.abs(points ?? 0) / widest) * 100}%` }} />
           </span>
-          <span className={cn("text-right font-mono tabular-nums", TONE[delta.tone])}>
+          <span className={cn("text-right font-mono tabular-nums", off ? "text-negative" : "text-foreground")}>
             {delta.text}
             <span className="sr-only"> points</span>
           </span>
