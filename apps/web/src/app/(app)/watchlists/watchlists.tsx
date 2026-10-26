@@ -433,7 +433,7 @@ function ListPanel({ list, lists, onSettings }: { list: List; lists: List[]; onS
 function Trend({ row, now }: { row: Row; now: number }) {
   const s = row.spark;
   const label = "Velocity, last 30 days";
-  if (!s || "reason" in s) return <Metric stat={s ?? { reason: "Not loaded." }} label={label} format={String} now={now} className="text-label" />;
+  if (!s || "reason" in s) return <Metric stat={s ?? { reason: "No velocity in the last 30 days." }} label={label} format={String} now={now} className="text-label" />;
   const gaps = sparkGaps(s.points);
   return (
     <TapTooltip
