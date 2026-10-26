@@ -34,6 +34,7 @@ test("ff_scores on: four score cards, each with its as of, reasons and a methodo
   const opportunity = card(page, "opportunity");
   await expect(opportunity).toContainText("65.7/ 100");
   await expect(opportunity.getByText("Duty not set")).toHaveClass(/bg-warning-muted/);
+  await expect(opportunity.getByRole("link", { name: "Duty not set: set it in Settings" })).toHaveAttribute("href", "/settings#duty");
   await expect(opportunity).toContainText("Confidence70%Medium");
   await expect(opportunity).toContainText("No source yet: Safety (100 − Risk)");
   await expect(card(page, "saturation")).toContainText("73.3/ 100 · High");

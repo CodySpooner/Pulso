@@ -89,12 +89,24 @@ export function ScoreCards({ id }: { id: string }) {
           />
           {chips(o).length > 0 && (
             <p className="flex flex-wrap gap-1.5">
-              {chips(o).map((text) => (
-                <span key={text} className={cn(chip, text === "Duty not set" ? "border-warning/40 bg-warning-muted" : "border-negative/40 bg-negative-muted")}>
-                  <TriangleAlert className="size-3" aria-hidden />
-                  {text}
-                </span>
-              ))}
+              {chips(o).map((text) => {
+                const body = (
+                  <>
+                    <TriangleAlert className="size-3" aria-hidden />
+                    {text}
+                  </>
+                );
+                // Duty's fix is one click away, as the landed margin's "Set duty" (imp-368).
+                return text === "Duty not set" ? (
+                  <Link key={text} href="/settings#duty" aria-label="Duty not set: set it in Settings" className={cn(chip, "relative hit-area border-warning/40 bg-warning-muted hover:underline")}>
+                    {body}
+                  </Link>
+                ) : (
+                  <span key={text} className={cn(chip, "border-negative/40 bg-negative-muted")}>
+                    {body}
+                  </span>
+                );
+              })}
             </p>
           )}
           {opportunity.value != null && <ScoreExplanation kind="opportunity" explanation={o} />}

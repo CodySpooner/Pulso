@@ -1,5 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 
+import { contrastMisses } from "../p2-39/screens";
 import { feedItems, mockFeedApi, mockProductApi, PRODUCT_ID, type ProductMock } from "./fixtures";
 import { scoresNone, scoresStale, scoresUnscored } from "./scores-fixtures";
 
@@ -35,8 +36,9 @@ for (const theme of ["dark", "light"] as const) {
         await page.evaluate(() => document.fonts.ready);
         await page.waitForTimeout(300);
         await page.screenshot({ path: `${OUT}/${name}-${width}-${theme}.png`, fullPage });
-        // No horizontal page scroll at any width.
+        // No horizontal page scroll at any width, and AA contrast in each theme.
         expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+        expect(await page.evaluate(contrastMisses, "main")).toEqual([]);
       };
 
       test("loaded, a reason's source open", async ({ page }) => {
