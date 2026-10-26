@@ -1,5 +1,5 @@
 from collections.abc import Callable, Iterator
-from datetime import UTC, datetime, time, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from decimal import Decimal
 from uuid import UUID, uuid4
 
@@ -403,9 +403,13 @@ def test_items_spark_velocity_reads_the_page_in_one_batch(
             ProductDailyFeature.feature_date.in_([end - timedelta(days=b) for b in (3, 4, 5)])
         ).delete()
         session.add_all([feature(ids["p1"], 5, None), feature(ids["p1"], 0, 999.0, version="2")])
+        # p2: CJ, with gaps on its last two days; p3: only gaps.
         session.add_all(
-            feature(ids[p], back, 7.0, "cj_stock") for p in ("p1", "p2") for back in range(30)
+            feature(ids[p], back, None if p == "p2" and back < 2 else 7.0, "cj_stock")
+            for p in ("p1", "p2")
+            for back in range(30)
         )
+        session.add_all(feature(ids["p3"], back, None) for back in range(30))
         session.commit()
     a = as_("a")
     pet = a.post("/v1/watchlists", json={"name": "Pet"}).json()["id"]
@@ -426,11 +430,22 @@ def test_items_spark_velocity_reads_the_page_in_one_batch(
     assert {day for day, value in by_day.items() if value is None} == missing
     assert by_day[days[-1]] == 999.0  # the newest feature version
     assert by_day[days[0]] == 129.0 and 7.0 not in by_day.values()  # shp_inv only
-    assert (p1["family"], p1["source_name"], p1["stale"]) == ("shp_inv", "Shopify stores", False)
-    assert p1["as_of"] == datetime.combine(
-        end + timedelta(days=1), time(), UTC
-    ).isoformat().replace("+00:00", "Z")
-    assert rows[str(ids["p2"])]["spark"]["family"] == "cj_stock"
+    assert {k: p1[k] for k in ("value", "family", "source", "raw_payload_id", "stale")} == {
+        "value": 999,
+        "family": "shp_inv",
+        "source": "shopify_stores",
+        "raw_payload_id": None,
+        "stale": False,
+    }
+
+    def cutoff(day: date) -> str:
+        return datetime.combine(day + timedelta(days=1), time(), UTC).isoformat()[:19] + "Z"
+
+    assert p1["as_of"] == cutoff(end)
+    # Trailing gaps age the sparkline: its value and as_of are the newest point with a value.
+    p2 = rows[str(ids["p2"])]["spark"]
+    assert (p2["family"], p2["value"], p2["as_of"]) == ("cj_stock", 7, cutoff(end - timedelta(2)))
+    assert [point["value"] for point in p2["points"][-3:]] == [7.0, None, None]
     assert rows[str(ids["p3"])]["spark"] == {
         "value": None,
         "reason": "No velocity in the last 30 days.",

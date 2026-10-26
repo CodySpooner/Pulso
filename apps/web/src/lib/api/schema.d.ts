@@ -4409,8 +4409,9 @@ export interface components {
         /**
          * Spark
          * @description One demand family's V7 on each UTC day to yesterday, the newest day whose cutoff has
-         *     passed, oldest first (imp-419). The row's velocity family, else the best-graded family with
-         *     a row in the window; families are never mixed. Stored rows only, never filled in (DEC-040).
+         *     passed, oldest first (imp-419): the row's velocity family, else the best-graded family with
+         *     a value in the window; families are never mixed. Stored rows only, never filled in (DEC-040).
+         *     value and as_of are the newest point with a value, so trailing gaps age it.
          */
         Spark: {
             /**
@@ -4421,13 +4422,19 @@ export interface components {
             /** Family */
             family: string;
             /** Method */
-            method: string;
+            method?: string | null;
             /** Points */
             points: components["schemas"]["SparkPoint"][];
+            /** Raw Payload Id */
+            raw_payload_id: number | null;
+            /** Source */
+            source: string;
             /** Source Name */
             source_name: string;
             /** Stale */
             stale: boolean;
+            /** Value */
+            value: number;
         };
         /** SparkPoint */
         SparkPoint: {

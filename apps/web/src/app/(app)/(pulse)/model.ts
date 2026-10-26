@@ -48,14 +48,3 @@ export function seriesValues(series: { day: string; value: number }[], day: stri
   const byDay = new Map(series.map((point) => [point.day, point.value]));
   return Array.from({ length: days }, (_, i) => byDay.get(shiftDay(day, i - days + 1)) ?? null);
 }
-
-/** Polyline segments for a sparkline (vault Charts & Data Viz): scaled min to max, a null starts a new segment. */
-export function sparkSegments(values: (number | null)[], width: number, height: number): string[] {
-  const nums = values.filter((v): v is number => v !== null);
-  const [min, max] = [Math.min(...nums), Math.max(...nums)];
-  const x = (i: number) => ((i / (values.length - 1)) * (width - 2) + 1).toFixed(1);
-  const y = (v: number) => (height - 1 - ((v - min) / (max - min || 1)) * (height - 2)).toFixed(1);
-  const segments: string[][] = [[]];
-  values.forEach((v, i) => (v === null ? segments.push([]) : segments.at(-1)!.push(`${x(i)},${y(v)}`)));
-  return segments.filter((s) => s.length > 0).map((s) => s.join(" "));
-}

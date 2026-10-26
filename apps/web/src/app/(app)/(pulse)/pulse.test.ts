@@ -2,11 +2,12 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, test } from "vitest";
 
+import { sparkSegments } from "@/components/pulso/sparkline";
 import { TooltipProvider } from "@/components/ui/tooltip";
 
 import { LATEST, nothing, pulse, withStatus } from "../../../../e2e/pulse/data";
 import { PulseCard } from "./cards";
-import { cardOrder, dayParam, isBehind, isStale, sectionOf, seriesValues, shiftDay, sparkSegments, type CardId, type Pulse } from "./model";
+import { cardOrder, dayParam, isBehind, isStale, sectionOf, seriesValues, shiftDay, type CardId, type Pulse } from "./model";
 
 const CARDS: CardId[] = ["emerging", "movers", "new_in_stores", "alerts", "watchlists", "suppliers", "search", "margins"];
 const render = (id: CardId, p: Pulse) => renderToStaticMarkup(createElement(TooltipProvider, null, createElement(PulseCard, { id, pulse: p, index: 0, animate: false })));

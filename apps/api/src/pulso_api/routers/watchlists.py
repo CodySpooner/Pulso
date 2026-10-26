@@ -36,7 +36,7 @@ from pulso_api.routers.products import (
     is_stale,
     with_merged,
 )
-from pulso_api.schemas.provenance import NoSource
+from pulso_api.schemas.provenance import NoSource, Sourced
 from pulso_api.schemas.text import NoNulStr
 from pulso_core.models import Image, Product, ProductDailyFeature, Source
 from pulso_core.models import Watchlist as ListRow
@@ -83,16 +83,13 @@ class SparkPoint(BaseModel):
     value: float | None  # V7, units/7d; null without a row or with a gap V7: the line breaks
 
 
-class Spark(BaseModel):
+class Spark(Sourced):
     """One demand family's V7 on each UTC day to yesterday, the newest day whose cutoff has
-    passed, oldest first (imp-419). The row's velocity family, else the best-graded family with
-    a row in the window; families are never mixed. Stored rows only, never filled in (DEC-040)."""
+    passed, oldest first (imp-419): the row's velocity family, else the best-graded family with
+    a value in the window; families are never mixed. Stored rows only, never filled in (DEC-040).
+    value and as_of are the newest point with a value, so trailing gaps age it."""
 
     family: str  # product_daily_features.family, e.g. "shp_inv"
-    source_name: str
-    method: str
-    as_of: AwareDatetime  # the newest row's inputs were captured before this
-    stale: bool  # as_of is older than twice the source's expected interval
     points: list[SparkPoint]  # one per day, `days` of them
 
 
@@ -203,19 +200,26 @@ def sparks(
 
     def spark(product: DiscoverItem) -> Spark | NoSource:
         own = [product.velocity.family] if isinstance(product.velocity, Velocity) else []
-        family = next((f for f in [*own, *FAMILIES] if found.get((product.id, f))), None)
+        valued = {
+            f: [d for d, r in found[product.id, f].items() if r.velocity_7d is not None]
+            for f in FAMILIES
+        }
+        family = next((f for f in [*own, *FAMILIES] if valued[f]), None)
         if family is None:
             return NoSource(value=None, reason=f"No velocity in the last {days} days.")
         rows = found[product.id, family]
-        last = rows[max(rows)]
+        last = rows[max(valued[family])]
         as_of = min(cutoff(last.feature_date), last.computed_at)
         _, key, method = FAMILIES[family]
         return Spark(
-            family=family,
+            value=round(last.velocity_7d),
+            source=key,
             source_name=sources[key].name,
-            method=method,
             as_of=as_of,
+            raw_payload_id=None,
+            method=method,
             stale=is_stale(sources[key].config, as_of, now),
+            family=family,
             points=[
                 SparkPoint(day=d, value=rows[d].velocity_7d if d in rows else None) for d in span
             ],

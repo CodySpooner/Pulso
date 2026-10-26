@@ -9666,7 +9666,7 @@
         "type": "object"
       },
       "Spark": {
-        "description": "One demand family's V7 on each UTC day to yesterday, the newest day whose cutoff has\npassed, oldest first (imp-419). The row's velocity family, else the best-graded family with\na row in the window; families are never mixed. Stored rows only, never filled in (DEC-040).",
+        "description": "One demand family's V7 on each UTC day to yesterday, the newest day whose cutoff has\npassed, oldest first (imp-419): the row's velocity family, else the best-graded family with\na value in the window; families are never mixed. Stored rows only, never filled in (DEC-040).\nvalue and as_of are the newest point with a value, so trailing gaps age it.",
         "properties": {
           "as_of": {
             "format": "date-time",
@@ -9678,8 +9678,15 @@
             "type": "string"
           },
           "method": {
-            "title": "Method",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Method"
           },
           "points": {
             "items": {
@@ -9688,6 +9695,21 @@
             "title": "Points",
             "type": "array"
           },
+          "raw_payload_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Raw Payload Id"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
           "source_name": {
             "title": "Source Name",
             "type": "string"
@@ -9695,14 +9717,20 @@
           "stale": {
             "title": "Stale",
             "type": "boolean"
+          },
+          "value": {
+            "title": "Value",
+            "type": "integer"
           }
         },
         "required": [
-          "family",
+          "value",
+          "source",
           "source_name",
-          "method",
           "as_of",
+          "raw_payload_id",
           "stale",
+          "family",
           "points"
         ],
         "title": "Spark",

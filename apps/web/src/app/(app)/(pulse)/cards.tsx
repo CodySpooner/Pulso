@@ -29,6 +29,7 @@ import { describeAlert, entityHref, TYPES } from "@/components/alerts/model";
 import { TapTooltip } from "@/components/data-health/atoms";
 import { DeltaBadge } from "@/components/pulso/delta-badge";
 import { EmptyState } from "@/components/pulso/empty-state";
+import { Sparkline } from "@/components/pulso/sparkline";
 import { StatusDot } from "@/components/pulso/status-dot";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -36,7 +37,7 @@ import type { GoodDirection } from "@/lib/format";
 import { duration, ease, stagger } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 
-import { isStale, sectionOf, seriesValues, sourceNames, sparkSegments, type CardId, type Pulse } from "./model";
+import { isStale, sectionOf, seriesValues, sourceNames, type CardId, type Pulse } from "./model";
 
 type Stage = Pulse["sections"]["emerging"]["items"][number]["stage"];
 
@@ -315,28 +316,6 @@ export function StagePill({ stage, from, neutral, className }: { stage: Stage; f
       {from && <span className="sr-only">, entered on this day from {STAGES[from][1]}</span>}
       {from && <span aria-hidden className="size-1.5 rounded-full bg-current" />}
     </span>
-  );
-}
-
-/** Sparkline `row` (vault Charts & Data Viz): 64×20, neutral, a day without a score breaks the line; under 3 points a
- *  dashed baseline. The row's Delta carries its meaning, so it is hidden from screen readers. */
-function Sparkline({ values }: { values: (number | null)[] }) {
-  const [w, h] = [64, 20];
-  const points = values.filter((v) => v !== null).length;
-  return (
-    <svg width={w} height={h} aria-hidden className="shrink-0 text-muted-foreground">
-      {points < 3 ? (
-        <line x1="0" x2={w} y1={h / 2} y2={h / 2} className="stroke-border" strokeDasharray="2 3" />
-      ) : (
-        sparkSegments(values, w, h).map((s) =>
-          s.includes(" ") ? (
-            <polyline key={s} points={s} fill="none" stroke="currentColor" strokeWidth="var(--sparkline-stroke)" strokeLinejoin="round" strokeLinecap="round" />
-          ) : (
-            <circle key={s} cx={s.split(",")[0]} cy={s.split(",")[1]} r="1" fill="currentColor" />
-          ),
-        )
-      )}
-    </svg>
   );
 }
 
