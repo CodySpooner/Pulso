@@ -19,7 +19,7 @@ from pulso_ml.scores import robust_z
 
 @dataclass(frozen=True)
 class Config:
-    revision: int = 0  # bump with any change to the rules below
+    revision: int = 1  # bump with any change to the rules below; 1: stale is missing (DEC-354)
     feature_version: str = FEATURE_VERSION  # the rows these rules read
     # Weights and the penalty cap are judgement calls until Phase 6 data exists.
     g7: float = 0.40  # weight of velocity growth in the primary demand family; required
@@ -62,13 +62,16 @@ def trend_scores(
     categories: Mapping[UUID, Sequence[int]],
     primary: Mapping[UUID, str],
     saturation: Mapping[UUID, float | None],
+    as_of: datetime,
 ) -> dict[UUID, Trend]:
     """How strongly each product is trending on day t, 0–100 (Beta until a forecast is promoted).
 
     `categories` holds every product to score: its category and that category's ancestors,
     nearest first (empty when it has none). `rows` are day t's feature rows, every family;
     `week_ago` are day t−7's. `primary` names each product's primary demand family (vault
-    Demand Signals rule 1); `saturation` holds its Saturation Score (SC-3). Each input is a
+    Demand Signals rule 1); `saturation` holds its Saturation Score (SC-3). `as_of` is day t's
+    cutoff: inputs were captured before it (DEC-031), and a feature-row input with no capture time
+    of its own is as of it. Each input is a
     robust z within the product's category, falling back up its ancestors to every product when
     n < 30 or MAD = 0, winsorized to ±3 (Score Definitions §4):
     - <family>_g7: G7 = ln((V7(t) + 5) / (V7(t−7) + 5)) in the primary family, as stored: log
@@ -79,10 +82,12 @@ def trend_scores(
     - ads_growth: no source yet, so always missing.
 
     Each input's cohort is every product asked for with a value in it; families never mix.
-    T = Σ w × z / Σ w over the present inputs: a missing one gets weight 0 and the rest
-    renormalise (DEC-040). Then pre = 50 + 50 × T / 3, and Trend = clamp(pre − penalty, 0, 100)
-    with penalty = 15 × max(0, (Saturation − 50) / 50) points. Without a Saturation the penalty
-    is missing: nothing is taken off and `missing` names it.
+    Freshness is taken at `as_of` (DEC-354): a search slope captured over 3 weeks before it is
+    stale, so missing. T = Σ w × z / Σ w over the present inputs: a missing one gets weight 0 and
+    the rest renormalise (DEC-040). Then pre = 50 + 50 × T / 3, and
+    Trend = clamp(pre − penalty, 0, 100) with penalty = 15 × max(0, (Saturation − 50) / 50)
+    points. Without a Saturation the penalty is missing: nothing is taken off and `missing` names
+    it.
 
     No value, with its reason, never 0:
     - no demand family: the product has no primary family. Search slope alone never scores.
@@ -104,7 +109,13 @@ def trend_scores(
     zs = {k: robust_z(v, categories, min_n=CONFIG.min_n, cap=CONFIG.cap) for k, v in raws.items()}
 
     def component(
-        name: str, family: str, source: str, weight: float, product: UUID, gap: bool, **more: Any
+        name: str,
+        family: str,
+        source: str,
+        weight: float,
+        product: UUID,
+        gap: bool,
+        captured: datetime | None = None,
     ) -> Component:
         found = zs.get(name, {}).get(product)
         return Component(
@@ -115,9 +126,9 @@ def trend_scores(
             raw=raws.get(name, {}).get(product),
             z=found[0] if found else None,
             normalization=found[1] if found else None,
+            as_of=captured or (as_of if found else None),
             missing=found is None,
             gap=gap,
-            **more,
         )
 
     scores = {}
@@ -134,7 +145,7 @@ def trend_scores(
             continue
         source, row = FAMILIES[family].source, now[product, family]
         prev, search = before.get((product, family)), now.get((product, "gt_interest"))
-        as_of = search.features.get("gt_as_of") if search and search.features else None
+        captured = search.features.get("gt_as_of") if search and search.features else None
         components = [
             component(f"{family}_g7", family, source, CONFIG.g7, product, row.has_gap),
             component(
@@ -152,13 +163,13 @@ def trend_scores(
                 CONFIG.gt_slope,
                 product,
                 False,  # a slope reads every day of 12 complete weeks in one capture
-                as_of=datetime.fromisoformat(as_of) if as_of else None,
+                datetime.fromisoformat(captured) if captured else None,
             ),
             Component(
                 name="ads_growth", family="ads", source=None, weight=CONFIG.ads_growth, missing=True
             ),
         ]
-        total, explanation = explain(CONFIG, components)
+        total, explanation = explain(CONFIG, components, as_of=as_of)
         assert total is not None  # G7 is present
         crowded = saturation.get(product)
         penalty = Penalty(

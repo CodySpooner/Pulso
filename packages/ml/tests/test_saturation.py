@@ -19,6 +19,7 @@ DAY = date(2026, 12, 14)
 LAMPS, LIGHTING, HOME = 4636, 594, 536  # Lamps < Lighting < Home & Garden
 LINEAGE = (LAMPS, LIGHTING, HOME)
 LAMP = UUID(int=0)  # the vault's sunset projection lamp
+AT = cutoff(DAY)
 
 
 def row(product: UUID, inputs: dict[str, Any] | None, missed: list[str] | None = None) -> Feature:
@@ -51,7 +52,7 @@ def lamps() -> tuple[list[Feature], dict[UUID, tuple[int, ...]]]:
 
 def test_the_vault_lamp_without_cj_scores_73_7_high() -> None:
     rows, categories = lamps()
-    score = saturation_scores(rows, categories)[LAMP]
+    score = saturation_scores(rows, categories, AT)[LAMP]
     assert score.value is not None and round(score.value, 1) == 73.7
     assert (score.band, score.reason) == ("high", None)
     explanation = score.explanation
@@ -67,6 +68,10 @@ def test_the_vault_lamp_without_cj_scores_73_7_high() -> None:
     assert ads.missing and ads.weight_eff == 0 and ads.contribution is None and ads.z is None
     assert explanation.missing == ("ads_active",)
     assert explanation.coverage == pytest.approx(0.65 / 0.90)  # CJ listings aren't configured
+    # Seller counts carry no capture time: as of the cutoff, so fresh, and confidence is coverage.
+    assert (sellers.as_of, growth.as_of, ads.as_of) == (AT, AT, None)
+    assert (sellers.freshness, growth.freshness, ads.freshness) == (1.0, 1.0, None)
+    assert (explanation.confidence, explanation.cautions) == (explanation.coverage, ())
     assert explanation.panel_size == 12
     assert Explanation.model_validate(explanation.model_dump(mode="json")) == explanation
     assert explanation.model_version == saturation.VERSION == version(saturation.CONFIG)[0]
@@ -77,7 +82,7 @@ def test_the_vault_lamp_without_cj_scores_73_7_high() -> None:
 def test_missing_growth_renormalises_onto_the_seller_count() -> None:
     rows, categories = lamps()
     rows[0] = row(LAMP, {"shp_sellers": 9, "shp_seller_g28": None, "panel_size": 0})
-    score = saturation_scores(rows, categories)[LAMP]
+    score = saturation_scores(rows, categories, AT)[LAMP]
     assert score.explanation is not None
     sellers, growth, _ = score.explanation.components
     assert score.explanation.missing == ("shp_seller_g28", "ads_active")
@@ -107,7 +112,7 @@ def test_without_a_usable_seller_count_there_is_no_score_never_0(
     rows: list[Feature], reason: str
 ) -> None:
     categories = {UUID(int=i): LINEAGE for i in range(40)}
-    score = saturation_scores(rows, categories)[LAMP]
+    score = saturation_scores(rows, categories, AT)[LAMP]
     assert score == (None, None, None, reason)
 
 
@@ -119,7 +124,7 @@ def test_only_the_products_asked_for_are_scored_and_normalised_over() -> None:
     ]
     for categories, used in cases:
         del categories[UUID(int=40)]  # a row for a product not asked for: merged away, say
-        scores = saturation_scores(rows, categories)
+        scores = saturation_scores(rows, categories, AT)
         assert set(scores) == set(categories)
         explanation = scores[LAMP].explanation
         assert explanation is not None
@@ -129,7 +134,7 @@ def test_only_the_products_asked_for_are_scored_and_normalised_over() -> None:
 def test_a_missed_run_flags_the_growth_window_not_the_level() -> None:
     rows, categories = lamps()
     rows[0] = row(LAMP, rows[0].features, missed=["2026-12-01"])
-    explanation = saturation_scores(rows, categories)[LAMP].explanation
+    explanation = saturation_scores(rows, categories, AT)[LAMP].explanation
     assert explanation is not None
     assert [c.gap for c in explanation.components] == [False, True, False]
 
@@ -163,8 +168,8 @@ def tracked(new_stores: int) -> list[Feature]:
 
 def test_ten_newly_tracked_stores_leave_untouched_products_unchanged() -> None:
     categories = {UUID(int=i): LINEAGE for i in range(31)}
-    before = saturation_scores(tracked(0), categories)
-    after = saturation_scores(tracked(10), categories)
+    before = saturation_scores(tracked(0), categories, AT)
+    after = saturation_scores(tracked(10), categories, AT)
     untouched = set(categories) - {CROWDED}
     assert {p: before[p] for p in untouched} == {p: after[p] for p in untouched}
     old, new = before[CROWDED].explanation, after[CROWDED].explanation
@@ -196,7 +201,7 @@ def test_the_value_is_clamped_to_0_100(monkeypatch: pytest.MonkeyPatch) -> None:
     rows, categories = lamps()
     rows[0] = row(LAMP, {"shp_sellers": 1e9, "shp_seller_g28": 9.0, "panel_size": 12})
     rows[1] = row(UUID(int=1), {"shp_sellers": 0, "shp_seller_g28": -9.0, "panel_size": 12})
-    scores = saturation_scores(rows, categories)
+    scores = saturation_scores(rows, categories, AT)
     assert (scores[LAMP].value, scores[UUID(int=1)].value) == (100, 0)
 
 
@@ -215,6 +220,6 @@ def test_a_config_change_changes_the_model_version(
 ) -> None:
     monkeypatch.setattr(saturation, "CONFIG", replace(saturation.CONFIG, **change))
     rows, categories = lamps()
-    explanation = saturation_scores(rows, categories)[LAMP].explanation
+    explanation = saturation_scores(rows, categories, AT)[LAMP].explanation
     assert explanation is not None
     assert explanation.model_version == version(saturation.CONFIG)[0] != saturation.VERSION

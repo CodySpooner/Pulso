@@ -110,7 +110,10 @@ def get_product_scores(
     )
     settings = session.get(WorkspaceSettings, principal.workspace_id)
     found = op.opportunity(
-        op.stored(rows["trend"]), op.stored(rows["saturation"]), op.margin_of(economics, settings)
+        op.stored(rows["trend"]),
+        op.stored(rows["saturation"]),
+        op.margin_of(economics, settings),
+        datetime.now(UTC),
     )
 
     start = datetime.now(UTC).date() - timedelta(days=DAYS[range] - 1) if range in DAYS else None

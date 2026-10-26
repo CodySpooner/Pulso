@@ -6,7 +6,7 @@ import { PageHeader } from "@/components/pulso/page-header";
 import { StatusDot } from "@/components/pulso/status-dot";
 import { cn } from "@/lib/utils";
 
-import { formatValue, isBuilt, sections, term, type Block, type BuiltScore, type Field, type MethodologyDoc, type PlannedScore } from "./model";
+import { every, formatValue, isBuilt, sections, span, term, type Block, type BuiltScore, type Field, type MethodologyDoc, type PlannedScore } from "./model";
 
 const card = "scroll-mt-18 rounded-xl border border-border bg-card shadow-card lg:scroll-mt-4 target:border-border-strong";
 const cardHead = "flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-border-subtle px-4 py-3 md:px-6";
@@ -208,6 +208,49 @@ function Section({ id, title, aside, children }: { id: string; title: string; as
   );
 }
 
+// Each source's cadence and the ages its inputs count 1 to and go stale after (Score Definitions §6). The cadence sits
+// under the source so three columns fit a 375px card; between the two ages an input counts 0.5.
+function Cadences({ confidence }: { confidence: MethodologyDoc["contract"]["confidence"] }) {
+  if (confidence.cadence.length === 0)
+    return <p className="text-data text-muted-foreground">No source has a cadence yet, so every input counts as fresh.</p>;
+  return (
+    <table aria-label="Source cadences" className="w-full border-separate border-spacing-0 zone-data">
+      <thead>
+        <tr className="row-h-compact text-label text-muted-foreground">
+          <th scope="col" className={cn(th, "text-left")}>
+            Source
+          </th>
+          <th scope="col" className={cn(th, "text-right")}>
+            Fresh to
+          </th>
+          <th scope="col" className={cn(th, "text-right")}>
+            Stale after
+          </th>
+        </tr>
+      </thead>
+      <tbody>
+        {confidence.cadence.map((c) => (
+          <tr key={c.source} className="row-h">
+            <th scope="row" className={cn(td, "text-left font-normal")}>
+              <code className="text-foreground">{c.source}</code>
+              <span className="block text-label text-muted-foreground">
+                {every(c.days)}
+                {c.score && " · score row, read by Opportunity"}
+              </span>
+            </th>
+            <td className={cn(td, "num font-mono whitespace-nowrap text-foreground")} title={`Counts in full up to ${confidence.fresh_within} × its cadence`}>
+              {span(c.days * confidence.fresh_within)}
+            </td>
+            <td className={cn(td, "num font-mono whitespace-nowrap text-foreground")} title={`Older than ${confidence.stale_after} × its cadence is stale: missing, never 0`}>
+              {span(c.days * confidence.stale_after)}
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
 function Contents({ doc }: { doc: MethodologyDoc }) {
   return (
     <nav aria-label="On this page" className="min-w-0 lg:sticky lg:top-6 lg:col-start-2 lg:row-start-1">
@@ -283,19 +326,19 @@ export function Methodology({ doc, description }: { doc: MethodologyDoc; descrip
               <Doc blocks={contract.versioning} />
             </Sub>
           </Section>
-          <Section id="confidence" title="Confidence">
-            <p className="font-mono text-title-3 text-foreground">confidence = {contract.confidence.formula}</p>
-            <Rows
-              label="Confidence terms"
-              columns={["Term", "In the code"]}
-              rows={[
-                { name: "coverage", note: contract.explanation.fields.find((f) => f.name === "coverage")?.note, value: <Status built>On every explanation</Status> },
-                { name: "freshness", note: null, value: <Status built={false}>Not built yet</Status> },
-              ]}
-            />
-            {contract.confidence.status === "not built yet" && (
-              <p className="max-w-[68ch] text-data text-muted-foreground">Until freshness is in the code, Pulso shows no confidence for a score.</p>
-            )}
+          <Section id="confidence" title="Confidence" aside={<code className="min-w-0 break-all text-label text-subtle-foreground">{contract.confidence.code}</code>}>
+            <p className="w-fit max-w-full rounded-lg border border-border-subtle bg-secondary px-3 py-2 font-mono text-data text-foreground">
+              {contract.confidence.formula.replace(/\.$/, "")}
+            </p>
+            <Doc blocks={contract.confidence.definition} />
+            <div className="grid gap-6 xl:grid-cols-2">
+              <Sub title="Freshness" note="fresh()">
+                <Doc blocks={contract.confidence.freshness} />
+              </Sub>
+              <Sub title="Cadence" note="CADENCE">
+                <Cadences confidence={contract.confidence} />
+              </Sub>
+            </div>
           </Section>
           <Section id="limitations" title="Known limitations">
             <ul className="flex max-w-[68ch] flex-col gap-1.5 border-l border-border pl-4 text-muted-foreground">

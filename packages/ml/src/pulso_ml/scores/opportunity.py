@@ -24,7 +24,7 @@ VIEW = "workspace_product_economics"  # the margin component's source
 
 @dataclass(frozen=True)
 class Config:
-    revision: int = 0  # bump with any change to the rules below
+    revision: int = 1  # bump with any change to the rules below; 1: stale rows (DEC-354)
     # Weights are judgement calls until Phase 6 data exists.
     momentum: float = 0.40  # weight of Trend Score v0 (Beta) until a published forecast exists
     margin: float = 0.30  # weight of the contribution margin before ads, against the floor
@@ -102,7 +102,7 @@ def margin_of(row: Mapping[Any, Any] | None, settings: WorkspaceSettings | None)
 
 
 def opportunity(
-    trend: Stored | None, saturation: Stored | None, margin: Margin | None
+    trend: Stored | None, saturation: Stored | None, margin: Margin | None, now: datetime
 ) -> Opportunity:
     """ "Should I test this?" for one workspace, 0–100: higher is a better test.
 
@@ -120,8 +120,10 @@ def opportunity(
 
     - Margin floor: with m under m_ref, Opportunity = min(O, `floor_cap`); the cut is the
       `margin_floor` penalty and the reason reads "margin below your floor".
-    - Duty not set: m is costed at duty 0, never withheld; confidence (coverage, here) loses
-      `duty_not_set` and the explanation lists the caution.
+    - Freshness at `now`, the read (DEC-354): a Trend or Saturation row over 1.5 days old counts
+      half in confidence; over 3 days it is stale, so missing. Either lists `stale_input`.
+    - Duty not set: m is costed at duty 0, never withheld; confidence loses `duty_not_set` and
+      the explanation lists the caution.
 
     Opportunity = round(O, 1), as of its oldest present input; no value when none is present.
     """
@@ -170,11 +172,10 @@ def opportunity(
         ),
         part("risk", "safety", CONFIG.safety, None, None),
     ]
-    total, explanation = explain(CONFIG, components)
-    cautions = (
-        ("duty_not_set",) if m is not None and margin is not None and margin.duty_not_set else ()
-    )
-    confidence = max(0.0, explanation.coverage - CONFIG.duty_not_set * len(cautions))
+    total, explanation = explain(CONFIG, components, as_of=now)
+    unset = m is not None and margin is not None and margin.duty_not_set
+    cautions = (*explanation.cautions, *(("duty_not_set",) if unset else ()))
+    confidence = max(0.0, (explanation.confidence or 0.0) - CONFIG.duty_not_set * unset)
     update: dict[str, Any] = {"confidence": round(confidence, 4), "cautions": cautions}
     if total is None:
         update["reason"] = "no trend, margin or saturation yet"

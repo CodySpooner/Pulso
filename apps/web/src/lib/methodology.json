@@ -205,7 +205,7 @@
           "text": "How crowded each product already is on day t, 0–100: higher is more saturated."
         },
         {
-          "text": "`categories` holds every product to score: its category and that category's ancestors, nearest first (empty when it has none). `rows` are day t's `shp_sellers` feature rows. Each input is a robust z within the product's category, falling back up its ancestors to every product (Score Definitions §4):"
+          "text": "`categories` holds every product to score: its category and that category's ancestors, nearest first (empty when it has none). `rows` are day t's `shp_sellers` feature rows, and `as_of` its cutoff: the counts were captured before it (DEC-031) and carry no capture time of their own, so they are as of it, and fresh (DEC-354). Each input is a robust z within the product's category, falling back up its ancestors to every product (Score Definitions §4):"
         },
         {
           "items": [
@@ -235,6 +235,10 @@
         {
           "name": "categories",
           "type": "Mapping[UUID, Sequence[int]]"
+        },
+        {
+          "name": "as_of",
+          "type": "datetime"
         }
       ],
       "config": [
@@ -307,7 +311,7 @@
           "text": "How strongly each product is trending on day t, 0–100 (Beta until a forecast is promoted)."
         },
         {
-          "text": "`categories` holds every product to score: its category and that category's ancestors, nearest first (empty when it has none). `rows` are day t's feature rows, every family; `week_ago` are day t−7's. `primary` names each product's primary demand family (vault Demand Signals rule 1); `saturation` holds its Saturation Score (SC-3). Each input is a robust z within the product's category, falling back up its ancestors to every product when n < 30 or MAD = 0, winsorized to ±3 (Score Definitions §4):"
+          "text": "`categories` holds every product to score: its category and that category's ancestors, nearest first (empty when it has none). `rows` are day t's feature rows, every family; `week_ago` are day t−7's. `primary` names each product's primary demand family (vault Demand Signals rule 1); `saturation` holds its Saturation Score (SC-3). `as_of` is day t's cutoff: inputs were captured before it (DEC-031), and a feature-row input with no capture time of its own is as of it. Each input is a robust z within the product's category, falling back up its ancestors to every product when n < 30 or MAD = 0, winsorized to ±3 (Score Definitions §4):"
         },
         {
           "items": [
@@ -318,7 +322,7 @@
           ]
         },
         {
-          "text": "Each input's cohort is every product asked for with a value in it; families never mix. T = Σ w × z / Σ w over the present inputs: a missing one gets weight 0 and the rest renormalise (DEC-040). Then pre = 50 + 50 × T / 3, and Trend = clamp(pre − penalty, 0, 100) with penalty = 15 × max(0, (Saturation − 50) / 50) points. Without a Saturation the penalty is missing: nothing is taken off and `missing` names it."
+          "text": "Each input's cohort is every product asked for with a value in it; families never mix. Freshness is taken at `as_of` (DEC-354): a search slope captured over 3 weeks before it is stale, so missing. T = Σ w × z / Σ w over the present inputs: a missing one gets weight 0 and the rest renormalise (DEC-040). Then pre = 50 + 50 × T / 3, and Trend = clamp(pre − penalty, 0, 100) with penalty = 15 × max(0, (Saturation − 50) / 50) points. Without a Saturation the penalty is missing: nothing is taken off and `missing` names it."
         },
         {
           "text": "No value, with its reason, never 0:"
@@ -351,14 +355,18 @@
         {
           "name": "saturation",
           "type": "Mapping[UUID, float | None]"
+        },
+        {
+          "name": "as_of",
+          "type": "datetime"
         }
       ],
       "config": [
         {
           "name": "revision",
           "type": "int",
-          "note": "bump with any change to the rules below",
-          "value": 0
+          "note": "bump with any change to the rules below; 1: stale is missing (DEC-354)",
+          "value": 1
         },
         {
           "name": "feature_version",
@@ -409,8 +417,8 @@
           "value": 3.0
         }
       ],
-      "model_version": "000-8236875f835c",
-      "config_digest": "8236875f835cc289235b37ff85621392ab4887e78e7157923cb0dcc14a3e5da1"
+      "model_version": "001-300dc06245a2",
+      "config_digest": "300dc06245a2784e2270fe2d50a58c7b33aee482971a5ad504a751c5e55540af"
     },
     {
       "id": "opportunity",
@@ -439,7 +447,8 @@
         {
           "items": [
             "Margin floor: with m under m_ref, Opportunity = min(O, `floor_cap`); the cut is the `margin_floor` penalty and the reason reads \"margin below your floor\".",
-            "Duty not set: m is costed at duty 0, never withheld; confidence (coverage, here) loses `duty_not_set` and the explanation lists the caution."
+            "Freshness at `now`, the read (DEC-354): a Trend or Saturation row over 1.5 days old counts half in confidence; over 3 days it is stale, so missing. Either lists `stale_input`.",
+            "Duty not set: m is costed at duty 0, never withheld; confidence loses `duty_not_set` and the explanation lists the caution."
           ]
         },
         {
@@ -458,14 +467,18 @@
         {
           "name": "margin",
           "type": "Margin | None"
+        },
+        {
+          "name": "now",
+          "type": "datetime"
         }
       ],
       "config": [
         {
           "name": "revision",
           "type": "int",
-          "note": "bump with any change to the rules below",
-          "value": 0
+          "note": "bump with any change to the rules below; 1: stale rows (DEC-354)",
+          "value": 1
         },
         {
           "name": "momentum",
@@ -510,8 +523,8 @@
           "value": 0.2
         }
       ],
-      "model_version": "000-de3f6e76320d",
-      "config_digest": "de3f6e76320d61b9a7cd81a1c9f9f5613ba54efbc4e23ea545bc275c8f699501"
+      "model_version": "001-b2dd5054317c",
+      "config_digest": "b2dd5054317cd02129079af88ea8c06710da0faa583bbde7693decc7ab594142"
     },
     {
       "id": "risk",
@@ -585,12 +598,12 @@
         {
           "name": "confidence",
           "type": "float | None",
-          "note": "Opportunity: coverage − cautions"
+          "note": "Σ w × freshness / Σ w (§6)"
         },
         {
           "name": "cautions",
           "type": "tuple[str, ...]",
-          "note": "Opportunity: what lowered confidence, e.g. duty_not_set"
+          "note": "what lowered confidence: stale_input; duty_not_set"
         }
       ]
     },
@@ -660,6 +673,21 @@
           "note": null
         },
         {
+          "name": "freshness",
+          "type": "float | None",
+          "note": "1 or 0.5 by age; None: unknown"
+        },
+        {
+          "name": "stale",
+          "type": "bool",
+          "note": null
+        },
+        {
+          "name": "freshness_reason",
+          "type": "str | None",
+          "note": "why a present input has no freshness"
+        },
+        {
           "name": "gap",
           "type": "bool",
           "note": "the input's window had a coverage gap"
@@ -685,6 +713,9 @@
       },
       {
         "text": "Returns Σ weight_eff × z over the present inputs, None when none is present (the score's value is then NULL, never 0), and the explanation. A score that maps that sum onto 0–100 linearly (Trend and Saturation: 50 + 50 × sum / 3) gets each input's points by the same factor × its contribution."
+      },
+      {
+        "text": "Each input's freshness is taken at `as_of` first, so a stale one is missing too. The explanation's confidence is `confidence()` of the inputs, with the `stale_input` caution when any was halved or dropped for its age."
       }
     ],
     "versioning": [
@@ -696,8 +727,55 @@
       }
     ],
     "confidence": {
-      "formula": "coverage × freshness",
-      "status": "not built yet"
+      "code": "pulso_core.scores.confidence",
+      "formula": "confidence = Σ weight × freshness over the present inputs / Σ weight over every input.",
+      "definition": [
+        {
+          "text": "That is coverage with each present input counted at its freshness, so it never exceeds coverage; a stale input is missing, so it counts 0. An unknown freshness counts 1. Unweighted inputs (Lifecycle's rule inputs) count 1 each. Opportunity then takes off its cautions."
+        }
+      ],
+      "freshness": [
+        {
+          "text": "An input's freshness at `as_of`, by its age against its source's cadence (DEC-354):"
+        },
+        {
+          "items": [
+            "1: captured at most 1.5 cadences before `as_of`.",
+            "0.5: at most 3 cadences before.",
+            "stale: older, so it is missing (weight 0, the rest renormalise), never a 0; `as_of` keeps its last capture.",
+            "unknown: no capture time, or no cadence for its source. Freshness stays empty and `freshness_reason` says why; it counts as fresh, as a source without an interval is never stale (DEC-238)."
+          ]
+        }
+      ],
+      "fresh_within": 1.5,
+      "stale_after": 3.0,
+      "cadence": [
+        {
+          "source": "cj",
+          "days": 1.0,
+          "score": false
+        },
+        {
+          "source": "shopify_stores",
+          "days": 1.0,
+          "score": false
+        },
+        {
+          "source": "google_trends",
+          "days": 7.0,
+          "score": false
+        },
+        {
+          "source": "trend",
+          "days": 1.0,
+          "score": true
+        },
+        {
+          "source": "saturation",
+          "days": 1.0,
+          "score": true
+        }
+      ]
     }
   },
   "limitations": [

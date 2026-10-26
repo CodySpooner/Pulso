@@ -11,9 +11,10 @@ import inspect
 import json
 import re
 from dataclasses import asdict
+from datetime import timedelta
 from pathlib import Path
 from types import ModuleType
-from typing import Any
+from typing import Any, get_args
 
 from pulso_core import scores as contract
 from pulso_ml.scores import lifecycle, opportunity, saturation, trend, velocity
@@ -92,6 +93,24 @@ def _score(anchor: str, title: str, module: ModuleType, function: str, task: str
     }
 
 
+def _confidence() -> dict[str, Any]:
+    """Score Definitions §6 from pulso_core.scores: the formula, the freshness rule and cadences."""
+    formula, *definition = _blocks(contract.confidence.__doc__)
+    kinds = get_args(contract.Kind)
+    return {
+        "code": f"{contract.__name__}.confidence",
+        "formula": formula["text"],
+        "definition": definition,
+        "freshness": _blocks(contract.fresh.__doc__),
+        "fresh_within": contract.FRESH_WITHIN,
+        "stale_after": contract.STALE_AFTER,
+        "cadence": [
+            {"source": source, "days": every / timedelta(days=1), "score": source in kinds}
+            for source, every in contract.CADENCE.items()
+        ],
+    }
+
+
 def build() -> dict[str, Any]:
     component = _blocks(contract.Component.__doc__)
     return {
@@ -110,8 +129,7 @@ def build() -> dict[str, Any]:
             "missing_inputs": next(b for b in component if "no source yet" in b.get("text", "")),
             "renormalisation": _blocks(contract.explain.__doc__),
             "versioning": _blocks(contract.version.__doc__),
-            # Score Definitions §6; pulso_core.scores has no freshness term yet (MT-1's next part).
-            "confidence": {"formula": "coverage × freshness", "status": "not built yet"},
+            "confidence": _confidence(),
         },
         "limitations": LIMITATIONS,
     }

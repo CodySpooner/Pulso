@@ -4535,3 +4535,57 @@ Superseded review defaults, not given entries: default #0 (move the repo) is don
 
   29 of 29 one-line mutations of the new engine code fail a test, and 7 of 7 of the API checks (`docs/reports/p4-34.md`). `apps/api/tests/test_alerts.py` creates and patches both types, fills defaults, and answers 422 on 10 bad bodies (by field for params), 404 for another workspace's or an unknown watchlist, and 422 on bad PATCH params. Vitest and Playwright (`e2e/alerts/score-rules.spec.ts`, 3 tests, keyboard only) cover the builder verbs and the list.
 - **Not here:** `lifecycle_change` (imp-468); a "Rules for this list" preset on Watchlists; the rule backtest preview; Shopify types (DEC-261); per-entity mute.
+
+### DEC-354 · Freshness and confidence in every score explanation (MT-1 part 2): each input's freshness by its source's cadence (1 up to 1.5 cadences, 0.5 up to 3, stale beyond, so missing); confidence = Σ w × freshness over the present inputs / Σ w; cadences are a constant map in `pulso_core.scores`; Trend revision 1; Opportunity halves or drops stale Trend and Saturation rows with a `stale_input` caution
+**2026-10-26 · proposed (p4-35)** · Phase 4 task MT-1 part 2 (imp-415, imp-461, imp-487); SPEC §7; DEC-031, DEC-040, DEC-238, DEC-306 (c), DEC-313, DEC-326, DEC-331 (d, e); vault Intelligence/Score Definitions §6–7, Features/Methodology & Confidence; `docs/reports/p4-35.md`; API change additive (three optional `Component` fields, ids unchanged); no migration, flag or dependency
+- **Decision:**
+  - **(a) Freshness.** `pulso_core.scores.fresh(component, as_of)` measures age as `as_of` minus the input's `as_of`:
+    - up to 1.5 cadences old, freshness is 1;
+    - up to 3 cadences, it is 0.5;
+    - older, the input is stale: `missing` and `stale` are both true. It gets weight 0, the rest renormalise, and `missing` names it. Its `as_of` stays as the last capture for "last seen".
+    - With no capture time or no cadence for its source, freshness stays null and `freshness_reason` says why ("no capture time", "no cadence for <source>"). It counts 1 in confidence, because a source without an interval is never stale (DEC-238).
+
+    `Component` gains the optional `freshness`, `stale` and `freshness_reason` (DEC-306 c), and the model refuses a stale input that isn't missing. Rows stored before still validate.
+  - **(b) Confidence.** `confidence(components)` = Σ w × freshness over the present inputs / Σ w over all of them; unweighted inputs (Lifecycle's) count 1 each. `explain(config, components, *, as_of)` takes freshness first and then renormalises. It sets `confidence`, plus the caution `stale_input` when any input was halved or dropped for its age. `Explanation.confidence` keeps its field and Opportunity's meaning (DEC-331 d): coverage with freshness, minus the cautions.
+  - **(c) Cadence.** `CADENCE` sits next to the contract: `cj` and `shopify_stores` daily, `google_trends` weekly, and the nightly score rows `trend` and `saturation` daily (Opportunity's inputs). A CSV import feeds its source's key, so it gets that source's cadence. It is not read from `sources.config.expected_interval`, for three reasons:
+    - no seed or migration sets that key;
+    - it is the collector's refresh interval for the provenance stale flag (2×, DEC-238), hourly for CJ in the tests;
+    - a value read from the database could move stored scores without a new `model_version`.
+  - **(d) Where it applies.**
+    - Trend and Saturation call `explain()` with the day's cutoff. Their feature-row inputs carry no capture time, so the score functions stamp them with the cutoff first. That is imp-427's rule, moved out of `nightly.stamped()`, which is removed. Those inputs are fresh by construction; `gt_slope` keeps its own Trends capture time, so it is the input that can age.
+    - Lifecycle's rule inputs each go through `fresh()` at the cutoff of the row they were read from. The d−7 row is lagged by design, not stale. Lifecycle's confidence is `confidence()` of those inputs, which equals its coverage today.
+    - A NULL row's explanation (`unscored()`) has no confidence.
+  - **(e) Versions (SC-6).** A search slope captured more than 21 days before the cutoff is now missing, which moves Trend's value. Trend's revision goes 0 → 1, so its model_version becomes `001-…`, and a test pins the weekly cadence and the 3× rule that revision was cut under. Freshness can't change Saturation's value or Lifecycle's stage, because their inputs are as of the cutoff. Their versions are unchanged, so re-running a stored night writes nothing. Opportunity's revision also goes 0 → 1; it is read-time and never stored.
+  - **(f) Opportunity (imp-487).** `opportunity(trend, saturation, margin, now)` takes freshness at the read:
+    - a Trend or Saturation row more than 1.5 days old counts half in confidence;
+    - more than 3 days old, it is missing and Opportunity renormalises without it;
+    - confidence = `confidence()` − 0.2 while duty isn't set, floored at 0;
+    - `cautions` list `stale_input`, then `duty_not_set`;
+    - the margin (the view) has no cadence, so its freshness is null and reads "no cadence for workspace_product_economics".
+
+    `GET /v1/products/{id}/scores` and the Screener pass `datetime.now(UTC)`.
+  - **(g) /methodology `#confidence`.** The export's `contract.confidence` holds:
+    - `code`;
+    - `formula`, the first line of `confidence()`'s docstring;
+    - `definition`;
+    - `freshness`, from `fresh()`'s docstring;
+    - `fresh_within` and `stale_after`;
+    - `cadence`, a list of `{source, days, score}`.
+
+    The page shows the formula, the freshness rule and a cadence table with three columns: the source with its cadence, Fresh to, and Stale after. With no cadence, it says every input counts as fresh.
+- **Alternatives:**
+  - **Read the cadence from `sources.config`:** rejected for the reasons in (c).
+  - **Hash the cadences into every score's config:** it would change Saturation's and Lifecycle's versions with no change in value. A new Lifecycle version also loses the night before's priors, so one night would show a stage without hysteresis.
+  - **Measure Lifecycle's inputs against the score's cutoff:** the week-ago velocity would read stale every night.
+  - **Exponential decay, exp(−age / half-life):** the Methodology note's earlier sketch. Score Definitions §6's step rule is the one specified.
+  - **Count unknown freshness as 0:** it would penalise owner input (a margin with a null `as_of`), which DEC-238 treats as never stale.
+  - **Halve an aging input's weight in the value too:** §6 applies freshness to confidence only, so an aging input moves no stored value.
+- **Why:** `test_scores.py` (24, the db tests on `pgvector/pgvector:0.8.7-pg18-trixie`) covers:
+    - freshness 1, 0.5 and stale at exactly 1.5× and 3× (±1 µs) for `cj` and `google_trends`;
+    - the lamp with ads missing and a 12-day-old slope: confidence 0.5 = (0.4 × 1 + 0.2 × 0.5) / 1;
+    - a slope over 3 weeks old: missing, renormalised and named in `missing`;
+    - unknown freshness with its reason;
+    - pre-freshness rows still validate.
+
+  `test_trend.py`: the real lamp has confidence 0.85 when fresh, 0.725 with a 12-day-old slope (value still 68.6), and 71.4 with the slope stale. `test_opportunity.py`: a 2-day-old Trend row gives confidence 0.7 and value 65.7; a 3-day-old one gives missing, 63.4 and 0.5; adding duty not set gives 0.3 with both cautions. `test_nightly.py`: Lifecycle's week-old input is fresh and its confidence is 5/6. A hand mutation run killed 23 of 23 mutants.
+- **Not here:** the confidence bar on the Product Page score cards and Discover (imp-460 is building those cards), the "How this is computed" links (imp-414), a cadence for the economics margin, and feature rows carrying their newest capture time so demand inputs can age. All are listed in `docs/reports/p4-35.md`.

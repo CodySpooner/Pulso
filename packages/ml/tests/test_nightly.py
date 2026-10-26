@@ -180,8 +180,14 @@ def test_one_primary_family_for_trend_and_lifecycle_and_present_inputs_have_an_a
         for score in rows.values():
             for c in explained(score).components:
                 assert (c.as_of is None) == c.missing, (score.kind, c.name)
+                assert (c.freshness == 1.0) != c.missing, (score.kind, c.name)
+            # Every scored row carries its confidence; a NULL row (no components) has none.
+            explanation = explained(score)
+            assert (explanation.confidence is None) == (not explanation.components), score.kind
         a = {c.name: c for c in explained(rows["lifecycle", p["a"]]).components}
         assert a["cj_stock_v7"].as_of == AT and a["cj_stock_v7_prev"].as_of == cutoff(WEEK_AGO)
+        assert a["cj_stock_v7_prev"].freshness == 1.0  # a week old by design, as of its own row
+        assert explained(rows["lifecycle", p["a"]]).confidence == pytest.approx(5 / 6)
         assert a["days_observed"].raw == 31 and a["cj_stock_acc"].raw == pytest.approx(0.05)
         assert explained(rows["lifecycle", p["a"]]).missing == ("age_days",)
         assert explained(rows["lifecycle", p["a"]]).coverage == pytest.approx(5 / 6)

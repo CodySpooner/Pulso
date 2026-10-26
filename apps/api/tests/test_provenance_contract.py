@@ -52,11 +52,12 @@ EXEMPT = {
     "AlertOut.id": "the alerts row Daily Pulse lists (fired_at dates it), not a measurement",
 }
 # A score's explanation (pulso_core.scores, DEC-331): the score carries as_of, and each input its
-# own capture time in Component.as_of; weights, z, points and coverage are arithmetic on them.
+# own capture time in Component.as_of; weights, z, points, freshness and coverage are arithmetic
+# on them.
 EXEMPT |= {
     f"{schema}.{field}": "a term of a score explanation; the score and its inputs carry as_of"
     for schema, fields in {
-        "Component": ("contribution", "raw", "weight", "weight_eff", "z"),
+        "Component": ("contribution", "freshness", "raw", "weight", "weight_eff", "z"),
         "Explanation": ("confidence", "coverage", "panel_size"),
         "Normalization": ("category_id", "n"),
         "Penalty": ("points", "raw"),

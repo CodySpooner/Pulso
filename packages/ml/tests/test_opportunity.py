@@ -46,7 +46,7 @@ def test_the_worked_example_to_the_cent() -> None:
     margin = margin_of(row(LAMP), settings(LAMP))
     assert margin == Margin(5275, True, AT)
 
-    found = opportunity(Stored(68.6, AT), Stored(73.3, AT), margin)
+    found = opportunity(Stored(68.6, AT), Stored(73.3, AT), margin, AT)
     assert found.value == 65.7  # before forecasts: Momentum is Trend 68.6, Beta
     explanation = found.explanation
     assert [c.name for c in explanation.components] == ["trend", "margin", "saturation", "risk"]
@@ -61,22 +61,22 @@ def test_the_worked_example_to_the_cent() -> None:
     points = sum(c.contribution or 0 for c in explanation.components)
     assert round(points, 1) == 65.7  # the waterfall adds up
     # The note's published p14 = 0.62 line: the same arithmetic with Momentum 62.0.
-    assert opportunity(Stored(62.0, AT), Stored(73.3, AT), margin).value == 62.8
+    assert opportunity(Stored(62.0, AT), Stored(73.3, AT), margin, AT).value == 62.8
 
 
 def test_a_missing_input_renormalises_and_says_which() -> None:
-    no_settings = opportunity(Stored(68.6, AT), Stored(73.3, AT), None)
+    no_settings = opportunity(Stored(68.6, AT), Stored(73.3, AT), None, AT)
     assert no_settings.value == 54.6  # (0.4 × 68.6 + 0.2 × 26.7) / 0.6
     assert no_settings.explanation.missing == ("margin", "risk")
     margin = no_settings.explanation.components[1]
     assert (margin.source, margin.weight_eff, margin.contribution) == (None, 0.0, None)
     assert no_settings.explanation.confidence == pytest.approx(0.6)
 
-    incomplete = opportunity(Stored(68.6, AT), Stored(73.3, AT), Margin(None, False, None))
+    incomplete = opportunity(Stored(68.6, AT), Stored(73.3, AT), Margin(None, False, None), AT)
     assert incomplete.value == 54.6
     assert incomplete.explanation.components[1].source == op.VIEW  # insufficient signal
 
-    null_trend = opportunity(Stored(None, AT), None, Margin(5275, False, AT))
+    null_trend = opportunity(Stored(None, AT), None, Margin(5275, False, AT), AT)
     assert null_trend.value == 87.9  # margin alone
     trend, _, saturation, _ = null_trend.explanation.components
     assert (trend.missing, trend.source) == (True, "trend")  # a NULL row: insufficient signal
@@ -85,46 +85,76 @@ def test_a_missing_input_renormalises_and_says_which() -> None:
 
 
 def test_nothing_present_is_no_value_never_zero() -> None:
-    found = opportunity(None, None, None)
+    found = opportunity(None, None, None, AT)
     assert (found.value, found.as_of) == (None, None)
     assert found.explanation.reason == "no trend, margin or saturation yet"
     assert found.explanation.confidence == 0.0
 
 
 def test_a_margin_under_the_floor_caps_opportunity_at_25() -> None:
-    capped = opportunity(Stored(90.0, AT), Stored(10.0, AT), Margin(2500, False, AT))
+    capped = opportunity(Stored(90.0, AT), Stored(10.0, AT), Margin(2500, False, AT), AT)
     assert capped.value == 25.0  # uncapped (36 + 12.5 + 18) / 0.9 = 73.9
     (penalty,) = capped.explanation.penalties
     assert (penalty.name, penalty.raw) == ("margin_floor", 0.25)
     assert penalty.points == pytest.approx(73.889 - 25, abs=1e-3)
     assert capped.explanation.reason == "margin below your floor"
 
-    loss = opportunity(Stored(90.0, AT), None, Margin(-1200, False, AT))
+    loss = opportunity(Stored(90.0, AT), None, Margin(-1200, False, AT), AT)
     assert loss.explanation.components[1].z == 0.0  # clamped, never negative points
     assert loss.value == 25.0
 
-    low = opportunity(Stored(5.0, AT), None, Margin(2999, False, AT))
+    low = opportunity(Stored(5.0, AT), None, Margin(2999, False, AT), AT)
     assert low.value == pytest.approx(round((0.4 * 5 + 0.3 * 49.983) / 0.7, 1))  # 24.3
     assert low.explanation.penalties[0].points == 0.0
     assert low.explanation.reason == "margin below your floor"
 
-    at_floor = opportunity(Stored(90.0, AT), None, Margin(3000, False, AT))
+    at_floor = opportunity(Stored(90.0, AT), None, Margin(3000, False, AT), AT)
     assert at_floor.value == round((0.4 * 90 + 0.3 * 50) / 0.7, 1)
     assert (at_floor.explanation.penalties, at_floor.explanation.reason) == ((), None)
 
 
 def test_duty_not_set_lowers_confidence_but_not_the_value() -> None:
-    unset = opportunity(Stored(68.6, AT), Stored(73.3, AT), Margin(5275, True, AT))
-    duty = opportunity(Stored(68.6, AT), Stored(73.3, AT), Margin(5275, False, AT))
+    unset = opportunity(Stored(68.6, AT), Stored(73.3, AT), Margin(5275, True, AT), AT)
+    duty = opportunity(Stored(68.6, AT), Stored(73.3, AT), Margin(5275, False, AT), AT)
     assert unset.value == duty.value == 65.7
     assert (duty.explanation.confidence, duty.explanation.cautions) == (0.9, ())
     assert unset.explanation.confidence == pytest.approx(0.9 - 0.2)
 
 
+def test_a_stale_trend_row_lowers_confidence_and_names_the_caution() -> None:
+    margin, room = Margin(5275, False, AT), Stored(73.3, AT)
+    aging = opportunity(Stored(68.6, AT - timedelta(days=2)), room, margin, AT)
+    assert aging.value == 65.7  # halved in confidence only
+    assert aging.explanation.components[0].freshness == 0.5
+    assert aging.explanation.confidence == pytest.approx(0.4 * 0.5 + 0.3 + 0.2)  # 0.9 fresh
+    assert aging.explanation.cautions == ("stale_input",)
+
+    old = AT - timedelta(days=3, seconds=1)
+    stale = opportunity(Stored(68.6, old), room, margin, AT)
+    trend = stale.explanation.components[0]
+    assert (trend.missing, trend.stale, trend.as_of, trend.source) == (True, True, old, "trend")
+    assert stale.explanation.missing == ("trend", "risk")
+    assert stale.value == round((0.3 * 100 * 0.5275 / 0.6 + 0.2 * 26.7) / 0.5, 1)  # 63.4
+    assert stale.explanation.confidence == pytest.approx(0.5)
+    assert stale.as_of == AT  # the stale row is no longer an input
+    unset = opportunity(Stored(68.6, old), room, Margin(5275, True, AT), AT)
+    assert unset.explanation.cautions == ("stale_input", "duty_not_set")
+    assert unset.explanation.confidence == pytest.approx(0.5 - 0.2)
+
+
+def test_margin_has_no_cadence_so_counts_as_fresh_and_says_why() -> None:
+    margin = opportunity(Stored(68.6, AT), Stored(73.3, AT), Margin(5275, False, AT), AT)
+    found = margin.explanation.components[1]
+    assert (found.freshness, found.freshness_reason) == (
+        None,
+        "no cadence for workspace_product_economics",
+    )
+
+
 def test_as_of_is_the_oldest_present_input() -> None:
     old = AT - timedelta(days=3)
     found = opportunity(
-        Stored(68.6, AT), Stored(None, old - timedelta(days=9)), Margin(5275, False, old)
+        Stored(68.6, AT), Stored(None, old - timedelta(days=9)), Margin(5275, False, old), AT
     )
     assert found.as_of == old  # the NULL saturation row is not an input
 

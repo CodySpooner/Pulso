@@ -7,7 +7,8 @@ from uuid import UUID
 
 import pytest
 
-from pulso_core.scores import Explanation, Normalization, version
+from pulso_core.scores import CADENCE, STALE_AFTER, Explanation, Normalization, version
+from pulso_ml.features.daily import cutoff
 from pulso_ml.features.demand import FEATURE_VERSION, Day, product_demand
 from pulso_ml.features.repository import Feature
 from pulso_ml.scores import trend
@@ -26,8 +27,8 @@ def demand(product: UUID, g7: float | None, family: str = "shp_inv", gap: bool =
     return Feature(product, DAY, family, FEATURE_VERSION, v7, g7, Decimal(1), gap, None, FLAGS)
 
 
-def search(product: UUID, slope: float | None) -> Feature:
-    inputs = {"gt_slope": slope, "gt_keywords": int(slope is not None), "gt_as_of": AS_OF}
+def search(product: UUID, slope: float | None, as_of: str = AS_OF) -> Feature:
+    inputs = {"gt_slope": slope, "gt_keywords": int(slope is not None), "gt_as_of": as_of}
     gap = slope is None  # DEC-311 b: no slope
     return Feature(
         product, DAY, "gt_interest", FEATURE_VERSION, None, None, Decimal(1), gap, inputs, FLAGS
@@ -55,6 +56,7 @@ def lamps() -> dict[str, Any]:
         categories=dict.fromkeys(products, LINEAGE),
         primary=dict.fromkeys(products, "shp_inv"),
         saturation={LAMP: 73.3},
+        as_of=cutoff(DAY),
     )
 
 
@@ -79,21 +81,25 @@ def test_the_vault_lamp_scores_68_6_with_its_explanation() -> None:
     assert [round(p, 1) for p in points(score.explanation)] == [15.3, 4.7, 5.5, 0]
     assert round(50 + sum(points(score.explanation)), 1) == 75.6  # before the penalty
     lamps_ = {"category_id": LAMPS, "n": 41}
-    common = {"as_of": None, "missing": False, "gap": False, "ai_derived": False}
+    common = {"as_of": None, "missing": False, "gap": False, "ai_derived": False, "stale": False}
+    feature_row = {"as_of": "2026-12-15T00:00:00Z", "freshness": 1.0}  # the day's cutoff
+    common |= {"freshness": None, "freshness_reason": None}
     assert rounded(score.explanation.model_dump(mode="json")) == {
         "model_version": trend.VERSION,
         "config_digest": version(trend.CONFIG)[1],
         "components": [
             {"name": "shp_inv_g7", "family": "shp_inv", "source": "shopify_stores",
              "weight": 0.4, "weight_eff": 0.471, "raw": 0.368, "z": 1.956,
-             "normalization": lamps_, "contribution": 0.92, **common, "prompt_version": None},
+             "normalization": lamps_, "contribution": 0.92, **common, **feature_row,
+             "prompt_version": None},
             {"name": "shp_inv_acc", "family": "shp_inv", "source": "shopify_stores",
              "weight": 0.2, "weight_eff": 0.235, "raw": 0.268, "z": 1.205,
-             "normalization": lamps_, "contribution": 0.284, **common, "prompt_version": None},
+             "normalization": lamps_, "contribution": 0.284, **common, **feature_row,
+             "prompt_version": None},
             {"name": "gt_slope", "family": "gt_interest", "source": "google_trends",
              "weight": 0.25, "weight_eff": 0.294, "raw": 0.384, "z": 1.128,
              "normalization": lamps_, "contribution": 0.332, **common,
-             "as_of": "2026-12-14T06:10:00Z", "prompt_version": None},
+             "as_of": "2026-12-14T06:10:00Z", "freshness": 1.0, "prompt_version": None},
             {"name": "ads_growth", "family": "ads", "source": None,
              "weight": 0.15, "weight_eff": 0.0, "raw": None, "z": None,
              "normalization": None, "contribution": None, **common, "missing": True,
@@ -108,7 +114,7 @@ def test_the_vault_lamp_scores_68_6_with_its_explanation() -> None:
         ],
         "reason": None,
         "pending": None,
-        "confidence": None,
+        "confidence": 0.85,  # every present input fresh: coverage
         "cautions": [],
     }  # fmt: skip
     assert Explanation.model_validate(score.explanation.model_dump(mode="json")) == (
@@ -158,6 +164,35 @@ def test_a_missing_search_slope_renormalises_onto_the_demand_family() -> None:
     assert slope.source == "google_trends" and slope.raw is None and slope.weight_eff == 0
     assert [g7.weight_eff, acc.weight_eff] == pytest.approx([0.40 / 0.60, 0.20 / 0.60])
     assert explanation.coverage == pytest.approx(0.60)
+
+
+def test_a_search_slope_12_days_old_halves_its_weight_in_confidence_only() -> None:
+    day = lamps()
+    day["rows"][41] = search(
+        LAMP, math.log(47 / 32), (cutoff(DAY) - timedelta(days=12)).isoformat()
+    )
+    score = trend_scores(**day)[LAMP]
+    assert score.explanation is not None and round(score.value or 0, 1) == 68.6
+    assert [c.freshness for c in score.explanation.components] == [1.0, 1.0, 0.5, None]
+    assert score.explanation.confidence == pytest.approx(0.40 + 0.20 + 0.25 * 0.5)  # 0.725
+    assert score.explanation.cautions == ("stale_input",)
+
+
+def test_a_search_slope_over_3_weeks_old_is_missing_and_moves_the_value() -> None:
+    day = lamps()
+    old = cutoff(DAY) - timedelta(days=21, seconds=1)
+    day["rows"][41] = search(LAMP, math.log(47 / 32), old.isoformat())
+    score = trend_scores(**day)[LAMP]
+    assert score.explanation is not None
+    g7, acc, slope, _ = score.explanation.components
+    assert (slope.missing, slope.stale, slope.as_of, slope.contribution) == (True, True, old, None)
+    assert score.explanation.missing == ("gt_slope", "ads_growth")
+    assert [g7.weight_eff, acc.weight_eff] == pytest.approx([0.40 / 0.60, 0.20 / 0.60])
+    assert score.explanation.coverage == score.explanation.confidence == pytest.approx(0.60)
+    assert round(score.value or 0, 1) == 71.4  # 68.6 with it: the rule moves stored values
+    assert trend.VERSION.startswith("001-")  # so it ships as a new model_version (DEC-354)
+    # Revision 1 was cut under this rule: changing it moves stored values, so bump the revision.
+    assert (CADENCE["google_trends"], STALE_AFTER) == (timedelta(weeks=1), 3.0)
 
 
 def test_no_row_a_week_ago_leaves_acceleration_missing() -> None:

@@ -398,7 +398,9 @@ def opportunity_of(
     row: RowMapping | None,
     settings: WorkspaceSettings | None,
 ) -> op.Opportunity:
-    return op.opportunity(op.stored(trend), op.stored(saturation), op.margin_of(row, settings))
+    return op.opportunity(
+        op.stored(trend), op.stored(saturation), op.margin_of(row, settings), datetime.now(UTC)
+    )
 
 
 @router.get(
