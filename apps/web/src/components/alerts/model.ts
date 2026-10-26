@@ -2,6 +2,7 @@ import { Bell, Gauge, PackageCheck, PackageX, Tag, TrendingUp, Truck, type Lucid
 
 import { sourceLabel } from "@/app/(app)/admin/matching/model";
 import { money } from "@/app/(app)/products/[id]/profit/model";
+import { MAX_QUERY, MIN_QUERY, type SearchView } from "@/components/shell/palette-search";
 import { isProblem } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
 import { formatAgo, formatUtc } from "@/lib/format";
@@ -201,17 +202,58 @@ export const draftOf = (rule: Rule): Draft => ({
 
 const OFFLINE = "The Pulso API didn’t answer. When it runs on your PC, this also means the PC is off.";
 
-const FIELDS = ["pct", "min_volume", "threshold", "direction", "name"] as const;
-type Errors = Partial<Record<(typeof FIELDS)[number] | "form", string>>;
+type Field = "pct" | "min_volume" | "threshold" | "direction" | "name";
+type Errors = Partial<Record<Field | "form", string>>;
+
+/** imp-585: each field's range in words (the API's Params and Name), for Pydantic's out-of-range, wrong-type, missing
+ *  and length messages, matched by their `type`. Any other message keeps the API's text. */
+const COPY: Record<Field, string> = {
+  pct: "Enter a % above 0, up to 1,000.",
+  min_volume: "Enter 0 to 1,000,000 units.",
+  threshold: "Saturation runs from 0 to 100.",
+  direction: "Choose above or below.",
+  name: "Give the rule a name, up to 120 characters.",
+};
+const PLAIN = /^(greater_than|less_than|float_|finite_number|missing|literal_error|string_too_)/;
 
 /** A failed save's messages, each beside its field: the params' and name's 422s, anything else under the form. */
 export function fieldErrors(error: unknown): Errors {
   if (!isProblem(error)) return { form: OFFLINE };
   const out: Errors = {};
-  for (const { loc, msg } of error.errors as { loc?: unknown[]; msg?: string }[]) {
-    out[FIELDS.find((name) => loc?.includes(name)) ?? "form"] ??= msg;
+  for (const { loc, msg, type } of error.errors as { loc?: unknown[]; msg?: string; type?: string }[]) {
+    const name = (Object.keys(COPY) as Field[]).find((field) => loc?.includes(field));
+    out[name ?? "form"] ??= name && PLAIN.test(type ?? "") ? COPY[name] : msg;
   }
   return Object.keys(out).length ? out : { form: error.detail };
+}
+
+// imp-527: the builder's first step from the Rules tab, a product search through the palette's (or a watchlist).
+
+const SEARCHING = { kind: "loading", text: "Searching products…", busy: true } as const;
+const noMatch = (term: string) => ({ kind: "empty", text: `No products match “${term}”`, detail: "Try fewer words, or part of a listing’s title." }) as const;
+
+/** The picker's line under its search, from the palette's view counting products only. For results it shows no
+ *  line and the text is the live region's (empty while an earlier query's products stay under the spinner). */
+export function pickerStatus(view: SearchView, term: string): { kind: string; text: string; detail?: string; busy?: true } {
+  switch (view.kind) {
+    case "off":
+      return { kind: "hint", text: `Type ${MIN_QUERY} or more characters to search products.` };
+    case "loading":
+      return SEARCHING;
+    case "results": {
+      const n = view.results.products.length;
+      if (!n) return view.stale ? SEARCHING : noMatch(term);
+      return view.stale ? { kind: "results", text: "", busy: true } : { kind: "results", text: `${n} ${n === 1 ? "product" : "products"} for “${term}”` };
+    }
+    case "empty":
+      return noMatch(term);
+    case "no-source":
+      return { kind: "no-source", text: "No products collected yet", detail: "Search fills in once the collectors have run." };
+    case "too-long":
+      return { kind: "too-long", text: `Too long to search: ${[...term].length} characters`, detail: `Up to ${MAX_QUERY}. Try a few words of the title.` };
+    case "error":
+      return { kind: "error", text: "Search unavailable", detail: "Retry, or choose Create alert on a product’s page." };
+  }
 }
 
 export function targetOf(rule: Rule) {

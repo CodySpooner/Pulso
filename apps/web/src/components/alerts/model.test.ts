@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 
+import type { SearchResults } from "@/components/shell/palette-search";
+
 import {
   badge,
   bellLabel,
@@ -16,6 +18,7 @@ import {
   mutedLabel,
   muteUntil,
   patchBody,
+  pickerStatus,
   rulesLine,
   statusLine,
   targetOf,
@@ -260,11 +263,32 @@ describe("the rule builder", () => {
 
   it("puts each 422 message next to its field", () => {
     const problem = (errors: object[], detail = "Invalid request.") => ({ type: "about:blank", title: "Unprocessable", status: 422, code: "validation_error", detail, request_id: "r", errors });
-    expect(fieldErrors(problem([{ loc: ["body", "params", "pct"], msg: "Input should be greater than 0", type: "greater_than" }]))).toEqual({ pct: "Input should be greater than 0" });
-    expect(fieldErrors(problem([{ loc: ["body", "name"], msg: "String should have at least 1 character", type: "string_too_short" }]))).toEqual({ name: "String should have at least 1 character" });
     expect(fieldErrors(problem([{ loc: ["body", "params", "min_volume"], msg: "≥ 0", type: "x" }, { loc: ["body", "params", "threshold"], msg: "≤ 100", type: "x" }]))).toEqual({ min_volume: "≥ 0", threshold: "≤ 100" });
     expect(fieldErrors({ ...problem([], "Supplier offer not found."), status: 404, code: "not_found" })).toEqual({ form: "Supplier offer not found." });
     expect(fieldErrors(new TypeError("fetch failed")).form).toMatch(/didn’t answer/);
+  });
+
+  // imp-585: Pydantic's range, type and length messages, by their `type`, in words per field.
+  it.each([
+    [["body", "params", "pct"], "greater_than", "Input should be greater than 0", "Enter a % above 0, up to 1,000."],
+    [["body", "params", "pct"], "less_than_equal", "Input should be less than or equal to 1000", "Enter a % above 0, up to 1,000."],
+    [["body", "params", "min_volume"], "greater_than_equal", "Input should be greater than or equal to 0", "Enter 0 to 1,000,000 units."],
+    [["body", "params", "threshold"], "less_than_equal", "Input should be less than or equal to 100", "Saturation runs from 0 to 100."],
+    [["body", "params", "threshold"], "missing", "Field required", "Saturation runs from 0 to 100."],
+    [["body", "params", "threshold"], "float_parsing", "Input should be a valid number, unable to parse string as a number", "Saturation runs from 0 to 100."],
+    [["body", "params", "direction"], "literal_error", "Input should be 'above' or 'below'", "Choose above or below."],
+    [["body", "name"], "string_too_short", "String should have at least 1 character", "Give the rule a name, up to 120 characters."],
+    [["body", "name"], "string_too_long", "String should have at most 120 characters", "Give the rule a name, up to 120 characters."],
+  ])("says %j's %s in words", (loc, type, msg, copy) => {
+    const name = loc.at(-1) as string;
+    expect(fieldErrors({ type: "about:blank", title: "Unprocessable", status: 422, code: "validation_error", detail: "Invalid request.", request_id: "r", errors: [{ loc, msg, type }] })).toEqual({ [name]: copy });
+  });
+
+  it("keeps the API's text for any other message", () => {
+    const problem = (errors: object[]) => ({ type: "about:blank", title: "Unprocessable", status: 422, code: "validation_error", detail: "Invalid request.", request_id: "r", errors });
+    expect(fieldErrors(problem([{ loc: ["body", "params", "pct"], msg: "Not a param of this rule type", type: "extra" }]))).toEqual({ pct: "Not a param of this rule type" });
+    expect(fieldErrors(problem([{ loc: ["body", "name"], msg: "String should match pattern '^[^\\x00]*$'", type: "string_pattern_mismatch" }]))).toEqual({ name: "String should match pattern '^[^\\x00]*$'" });
+    expect(fieldErrors(problem([{ loc: ["body", "params", "window_days"], msg: "Input should be 7", type: "literal_error" }]))).toEqual({ form: "Input should be 7" });
   });
 
   it("names a rule's target, linking its product", () => {
@@ -312,5 +336,31 @@ describe("mute", () => {
     expect(mutedLabel("2026-10-25T13:59:00Z", now)).toBeNull();
     expect(mutedLabel("2026-10-26T14:00:00Z", now)).toBe("Muted until Oct 26, 14:00 UTC");
     expect(mutedLabel(FOREVER, now)).toBe("Muted until you unmute");
+  });
+});
+
+// imp-527: the builder's product picker, from the palette's search counting products only.
+describe("the product picker's states", () => {
+  const none: SearchResults = { products: [], stores: [], suppliers: [], catalog_empty: false };
+  const lamp = { id: "p-1", title: "Sunset lamp", category: null, match: { field: "title", text: "Sunset lamp", kind: "prefix" } } as const;
+  const results = (products: SearchResults["products"], stale = false) => ({ kind: "results", results: { ...none, products }, stale }) as const;
+
+  it.each([
+    ["under 2 characters", { kind: "off" }, { kind: "hint", text: "Type 2 or more characters to search products." }],
+    ["loading", { kind: "loading" }, { kind: "loading", text: "Searching products…", busy: true }],
+    ["1 result", results([lamp]), { kind: "results", text: "1 product for “lamp”" }],
+    ["2 results", results([lamp, { ...lamp, id: "p-2" }]), { kind: "results", text: "2 products for “lamp”" }],
+    // stale: an earlier query's products stay under a spinner, and the live region waits
+    ["stale", results([lamp], true), { kind: "results", text: "", busy: true }],
+    // the search matched only stores or suppliers
+    ["stores only", results([]), { kind: "empty", text: "No products match “lamp”", detail: "Try fewer words, or part of a listing’s title." }],
+    ["stores only, stale", results([], true), { kind: "loading", text: "Searching products…", busy: true }],
+    ["empty", { kind: "empty" }, { kind: "empty", text: "No products match “lamp”", detail: "Try fewer words, or part of a listing’s title." }],
+    ["no source yet", { kind: "no-source" }, { kind: "no-source", text: "No products collected yet", detail: "Search fills in once the collectors have run." }],
+    ["error", { kind: "error" }, { kind: "error", text: "Search unavailable", detail: "Retry, or choose Create alert on a product’s page." }],
+  ] as const)("%s", (_, view, status) => expect(pickerStatus(view, "lamp")).toEqual(status));
+
+  it("says how long a pasted URL is", () => {
+    expect(pickerStatus({ kind: "too-long" }, "x".repeat(130))).toEqual({ kind: "too-long", text: "Too long to search: 130 characters", detail: "Up to 100. Try a few words of the title." });
   });
 });
