@@ -1,11 +1,14 @@
 """Boards (WF-3 part a, DEC-319): the workspace's boards of product ideas. Cards keep a manual
 order and a board-only note, and send-to-testing opens Idea tests through the Testing Board's
-create path. The /boards UI, the Add-to-board popover and the CSV exports come later. Each card
-carries its stats, read for the whole page in a fixed number of queries (imp-454)."""
+create path. Each card carries its stats, read for the whole page in a fixed number of queries
+(imp-454), and `?format=csv` exports the cards as the JSON builds them (imp-456)."""
 
 import json
-from collections.abc import Sequence
+import re
+from collections.abc import Iterator, Sequence
 from datetime import UTC, datetime
+from decimal import Decimal
+from itertools import count
 from typing import Annotated, Any, Literal
 from uuid import UUID
 
@@ -21,8 +24,10 @@ from pydantic import (
 )
 from sqlalchemy import ColumnElement, Row, Select, delete, func, select, tuple_
 from sqlalchemy.orm import Session
+from starlette.responses import Response
 
 from pulso_api.auth import current_principal
+from pulso_api.csv_export import csv_response, major
 from pulso_api.errors import APIError
 from pulso_api.routers.products import (
     DB,
@@ -37,7 +42,7 @@ from pulso_api.routers.products import (
 from pulso_api.routers.screener import LatestScore, score_value
 from pulso_api.routers.testing import ProductTestCreate, ProductTestOut, create_test
 from pulso_api.routers.watchlists import ItemsIn, Name, resolve, survivors
-from pulso_api.schemas.provenance import NoSource, Stat
+from pulso_api.schemas.provenance import NoSource, Sourced, Stat
 from pulso_api.schemas.text import NoNulStr
 from pulso_core.models import Board as BoardRow
 from pulso_core.models import BoardItem as ItemRow
@@ -49,6 +54,29 @@ from pulso_ml.scores import opportunity as op
 router = APIRouter(prefix="/v1/boards", dependencies=[Depends(current_principal)])
 ITEM_CURSOR = TypeAdapter(tuple[int, UUID])
 Prose = Annotated[NoNulStr, StringConstraints(strip_whitespace=True, max_length=10_000)]
+# The board table's columns in its order, plus the ids and an as-of per stat (DEC-350).
+BOARD_CSV = (
+    "position",
+    "product_id",
+    "product",
+    "price_min",
+    "price_max",
+    "currency",
+    "best_margin",
+    "best_margin_pct",
+    "trend",
+    "lifecycle",
+    "saturation",
+    "note",
+    "merged_into_id",
+    "added_at",
+    "price_as_of",
+    "best_margin_as_of",
+    "trend_as_of",
+    "lifecycle_as_of",
+    "saturation_as_of",
+    "stale",
+)
 
 
 class BoardIn(BaseModel):
@@ -187,6 +215,34 @@ def with_stats(session: Session, workspace_id: UUID, rows: Sequence[Row[Any]]) -
     return items
 
 
+def csv_rows(
+    session: Session, workspace_id: UUID, chunk: Sequence[Row[Any]], places: Iterator[int]
+) -> Iterator[list[object]]:
+    """One export chunk as BOARD_CSV cells: the cards `with_stats` builds for the JSON, each at
+    its 1-based place, as the table's # shows it. A stat with nothing behind it is a blank."""
+    for each in with_stats(session, workspace_id, chunk):
+        low, high, margin = each.price_min_minor, each.price_max_minor, each.best_margin_minor
+        stats = (low, margin, each.trend, each.lifecycle, each.saturation)
+        yield [
+            next(places),
+            each.product_id,
+            each.name,
+            major(low.value),
+            major(high.value),
+            each.currency,
+            major(margin.value),
+            Decimal(margin.margin_bps).scaleb(-2) if isinstance(margin, Margin) else None,
+            each.trend.value,
+            getattr(each.lifecycle, "stage", None),
+            each.saturation.value,
+            each.note,
+            each.merged_into_id,
+            each.added_at,
+            *(getattr(stat, "as_of", None) for stat in stats),
+            any(isinstance(stat, Sourced) and stat.stale for stat in (low, high, margin)),
+        ]
+
+
 @router.get("", response_model=list[Board])
 def list_boards(principal: CurrentPrincipal, session: DB, archived: bool = False) -> list[Board]:
     """The active boards, or with `archived=true` the archived ones. Not paged: the index shows
@@ -247,17 +303,41 @@ def delete_board(board_id: UUID, principal: CurrentPrincipal, session: DB) -> Bo
     return removed
 
 
-@router.get("/{board_id}/items", response_model=BoardItemPage)
+@router.get(
+    "/{board_id}/items",
+    response_model=BoardItemPage,
+    responses={
+        200: {
+            "content": {"text/csv": {"schema": {"type": "string"}}},
+            "description": "JSON, or with format=csv every card as a CSV download.",
+        },
+    },
+)
 def list_board_items(
     board_id: UUID,
     principal: CurrentPrincipal,
     session: DB,
     cursor: str | None = None,
     limit: Annotated[int, Query(ge=1, le=100)] = 50,
-) -> BoardItemPage:
+    format: Annotated[
+        Literal["json", "csv"],
+        Query(description="csv: every card in board order, no cursor or limit (DEC-350)"),
+    ] = "json",
+) -> BoardItemPage | Response:
     """The cards in board order, `product_id` breaking ties, each with its stats."""
-    owned(session, principal.workspace_id, board_id)
+    board = owned(session, principal.workspace_id, board_id)
     query = cards(board_id)
+    if format == "csv":
+        # Named after the board in ASCII, so the header stays plain: pulso_board_q4-gifts_<date>.
+        slug = re.sub(r"[^a-z0-9]+", "-", board.name.lower()).strip("-")[:60].rstrip("-")
+        places = count(1)
+        return csv_response(
+            session,
+            f"board_{slug}" if slug else "board",
+            BOARD_CSV,
+            query.order_by(ItemRow.position, ItemRow.product_id),
+            lambda chunk: csv_rows(session, principal.workspace_id, chunk, places),
+        )
     if cursor is not None:
         try:
             after = ITEM_CURSOR.validate_json(cursor)
