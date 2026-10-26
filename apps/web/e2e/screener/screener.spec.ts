@@ -1,5 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 
+import { contrastMisses } from "../p2-39/screens";
 import { mockResultPage, mockScreenerApi, NULL_TREND, rows, savedScreen, screenerRow } from "./fixtures";
 
 // p4-32 (WF-1b) Screener against fixture responses under the E2E auth bypass, never a database restore.
@@ -200,3 +201,19 @@ test("keyset Load more appends the next page; 375px shows two-line rows with no 
   await page.getByRole("button", { name: "Filters" }).click();
   await expect(page.getByRole("dialog", { name: "Filters" }).getByRole("button", { name: "Add filter" })).toBeVisible();
 });
+
+for (const theme of ["dark", "light"] as const)
+  test(`every text run keeps AA contrast, with a saved screen open and its tooltip shown (${theme})`, async ({ page }) => {
+    await page.emulateMedia({ colorScheme: theme, reducedMotion: "reduce" });
+    await page.addInitScript((t) => localStorage.setItem("theme", t), theme);
+    const screen = savedScreen({ filters: { margin_bps_min: 4000, lifecycle: ["emerging", "rising"], ship_days_us_max: 10 } });
+    await mockScreenerApi(page, { screens: [screen] });
+    await page.goto(`/screener?screen=${screen.id}`);
+    await expect(links(page).first()).toBeVisible();
+    await page.getByLabel("Ship days to US, at most (days)").fill("12"); // unsaved: the dot and the primary Save
+    await page.getByLabel("Ship days to US, at most (days)").press("Enter");
+    await table(page).getByRole("row").nth(1).getByRole("button", { name: /^Trend:/ }).focus();
+    await page.waitForTimeout(300);
+    expect(await page.evaluate(contrastMisses, "main")).toEqual([]);
+    expect(await page.evaluate(contrastMisses, '[role="tooltip"]')).toEqual([]);
+  });

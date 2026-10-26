@@ -79,9 +79,9 @@ export const SCREENS: Screen[] = [
       await settled(page);
     },
   },
-  // p3-12 (Phase 3 end): the coming-soon page once CURRENT_PHASE is 4, for a Phase 4 page and a later one.
+  // p3-12 (Phase 3 end): the coming-soon page once CURRENT_PHASE is 4, for a later page (WF-1b built the last Phase 4
+  // one, the Screener).
   ...([
-    ["coming-soon-phase-4", "/screener", "Screener arrives in Phase 4"],
     ["coming-soon-later", "/ask", "Ask Pulso arrives in Phase 5"],
   ] as const).map(
     ([name, url, heading]): Screen => ({

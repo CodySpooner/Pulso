@@ -198,7 +198,7 @@ function SortPicker({ definition, edit }: { definition: Definition; edit: Edit }
   return (
     <div className="flex items-center gap-1">
       <label className="flex items-center gap-2">
-        <span aria-hidden className="text-label text-muted-foreground">
+        <span aria-hidden className="text-label text-muted-foreground max-sm:hidden">
           Sort
         </span>
         <select aria-label="Sort" className={control} value={definition.sort} onChange={(e) => edit({ sort: e.target.value as SortKey })}>
@@ -230,7 +230,7 @@ function ColumnPicker({ columns, edit }: { columns: Column[]; edit: Edit }) {
       <DropdownMenu.Trigger asChild>
         <Button variant="secondary">
           <Columns3 aria-hidden />
-          Columns
+          <span className="max-sm:sr-only">Columns</span>
         </Button>
       </DropdownMenu.Trigger>
       <DropdownMenu.Portal>

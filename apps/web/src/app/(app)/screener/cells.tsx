@@ -165,7 +165,7 @@ export function RowCard({ row, columns, now }: { row: Row; columns: Column[]; no
             {row.title}
           </Link>
         </h2>
-        <dl className="relative z-10 flex flex-wrap gap-x-4 gap-y-1 text-label">
+        <dl className="relative z-10 flex flex-wrap gap-x-4 gap-y-1 text-label pointer-coarse:gap-y-6">
           {columns.slice(0, 3).map((key) => (
             <div key={key} className="flex items-center gap-1.5">
               <dt className="text-subtle-foreground">{COLUMNS[key]}</dt>
