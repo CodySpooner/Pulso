@@ -1,5 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 
+import { contrastMisses } from "../p2-39/screens";
 import { feedItems, mockFeedApi, mockProductApi, product } from "../products/fixtures";
 import { BOARD, mockBoardsApi, type BoardsMock } from "./fixtures";
 
@@ -48,6 +49,7 @@ test("the search narrows to names, and a table row's button adds without opening
   await page.getByRole("button", { name: "Table", exact: true }).click();
   const row = page.getByRole("region", { name: "Products" }).locator("tbody tr").nth(1);
   await row.getByRole("button", { name: `Add ${items[1].title} to a board` }).click();
+  await expect(picker(page).getByRole("combobox")).toBeFocused();
   await page.keyboard.type("kit");
   await expect(picker(page).getByRole("option")).toHaveText(["Kitchen gadgets0", "New board “kit”"]);
   await picker(page).getByRole("option", { name: /Kitchen gadgets/ }).click();
@@ -62,6 +64,7 @@ test("on the Product Page, B anywhere opens it, and New board creates a board an
   await page.goto(`/products/${product.id}`);
   await expect(page.getByRole("button", { name: "Add to board" })).toBeVisible();
   await page.keyboard.press("b");
+  await expect(picker(page).getByRole("combobox")).toBeFocused();
   // An archived board's name is taken too: the API's 409 keeps the name and says why.
   await page.keyboard.type("Summer 2026");
   await page.keyboard.press("Enter");
@@ -98,4 +101,50 @@ test("loading, error with Retry, and no boards yet", async ({ page }) => {
   await expect(picker(page).getByRole("option")).toHaveText(["New board…"]);
   await page.keyboard.press("Enter"); // no name typed: the name field
   await expect(picker(page).getByRole("textbox", { name: "New board name" })).toBeFocused();
+});
+
+for (const theme of ["dark", "light"] as const)
+  test(`AA contrast in the picker, its error and a taken name, and the toast (${theme})`, async ({ page }) => {
+    await page.emulateMedia({ colorScheme: theme, reducedMotion: "reduce" });
+    await page.addInitScript((t) => localStorage.setItem("theme", t), theme);
+    const boards = await discover(page, { status: 503 });
+    await cards(page).first().getByRole("link").focus();
+    await page.keyboard.press("b");
+    await expect(picker(page).getByRole("heading", { name: "Couldn't load your boards" })).toBeVisible();
+    expect(await page.evaluate(contrastMisses, '[role="dialog"]')).toEqual([]);
+    boards.set({ status: undefined });
+    await picker(page).getByRole("button", { name: "Retry" }).click();
+    await expect(picker(page).getByRole("option").first()).toHaveAttribute("aria-selected", "true");
+    expect(await page.evaluate(contrastMisses, '[role="dialog"]')).toEqual([]);
+    await expect(picker(page).getByRole("combobox")).toBeFocused(); // Retry hands focus back to the search
+    await page.keyboard.type("Summer 2026");
+    await page.keyboard.press("Enter");
+    await expect(picker(page).getByRole("alert")).toBeVisible();
+    expect(await page.evaluate(contrastMisses, '[role="dialog"]')).toEqual([]);
+    await page.keyboard.press("Escape");
+    await expect(cards(page).first().getByRole("button", { name: /to a board$/ })).toBeFocused(); // Esc hands focus back
+    await page.keyboard.press("b");
+    await expect(picker(page).getByRole("option").first()).toHaveAttribute("aria-selected", "true");
+    await page.keyboard.press("Enter");
+    await expect(toast(page, "Added to Q4 gift ideas")).toBeVisible();
+    await page.waitForTimeout(300);
+    expect(await page.evaluate(contrastMisses, '[role="status"]')).toEqual([]);
+  });
+
+test.describe("375px", () => {
+  test.use({ viewport: { width: 375, height: 812 }, hasTouch: true });
+  test("the picker opens on a card and a table row with no horizontal scroll", async ({ page }) => {
+    await discover(page);
+    await cards(page).first().getByRole("button", { name: `Add ${items[0].title} to a board` }).tap();
+    await expect(picker(page)).toBeVisible();
+    const box = (await picker(page).boundingBox())!;
+    expect(box.x).toBeGreaterThanOrEqual(0);
+    expect(box.x + box.width).toBeLessThanOrEqual(375);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    await page.keyboard.press("Escape");
+    await page.getByRole("button", { name: "Table", exact: true }).tap();
+    await page.getByRole("region", { name: "Products" }).locator("tbody tr").first().getByRole("button", { name: /to a board$/ }).tap();
+    await expect(picker(page)).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  });
 });

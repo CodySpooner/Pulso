@@ -319,7 +319,8 @@ export function ProductTable<T extends Row>({
               }}
             >
               <th scope="row" className={cn(cell, "sticky left-0 z-10 max-w-80 bg-card text-left font-normal group-hover:bg-(--table-row-hover)")}>
-                <span className="flex items-center gap-2 max-md:w-40">
+                {/* A row with Add to board (Discover) has a second icon to fit on a phone. */}
+                <span className="flex items-center gap-2 max-md:w-40 max-md:has-[[data-add-to-board]]:w-48">
                   {lead?.(item)}
                   <Thumb url={item.image_url} className="size-6 shrink-0 rounded-sm" />
                   <span className="flex min-w-0 items-baseline gap-2">

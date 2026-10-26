@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useQueryClient } from "@tanstack/react-query";
 import { Command } from "cmdk";
-import { BookmarkPlus, LoaderCircle, Plus } from "lucide-react";
+import { BookmarkPlus, LoaderCircle, Plus, TriangleAlert } from "lucide-react";
 import { Popover } from "radix-ui";
 
 import { useApiReady } from "@/components/data-health/api";
@@ -29,8 +29,9 @@ let say: (note: Note) => void = () => {};
 const TAKEN = "You already have a board with that name. Archived boards count too.";
 const item =
   "flex h-8 cursor-pointer items-center gap-2 rounded-md px-2 text-data text-muted-foreground outline-none select-none pointer-coarse:h-(--hit-target) data-[selected=true]:bg-accent data-[selected=true]:text-foreground";
+// Padded like the palette's search, so the focus ring sits inside the popover's edge (A11Y-01).
 const field =
-  "h-9 w-full bg-transparent px-3 text-data text-foreground -outline-offset-2 placeholder:text-subtle-foreground max-md:text-base";
+  "h-8 w-full rounded-md bg-transparent px-2 text-data text-foreground -outline-offset-2 placeholder:text-subtle-foreground pointer-coarse:h-(--hit-target) max-md:text-base";
 const NEW = "new board";
 // Names only: cmdk's fuzzy default would also match a query's letters scattered through the ids. New board always
 // stays; cmdk's forceMount would keep it too, but unregistered, so with no boards nothing would be selected.
@@ -59,7 +60,7 @@ export function AddToBoard({ product, labelled, className }: { product: Product;
       </Popover.Trigger>
       <Popover.Portal>
         <Popover.Content
-          align="end"
+          align={labelled ? "end" : "start"} // an icon sits at a card's right edge: open over the card, not the nav
           sideOffset={4}
           collisionPadding={16}
           aria-label={`Add ${product.title} to a board`}
@@ -128,17 +129,19 @@ function Picker({ product, close }: { product: Product; close: () => void }) {
           if (naming.name.trim()) void create(naming.name.trim());
         }}
       >
-        <input
-          autoFocus
-          aria-label="New board name"
-          placeholder="New board name"
-          value={naming.name}
-          maxLength={80}
-          aria-invalid={!!naming.error}
-          aria-describedby="new-board-hint"
-          onChange={(e) => setNaming({ name: e.target.value, error: null })}
-          className={cn(field, "border-b border-border-subtle")}
-        />
+        <div className="border-b border-border-subtle p-1">
+          <input
+            autoFocus
+            aria-label="New board name"
+            placeholder="New board name"
+            value={naming.name}
+            maxLength={80}
+            aria-invalid={!!naming.error}
+            aria-describedby="new-board-hint"
+            onChange={(e) => setNaming({ name: e.target.value, error: null })}
+            className={field}
+          />
+        </div>
         <p id="new-board-hint" role={naming.error ? "alert" : undefined} className={cn("flex items-center gap-1.5 px-3 py-2 text-label", naming.error ? "text-negative" : "text-subtle-foreground")}>
           {busy && <LoaderCircle className="size-3.5 motion-safe:animate-spin" aria-hidden />}
           {busy ? "Creating…" : (naming.error ?? `Enter creates it and adds ${product.title}. Esc cancels.`)}
@@ -148,7 +151,9 @@ function Picker({ product, close }: { product: Product; close: () => void }) {
 
   return (
     <Command label="Boards" filter={byName} loop>
-      <Command.Input ref={search} autoFocus value={query} onValueChange={setQuery} maxLength={80} placeholder="Find or name a board…" className={cn(field, "border-b border-border-subtle")} />
+      <div className="border-b border-border-subtle p-1">
+        <Command.Input ref={search} autoFocus value={query} onValueChange={setQuery} maxLength={80} placeholder="Find or name a board…" className={field} />
+      </div>
       <Command.List className="max-h-72 scroll-py-1 overflow-y-auto overscroll-contain p-1">
         {boards.isPending ? (
           <Command.Loading label="Loading your boards…">
@@ -170,7 +175,12 @@ function Picker({ product, close }: { product: Product; close: () => void }) {
         ) : (
           <p className="px-2 py-1.5 text-label text-muted-foreground">No boards yet. Name your first one above.</p>
         )}
-        {boards.isRefetchError && <p className="px-2 py-1.5 text-label text-warning">Couldn&apos;t refresh your boards. This list may be out of date.</p>}
+        {boards.isRefetchError && (
+          <p className="px-2 py-1.5 text-label text-muted-foreground">
+            <TriangleAlert className="mr-1.5 inline size-3.5 align-[-2px] text-warning" aria-hidden />
+            Couldn&apos;t refresh your boards. This list may be out of date.
+          </p>
+        )}
         {/* After the list answers, so cmdk highlights the most recent board rather than this. */}
         {!boards.isPending && (
           <>
