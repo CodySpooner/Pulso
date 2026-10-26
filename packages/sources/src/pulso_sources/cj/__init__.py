@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field, NonNegativeInt, StrictInt
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from pulso_core.landed_cost_loader import PRICE_CAPTURE
 from pulso_core.models import (
     CollectorRun,
     Listing,
@@ -35,6 +36,7 @@ from pulso_sources.framework import (
     Response,
     Target,
     UpsertStats,
+    Writer,
     append_observation,
     execute_run,
 )
@@ -45,6 +47,8 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger("pulso.sources.cj")  # under configure_logging's "pulso" tree
 Identifier = Annotated[str, Field(min_length=1, max_length=200)]
+# DEC-120/348: catalog, detail and CSV listing rows own the price; the stock capture's own stock.
+PRICE_WRITER = Writer(PRICE_CAPTURE, ("price_min_minor", "price_max_minor", "listed_count"))
 
 
 class Product(BaseModel):
@@ -219,6 +223,7 @@ class CJAdapter:
                     ).hexdigest(),
                     **values,
                 ),
+                writer=PRICE_WRITER,
             )
         return UpsertStats(inserted=inserted, unchanged=len(records) - inserted)
 

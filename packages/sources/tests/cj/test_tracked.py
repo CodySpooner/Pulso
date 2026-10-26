@@ -41,7 +41,10 @@ def test_observations_replay_and_changed_capture(session: Session) -> None:
     ]
     run = enqueue_run(session, source_id=2, trigger="fixture", publish=lambda _: None)
     collect(session, run.id, targets, settings=settings(), adapter=adapter)
-    assert run.status == "success" and run.rows_inserted == 11 and run.http_requests == 0
+    assert run.status == "success" and run.rows_inserted == 12 and run.http_requests == 0
+    price, stock = session.scalars(select(ListingSnapshot).order_by(ListingSnapshot.id))
+    assert (price.price_min_minor, price.stock, stock.price_min_minor) == (125, None, None)
+    assert stock.stock is None  # variant b's inventory is unknown, so the total is (DEC-348)
     rows = list(session.scalars(select(VariantSnapshot)))
     assert [r.price_minor for r in rows] == [125, 250, None, None]
     assert [r.inventory_quantity for r in rows] == [None, None, 15, None]

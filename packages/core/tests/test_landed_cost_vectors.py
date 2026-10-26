@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session
 
 from pulso_core.db import Base
 from pulso_core.landed_cost import Amount, Inputs, landed_cost
-from pulso_core.landed_cost_loader import Provenance, calculate
+from pulso_core.landed_cost_loader import STOCK_ENDPOINT, Provenance, calculate, stocked, unit_cost
 from pulso_core.models import (
     CollectorRun,
     FxRate,
@@ -371,3 +371,70 @@ def test_the_view_and_the_loader_both_put_in_stock_listings_first(db_engine: Eng
             currency="USD", price_min_minor=620, available=False,
         )  # fmt: skip  # a later row of the same capture: now nothing is in stock
         assert pick() == gone.id
+
+
+def stock_capture(session: Session, listing_id: int, at: datetime, stock: int | None) -> None:
+    """A CJ stock capture's listing row: stock and no price (DEC-348)."""
+    row = observe(
+        session, ListingSnapshot, CJ, at, listing_id=listing_id, values_hash="s", currency="USD",
+        stock=stock,
+    )  # fmt: skip
+    session.get_one(RawPayload, row.raw_payload_id).request = {"endpoint": STOCK_ENDPOINT}
+    session.flush()
+
+
+@pytest.mark.db
+def test_a_cj_stock_row_is_read_for_stock_and_never_for_price(db_engine: Engine) -> None:
+    """DEC-348, in the loader and the view alike: a newest stock-only row keeps the listing's
+    cost, a later price-only row doesn't hide its stock-out, and an unknown total supersedes it."""
+    vector = VECTORS[0]  # listing `kept`, margin 1503
+    with Session(db_engine) as session:
+        workspace_id, product_id, price = seed(session, vector)
+        assert price is not None
+        settings = session.get_one(WorkspaceSettings, workspace_id)
+        reference = (vector["inputs"]["price_minor"], price)
+        kept = session.scalars(
+            select(Listing).where(
+                Listing.product_id == product_id, Listing.supplier_id.is_not(None)
+            )
+        ).one()
+        gone = Listing(
+            source_id=CJ, external_id=uuid4().hex, url="https://cj.example.test/q",
+            title="Sunset lamp", product_id=product_id, supplier_id=kept.supplier_id,
+        )  # fmt: skip
+        session.add(gone)
+        session.flush()
+        priced = observe(
+            session, ListingSnapshot, CJ, COSTED, listing_id=gone.id, values_hash="h",
+            currency="USD", price_min_minor=500,
+        )  # fmt: skip
+        observe(
+            session, ShippingOption, CJ, PRICED, listing_id=gone.id, origin_country="CN",
+            destination_country="US", quantity=1, method="CJPacket", cost_minor=300,
+            currency="USD",
+        )  # fmt: skip
+
+        def pick() -> int | None:
+            """The loader's and the view's default answer, held equal; the listing they cost."""
+            calc = calculate(session, settings, product_id, reference_price=reference)
+            row = economics(session, workspace_id, product_id)
+            assert result(row) == result(asdict(calc.cost))
+            assert row["supplier_listing_id"] == calc.listing_id
+            assert parsed(row["sources"]) == {
+                name: asdict(trace) for name, trace in calc.sources.items()
+            }
+            return calc.listing_id
+
+        assert pick() == gone.id  # in stock, and the better margin (1832)
+        stock_capture(session, gone.id, COSTED + timedelta(hours=1), 0)  # sold out: newest row
+        assert pick() == kept.id
+        cost = unit_cost(session, gone.id, None)
+        assert cost is not None and cost.raw_payload_id == priced.raw_payload_id
+        observe(
+            session, ListingSnapshot, CJ, COSTED + timedelta(hours=2), listing_id=gone.id,
+            values_hash="h", currency="USD", price_min_minor=500,
+        )  # fmt: skip  # a later price row, stock null: the stock-out is still current
+        assert not stocked(session, gone.id) and pick() == kept.id
+        stock_capture(session, gone.id, COSTED + timedelta(hours=3), None)
+        assert stocked(session, gone.id)  # an unknown total supersedes the stock-out
+        assert pick() == gone.id  # costed from its price row, under a newer stock row

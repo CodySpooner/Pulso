@@ -18,7 +18,7 @@ from sqlalchemy import Row, func, or_, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
-from pulso_core.landed_cost_loader import in_stock
+from pulso_core.landed_cost_loader import STOCK_READ, in_stock
 from pulso_core.models import (
     Alert,
     AlertRule,
@@ -70,8 +70,8 @@ def latest(session: Session, rule_type: str, listing_id: int, as_of: datetime) -
     snap: type[ListingSnapshot] | type[ShippingOption] = ListingSnapshot
     then: Any = ListingSnapshot.id.desc()
     reads: list[Any] = [ListingSnapshot.available, ListingSnapshot.stock]
-    # A snapshot with no stock fields (CJ's catalog) says nothing about stock.
-    where = [or_(ListingSnapshot.available.is_not(None), ListingSnapshot.stock.is_not(None))]
+    # A snapshot with no stock fields (CJ's catalog) says nothing about stock (DEC-348).
+    where = [STOCK_READ]
     if rule_type == "supplier_price_change":
         reads = [ListingSnapshot.price_min_minor.label("minor")]
         where = [ListingSnapshot.price_min_minor.is_not(None)]
