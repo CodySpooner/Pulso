@@ -126,6 +126,7 @@ def test_a_velocity_spike_fires_once_and_again_only_after_falling_back(db_engine
             "threshold": {"pct": 50, "window_days": 7, "min_volume": 10},
             "as_of": {"cj": "2026-11-04T00:00:00+00:00"},
             "link": f"/products/{product}/trends",
+            "product": "Sunset lamp",
         }
         assert second.payload["old"]["value"] == 24
         evaluate(session, ws, cutoff(5))  # a re-run fires nothing new

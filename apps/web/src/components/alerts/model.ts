@@ -1,4 +1,4 @@
-import { Bell, PackageCheck, PackageX, Tag, Truck, type LucideIcon } from "lucide-react";
+import { Bell, Gauge, PackageCheck, PackageX, Tag, TrendingUp, Truck, type LucideIcon } from "lucide-react";
 
 import { sourceLabel } from "@/app/(app)/admin/matching/model";
 import { money } from "@/app/(app)/products/[id]/profit/model";
@@ -33,6 +33,8 @@ export const TYPES: Record<string, { label: string; icon: LucideIcon; up?: strin
   freight_change: { label: "Freight", icon: Truck, title: "Freight changed", up: "Freight rose", down: "Freight fell" },
   supplier_stock_out: { label: "Stock-out", icon: PackageX, title: "Supplier ran out of stock" },
   back_in_stock: { label: "Back in stock", icon: PackageCheck, title: "Supplier back in stock" },
+  velocity_spike: { label: "Velocity", icon: TrendingUp, title: "Velocity spiked" },
+  saturation_cross: { label: "Saturation", icon: Gauge, title: "Saturation crossed" },
 };
 
 interface Value {
@@ -44,22 +46,34 @@ interface Value {
 
 const humanize = (type: string) => type.replace(/[._]+/g, " ").replace(/^./, (c) => c.toUpperCase());
 const stock = (inStock: boolean) => (inStock ? "In stock" : "Out of stock");
+const count = new Intl.NumberFormat("en-US", { maximumFractionDigits: 1 });
 
-/** One alert in words: a sentence, the signed % change and old → new where it has them, its source and entity. */
+/** One alert in words: a sentence, the signed % change and old → new where it has them, its source and entity. A
+ *  score alert (DEC-353) names its product, reads units /7d or Saturation points, and a velocity rise is good news. */
 export function describeAlert(alert: Alert) {
   const type = TYPES[alert.type];
-  const { old, new: now } = alert.payload as { old?: Value; new?: Value };
+  const { old, new: now, threshold, product } = alert.payload as { old?: Value; new?: Value; threshold?: { threshold?: unknown; direction?: unknown }; product?: unknown };
   const [from, to] = [old?.value, now?.value];
   const currency = typeof now?.currency === "string" ? now.currency : "USD";
+  const numbers = typeof from === "number" && typeof to === "number";
+  const saturation = alert.type === "saturation_cross";
+  const units = saturation || alert.type === "velocity_spike";
   // The engine's own % (pulso_core.alerts.past): from the reference, a 0 reference read as 1.
-  const pct = typeof from === "number" && typeof to === "number" ? ((to - from) * 100) / Math.max(from, 1) : null;
-  const change =
-    pct !== null ? `${money(from as number, currency)} → ${money(to as number, currency)}` : typeof from === "boolean" && typeof to === "boolean" ? `${stock(from)} → ${stock(to)}` : null;
-  const entity = alert.entity_type === "supplier_offer" ? `offer ${alert.entity_id}` : `${alert.entity_type.replaceAll("_", " ")} ${alert.entity_id}`;
+  const pct = numbers && !saturation ? ((to - from) * 100) / Math.max(from, 1) : null;
+  const show = (value: number) => (units ? count.format(value) : money(value, currency));
+  const change = numbers
+    ? `${show(from)} → ${show(to)}${alert.type === "velocity_spike" ? " /7d" : ""}`
+    : typeof from === "boolean" && typeof to === "boolean"
+      ? `${stock(from)} → ${stock(to)}`
+      : null;
+  const crossed = saturation && typeof threshold?.threshold === "number" && `Saturation ${threshold.direction === "below" ? "fell below" : "rose above"} ${threshold.threshold}`;
+  const entity =
+    typeof product === "string" ? product : alert.entity_type === "supplier_offer" ? `offer ${alert.entity_id}` : `${alert.entity_type.replaceAll("_", " ")} ${alert.entity_id}`;
   return {
     icon: type?.icon ?? Bell,
-    title: (pct !== null && (pct < 0 ? type?.down : type?.up)) || type?.title || humanize(alert.type),
+    title: crossed || (pct !== null && (pct < 0 ? type?.down : type?.up)) || type?.title || humanize(alert.type),
     pct,
+    good: alert.type === "velocity_spike" ? ("up" as const) : ("down" as const),
     change,
     meta: typeof now?.source === "string" ? `${sourceLabel(now.source)} · ${entity}` : entity,
     asOf: typeof now?.as_of === "string" ? now.as_of : null,
@@ -90,7 +104,8 @@ export function gapSpan(skipped: { [key: string]: unknown } | null) {
   return typeof from === "string" && typeof to === "string" ? `data gap ${day.format(new Date(from))} → ${day.format(new Date(to))}` : "data gap";
 }
 
-export const FIRES = "An alert fires once when a supplier’s price or freight moves past a rule’s threshold, or an offer runs out of stock or comes back.";
+export const FIRES =
+  "An alert fires once when a supplier’s price or freight moves past a rule’s threshold, an offer runs out of stock or comes back, a product’s velocity spikes or its Saturation crosses a line.";
 
 /** How many rules are on, and how many of them have nothing to read yet (DEC-040: no source, never zero). */
 export function rulesLine(rules: { enabled: boolean; status: string | null }[]) {
@@ -106,12 +121,16 @@ export type Rule = components["schemas"]["RuleOut"];
 type RuleIn = components["schemas"]["RuleIn"];
 export type RuleType = RuleIn["type"];
 
-/** The builder's sentence: When [target] [verb] [pct] %. `target` is "product" (any of its suppliers) or a listing id. */
+/** The builder's sentence: When [target] [verb] [params]. `target` is "product" (any of its suppliers, or the product
+ *  itself for a score rule), a listing id, or "watchlist:<id>" (score rules, DEC-353). */
 export interface Draft {
   target: string;
   type: RuleType;
   pct: string;
   name: string;
+  minVolume: string;
+  threshold: string;
+  direction: "above" | "below";
 }
 
 export const VERBS: Record<RuleType, string> = {
@@ -119,62 +138,94 @@ export const VERBS: Record<RuleType, string> = {
   freight_change: "changes freight by",
   supplier_stock_out: "goes out of stock",
   back_in_stock: "comes back in stock",
+  velocity_spike: "velocity rises by",
+  saturation_cross: "Saturation crosses",
 };
 
 export const hasPct = (type: string) => type === "supplier_price_change" || type === "freight_change";
+/** Score rules watch a product or a watchlist, not supplier offers (DEC-353). */
+export const isScore = (type: string) => type === "velocity_spike" || type === "saturation_cross";
+const isStock = (type: string) => type === "supplier_stock_out" || type === "back_in_stock";
 
-// The % goes to the API as typed (blank reads 0), so its 422 is the one place a bad value is explained. A stock rule
-// sends the API's default, 5, which its evaluation ignores.
-const pctOf = (draft: Draft) => ({ pct: hasPct(draft.type) ? Number(draft.pct) : 5 });
+/** A new draft's values: a 5% supplier price change, and each score rule's starting params (DEC-353). */
+export const DRAFT: Omit<Draft, "name" | "target"> = { type: "supplier_price_change", pct: "5", minVolume: "10", threshold: "65", direction: "above" };
+export const defaultPct = (type: string) => (type === "velocity_spike" ? "50" : "5");
+
+// The params go to the API as typed (blank reads 0), so its 422 is the one place a bad value is explained. A stock
+// rule sends the API's default, 5, which its evaluation ignores; velocity_spike's window is the API's 7 days.
+function paramsOf(draft: Draft): RuleIn["params"] {
+  if (draft.type === "velocity_spike") return { pct: Number(draft.pct), min_volume: Number(draft.minVolume) };
+  if (draft.type === "saturation_cross") return { threshold: Number(draft.threshold), direction: draft.direction };
+  return { pct: hasPct(draft.type) ? Number(draft.pct) : 5 };
+}
+
+/** The rule's threshold in words: "±5%", "+50% · ≥10 /7d", "above 65"; null for stock rules. */
+function limitOf(type: string, params: { [key: string]: unknown }) {
+  if (type === "velocity_spike") return `+${params.pct ?? 50}% · ≥${params.min_volume ?? 10} /7d`;
+  if (type === "saturation_cross") return `${params.direction === "below" ? "below" : "above"} ${params.threshold}`;
+  return hasPct(type) ? `±${params.pct ?? 5}%` : null;
+}
 
 /** The name a rule gets when none is typed, in the Testing defaults' "Scope: what" style. */
-export const autoName = (draft: Draft, product: string) => `${product}: ${TYPES[draft.type].label.toLowerCase()}${hasPct(draft.type) ? ` ±${draft.pct.trim()}%` : ""}`;
+export function autoName(draft: Draft, product: string) {
+  const limit = limitOf(draft.type, { pct: draft.pct.trim(), min_volume: draft.minVolume.trim(), threshold: draft.threshold.trim(), direction: draft.direction });
+  return `${product}: ${TYPES[draft.type].label.toLowerCase()}${limit ? ` ${limit.split(" · ")[0]}` : ""}`;
+}
 
 export function createBody(draft: Draft, product: { id: string; name: string }): RuleIn {
-  const offer = draft.target !== "product";
+  const listed = draft.target.startsWith("watchlist:");
+  const [targetType, targetId] = draft.target === "product" ? (["product", product.id] as const) : listed ? (["watchlist", draft.target.slice(10)] as const) : (["supplier_offer", draft.target] as const);
   return {
     name: draft.name.trim() || autoName(draft, product.name),
     type: draft.type,
-    target_type: offer ? "supplier_offer" : "product",
-    target_id: offer ? draft.target : product.id,
-    params: pctOf(draft),
+    target_type: targetType,
+    target_id: targetId,
+    params: paramsOf(draft),
     enabled: true,
   };
 }
 
 /** A rule's type and target are fixed once made (the API's PATCH takes neither). */
-export const patchBody = (draft: Draft, rule: Rule) => ({ name: draft.name.trim(), ...(hasPct(rule.type) && { params: pctOf(draft) }) });
+export const patchBody = (draft: Draft, rule: Rule) => ({ name: draft.name.trim(), ...(!isStock(rule.type) && { params: paramsOf(draft) }) });
 
 export const draftOf = (rule: Rule): Draft => ({
+  ...DRAFT,
   target: rule.target_type === "supplier_offer" ? String(rule.target_id) : "product",
   type: rule.type as RuleType,
-  pct: String(rule.params.pct ?? 5),
+  pct: String(rule.params.pct ?? defaultPct(rule.type)),
+  minVolume: String(rule.params.min_volume ?? DRAFT.minVolume),
+  threshold: String(rule.params.threshold ?? DRAFT.threshold),
+  direction: rule.params.direction === "below" ? "below" : "above",
   name: rule.name,
 });
 
 const OFFLINE = "The Pulso API didn’t answer. When it runs on your PC, this also means the PC is off.";
 
-/** A failed save's messages, each beside its field: the pct and name 422s, anything else under the form. */
-export function fieldErrors(error: unknown): { pct?: string; name?: string; form?: string } {
+const FIELDS = ["pct", "min_volume", "threshold", "direction", "name"] as const;
+type Errors = Partial<Record<(typeof FIELDS)[number] | "form", string>>;
+
+/** A failed save's messages, each beside its field: the params' and name's 422s, anything else under the form. */
+export function fieldErrors(error: unknown): Errors {
   if (!isProblem(error)) return { form: OFFLINE };
-  const out: { pct?: string; name?: string; form?: string } = {};
+  const out: Errors = {};
   for (const { loc, msg } of error.errors as { loc?: unknown[]; msg?: string }[]) {
-    const field = loc?.includes("pct") ? "pct" : loc?.includes("name") ? "name" : "form";
-    out[field] ??= msg;
+    out[FIELDS.find((name) => loc?.includes(name)) ?? "form"] ??= msg;
   }
   return Object.keys(out).length ? out : { form: error.detail };
 }
 
 export function targetOf(rule: Rule) {
   if (rule.target_type === "test") return { label: "Products in Testing", detail: "every open test", href: "/testing" };
+  if (rule.target_type === "watchlist") return { label: rule.watchlist_name ?? "Watchlist", detail: "every product on it", href: `/watchlists?list=${rule.target_id}` };
+  const tab = rule.type === "velocity_spike" ? "?tab=trends" : isScore(rule.type) ? "" : "?tab=suppliers";
   return {
     label: rule.product_name ?? `Product ${rule.product_id ?? rule.target_id}`,
-    detail: rule.target_type === "supplier_offer" ? `offer ${rule.target_id}` : "any supplier",
-    href: rule.product_id ? `/products/${rule.product_id}?tab=suppliers` : null,
+    detail: rule.target_type === "supplier_offer" ? `offer ${rule.target_id}` : isScore(rule.type) ? "this product" : "any supplier",
+    href: rule.product_id ? `/products/${rule.product_id}${tab}` : null,
   };
 }
 
-export const threshold = (rule: Rule) => (hasPct(rule.type) ? `±${rule.params.pct ?? 5}%` : null);
+export const threshold = (rule: Rule) => limitOf(rule.type, rule.params);
 
 /** The last evaluation in words (DEC-040: no source yet, never zero; DEC-335 d: a held gap and its span). */
 export function statusLine(rule: Pick<Rule, "status" | "skipped" | "last_evaluated_at">, now: number) {

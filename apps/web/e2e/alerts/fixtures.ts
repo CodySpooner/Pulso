@@ -48,6 +48,7 @@ const rule = (n: number, name: string, type: string, over: Partial<S["RuleOut"]>
   created_at: at(400),
   product_id: null,
   product_name: null,
+  watchlist_name: null,
   last_fired_at: null,
   ...over,
 });
@@ -76,9 +77,31 @@ export const ruleList = (): S["RuleOut"][] => [
   ...rules(),
 ];
 
+export const PET_LIST = "a0000000-0000-4000-8000-000000000002";
+export const lists = (): S["Watchlist"][] => [{ id: PET_LIST, name: "Pet", position: 1, item_count: 4, created_at: at(500) }];
+
+/** p4-34 (DEC-353): a velocity spike on the lamp, skipped over a data gap, and a Saturation cross on the Pet
+ *  watchlist with no source yet (Saturation reads Shopify stores, off until DEC-261 lifts). */
+export const scoreRules = (): S["RuleOut"][] => [
+  rule(7, "Lamp: velocity +50%", "velocity_spike", {
+    ...lamp,
+    target_type: "product",
+    target_id: PRODUCT_ID,
+    params: { pct: 50, window_days: 7, min_volume: 10 },
+    status: "skipped",
+    skipped: { reason: "gap", from: "2026-10-08", to: "2026-10-22" },
+    last_fired_at: at(80),
+    created_at: at(10),
+  }),
+  rule(6, "Pet: saturation above 65", "saturation_cross", { target_type: "watchlist", target_id: PET_LIST, watchlist_name: "Pet", params: { threshold: 65, direction: "above" }, status: "no_source", created_at: at(20) }),
+  ...ruleList(),
+];
+
 export interface AlertsMock {
   items?: Stored[];
   rules?: S["RuleOut"][];
+  /** GET /v1/watchlists answers with these (the builder's watchlist targets). */
+  lists?: S["Watchlist"][];
   /** GET /v1/alerts never answers: the skeletons stay. */
   hold?: boolean;
   /** GET /v1/alerts answers with this problem status. */
@@ -97,8 +120,12 @@ export async function mockAlertsApi(page: Page, options: AlertsMock = {}) {
   const ruleRows = options.rules ?? rules();
   const ruleWrites: { method: string; id?: string; body: unknown }[] = [];
   await mockAdminApi(page, { sources: healthySources });
-  // The rules keep what the page writes, like the API (DEC-324, DEC-339): newest first; a % must be over 0; a Testing
-  // default can't be deleted.
+  if (options.lists) {
+    const listed = options.lists;
+    await page.route("**/api/v1/watchlists", (route) => route.fulfill({ json: listed }));
+  }
+  // The rules keep what the page writes, like the API (DEC-324, DEC-339, DEC-353): newest first; a % must be over 0
+  // and a Saturation line 0–100; a Testing default can't be deleted.
   await page.route("**/api/v1/alert-rules**", (route) => {
     const request = route.request();
     const method = request.method();
@@ -110,10 +137,13 @@ export async function mockAlertsApi(page: Page, options: AlertsMock = {}) {
     }
     const body = (method === "DELETE" ? null : request.postDataJSON()) as (Partial<S["RuleIn"]> & { muted_until?: string | null }) | null;
     ruleWrites.push({ method, id, body });
-    if (body?.params && !(body.params.pct > 0)) return route.fulfill(unprocessable(["body", "params", "pct"], "Input should be greater than 0"));
+    if (body?.params && "pct" in body.params && !(Number(body.params.pct) > 0)) return route.fulfill(unprocessable(["body", "params", "pct"], "Input should be greater than 0"));
+    const line = Number(body?.params?.threshold ?? 0);
+    if (!(line >= 0 && line <= 100)) return route.fulfill(unprocessable(["body", "params", "threshold"], "Input should be less than or equal to 100"));
     if (body?.name === "") return route.fulfill(unprocessable(["body", "name"], "String should have at least 1 character"));
     if (method === "POST") {
-      const made = rule(9, body!.name!, body!.type!, { ...lamp, target_type: body!.target_type!, target_id: body!.target_id!, params: body!.params!, status: null, last_evaluated_at: null, created_at: NOW.toISOString() });
+      const listed = body!.target_type === "watchlist" ? { product_id: null, product_name: null, watchlist_name: options.lists?.find((l) => l.id === body!.target_id)?.name ?? null } : lamp;
+      const made = rule(9, body!.name!, body!.type!, { ...listed, target_type: body!.target_type!, target_id: body!.target_id!, params: body!.params!, status: null, last_evaluated_at: null, created_at: NOW.toISOString() });
       ruleRows.unshift(made);
       return route.fulfill({ status: 201, json: made });
     }

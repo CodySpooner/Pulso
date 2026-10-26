@@ -173,7 +173,7 @@ function Row({ alert, now, onOpen }: { alert: Alert; now: number; onOpen: () => 
             {!alert.read_at && <span className="sr-only">Unread: </span>}
             {d.title}
           </span>
-          {d.pct !== null && <DeltaBadge value={d.pct} goodDirection="down" unit="%" className="text-label" />}
+          {d.pct !== null && <DeltaBadge value={d.pct} goodDirection={d.good} unit="%" className="text-label" />}
         </span>
         <span className="truncate text-label text-subtle-foreground tabular-nums" title={d.asOf ? `${d.meta} · as of ${formatUtc(d.asOf)}` : d.meta}>
           {d.change && `${d.change} · `}

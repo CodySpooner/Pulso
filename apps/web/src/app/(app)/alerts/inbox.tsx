@@ -282,7 +282,7 @@ function Row({
       </th>
       <td className={cn(cell, "max-md:col-start-2 max-md:row-start-2")} title={d.asOf ? `${d.meta} · as of ${formatUtc(d.asOf)}` : undefined}>
         <span className="flex items-center gap-2 tabular-nums">
-          {d.pct !== null && <DeltaBadge value={d.pct} goodDirection="down" unit="%" />}
+          {d.pct !== null && <DeltaBadge value={d.pct} goodDirection={d.good} unit="%" />}
           <span className="text-muted-foreground">{d.change ?? "—"}</span>
         </span>
       </td>

@@ -342,6 +342,7 @@ def fire_score(
         "threshold": SPIKE | rule.params if spike else dict(rule.params),
         "as_of": {source or "scores": at},
         "link": f"/products/{row.product_id}" + ("/trends" if spike else ""),
+        "product": session.scalar(select(Product.name).where(Product.id == row.product_id)),
     }
     session.execute(
         insert(Alert)

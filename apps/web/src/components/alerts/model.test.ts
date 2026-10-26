@@ -5,6 +5,7 @@ import {
   bellLabel,
   createBody,
   describeAlert,
+  DRAFT,
   draftOf,
   entityHref,
   fieldErrors,
@@ -98,6 +99,29 @@ describe("describeAlert", () => {
     expect(describeAlert(alert(1, { type: "system.collector_blocked", entity_type: "source", entity_id: "cj" }))).toMatchObject({ title: "System collector blocked", pct: null, change: null, meta: "source cj" });
     expect(describeAlert(alert(1, { payload: { old: { value: "x" } } }))).toMatchObject({ pct: null, change: null });
   });
+
+  it("score alerts (DEC-353): a velocity rise is good news in units /7d; a Saturation cross names its line", () => {
+    const at = "2026-11-04T00:00:00+00:00";
+    const product = { entity_type: "product", entity_id: "p-1" };
+    const spike = { old: { value: 20, as_of: "2026-10-28T00:00:00+00:00" }, new: { value: 32.5, as_of: at, source: "cj" }, product: "Sunset lamp" };
+    expect(describeAlert(alert(1, { type: "velocity_spike", ...product, payload: spike }))).toMatchObject({
+      title: "Velocity spiked",
+      pct: 62.5,
+      good: "up",
+      change: "20 → 32.5 /7d",
+      meta: "CJ · Sunset lamp",
+      asOf: at,
+    });
+    const cross = (direction: string) => ({ old: { value: 61 }, new: { value: 66.4, as_of: at }, threshold: { threshold: 65, direction }, product: "Sunset lamp" });
+    expect(describeAlert(alert(1, { type: "saturation_cross", ...product, payload: cross("above") }))).toMatchObject({
+      title: "Saturation rose above 65",
+      pct: null,
+      change: "61 → 66.4",
+      meta: "Sunset lamp",
+    });
+    expect(describeAlert(alert(1, { type: "saturation_cross", payload: cross("below") })).title).toBe("Saturation fell below 65");
+    expect(describeAlert(alert(1, { payload: { old: money(500), new: money(450) } })).good).toBe("down");
+  });
 });
 
 describe("entityHref", () => {
@@ -144,7 +168,7 @@ describe("rule status", () => {
 // WF-4c (p4-27): the rule builder's payloads and the Rules tab's lines.
 describe("the rule builder", () => {
   const product = { id: "5e7a0c11-0000-4000-8000-000000000007", name: "Sunset lamp" };
-  const draft = (over: Partial<Draft> = {}): Draft => ({ target: "product", type: "supplier_price_change", pct: "5", name: "", ...over });
+  const draft = (over: Partial<Draft> = {}): Draft => ({ ...DRAFT, target: "product", name: "", ...over });
   const saved = (over: Partial<Rule> = {}): Rule => ({
     id: "0a1e0000-0000-4000-8000-000000000001",
     name: "Lamp cost",
@@ -161,6 +185,7 @@ describe("the rule builder", () => {
     created_at: "2026-10-20T00:00:00Z",
     product_id: product.id,
     product_name: product.name,
+    watchlist_name: null,
     last_fired_at: null,
     ...over,
   });
@@ -204,14 +229,40 @@ describe("the rule builder", () => {
   });
 
   it("reads a saved rule back into the sentence", () => {
-    expect(draftOf(saved())).toEqual({ target: "4801", type: "supplier_price_change", pct: "8", name: "Lamp cost" });
-    expect(draftOf(saved({ target_type: "test", target_id: null, type: "supplier_stock_out", params: {} }))).toEqual({ target: "product", type: "supplier_stock_out", pct: "5", name: "Lamp cost" });
+    expect(draftOf(saved())).toEqual({ ...DRAFT, target: "4801", type: "supplier_price_change", pct: "8", name: "Lamp cost" });
+    expect(draftOf(saved({ target_type: "test", target_id: null, type: "supplier_stock_out", params: {} }))).toEqual({ ...DRAFT, target: "product", type: "supplier_stock_out", pct: "5", name: "Lamp cost" });
+    expect(draftOf(saved({ type: "velocity_spike", params: { pct: 80, window_days: 7, min_volume: 4 } }))).toMatchObject({ pct: "80", minVolume: "4" });
+    expect(draftOf(saved({ type: "saturation_cross", params: { threshold: 30, direction: "below" } }))).toMatchObject({ threshold: "30", direction: "below" });
+    expect(draftOf(saved({ type: "velocity_spike", params: {} })).pct).toBe("50");
+  });
+
+  it("score rules (DEC-353): a velocity spike on the product, a Saturation cross on a watchlist", () => {
+    expect(createBody(draft({ type: "velocity_spike", pct: "60", minVolume: "15" }), product)).toEqual({
+      name: "Sunset lamp: velocity +60%",
+      type: "velocity_spike",
+      target_type: "product",
+      target_id: product.id,
+      params: { pct: 60, min_volume: 15 },
+      enabled: true,
+    });
+    expect(createBody(draft({ type: "saturation_cross", target: "watchlist:w-1", threshold: "35", direction: "below" }), product)).toEqual({
+      name: "Sunset lamp: saturation below 35",
+      type: "saturation_cross",
+      target_type: "watchlist",
+      target_id: "w-1",
+      params: { threshold: 35, direction: "below" },
+      enabled: true,
+    });
+    const spike = saved({ type: "velocity_spike", target_type: "product", target_id: product.id });
+    expect(patchBody(draft({ type: "velocity_spike", pct: "70", minVolume: "", name: "Spike" }), spike)).toEqual({ name: "Spike", params: { pct: 70, min_volume: 0 } });
+    expect(patchBody(draft({ type: "saturation_cross", name: "Crowded" }), saved({ type: "saturation_cross" }))).toEqual({ name: "Crowded", params: { threshold: 65, direction: "above" } });
   });
 
   it("puts each 422 message next to its field", () => {
     const problem = (errors: object[], detail = "Invalid request.") => ({ type: "about:blank", title: "Unprocessable", status: 422, code: "validation_error", detail, request_id: "r", errors });
     expect(fieldErrors(problem([{ loc: ["body", "params", "pct"], msg: "Input should be greater than 0", type: "greater_than" }]))).toEqual({ pct: "Input should be greater than 0" });
     expect(fieldErrors(problem([{ loc: ["body", "name"], msg: "String should have at least 1 character", type: "string_too_short" }]))).toEqual({ name: "String should have at least 1 character" });
+    expect(fieldErrors(problem([{ loc: ["body", "params", "min_volume"], msg: "≥ 0", type: "x" }, { loc: ["body", "params", "threshold"], msg: "≤ 100", type: "x" }]))).toEqual({ min_volume: "≥ 0", threshold: "≤ 100" });
     expect(fieldErrors({ ...problem([], "Supplier offer not found."), status: 404, code: "not_found" })).toEqual({ form: "Supplier offer not found." });
     expect(fieldErrors(new TypeError("fetch failed")).form).toMatch(/didn’t answer/);
   });
@@ -220,11 +271,18 @@ describe("the rule builder", () => {
     expect(targetOf(saved())).toEqual({ label: "Sunset lamp", detail: "offer 4801", href: `/products/${product.id}?tab=suppliers` });
     expect(targetOf(saved({ target_type: "product", target_id: product.id }))).toMatchObject({ label: "Sunset lamp", detail: "any supplier" });
     expect(targetOf(saved({ target_type: "test", target_id: null, product_id: null, product_name: null }))).toEqual({ label: "Products in Testing", detail: "every open test", href: "/testing" });
+    const scoreOn = { target_type: "product", target_id: product.id };
+    expect(targetOf(saved({ type: "velocity_spike", ...scoreOn }))).toEqual({ label: "Sunset lamp", detail: "this product", href: `/products/${product.id}?tab=trends` });
+    expect(targetOf(saved({ type: "saturation_cross", ...scoreOn })).href).toBe(`/products/${product.id}`);
+    const listed = { type: "saturation_cross", target_type: "watchlist", target_id: "w-1", product_id: null, product_name: null };
+    expect(targetOf(saved({ ...listed, watchlist_name: "Pets" }))).toEqual({ label: "Pets", detail: "every product on it", href: "/watchlists?list=w-1" });
   });
 
   it("shows the threshold only where a rule has one", () => {
     expect(threshold(saved())).toBe("±8%");
     expect(threshold(saved({ type: "back_in_stock", params: {} }))).toBeNull();
+    expect(threshold(saved({ type: "velocity_spike", params: { pct: 50, window_days: 7, min_volume: 10 } }))).toBe("+50% · ≥10 /7d");
+    expect(threshold(saved({ type: "saturation_cross", params: { threshold: 35, direction: "below" } }))).toBe("below 35");
   });
 });
 
