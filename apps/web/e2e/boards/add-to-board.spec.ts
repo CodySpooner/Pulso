@@ -22,7 +22,7 @@ async function discover(page: Page, options: BoardsMock = {}) {
 test("B on a focused Discover card picks a board keyboard-only; again says Already on", async ({ page }) => {
   const boards = await discover(page);
   const card = cards(page).first();
-  await card.getByRole("link").focus();
+  await card.getByRole("link", { name: items[0].title }).focus(); // the title link, not the Trend link (imp-460)
   await page.keyboard.press("b");
   await expect(picker(page)).toBeVisible();
   await expect(picker(page).getByRole("combobox")).toBeFocused();
@@ -83,7 +83,7 @@ test("on the Product Page, B anywhere opens it, and New board creates a board an
 test("loading, error with Retry, and no boards yet", async ({ page }) => {
   const boards = await discover(page, { hold: true });
   const open = async () => {
-    await cards(page).first().getByRole("link").focus();
+    await cards(page).first().getByRole("link", { name: items[0].title }).focus();
     await page.keyboard.press("b");
   };
   await open();
@@ -108,7 +108,7 @@ for (const theme of ["dark", "light"] as const)
     await page.emulateMedia({ colorScheme: theme, reducedMotion: "reduce" });
     await page.addInitScript((t) => localStorage.setItem("theme", t), theme);
     const boards = await discover(page, { status: 503 });
-    await cards(page).first().getByRole("link").focus();
+    await cards(page).first().getByRole("link", { name: items[0].title }).focus();
     await page.keyboard.press("b");
     await expect(picker(page).getByRole("heading", { name: "Couldn't load your boards" })).toBeVisible();
     expect(await page.evaluate(contrastMisses, '[role="dialog"]')).toEqual([]);
