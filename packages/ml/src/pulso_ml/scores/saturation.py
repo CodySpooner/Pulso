@@ -6,6 +6,7 @@ Reads one day's `shp_sellers` rows of product_daily_features (DEC-311 c); SC-6 s
 import math
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Any, Literal, NamedTuple, Protocol
 from uuid import UUID
 
@@ -59,12 +60,14 @@ def band(value: float) -> Band:
 
 
 def saturation_scores(
-    rows: Iterable[Row], categories: Mapping[UUID, Sequence[int]]
+    rows: Iterable[Row], categories: Mapping[UUID, Sequence[int]], as_of: datetime
 ) -> dict[UUID, Saturation]:
     """How crowded each product already is on day t, 0–100: higher is more saturated.
 
     `categories` holds every product to score: its category and that category's ancestors,
-    nearest first (empty when it has none). `rows` are day t's `shp_sellers` feature rows.
+    nearest first (empty when it has none). `rows` are day t's `shp_sellers` feature rows, and
+    `as_of` its cutoff: the counts were captured before it (DEC-031) and carry no capture time
+    of their own, so they are as of it, and fresh (DEC-354).
     Each input is a robust z within the product's category, falling back up its ancestors to
     every product (Score Definitions §4):
     - shp_sellers: ln(1 + s), s the stores with a live listing of it, counting every tracked
@@ -102,6 +105,7 @@ def saturation_scores(
             raw=raws[name].get(product),
             z=found[0] if found else None,
             normalization=found[1] if found else None,
+            as_of=as_of if found else None,
             missing=found is None,
             gap=gap,
         )
@@ -121,7 +125,7 @@ def saturation_scores(
                 name="ads_active", family="ads", source=None, weight=CONFIG.ads_active, missing=True
             ),
         ]
-        total, explanation = explain(CONFIG, components)
+        total, explanation = explain(CONFIG, components, as_of=as_of)
         assert total is not None  # the seller count is present
         value = min(100.0, max(0.0, 50 + 50 * total / 3))
         panel = features[product].get("panel_size")

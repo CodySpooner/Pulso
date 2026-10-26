@@ -17,7 +17,17 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from pulso_core.models import Category, Listing, Product, ProductDailyFeature, Score, Source
-from pulso_core.scores import Component, Explanation, Kind, ScoreRow, Stage, version, write
+from pulso_core.scores import (
+    Component,
+    Explanation,
+    Kind,
+    ScoreRow,
+    Stage,
+    confidence,
+    fresh,
+    version,
+    write,
+)
 from pulso_ml.features.daily import cutoff
 from pulso_ml.features.demand import FEATURE_VERSION
 from pulso_ml.features.repository import FAMILIES, AsOf
@@ -49,15 +59,6 @@ def hold(
     if stage is None or prior is None or prior.family != family or prior.stage in (None, stage):
         return stage, None
     return (stage, None) if prior.pending == stage else (prior.stage, stage)
-
-
-def stamped(explanation: Explanation, at: datetime) -> Explanation:
-    """A present input whose feature row carries no capture time is as of the cutoff (imp-427)."""
-    components = tuple(
-        c if c.missing or c.as_of else c.model_copy(update={"as_of": at})
-        for c in explanation.components
-    )
-    return explanation.model_copy(update={"components": components})
 
 
 def unscored(config: Any, reason: str | None) -> Explanation:
@@ -136,15 +137,14 @@ class Night:
         return lineages
 
     def row(self, product: UUID, kind: Kind, scored: Any, config: Any) -> ScoreRow:
-        explanation = scored.explanation
-        stored = stamped(explanation, self.at) if explanation else unscored(config, scored.reason)
+        stored = scored.explanation or unscored(config, scored.reason)
         return ScoreRow(product, self.day, kind, scored.value, stored)
 
     def scores(self) -> list[ScoreRow]:
         sellers = [r for r in self.now if r.family == "shp_sellers"]
         lineage = self.lineages({r.product_id for r in sellers} | self.primary.keys())
         saturations = saturation.saturation_scores(
-            sellers, {r.product_id: lineage[r.product_id] for r in sellers}
+            sellers, {r.product_id: lineage[r.product_id] for r in sellers}, self.at
         )
         trends = trend.trend_scores(
             self.now,
@@ -152,6 +152,7 @@ class Night:
             {p: lineage[p] for p in self.primary},
             self.primary,
             {p: s.value for p, s in saturations.items()},
+            self.at,
         )
         rows = [self.row(p, "saturation", s, saturation.CONFIG) for p, s in saturations.items()]
         rows += [self.row(p, "trend", t, trend.CONFIG) for p, t in trends.items()]
@@ -233,6 +234,7 @@ class Night:
                 components=components,
                 missing=missing,
                 coverage=1 - len(missing) / len(components),  # unweighted: the share present
+                confidence=confidence(components),
                 reason=stage.reason,
                 pending=pending,
             )
@@ -249,21 +251,27 @@ class Night:
         launch: Launch | None,
         age: int | None,
     ) -> tuple[Component, ...]:
-        """Lifecycle's rule inputs as unweighted components: rules read them, no sum does."""
+        """Lifecycle's rule inputs as unweighted components: rules read them, no sum does.
+
+        Each is fresh as of its own row's cutoff: the week-old row is lagged by design, not stale.
+        """
         source, then = FAMILIES[family].source, cutoff(self.day - timedelta(days=7))
         prev_gap = prev is not None and prev.has_gap
 
         def part(name: str, raw: float | None, at: datetime, gap: bool, **more: Any) -> Component:
             more = {"family": family, "source": source} | more
             missing = raw is None
-            return Component(
-                name=name,
-                weight=0,
-                raw=raw,
-                as_of=None if missing else at,
-                missing=missing,
-                gap=gap,
-                **more,
+            return fresh(
+                Component(
+                    name=name,
+                    weight=0,
+                    raw=raw,
+                    as_of=None if missing else at,
+                    missing=missing,
+                    gap=gap,
+                    **more,
+                ),
+                at,
             )
 
         return (

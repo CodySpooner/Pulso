@@ -5,7 +5,7 @@ from typing import Any
 
 import pytest
 
-from pulso_core.scores import version
+from pulso_core.scores import FRESH_WITHIN, STALE_AFTER, version
 from pulso_ml.scores import lifecycle, methodology, trend, velocity
 
 COMMITTED = Path(__file__).resolve().parents[3] / methodology.OUT
@@ -101,7 +101,22 @@ def test_the_contract_names_its_fields_and_the_missing_rule() -> None:
     coverage = contract["explanation"]["fields"][4]
     assert coverage["note"] == "present configured weight / all configured weight"
     assert "no source yet" in contract["missing_inputs"]["text"]
-    assert contract["confidence"]["status"] == "not built yet"
+
+
+def test_confidence_states_the_formula_the_cadences_and_the_stale_rule() -> None:
+    confidence = methodology.build()["contract"]["confidence"]
+    assert confidence["code"] == "pulso_core.scores.confidence"
+    assert confidence["formula"] == (
+        "confidence = Σ weight × freshness over the present inputs / Σ weight over every input."
+    )
+    days = {c["source"]: c["days"] for c in confidence["cadence"]}
+    assert days == {"cj": 1, "shopify_stores": 1, "google_trends": 7, "trend": 1, "saturation": 1}
+    assert [c["source"] for c in confidence["cadence"] if c["score"]] == ["trend", "saturation"]
+    assert (confidence["fresh_within"], confidence["stale_after"]) == (FRESH_WITHIN, STALE_AFTER)
+    rules = [i for b in confidence["freshness"] if "items" in b for i in b["items"]]
+    assert rules[0].startswith(f"1: captured at most {FRESH_WITHIN:g} cadences before")
+    assert rules[1].startswith(f"0.5: at most {STALE_AFTER:g} cadences before")
+    assert rules[2].startswith("stale: older, so it is missing")
 
 
 def test_trend_reads_its_weights_normalisation_and_version() -> None:

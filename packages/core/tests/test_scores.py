@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from uuid import UUID
 
@@ -14,11 +14,14 @@ from sqlalchemy.orm import Session
 
 from pulso_core.models import Product, Score
 from pulso_core.scores import (
+    CADENCE,
     Component,
     Explanation,
     Penalty,
     ScoreRow,
+    confidence,
     explain,
+    fresh,
     latest,
     version,
     write,
@@ -26,6 +29,7 @@ from pulso_core.scores import (
 
 ALEMBIC_INI = str(Path(__file__).resolve().parents[3] / "alembic.ini")
 AS_OF = datetime(2026, 12, 14, 6, 10, tzinfo=UTC)
+CUTOFF = datetime(2026, 12, 15, tzinfo=UTC)  # the scored day's end (DEC-031)
 
 
 @dataclass(frozen=True)
@@ -72,7 +76,7 @@ def test_a_weights_change_makes_a_new_model_version() -> None:
 
 
 def test_every_input_present_keeps_the_configured_weights() -> None:
-    value, explanation = explain(TrendConfig(), inputs())
+    value, explanation = explain(TrendConfig(), inputs(), as_of=CUTOFF)
     assert value == pytest.approx(0.4 * 1.5 - 0.2 + 0.4 * 0.5)
     assert [c.weight_eff for c in explanation.components] == pytest.approx([0.4, 0.2, 0.4])
     assert sum(c.contribution or 0 for c in explanation.components) == pytest.approx(value)
@@ -81,7 +85,7 @@ def test_every_input_present_keeps_the_configured_weights() -> None:
 
 
 def test_a_missing_input_gets_weight_zero_and_the_rest_renormalise() -> None:
-    value, explanation = explain(TrendConfig(), inputs("ads_growth"))
+    value, explanation = explain(TrendConfig(), inputs("ads_growth"), as_of=CUTOFF)
     assert [c.weight_eff for c in explanation.components] == pytest.approx([2 / 3, 1 / 3, 0])
     assert value == pytest.approx(2 / 3 * 1.5 - 1 / 3)
     ads = explanation.components[2]
@@ -91,7 +95,9 @@ def test_a_missing_input_gets_weight_zero_and_the_rest_renormalise() -> None:
 
 
 def test_every_input_missing_is_a_null_value_never_zero() -> None:
-    value, explanation = explain(TrendConfig(), inputs("cj_stock_g7", "gt_slope", "ads_growth"))
+    value, explanation = explain(
+        TrendConfig(), inputs("cj_stock_g7", "gt_slope", "ads_growth"), as_of=CUTOFF
+    )
     assert value is None
     assert explanation.missing == ("cj_stock_g7", "gt_slope", "ads_growth")
     assert explanation.coverage == 0
@@ -99,7 +105,7 @@ def test_every_input_missing_is_a_null_value_never_zero() -> None:
 
 
 def test_an_explanation_round_trips_and_keeps_missing_honest() -> None:
-    _, explanation = explain(TrendConfig(), inputs("ads_growth"))
+    _, explanation = explain(TrendConfig(), inputs("ads_growth"), as_of=CUTOFF)
     assert Explanation.model_validate(explanation.model_dump(mode="json")) == explanation
     with pytest.raises(ValidationError, match="missing"):
         Explanation.model_validate(explanation.model_dump() | {"missing": ()})
@@ -108,7 +114,7 @@ def test_an_explanation_round_trips_and_keeps_missing_honest() -> None:
 
 
 def test_a_missing_penalty_is_named_in_missing_after_the_components() -> None:
-    _, explanation = explain(TrendConfig(), inputs("ads_growth"))
+    _, explanation = explain(TrendConfig(), inputs("ads_growth"), as_of=CUTOFF)
     saturation = Penalty(name="saturation", source="shopify_stores", missing=True)
     fields = explanation.model_dump() | {"penalties": [saturation.model_dump()]}
     with pytest.raises(ValidationError, match="missing"):
@@ -119,6 +125,99 @@ def test_a_missing_penalty_is_named_in_missing_after_the_components() -> None:
     Explanation.model_validate(fields | {"penalties": [present.model_dump()]})
 
 
+@pytest.mark.parametrize(
+    ("source", "cadence"), [("cj", timedelta(days=1)), ("google_trends", timedelta(weeks=1))]
+)
+def test_freshness_is_1_to_1_5_cadences_then_0_5_to_3_then_stale(
+    source: str, cadence: timedelta
+) -> None:
+    assert CADENCE[source] == cadence
+
+    def aged(age: timedelta) -> Component:
+        captured = CUTOFF - age
+        c = Component(name="x", family="f", source=source, weight=1, z=1, as_of=captured)
+        return fresh(c, CUTOFF)
+
+    tick = timedelta(microseconds=1)
+    assert aged(timedelta(0)).freshness == aged(1.5 * cadence).freshness == 1.0
+    assert aged(1.5 * cadence + tick).freshness == aged(3 * cadence).freshness == 0.5
+    assert not aged(3 * cadence).missing
+    stale = aged(3 * cadence + tick)
+    assert (stale.missing, stale.stale, stale.freshness) == (True, True, None)
+    assert stale.as_of == CUTOFF - 3 * cadence - tick  # kept: the UI's "last seen"
+
+
+def test_confidence_weighs_each_present_input_by_its_freshness() -> None:
+    components = inputs("ads_growth")  # the lamp, ads missing; the slope 12 days old: halved
+    components[1] = components[1].model_copy(update={"as_of": CUTOFF - timedelta(days=12)})
+    value, explanation = explain(TrendConfig(), components, as_of=CUTOFF)
+    assert value == pytest.approx(2 / 3 * 1.5 - 1 / 3)  # freshness never moves the value
+    assert [c.freshness for c in explanation.components] == [1.0, 0.5, None]
+    assert explanation.coverage == pytest.approx(0.6)
+    assert explanation.confidence == pytest.approx((0.4 * 1.0 + 0.2 * 0.5) / 1.0)
+    assert explanation.cautions == ("stale_input",)
+    fresh_only = explain(TrendConfig(), inputs("ads_growth"), as_of=CUTOFF)[1]
+    assert fresh_only.confidence == pytest.approx(0.6) and fresh_only.cautions == ()
+
+
+def test_an_input_older_than_3_cadences_is_missing_and_the_rest_renormalise() -> None:
+    components = inputs("ads_growth")
+    components[1] = components[1].model_copy(update={"as_of": CUTOFF - timedelta(days=22)})
+    value, explanation = explain(TrendConfig(), components, as_of=CUTOFF)
+    slope = explanation.components[1]
+    assert (slope.missing, slope.stale, slope.weight_eff, slope.contribution) == (
+        True,
+        True,
+        0.0,
+        None,
+    )
+    assert explanation.missing == ("gt_slope", "ads_growth")
+    assert value == pytest.approx(1.5)  # cj_stock_g7 alone
+    assert explanation.coverage == explanation.confidence == pytest.approx(0.4)
+    assert explanation.cautions == ("stale_input",)
+    assert Explanation.model_validate(explanation.model_dump(mode="json")) == explanation
+
+
+def test_an_input_without_a_capture_time_or_a_cadence_has_no_freshness_and_says_why() -> None:
+    no_time, slope, ads = inputs()
+    components = [
+        no_time.model_copy(update={"as_of": None}),
+        slope,
+        ads.model_copy(update={"source": "meta_ads"}),
+    ]
+    _, explanation = explain(TrendConfig(), components, as_of=CUTOFF)
+    found = [(c.freshness, c.freshness_reason) for c in explanation.components]
+    assert found == [(None, "no capture time"), (1.0, None), (None, "no cadence for meta_ads")]
+    assert explanation.confidence == 1.0  # never stale without either (DEC-238's rule)
+    assert explanation.cautions == ()
+
+
+def test_unweighted_inputs_count_one_each() -> None:
+    parts = [
+        Component(name=name, family="cj_stock", source="cj", weight=0, raw=1, as_of=AS_OF)
+        for name in ("cj_stock_v7", "cj_stock_g7")
+    ]
+    parts.append(Component(name="age_days", family="launch", source=None, weight=0, missing=True))
+    assert confidence([fresh(p, CUTOFF) for p in parts]) == pytest.approx(2 / 3)
+
+
+def test_rows_stored_before_freshness_still_validate() -> None:
+    _, explanation = explain(TrendConfig(), inputs("ads_growth"), as_of=CUTOFF)
+    old = explanation.model_dump(mode="json")
+    for key in ("confidence", "cautions"):
+        del old[key]
+    for component in old["components"]:
+        for key in ("freshness", "stale", "freshness_reason"):
+            del component[key]
+    found = Explanation.model_validate(old)
+    assert found.confidence is None
+    assert all(c.freshness is None and not c.stale for c in found.components)
+    opportunity = old | {"confidence": 0.7, "cautions": ["duty_not_set"]}  # p4-20's meaning
+    assert Explanation.model_validate(opportunity).cautions == ("duty_not_set",)
+    with pytest.raises(ValidationError, match="stale"):
+        Component(name="gt_slope", family="trends", source="google_trends", weight=1, stale=True)
+
+
 def make_product(connection: Connection) -> UUID:
     return connection.execute(
         insert(Product).values(name="Lamp").returning(Product.id)
@@ -126,7 +225,7 @@ def make_product(connection: Connection) -> UUID:
 
 
 def night(product: UUID, day: date, config: TrendConfig = CONFIG) -> ScoreRow:
-    value, explanation = explain(config, inputs("ads_growth"))
+    value, explanation = explain(config, inputs("ads_growth"), as_of=CUTOFF)
     return ScoreRow(product, day, "trend", None if value is None else 50 + value, explanation)
 
 
@@ -164,7 +263,9 @@ def test_latest_reads_each_products_newest_row_of_a_kind(db_engine: Engine) -> N
         session = Session(connection)
         a, b = make_product(connection), make_product(connection)
         old, new = date(2026, 12, 13), date(2026, 12, 14)
-        _, empty = explain(TrendConfig(), inputs("cj_stock_g7", "gt_slope", "ads_growth"))
+        _, empty = explain(
+            TrendConfig(), inputs("cj_stock_g7", "gt_slope", "ads_growth"), as_of=CUTOFF
+        )
         write(session, [night(a, old), night(a, new), night(b, old)])
         write(session, [ScoreRow(b, new, "saturation", None, empty)])
         rows = {s.product_id: s for s in session.scalars(latest("trend"))}
@@ -211,7 +312,7 @@ def test_phase4_round_trip_refuses_to_drop_scores(db_engine: Engine) -> None:
             date(2026, 12, 14),
             "lifecycle",
             None,
-            explain(TrendConfig(), inputs())[1],
+            explain(TrendConfig(), inputs(), as_of=CUTOFF)[1],
             "rising",
         )
         write(Session(connection), [lifecycle])
