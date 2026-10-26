@@ -107,6 +107,7 @@ New entries go at the bottom with the next number. Never renumber or delete; mar
 | DEC-202 | While Codex is off, a fresh Claude session does the owed cross-reviews | approved by owner 2026-10-23 |
 | DEC-261 | The Shopify crawler stays off: the owner won't risk their Shopify stores | approved by owner 2026-10-25 |
 | DEC-320 | CI runs on main always finish, so Railway deploys | approved by owner 2026-10-25 |
+| DEC-365 | Pulso becomes the hub for the owner's stores and ads (SPEC A-14) | approved by owner 2026-10-26 |
 
 Superseded review defaults, not given entries: default #0 (move the repo) is done, see DEC-005. Default #2 (no local collection at all) is replaced by DEC-002. Default #15 (CSS-only motion) is replaced by DEC-007, and its remaining rules are in DEC-025. Review question D1 (Railway Pro from Phase 1) is answered by DEC-001, D2 by DEC-003, D3 by DEC-004, D5 by DEC-008 and D8 by DEC-006.
 
@@ -4601,3 +4602,28 @@ Superseded review defaults, not given entries: default #0 (move the repo) is don
   - **(f) Unchanged for a listing whose newest row carries both fields:** both laterals pick that row. The existing suppliers, products, Pulse, matching and matcher tests pass unchanged, and `test_a_newest_row_with_both_fields_reads_as_before` holds it explicitly. A newest price-only row with stock null no longer hides an older stock reading on these surfaces, as `stocked()` already reads it (DEC-348 d).
 - **Alternatives:** the listing's `as_of` as the newer of the two rows (its `raw_payload_id` would then be ambiguous); an outer price lateral that keeps a stock-only listing (a case no writer makes); the price filter on Discover's aggregate price lateral in `list_products` (it reads store listings only, which a stock capture never writes, so left as is); keeping the alias in Pulse with an adapted predicate (more code for the same SQL).
 - **Why:** before this, a CJ listing whose newest row is a stock row showed no unit cost on the Suppliers tab, the Overview and match review. The matcher saw it with an unknown price, and an unknown total didn't supersede a stock-out in Pulse. Now a test writes the rows through `TrackedAdapter.upsert` (so `CJAdapter.upsert`), and the cost stays on the price row on every surface, with stock traced to the stock row. Eight one-line mutations each fail a test (`docs/reports/imp-565.md`).
+
+### DEC-365 · Pulso becomes the hub for the owner's stores and ads (SPEC A-14)
+**2026-10-26 · approved by owner 2026-10-26** · amends SPEC §1, §6.15, §10, §11 and adds §6.19–6.21 (A-14); DEC-049, DEC-067, DEC-136, DEC-261
+- **Owner's words (owner session, 2026-10-25/26):**
+  - "this will act as a hub for my ecommerce business i plan to open multiple stores on multiple platforms , with different niches"
+  - "i want to be able to sign into a selected store account or ad account and see the information im looking for i dont want to do daily or weekly task to keep this up so this all has to be automated after i sign into an account"
+  - Approval of the design: "I approve the hub plan. Add it to the SPEC, the vault and the lead's queue without stopping the current build."
+- **Decision:** adopt `docs/superpowers/specs/2026-10-25-ecommerce-hub-design.md`.
+  - Phase 7 becomes Hub 1 (Shopify + Meta ads) on top of its existing scope. Phase 8 is unchanged. New Phase 9 (TikTok + Google ads), Phase 10 (eBay + Etsy), Phase 11 (TikTok Shop, then Vinted + Depop by file upload).
+  - Improvements continue after Phase 11 (Lead Playbook §5 step 5).
+  - Every hub phase builds on test accounts and saved payloads, with each connection switched off until the owner's keys exist. Owner-only steps go to `Phases/Owner To-Dos` and never block a phase (design G5).
+- **Owner answers to the builder check:**
+  - Etsy, Vinted, Depop (told they restrict dropshipping and that Vinted and Depop have no usable API): "Keep all three, uploads only". Etsy keeps its official Seller App connection, with upload as a fallback.
+  - A brand for TikTok's developer registration: "yes i will set up custom domains once i decide to start opening stores".
+  - Where the numbers are seen: "we will probably move this to net cup since it would be cheaper". The hub stays host-agnostic; the server move is a separate owner decision.
+- **Working rules from the design (design §13):**
+  - advice only: Pulso never pauses ads or changes budgets;
+  - Meta, TikTok and Google ad numbers are shown side by side and never summed; Meta data only measures the owner's Meta campaigns and never feeds research scores (Meta Developer Policies §10.6–10.7);
+  - every hub row records whether it may train models, and Shopify- and eBay-derived rows default to no (Shopify API Terms §2.3.24, eBay API License §9.10);
+  - eBay, Etsy and Depop data is fetched live with a short cache, never deleted on a schedule, until a DEC allows keeping more;
+  - no buyer personal data from any platform;
+  - eBay ad analytics stays off without eBay's written permission (License §8.1(d)(2)).
+- **Alternatives:** keep Pulso research-only and use separate tools (Motion, Triple Whale, TrueProfit, roughly $35–999/month each); build every platform at once instead of in the owner's order; drop Etsy, Vinted and Depop (the owner chose to keep them).
+- **Unchanged:** the hard stops, SPEC §4.2 compliance, DEC-010 (vendor data), DEC-261 (no Shopify crawler) and Phases 4–6.
+- **Cost:** none now. Later owner choices: the Shopify plan (Grow exposes sessions and conversion to the API), a custom domain, and the server move.

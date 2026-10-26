@@ -22,6 +22,7 @@ Only owner-approved decisions are applied to this file. Proposed defaults live i
 | A-11 | 2026-10-22 | §0 Working rules, §6 intro, §11 | Continuous build: phases run in order, but phase gates no longer stop the build. At each phase end the summary goes to PROGRESS.md and the vault, and work moves on to the next phase; I review asynchronously and can stop it any time. "[Added — pending approval]" items are in scope when their phase is built unless I veto them. Hard stops remain for paid services, keys and accounts, ToS/compliance, deploys, destructive data operations and the collector host. | DEC-049 |
 | A-12 | 2026-10-22 | §0, §4.3, §11 | Non-stop build: two lead automations alternate every 15 minutes and keep up to 5 workers busy, then keep improving after Phase 8. Data collection approved: the drafted seed list (seed_v1), the crawler identity linking to the public repo, a one-time Shopify test of 4 stores (at most 20 requests), and the lead may operate the collector host through the repo's collector scripts only, never destructively. | DEC-067, DEC-072, DEC-073 |
 | A-13 | 2026-10-23 | §2 Object storage, §11 Phase 0 | Local S3 emulator is RustFS instead of MinIO (MinIO's community edition was archived); production stays Cloudflare R2. | DEC-128 |
+| A-14 | 2026-10-26 | §1, §6.15, §6.19–6.21, §10, §11 | Pulso becomes the hub for my stores and ad accounts: I connect each once, then store analytics and ad analytics run automatically. Phase 7 becomes Hub 1 (Shopify + Meta ads); new Phases 9–11 add TikTok and Google ads, eBay and Etsy, TikTok Shop, and Vinted and Depop by file upload. Improvements continue after Phase 11. | DEC-365 |
 
 ---
 
@@ -59,6 +60,7 @@ You are the lead engineer building **Pulso**, a web app for dropshipping product
 - **v1:** a single user (me), running my own Shopify stores.
 - **Later:** a paid SaaS. Make the data model multi-tenant ready from day one (every user-owned row has `workspace_id`), but don't build billing until Phase 8.
 - *(A-3)* **Market (v1):** US only, prices in USD.
+- *(A-14)* **Hub:** Pulso is also the hub for my stores (Shopify, eBay, Etsy, TikTok Shop, Vinted, Depop) and ad accounts (Meta, TikTok, Google). I connect each account once; after that, store analytics and ad analytics run automatically (§6.19–6.21).
 
 **Brand and design**
 - Name: **Pulso**, meaning "the pulse of what's selling."
@@ -316,7 +318,7 @@ Priority tags: **[v1]** = Phases 1–4 · **[v2]** = Phases 5–7 · **[v3]** = 
 
 ### 6.15 Profit Dashboard
 - [v2] Real P&L per product and per store: revenue, cost of goods, shipping, fees, ad spend, net profit, ROAS.
-- [v2] Ad spend by manual entry or CSV first. [v3] Meta and TikTok ad account APIs.
+- [v2] Ad spend by manual entry or CSV first. [v3] Meta and TikTok ad account APIs. *(A-14: the Meta ads API comes in Phase 7 and the TikTok and Google ads APIs in Phase 9, through §6.19.)*
 
 ### 6.16 Track Record (public page)
 - [v2] Forecast accuracy over time: hit rate, Brier score, calibration chart, precision@20 by week, broken down by model version and category.
@@ -333,6 +335,21 @@ Priority tags: **[v1]** = Phases 1–4 · **[v2]** = Phases 5–7 · **[v3]** = 
 - [v1] Responsive layout and PWA install.
 - [v3] Browser extension that overlays Pulso data on AliExpress listings and Shopify stores.
 - [v3] Billing (Stripe), plans, team seats, public API.
+
+### 6.19 Connections *(A-14)*
+- [v2] Settings → Connections: I sign in once per store or ad account. Pulso then syncs, renews tokens and backfills history on its own, and warns me before any sign-in a platform forces. Each card shows status, last sync, the data range held and my next step, if any.
+- [v2] Official APIs for my own accounts only. Tokens are encrypted at rest; syncs poll on a schedule; each connection is built and tested on test accounts and saved payloads before launch, and stays switched off until its keys exist.
+- Platforms and order: Shopify and Meta ads (Phase 7); TikTok ads and Google ads (Phase 9); eBay and Etsy (Phase 10); TikTok Shop, then Vinted and Depop by file upload (Phase 11).
+
+### 6.20 My Stores *(A-14)*
+- [v2] A page per connected store and an All stores view: sales, traffic and funnel where the platform's API has them, profit by product, fees and payouts, my cost settings, marketing efficiency per ad platform, customers and cohorts, inventory, alerts and a daily digest.
+- Ad platforms are shown side by side and never summed into one total. Meta ad data is used only to measure my Meta campaigns (Meta Developer Policies §10.6–10.7).
+
+### 6.21 My Ads *(A-14)*
+- [v2] Creative-level analytics per ad account and per store: a fixed metric library (hook rate, hold rate, CTR, CPA, ROAS and more), grouping by my ad-naming convention, scores against my own ads, automatic reports (top performers, comparisons, a weekly leaderboard, launch analysis, video drop-off) and AI tags labelled as AI.
+- [v2] Explained advice: scale, cut, refresh the hook, fatigue, iterate. Advice is judged against each product's break-even ROAS from Pulso's margin math. Advice only: Pulso never pauses ads or changes budgets in v2.
+
+The full design for §6.19–6.21 is `docs/superpowers/specs/2026-10-25-ecommerce-hub-design.md`.
 
 ---
 
@@ -377,7 +394,7 @@ All scores run 0–100, are versioned, and store an `explanation` JSON with each
 
 ## 10. Pages / routes
 
-`/` Daily Pulse · `/discover` · `/screener` · `/products/[id]` · `/compare` · `/stores` · `/stores/[id]` · `/ads` · `/niches` · `/calendar` · `/watchlists` · `/boards` · `/alerts` · `/testing` · `/studio` · `/ask` · `/profit` · `/track-record` · `/admin/data-health` · `/admin/matching` · `/settings`
+`/` Daily Pulse · `/discover` · `/screener` · `/products/[id]` · `/compare` · `/stores` · `/stores/[id]` · `/ads` · `/niches` · `/calendar` · `/watchlists` · `/boards` · `/alerts` · `/testing` · `/studio` · `/ask` · `/profit` · `/track-record` · `/admin/data-health` · `/admin/matching` · `/settings` · *(A-14)* `/my-stores` · `/my-stores/[id]` · `/my-ads` · `/my-ads/[account]` · `/settings/connections`
 
 ---
 
@@ -413,9 +430,21 @@ Labels, feature store, baselines, walk-forward backtests, calibrated model, SHAP
 
 **Phase 7: Store operations**
 Shopify connection, one-click product push, order sync, ad spend entry, Profit Dashboard, test results feeding the model, email/Discord alerts and the daily digest.
+*(A-14)* Now **Hub 1: Shopify + Meta ads**. Phase 7 also builds the connections framework (§6.19), My Stores with the All stores view (§6.20), My Ads (§6.21), and the Shopify and Meta ads connections.
 
 **Phase 8: Expansion and launch prep**
 Meta Ad Library and TikTok sources with the Ads pages, Product Compare, Niche Explorer, Seasonality Calendar, production deployment, monitoring and backups. *(A-10)* The Railway deployment is prepared from Phase 1 and may go live earlier, whenever I choose. Then, if I decide to sell it: billing, plans, browser extension, marketing site.
+
+**Phase 9: Hub 2: TikTok ads + Google ads** *(A-14)*
+Both ad connections, mapped onto the §6.21 metric library, YouTube video metrics included.
+
+**Phase 10: Hub 3: eBay + Etsy** *(A-14)*
+Both store connections. eBay ad analytics stays off unless eBay gives written permission, and eBay and Etsy data is fetched live until a DEC allows keeping history.
+
+**Phase 11: Hub 4: TikTok Shop, then Vinted + Depop** *(A-14)*
+The TikTok Shop connection, then file-upload importers for Vinted and Depop sales.
+
+After Phase 11 the build continues with improvements (A-12).
 
 ---
 

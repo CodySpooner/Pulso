@@ -143,3 +143,14 @@ This file holds deferred ideas and research extras that are **not** in the §11 
 | CJ tracked-product selection and the freight / details-stock jobs | DEC-112, DEC-321b; `docs/reports/data-07.md` | With watchlists × CJ matching, or an owner selection rule (it spends points: owner) | Then restore `("cj", "freight", 30, 4, "1")` in `COLLECTION_SLOTS` and register `freight` (and the vault's daily `cj_details_stock`) in `cj_plan`. Points: 2 × 10 per tracked product, 10 per freight quote |
 | Weekly `cj_categories` tree job (vault Schedule: Sun 00:30) | DEC-321a | When daily tree requests matter | Each catalog run now sends one free `getCategory`; a stored weekly tree would save it but needs a reader for the stored raw payload |
 | PostgreSQL-backed CJ registered-plan test | `packages/sources/tests/cj/test_registered_plan.py` runs on SQLite | Next CJ worker change | Same flow under real locks and JSON types |
+
+## Hub follow-ups (DEC-365, 2026-10-26)
+
+| Idea | Evidence | Suggested phase | Notes |
+|---|---|---|---|
+| Read Vinted and Depop sale emails through Gmail instead of file uploads | Hub design §5 | After Phase 11 | Restricted Gmail scope: a Cloud project in production status, and a read of Google's terms on permanent copies first |
+| Logged-in collection from Vinted or Depop | Owner 2026-10-25: "ok we will skip those for noe but we will keep in our minds" | Not planned | Both platforms' terms ban automated tools, and it would risk the owner's accounts |
+| Act on ad advice (pause ads, change budgets) | Hub design §3, §7 | After Phase 11 | Needs write permissions (Meta `ads_management` and equivalents), approval per action, and its own DEC |
+| eBay Promoted Listings analytics | eBay API License §8.1(d)(2) | Phase 10 or later | Only with eBay's written permission |
+| Shopify webhooks through Google Pub/Sub | Hub design §5 | After the server move | Needs a Google Cloud billing account (owner) |
+| Pinterest and Snapchat ads connections | Hub research 2026-10-25 | After Phase 11 | Pinterest needs app approval and a public privacy policy; Snapchat needs a funding source first |

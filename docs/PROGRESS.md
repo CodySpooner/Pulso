@@ -28,8 +28,11 @@
 | 4 | Scores and workflow | in progress | p4-01 scores contract, p4-02 lifecycle stage running |
 | 5 | AI layer | not started | Needs an Anthropic API key and AI caps at entry |
 | 6 | Forecasting v1 | not started | Build work may start after 6–8 weeks of collection. First 14-day forecasts need about 12 weeks of continuous collection, 30-day about 17 (DEC-044) |
-| 7 | Store operations | not started | Review the Shopify API Terms before building the app (DEC-003) |
+| 7 | Hub 1: Shopify + Meta ads (store operations) | not started | Scope widened by DEC-365 (SPEC A-14): connections, My Stores, My Ads. Shopify connects through a Dev Dashboard app |
 | 8 | Expansion and launch prep | not started | Railway go-live can happen earlier, at the owner's call (DEC-001). SaaS-only work waits for a new owner decision (DEC-136) |
+| 9 | Hub 2: TikTok ads + Google ads | not started | Added by DEC-365. TikTok needs the owner's brand domain and email for developer registration |
+| 10 | Hub 3: eBay + Etsy | not started | Added by DEC-365. eBay and Etsy data is fetched live until a DEC allows history |
+| 11 | Hub 4: TikTok Shop, then Vinted + Depop | not started | Added by DEC-365. Vinted and Depop by file upload (owner's choice) |
 
 ## Phase 0 (built)
 
