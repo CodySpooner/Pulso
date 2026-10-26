@@ -113,11 +113,12 @@ export function Trend({ item }: { item: Item }) {
 }
 
 /** The oldest family feeding the item. The dot is amber when stale, red when a feeding source is down; the words say which,
- *  in neutral text, since a blocked source would otherwise paint every card red. */
-export function Freshness({ item, now, paused }: { item: Item; now: number; paused: Paused }) {
+ *  in neutral text, since a blocked source would otherwise paint every card red. `short` is the table's "blocked" for
+ *  "source blocked", so its columns fit 1440px (DEC-366); the banner above names the source. */
+export function Freshness({ item, now, paused, short = false }: { item: Item; now: number; paused: Paused; short?: boolean }) {
   const stats = sourced([item.store_count, item.supplier_count, item.velocity]);
   const off = stats.map((s) => paused.get(s.source)).find(Boolean);
-  const state = off ? `source ${off}` : item.stale ? "stale" : null;
+  const state = off ? (short ? off : `source ${off}`) : item.stale ? "stale" : null;
   return (
     <span className="inline-flex items-center gap-1.5 whitespace-nowrap text-subtle-foreground">
       <span aria-hidden className={cn("size-1.5 shrink-0 rounded-full", off ? "bg-negative" : item.stale ? "bg-warning" : "bg-border-strong")} />
@@ -128,7 +129,7 @@ export function Freshness({ item, now, paused }: { item: Item; now: number; paus
       ) : (
         "Not collected yet"
       )}
-      {state && <span>· {state}</span>}
+      {state && <span title={off && `A source feeding this product is ${off}`}>· {state}</span>}
     </span>
   );
 }
@@ -231,7 +232,8 @@ export function CardSkeletons({ n }: { n: number }) {
 }
 
 const OVERSCAN = 10;
-const cell = "border-b border-border-subtle px-3 whitespace-nowrap";
+// 8px between columns (the Compact padding) and 12px at the table's edges, so Discover's ten columns fit 1440px (DEC-366).
+const cell = "border-b border-border-subtle px-2 whitespace-nowrap first:pl-3 last:pr-3";
 
 /** A metric column of the product table: its header and cell, right-aligned tabular numbers unless `className` says. */
 export interface Column<T> {
@@ -263,7 +265,7 @@ export const feedColumns = (now: number, paused: Paused): Column<Item>[] => [
       </time>
     ),
   },
-  { name: "Freshness", className: "text-right text-label", cell: (item) => <Freshness item={item} now={now} paused={paused} /> },
+  { name: "Freshness", className: "text-right text-label", cell: (item) => <Freshness item={item} now={now} paused={paused} short /> },
 ];
 const FEED_HEADERS = ["Price", "Velocity", "Momentum", "Trend", "Stores", "Suppliers", "Best margin", "First seen", "Freshness"];
 
@@ -352,7 +354,7 @@ export function ProductTable<T extends Row>({
                 if (!(e.target as HTMLElement).closest("a, button")) router.push(href(item));
               }}
             >
-              <th scope="row" className={cn(cell, "sticky left-0 z-10 max-w-80 bg-card text-left font-normal group-hover:bg-(--table-row-hover)")}>
+              <th scope="row" className={cn(cell, "sticky left-0 z-10 max-w-60 bg-card text-left font-normal group-hover:bg-(--table-row-hover) 2xl:max-w-80")}>
                 {/* A row with Add to board (Discover) has a second icon to fit on a phone. */}
                 <span className="flex items-center gap-2 max-md:w-40 max-md:has-[[data-add-to-board]]:w-48">
                   {lead?.(item)}
@@ -361,7 +363,8 @@ export function ProductTable<T extends Row>({
                     <Link href={href(item)} title={item.title} className="truncate rounded-sm font-medium text-foreground hover:underline">
                       {item.title}
                     </Link>
-                    <span className="truncate text-label text-subtle-foreground max-md:hidden" title={item.category ?? undefined}>
+                    {/* Below 1536px the name keeps the room and the category waits for the card and the page (DEC-366). */}
+                    <span className="truncate text-label text-subtle-foreground max-2xl:hidden" title={item.category ?? undefined}>
                       {leaf(item.category)}
                     </span>
                   </span>

@@ -16,7 +16,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { $api, isProblem } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
 import { formatUtc } from "@/lib/format";
-import { duration, spring } from "@/lib/motion";
+import { spring } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 
 import { AddToBoard, AddToBoardHost } from "../boards/add-to-board";
@@ -135,11 +135,11 @@ export function Discover() {
       </div>
       {first && first.degraded.length > 0 && <DegradedBanner degraded={first.degraded} />}
       {data && feed.isRefetchError && <StaleLine boxed what="Couldn't refresh the feed" error={error} asOf={now} retry={() => void feed.refetch()} />}
-      <m.div
+      {/* A view switch remounts it, so the fade replays. A CSS fade: one held by Motion stays at opacity 0 until
+          LazyMotion's features load after a full page load (imp-491). */}
+      <div
         key={view}
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ duration: duration.fast }}
+        className="animate-in fade-in-0 duration-(--duration-fast)"
         // E exports while focus is in the results, grid or table (vault Features/CSV Export & Import).
         onKeyDown={(e) => {
           if (e.key.toLowerCase() !== "e" || e.ctrlKey || e.metaKey || e.altKey || isTyping(e.target) || empty) return;
@@ -173,7 +173,7 @@ export function Discover() {
         ) : (
           <ProductTable items={items} columns={feedColumns(now, paused)} lead={rowActions} loadingMore={isFetchingNextPage} onNearEnd={more} />
         )}
-      </m.div>
+      </div>
       {isFetchNextPageError && (
         <section className="rounded-xl border border-border bg-card shadow-card">
           <PanelError headingLevel="h2" title="Couldn't load more products" error={error} retry={() => void fetchNextPage()} />

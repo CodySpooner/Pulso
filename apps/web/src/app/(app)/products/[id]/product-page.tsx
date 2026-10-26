@@ -17,7 +17,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { $api, isProblem } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
 import { formatAgo, formatUtc } from "@/lib/format";
-import { duration, spring } from "@/lib/motion";
+import { spring } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 
 import { AddToBoard, AddToBoardHost } from "../../boards/add-to-board";
@@ -238,7 +238,9 @@ function ProductTabs({ id }: { id: string }) {
       <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_20rem]">
         {tabs.map((t) => (
           <Tabs.Content key={t.value} value={t.value} className={cn("min-w-0", t.value !== "overview" && card)}>
-            <m.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: duration.fast }}>
+            {/* Radix mounts the active panel only, so each switch replays the fade. A CSS fade: one held by Motion stays
+                at opacity 0 until LazyMotion's features load after a full page load (imp-491). */}
+            <div className="animate-in fade-in-0 duration-(--duration-fast)">
               {t.value === "overview" ? (
                 <Overview id={id} goTo={goTo} />
               ) : t.value === "suppliers" ? (
@@ -250,7 +252,7 @@ function ProductTabs({ id }: { id: string }) {
               ) : (
                 <ProfitTab id={id} />
               )}
-            </m.div>
+            </div>
           </Tabs.Content>
         ))}
         <ContextRail id={id} />
