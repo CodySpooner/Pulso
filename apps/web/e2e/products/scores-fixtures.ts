@@ -10,7 +10,7 @@ const CUTOFF = "2026-10-22T00:00:00Z";
 const at = (hoursAgo: number) => new Date(NOW.getTime() - hoursAgo * 3_600_000).toISOString();
 const base = { config_digest: "f".repeat(64), cautions: [], penalties: [], missing: [] } satisfies Partial<S["Explanation"]>;
 const input = (name: string, family: string, source: string | null, weight: number, more: Partial<S["Component"]> = {}): S["Component"] => ({
-  name, family, source, weight, weight_eff: 0, raw: null, z: null, normalization: null, contribution: null, as_of: null, missing: true, gap: false,
+  name, family, source, weight, weight_eff: 0, raw: null, z: null, normalization: null, contribution: null, as_of: null, missing: true, gap: false, stale: false,
   ai_derived: false, prompt_version: null, ...more,
 });
 /** A present input: weight_eff after renormalisation over `present`, contribution = weight_eff × z. */
