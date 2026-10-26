@@ -2,8 +2,9 @@
 
 import { useEffect } from "react";
 import Link from "next/link";
-import { CircleOff, Mountain, Sprout, TrendingDown, TrendingUp, TriangleAlert, type LucideIcon } from "lucide-react";
+import { TriangleAlert } from "lucide-react";
 
+import { StagePill } from "@/app/(app)/(pulse)/cards";
 import { isBuilt, methodology } from "@/app/(app)/methodology/model";
 import { useApiReady } from "@/components/data-health/api";
 import { PanelError, StaleLine, TapTooltip } from "@/components/data-health/atoms";
@@ -19,21 +20,12 @@ import { card } from "./stat-card";
 
 type Stored = components["schemas"]["StoredScore"];
 type Latest = Stored | { reason: string; value?: null };
-type Stage = NonNullable<Stored["stage"]>;
 
 const date = (iso: string) => new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", timeZone: "UTC" }).format(new Date(iso));
 const STALE_MS = 3 * 86_400_000; // 3 × the nightly cadence (vault Score Definitions §7)
 const link = "relative hit-area rounded-sm text-muted-foreground underline decoration-border-strong underline-offset-2 hover:text-foreground hover:decoration-current";
 const chip = "inline-flex h-5 items-center gap-1 rounded-sm border px-1.5 text-micro font-medium text-foreground";
 
-// Vault Design/Component Inventory, LifecyclePill (as on Daily Pulse): icon, label and colour, never colour alone.
-const STAGES: Record<Stage, [LucideIcon, string, string]> = {
-  emerging: [Sprout, "Emerging", "text-positive"],
-  rising: [TrendingUp, "Rising", "text-positive"],
-  peaking: [Mountain, "Peaking", "text-warning"],
-  declining: [TrendingDown, "Declining", "text-negative"],
-  dead: [CircleOff, "Dead", "text-muted-foreground"],
-};
 // Saturation's bands from its config in the /methodology export, so a config change can't leave them behind.
 const saturation = methodology.scores.find((s) => s.id === "saturation");
 const band = Object.fromEntries((saturation && isBuilt(saturation) ? saturation.config : []).map((c) => [c.name, Number(c.value)]));
@@ -191,19 +183,17 @@ function Numeric({ kind, title, anchor, latest, now }: { kind: ScoreKind; title:
 /** Lifecycle has a stage, not a value: the rule that fired, and tonight's stage while it waits for a second night. */
 function Lifecycle({ latest, now }: { latest: Latest; now: number }) {
   const row = "day" in latest ? latest : null;
-  const stage = row?.stage ? STAGES[row.stage] : null;
-  const Icon = stage?.[0];
   return (
     <Card kind="lifecycle" title="Lifecycle" anchor="lifecycle-stage" asOf={row && rowAsOf(row, now)}>
-      {stage && Icon && row ? (
+      {row?.stage ? (
         <>
-          <p className={cn("flex items-center gap-2 text-stat-lg font-semibold", stage[2])}>
-            <Icon className="size-5" aria-hidden />
-            {stage[1]}
+          <p>
+            {/* Daily Pulse's and the Screener's LifecyclePill, at the cards' value size. */}
+            <StagePill stage={row.stage} className="h-8 gap-1.5 px-2.5 text-body" />
           </p>
           <div className="flex flex-col gap-1 text-data text-muted-foreground">
             {row.explanation.reason && <p>Rule: {row.explanation.reason}</p>}
-            {row.explanation.pending && <p>Pending: {STAGES[row.explanation.pending][1].toLowerCase()}, shown once a second night agrees.</p>}
+            {row.explanation.pending && <p>Pending: {row.explanation.pending}, shown once a second night agrees.</p>}
             {missingInputs(row.explanation).map(({ word, labels }) => (
               <p key={word} className="text-label text-subtle-foreground">
                 {word}: {labels.join(", ")}
